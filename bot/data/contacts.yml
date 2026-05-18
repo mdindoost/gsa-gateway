@@ -1,0 +1,72 @@
+contacts:
+  president:
+    role: "GSA President"
+    name: "Fernando Vera Buschmann"
+    email: "fv54@njit.edu"
+    office: "Campus Center, Suite 420"
+    hours: "Tuesdays 3:00 PM – 5:00 PM"
+    notes: "General GSA matters, inter-organizational relationships, university governance."
+
+  vp_academic_affairs:
+    role: "VP Academic Affairs"
+    name: "Mohammad Dindoost"
+    email: "md724@njit.edu"
+    office: "Campus Center, Suite 420"
+    hours: "Mondays 2:00 PM – 4:00 PM or by appointment"
+    notes: "Academic resources, workshop planning, faculty relations, student initiatives."
+
+  vp_finance:
+    role: "VP Finance"
+    name: "TBD — Check GSA Website"
+    email: "gsa.finance@njit.edu"
+    office: "Campus Center, Suite 420"
+    hours: "Wednesdays 1:00 PM – 3:00 PM"
+    notes: "Club funding requests, event budgets, reimbursements."
+
+  secretary:
+    role: "GSA Secretary"
+    name: "TBD — Check GSA Website"
+    email: "gsa.secretary@njit.edu"
+    office: "Campus Center, Suite 420"
+    hours: "Thursdays 11:00 AM – 1:00 PM"
+    notes: "Meeting minutes, records, general correspondence."
+
+  graduate_admissions:
+    role: "Graduate Admissions"
+    name: "Office of Graduate Studies"
+    email: "gradadmissions@njit.edu"
+    office: "Fenster Hall, Room 200"
+    hours: "Mon–Fri 9:00 AM – 5:00 PM"
+    notes: "Application status, program requirements, enrollment verification."
+
+  counseling_center:
+    role: "Counseling Center"
+    name: "NJIT Counseling Center"
+    email: "counseling@njit.edu"
+    office: "Campus Center, Room 260"
+    hours: "Mon–Fri 9:00 AM – 5:00 PM; after-hours crisis: 973-596-3414"
+    notes: "Free counseling, crisis support, wellness workshops. Same-day crisis appointments available."
+
+  international_student_services:
+    role: "International Student Services"
+    name: "Office of Global Initiatives"
+    email: "international@njit.edu"
+    office: "Fenster Hall, Room 201"
+    hours: "Mon–Fri 9:00 AM – 5:00 PM"
+    notes: "F-1/J-1 visas, OPT/CPT, travel signatures, international student advising."
+
+  graduate_financial_aid:
+    role: "Graduate Financial Aid"
+    name: "Office of Financial Aid"
+    email: "financialaid@njit.edu"
+    office: "Fenster Hall, Room 130"
+    hours: "Mon–Fri 9:00 AM – 4:30 PM"
+    notes: "Assistantships, fellowships, loans, scholarships for graduate students."
+
+  campus_safety:
+    role: "Campus Safety"
+    name: "NJIT Department of Public Safety"
+    email: "publicsafety@njit.edu"
+    office: "Redwood Building"
+    hours: "24/7 — Emergency: 973-596-3120"
+    notes: "Campus safety, lost & found, escort service, parking, emergency response."

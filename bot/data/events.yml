@@ -1,0 +1,68 @@
+events:
+  - name: "Graduate Research Mixer"
+    date: 2026-06-05
+    time: "6:00 PM – 8:00 PM"
+    location: "GITC Atrium, NJIT Campus"
+    description: >
+      Join us for an evening of networking with fellow graduate researchers,
+      faculty mentors, and industry guests. Present your work in a relaxed
+      setting, discover collaboration opportunities, and meet the GSA team
+      over light refreshments. All graduate students and programs welcome.
+    organizer: "GSA Academic Affairs Committee"
+    rsvp_link: "https://njit.campuslabs.com/engage/organization/gsa"
+    category: "networking"
+
+  - name: "Academic Success Workshop"
+    date: 2026-06-12
+    time: "2:00 PM – 4:00 PM"
+    location: "Kupfrian Hall 202, NJIT Campus"
+    description: >
+      A hands-on workshop covering thesis and dissertation writing strategies,
+      time management for graduate students, navigating NJIT academic resources,
+      and communicating with advisors. Led by graduate advisors and the Office
+      of Graduate Studies. Bring your current challenges — this session is
+      interactive and Q&A-driven.
+    organizer: "VP Academic Affairs, GSA"
+    rsvp_link: "https://njit.campuslabs.com/engage/organization/gsa"
+    category: "academic"
+
+  - name: "International Graduate Student Q&A"
+    date: 2026-06-19
+    time: "5:00 PM – 6:30 PM"
+    location: "Campus Center Room 235, NJIT"
+    description: >
+      Open Q&A session for international graduate students covering F-1/J-1
+      visa regulations, OPT and CPT applications, on-campus employment rules,
+      Social Security applications, and NJIT's Office of Global Initiatives
+      services. Representatives from International Student Services and the
+      Graduate Financial Aid office will be present.
+    organizer: "GSA International Student Liaison"
+    rsvp_link: "https://njit.campuslabs.com/engage/organization/gsa"
+    category: "international"
+
+  - name: "Coffee with GSA"
+    date: 2026-06-24
+    time: "10:00 AM – 11:30 AM"
+    location: "Campus Center Atrium, NJIT"
+    description: >
+      Drop in for our informal monthly coffee hour! Chat directly with GSA
+      officers, share concerns, suggest new ideas, and learn about upcoming
+      events and initiatives. No agenda, no pressure — just a good conversation
+      over coffee. Light refreshments provided by GSA.
+    organizer: "GSA Executive Board"
+    rsvp_link: "https://njit.campuslabs.com/engage/organization/gsa"
+    category: "social"
+
+  - name: "Career Networking Night"
+    date: 2026-07-10
+    time: "6:30 PM – 8:30 PM"
+    location: "Eberhardt Hall, NJIT Campus"
+    description: >
+      Connect with NJIT alumni, recruiters, and industry professionals from
+      STEM, finance, and tech sectors. Graduate students are encouraged to
+      bring printed resumes and business cards. Career Development Center
+      advisors will be available for on-the-spot resume reviews. Dress
+      business casual. Co-hosted by the NJIT Career Development Center.
+    organizer: "GSA Career Development Committee"
+    rsvp_link: "https://njit.campuslabs.com/engage/organization/gsa"
+    category: "career"
