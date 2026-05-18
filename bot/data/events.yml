@@ -66,3 +66,12 @@ events:
     organizer: "GSA Career Development Committee"
     rsvp_link: "https://njit.campuslabs.com/engage/organization/gsa"
     category: "career"
+    
+  - name: "MMI 2026 Workshop"
+    date: 2026-05-21
+    time: "6:00 PM – 8:00 PM"
+    location: "Building, Room, NJIT"
+    description: "Describe the event here."
+    organizer: "GSA MMI Committee"
+    rsvp_link: "https://njit.campuslabs.com/engage/organization/gsa"
+    category: "academic"
