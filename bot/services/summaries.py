@@ -1,7 +1,7 @@
 """Generate human-readable text summaries for admin use."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from bot.services.database import Database
@@ -20,7 +20,7 @@ class SummaryService:
         initiatives = self.db.get_recent_initiatives(days)
         feedback = self.db.get_recent_feedback(days)
         stats = self.db.get_stats()
-        generated = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
         lines: list[str] = [
             f"**GSA Gateway — {days}-Day Summary**",

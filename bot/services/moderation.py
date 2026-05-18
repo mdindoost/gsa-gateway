@@ -2,7 +2,7 @@
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import discord
 
@@ -19,7 +19,7 @@ class RateLimiter:
 
     def is_allowed(self, user_id: int) -> bool:
         """Return True if this user has not exceeded the rate limit."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         window = self._calls[user_id]
         # Evict timestamps outside the rolling window
         window[:] = [t for t in window if now - t < self.period]
@@ -34,7 +34,7 @@ class RateLimiter:
         if not calls:
             return 0.0
         oldest = min(calls)
-        return max(0.0, (oldest + self.period - datetime.utcnow()).total_seconds())
+        return max(0.0, (oldest + self.period - datetime.now(timezone.utc)).total_seconds())
 
 
 def is_channel_allowed(

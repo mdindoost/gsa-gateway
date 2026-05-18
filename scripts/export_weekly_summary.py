@@ -9,7 +9,7 @@ Usage:
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -38,7 +38,7 @@ def main() -> None:
     if args.save:
         exports_dir = Path("exports")
         exports_dir.mkdir(exist_ok=True)
-        filename = exports_dir / f"summary_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.txt"
+        filename = exports_dir / f"summary_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}.txt"
         filename.write_text(plain, encoding="utf-8")
         print(f"\nSaved to: {filename}")
 

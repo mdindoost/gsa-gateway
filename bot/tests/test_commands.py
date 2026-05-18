@@ -97,8 +97,8 @@ class TestRateLimiter:
         assert limiter.is_allowed(7) is False
 
         # Simulate 2-second wait by backdating the stored timestamp
-        from datetime import datetime, timedelta
-        limiter._calls[7] = [datetime.utcnow() - timedelta(seconds=2)]
+        from datetime import datetime, timedelta, timezone
+        limiter._calls[7] = [datetime.now(timezone.utc) - timedelta(seconds=2)]
         assert limiter.is_allowed(7) is True  # Window cleared
 
 

@@ -7,7 +7,7 @@ Run from the project root:
 
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -45,7 +45,7 @@ def main() -> None:
     events.sort(key=lambda e: e["date"])
 
     output = {
-        "last_updated": datetime.utcnow().isoformat(),
+        "last_updated": datetime.now(timezone.utc).isoformat(),
         "events": events,
     }
 

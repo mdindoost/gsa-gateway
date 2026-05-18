@@ -6,7 +6,7 @@ User IDs are SHA-256 hashed before storage; raw IDs are never persisted.
 import hashlib
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -120,7 +120,7 @@ class Database:
                 question,
                 matched_topic,
                 confidence,
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).isoformat(),
                 str(guild_id) if guild_id is not None else None,
             ),
         )
@@ -150,7 +150,7 @@ class Database:
                 category,
                 1 if include_contact else 0,
                 contact_info if include_contact else None,
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).isoformat(),
                 str(guild_id) if guild_id is not None else None,
             ),
         )
@@ -170,7 +170,7 @@ class Database:
             (
                 hash_user_id(user_id),
                 message,
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).isoformat(),
                 str(guild_id) if guild_id is not None else None,
             ),
         )
@@ -188,7 +188,7 @@ class Database:
                 hash_user_id(officer_id),
                 action,
                 detail,
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).isoformat(),
             ),
         )
         self.conn.commit()
@@ -204,7 +204,7 @@ class Database:
                 event_name,
                 action,
                 hash_user_id(officer_id),
-                datetime.utcnow().isoformat(),
+                datetime.now(timezone.utc).isoformat(),
             ),
         )
         self.conn.commit()
