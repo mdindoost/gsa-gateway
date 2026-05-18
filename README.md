@@ -1,12 +1,11 @@
 # GSA Gateway
 
-**An AI-assisted Discord bot + static website for NJIT's Graduate Student Association.**
+**Discord bot + static website for NJIT's Graduate Student Association.**
 
-> GSA Gateway makes GSA information, events, resources, and student initiatives more accessible to all NJIT graduate students.
+> GSA Gateway is an AI-assisted student communication initiative designed to make GSA information, events, resources, and student ideas more accessible to all NJIT graduate students.
 
-<!-- Screenshot placeholder — add `docs/screenshot_bot.png` and `docs/screenshot_web.png` -->
-<!-- ![Bot screenshot](docs/screenshot_bot.png) -->
-<!-- ![Website screenshot](docs/screenshot_web.png) -->
+**Live website:** https://mdindoost.github.io/gsa-gateway/
+**GitHub repo:** https://github.com/mdindoost/gsa-gateway
 
 ---
 
@@ -14,8 +13,8 @@
 
 | Area | Details |
 |---|---|
-| **Knowledge Base** | `/ask` — fuzzy-search 12+ GSA FAQ entries, optional Ollama enhancement |
-| **Events** | `/events` and `/event [name]` — load from `events.yml`, sorted by date |
+| **Knowledge Base** | `/ask` — fuzzy-search 14 GSA FAQ entries, optional Ollama enhancement |
+| **Events** | `/events` and `/event [name]` — loaded from `events.yml`, sorted by date |
 | **Initiatives** | `/initiative` — Discord Modal form, anonymous by default, stored in SQLite |
 | **Feedback** | `/feedback` — private anonymous messages to officers |
 | **Resources** | `/resources [category]` — 8 categories, 28+ curated links |
@@ -23,40 +22,22 @@
 | **Admin Tools** | `/admin_summary`, `/admin_export`, `/admin_stats`, `/admin_announce` (all ephemeral) |
 | **Privacy** | SHA-256 hashed user IDs — raw IDs never stored |
 | **Rate Limiting** | 5 commands per user per 60 seconds |
-| **Channel Allowlist** | Restrict bot to specific channels via `ALLOWED_CHANNELS` env var |
-| **Website** | GitHub Pages-ready, loads events from `events.json`, mobile-responsive |
+| **Website** | Live on GitHub Pages, loads events from `events.json`, mobile-responsive |
 
 ---
 
-## Installation
+## First-Time Setup
 
-### 1. Prerequisites
-- Python 3.11+
-- Git
-
-### 2. Clone and set up
+### 1. Clone and create virtual environment
 ```bash
-git clone https://github.com/YOUR_USERNAME/gsa-gateway.git
+git clone git@github.com:mdindoost/gsa-gateway.git
 cd gsa-gateway
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Create your Discord bot
-
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications)
-2. Click **New Application** → name it "GSA Gateway"
-3. Go to **Bot** → click **Add Bot** → copy the **Token**
-4. Under **Privileged Gateway Intents**, enable:
-   - `Message Content Intent`
-5. Go to **OAuth2 → URL Generator**:
-   - Scopes: `bot`, `applications.commands`
-   - Bot Permissions: `Send Messages`, `Embed Links`, `Attach Files`, `Use Application Commands`
-6. Copy the generated URL, open it, and invite the bot to your Discord server
-7. In your Discord server, copy the **Server ID** (right-click server → Copy Server ID — requires Developer Mode)
-
-### 4. Configure .env
+### 2. Configure environment
 ```bash
 cp .env.example .env
 ```
@@ -71,98 +52,183 @@ LOG_LEVEL=INFO
 ALLOWED_CHANNELS=
 ```
 
-### 5. Initialise the database
+### 3. Create Discord bot (one-time)
+1. Go to [discord.com/developers/applications](https://discord.com/developers/applications)
+2. **New Application** → name it "GSA Gateway"
+3. **Bot** → **Add Bot** → copy the **Token** → paste as `DISCORD_TOKEN` in `.env`
+4. Enable **Message Content Intent** under Privileged Gateway Intents → Save
+5. **OAuth2 → URL Generator** → Scopes: `bot`, `applications.commands` → Permissions: `Send Messages`, `Embed Links`, `Attach Files`, `Use Application Commands`
+6. Open the generated URL → invite the bot to your server
+7. In Discord: **Settings → Advanced → Developer Mode ON** → right-click server name → **Copy Server ID** → paste as `DISCORD_GUILD_ID` in `.env`
+
+### 4. Initialise the database
 ```bash
 python scripts/init_db.py
 ```
 
-### 6. Export events to website
+### 5. Run the bot
 ```bash
-python scripts/export_events_json.py
+source .venv/bin/activate
+python -m bot.main
 ```
-
-### 7. Run the bot
-```bash
-bash scripts/run_bot.sh
-```
-Or directly: `python -m bot.main`
+You should see `GSA Gateway ready — logged in as GSA Gateway#XXXX`.
+Test in Discord with `/help`.
 
 ---
 
-## Running Tests
+## Daily: Start the Bot
 ```bash
-pytest bot/tests/ -v
+cd ~/gsa-gateway
+source .venv/bin/activate
+python -m bot.main
+```
+
+### Keep it running permanently (systemd)
+Create `/etc/systemd/system/gsa-gateway.service`:
+```ini
+[Unit]
+Description=GSA Gateway Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=md724
+WorkingDirectory=/home/md724/gsa-gateway
+ExecStart=/home/md724/gsa-gateway/.venv/bin/python -m bot.main
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+sudo systemctl enable --now gsa-gateway
 ```
 
 ---
 
 ## Updating Content (No Coding Required)
 
-### Add or edit an FAQ entry
-Edit `bot/data/gsa_faq.md`. Format:
+### Add or edit a FAQ entry
+1. Edit `bot/data/gsa_faq.md`
+2. Use this exact format:
 ```markdown
 ## Q: Your question here?
 **A:** Your answer here.
 ```
-Restart the bot.
+3. Restart the bot
 
 ### Add an event
-Edit `bot/data/events.yml` — copy an existing block:
+1. Edit `bot/data/events.yml` — copy an existing block and paste at the bottom:
 ```yaml
-- name: "New Event Name"
-  date: YYYY-MM-DD
-  time: "6:00 PM – 8:00 PM"
-  location: "Building, Room"
-  description: "Description text."
-  organizer: "Committee or officer name"
-  rsvp_link: "https://..."
-  category: networking
+  - name: "Event Name"
+    date: 2026-09-01
+    time: "6:00 PM - 8:00 PM"
+    location: "Building, Room, NJIT"
+    description: "Description here."
+    organizer: "Your name or committee"
+    rsvp_link: "https://njit.campuslabs.com/engage/organization/gsa"
+    category: "social"
 ```
-Then: `python scripts/export_events_json.py` + restart the bot.
+> Use **spaces not tabs**. Categories: `academic`, `social`, `career`, `networking`, `international`, `wellness`, `other`
 
-### Update contacts or resources
-Edit `bot/data/contacts.yml` or `bot/data/resources.yml`. Restart the bot.
+2. Sync, commit, and deploy:
+```bash
+source .venv/bin/activate
+python scripts/export_events_json.py
+git add bot/data/events.yml website/data/events.json
+git commit -m "Add event: Event Name"
+git push origin main
+bash scripts/deploy_website.sh
+```
+3. Restart the bot
+
+### Update officer contacts
+1. Edit `bot/data/contacts.yml` (used by the Discord bot `/contact` command)
+2. Edit `website/contact.html` (the website is static — update it manually)
+3. Commit and deploy:
+```bash
+git add bot/data/contacts.yml website/contact.html
+git commit -m "Update officer contacts"
+git push origin main
+bash scripts/deploy_website.sh
+```
+4. Restart the bot
+
+### Update resources
+1. Edit `bot/data/resources.yml`
+2. Restart the bot
+3. The website resources page (`website/resources.html`) is static — edit it manually if needed
 
 ---
 
-## Deploy Website on GitHub Pages
+## Deploy Website to GitHub Pages
 
-1. Push `website/` to your GitHub repo
-2. Go to **Settings → Pages** → Source: `main` branch, `/website` folder
-3. Your site will be live at `https://USERNAME.github.io/gsa-gateway/`
-4. To update events on the website: `python scripts/export_events_json.py` → commit and push `website/data/events.json`
+Live site: **https://mdindoost.github.io/gsa-gateway/**
+
+After any change to files in `website/`:
+```bash
+bash scripts/deploy_website.sh
+```
+GitHub Pages updates within ~1 minute.
+
+---
+
+## Running Tests
+```bash
+source .venv/bin/activate
+pytest bot/tests/ -v
+```
+Expected: 55 tests pass.
+
+---
+
+## Admin Discord Commands
+
+Assign the `GSA Officer` role in Discord to officers. All commands are **ephemeral** (only the officer can see the response).
+
+| Command | What it does |
+|---|---|
+| `/admin_summary` | 7-day summary of initiatives + feedback |
+| `/admin_export initiatives` | Download CSV of all initiative submissions |
+| `/admin_export feedback` | Download CSV of all feedback |
+| `/admin_export questions` | Download CSV of all questions asked |
+| `/admin_stats` | Total counts and top search topics |
+| `/admin_announce #channel message` | Post an announcement embed to a channel |
+| `/admin_add_event` | Instructions for adding events |
 
 ---
 
 ## Enable Ollama (Optional Local LLM)
-
 1. Install Ollama: [ollama.com](https://ollama.com)
-2. Pull a model: `ollama pull llama3`
-3. Set in `.env`: `OLLAMA_ENABLED=true` and `OLLAMA_MODEL=llama3`
+2. `ollama pull llama3`
+3. Set in `.env`: `OLLAMA_ENABLED=true`, `OLLAMA_MODEL=llama3`
 4. Restart the bot
-
-The bot will use Ollama to generate enhanced answers, but **only with retrieved knowledge base context** — it never answers without grounding. Falls back silently if Ollama is unavailable.
 
 ---
 
-## Using Admin Commands
-
-Assign the `GSA Officer` Discord role (or whatever you set in `ADMIN_ROLE_NAME`) to officers. Then:
-
-- `/admin_summary` — 7-day summary of initiatives + feedback
-- `/admin_export initiatives` — download CSV of all submissions
-- `/admin_stats` — total counts and top search topics
-- `/admin_announce #channel Your message` — post an announcement embed
-- `/admin_add_event` — instructions for adding events
-
-All admin commands are **ephemeral** — only visible to the person who ran them.
+## Export Weekly Summary
+```bash
+source .venv/bin/activate
+python scripts/export_weekly_summary.py           # print to terminal
+python scripts/export_weekly_summary.py --save    # save to exports/
+python scripts/export_weekly_summary.py --days 14 # 2-week window
+```
 
 ---
 
 ## NJIT Server Migration
+Full guide: [docs/deployment.md](docs/deployment.md)
 
-See [docs/deployment.md](docs/deployment.md) for the full migration checklist.
-Short version: copy files + `.env` + `gsa_gateway.db` to the server, set up a venv, and configure systemd.
+```bash
+git clone git@github.com:mdindoost/gsa-gateway.git
+cd gsa-gateway
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+# Copy .env and gsa_gateway.db from old machine via scp
+python scripts/init_db.py
+python -m bot.main
+```
 
 ---
 
@@ -170,18 +236,45 @@ Short version: copy files + `.env` + `gsa_gateway.db` to the server, set up a ve
 
 | Problem | Solution |
 |---|---|
-| `DISCORD_TOKEN is not set` | Check `.env` — token must not have quotes around it |
-| Commands not appearing | Make sure `DISCORD_GUILD_ID` is set; global sync takes up to 1 hour |
-| `ModuleNotFoundError` | Run from the project root; activate the venv |
-| Bot offline but no error | Check `gsa_gateway.log` for the root cause |
-| Ollama not responding | Confirm `ollama serve` is running; set `OLLAMA_ENABLED=false` to skip |
-| Rate limit fires too fast | Adjust `max_calls` and `period_seconds` in `bot/main.py` `setup_hook` |
-| Admin commands not working | Ensure the user's Discord role name matches `ADMIN_ROLE_NAME` exactly (case-sensitive) |
+| `DISCORD_TOKEN is not set` | Check `.env` — no quotes around the token value |
+| Commands not showing in Discord | Ensure `DISCORD_GUILD_ID` is set; global sync takes up to 1 hour |
+| `/ask` always returns fallback | Restart the bot — knowledge base loads at startup |
+| `ModuleNotFoundError` | Activate venv and run from project root |
+| Bot offline, no error | Check `gsa_gateway.log` |
+| Ollama not responding | Run `ollama serve`; or set `OLLAMA_ENABLED=false` |
+| Admin commands denied | Role name must match `ADMIN_ROLE_NAME` in `.env` exactly (case-sensitive) |
+| Website not updating | Run `bash scripts/deploy_website.sh` and wait ~1 min |
+| YAML turns red in editor | Use spaces not tabs; 2 spaces before `-`, 4 spaces before field names |
+
+---
+
+## Project Structure
+
+```
+gsa-gateway/
+├── bot/
+│   ├── main.py              Bot entry point
+│   ├── config.py            Loads .env into typed Config object
+│   ├── commands/            One file per slash command
+│   ├── services/            Database, search, knowledge base, moderation
+│   ├── data/                YAML + Markdown files — edit these to update content
+│   └── tests/               55 pytest tests
+├── website/                 Static site (GitHub Pages)
+│   ├── *.html               Edit directly to update website pages
+│   ├── assets/              style.css and app.js
+│   └── data/events.json     Auto-generated — do not edit manually
+├── scripts/
+│   ├── deploy_website.sh    ONE command to push website live
+│   ├── export_events_json.py Sync events.yml to website/data/events.json
+│   ├── export_weekly_summary.py
+│   ├── init_db.py
+│   └── run_bot.sh
+└── docs/                    Architecture, deployment, admin guide, privacy policy
+```
 
 ---
 
 ## License
 
-MIT © 2026 NJIT Graduate Student Association. See [LICENSE](LICENSE).
-
+MIT © 2026 NJIT Graduate Student Association.
 Built by Mohammad Dindoost, VP Academic Affairs.
