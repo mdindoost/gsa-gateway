@@ -92,7 +92,17 @@ def export_events_to_json(db=None) -> int:
     for ev in events:
         ev["status"] = _status(ev["date"])
 
-    events.sort(key=lambda e: e["date"], reverse=True)
+    today_str = date.today().isoformat()
+    upcoming = sorted(
+        [e for e in events if e["date"] >= today_str],
+        key=lambda e: e["date"],
+    )
+    past = sorted(
+        [e for e in events if e["date"] < today_str],
+        key=lambda e: e["date"],
+        reverse=True,
+    )
+    events = upcoming + past
 
     output = {
         "last_updated": datetime.now(timezone.utc).isoformat(),

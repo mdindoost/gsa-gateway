@@ -62,17 +62,24 @@ async function loadEvents() {
 }
 
 function renderEvents(events) {
-  if (!events.length) {
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = events
+    .filter((e) => e.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const past = events
+    .filter((e) => e.date < today)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  if (!upcoming.length && !past.length) {
     eventsContainer.innerHTML = `
       <p style="color:var(--gray-mid); text-align:center; padding:3rem 0;">
-        No upcoming events right now — check back soon!
+        No events right now — check back soon!
       </p>`;
     return;
   }
 
-  const html = events
-    .map(
-      (ev) => `
+  function cardHtml(ev) {
+    return `
     <div class="card">
       <span class="card-tag">${escHtml(ev.category || "event")}</span>
       <h3>${escHtml(ev.name)}</h3>
@@ -90,11 +97,28 @@ function renderEvents(events) {
              </a>`
           : ""
       }
-    </div>`
-    )
-    .join("");
+    </div>`;
+  }
 
-  eventsContainer.innerHTML = `<div class="card-grid">${html}</div>`;
+  let html = "";
+
+  if (upcoming.length) {
+    html += `<div class="card-grid">${upcoming.map(cardHtml).join("")}</div>`;
+  } else {
+    html += `<p style="color:var(--gray-mid); text-align:center; padding:1.5rem 0;">
+      No upcoming events right now — check back soon!
+    </p>`;
+  }
+
+  if (past.length) {
+    html += `
+    <div class="events-separator">
+      <span>Past Events</span>
+    </div>
+    <div class="card-grid events-past">${past.map(cardHtml).join("")}</div>`;
+  }
+
+  eventsContainer.innerHTML = html;
 }
 
 function escHtml(str) {

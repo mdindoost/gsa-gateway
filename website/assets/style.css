@@ -235,6 +235,31 @@ section { padding: 3.5rem 0; }
   gap: 0.75rem;
 }
 
+.events-separator {
+  display: flex;
+  align-items: center;
+  margin: 2.5rem 0 1.5rem;
+  gap: 1rem;
+  color: var(--gray-mid);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.events-separator::before,
+.events-separator::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.events-past .card {
+  opacity: 0.6;
+}
+.events-past .card:hover {
+  opacity: 1;
+}
+
 .card-meta span::before { margin-right: 0.2rem; }
 
 /* ── Page header (sub-pages) ─────────────────────────────────────────────── */

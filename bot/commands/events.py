@@ -1,6 +1,7 @@
 """Slash commands: /events and /event — browse GSA events."""
 
 import logging
+from datetime import date as _date
 
 import discord
 from discord import app_commands
@@ -61,7 +62,11 @@ class EventsCog(commands.Cog, name="Events"):
             )
             return
 
-        upcoming = self.bot.kb.get_upcoming_events()  # type: ignore[attr-defined]
+        today = _date.today().isoformat()
+        upcoming = [
+            e for e in self.bot.kb.get_upcoming_events()  # type: ignore[attr-defined]
+            if e.date >= today
+        ]
         if not upcoming:
             await interaction.response.send_message(NO_EVENTS_MSG)
             return
