@@ -65,6 +65,13 @@ sudo systemctl restart gsa-gateway    # restart (after any code or .env change)
 sudo systemctl status gsa-gateway     # check if running
 ```
 
+To control both bot and Ollama at once:
+```bash
+sudo systemctl stop gsa-gateway ollama      # shut down both
+sudo systemctl start gsa-gateway ollama     # start both
+sudo systemctl restart gsa-gateway ollama   # restart both
+```
+
 Expected output when healthy:
 ```
 Active: active (running)
