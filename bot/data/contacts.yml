@@ -1,72 +1,106 @@
 contacts:
+  # ── GSA Executive Board ────────────────────────────────────────────────────
   president:
     role: "GSA President"
     name: "Fernando Vera Buschmann"
-    email: "fv54@njit.edu"
-    office: "Campus Center, Suite 420"
-    hours: "Tuesdays 3:00 PM – 5:00 PM"
-    notes: "General GSA matters, inter-organizational relationships, university governance."
+    email: "gsa-pres@njit.edu"
+    office: "Campus Center 110A"
+    hours: "Weekdays 11:00 AM – 5:00 PM"
+    notes: "Data Science PhD, 4th Year. Overall GSA leadership, Board of Trustees AARC, NJIT University Senator, Faculty Senate CITLAR."
 
   vp_academic_affairs:
     role: "VP Academic Affairs"
     name: "Mohammad Dindoost"
-    email: "md724@njit.edu"
-    office: "Campus Center, Suite 420"
-    hours: "Mondays 2:00 PM – 4:00 PM or by appointment"
-    notes: "Academic resources, workshop planning, faculty relations, student initiatives."
+    email: "gsa-vpa@njit.edu"
+    office: "Campus Center 110A"
+    hours: "Weekdays 11:00 AM – 5:00 PM"
+    notes: "Computer Science PhD, 4th Year. Academic initiatives, Chair of 3MRP, Chair of Graduate Research Day."
 
-  vp_finance:
-    role: "VP Finance"
-    name: "TBD — Check GSA Website"
-    email: "gsa.finance@njit.edu"
-    office: "Campus Center, Suite 420"
-    hours: "Wednesdays 1:00 PM – 3:00 PM"
-    notes: "Club funding requests, event budgets, reimbursements."
+  vp_finances:
+    role: "VP Finances"
+    name: "Mohith Oduru"
+    email: "gsa-vpf@njit.edu"
+    office: "Campus Center 110A"
+    hours: "Weekdays 11:00 AM – 5:00 PM"
+    notes: "Information Systems PhD, 2nd Year. GSA budget, Faculty Senate CGE."
 
-  secretary:
-    role: "GSA Secretary"
-    name: "TBD — Check GSA Website"
-    email: "gsa.secretary@njit.edu"
-    office: "Campus Center, Suite 420"
-    hours: "Thursdays 11:00 AM – 1:00 PM"
-    notes: "Meeting minutes, records, general correspondence."
+  vp_programming:
+    role: "VP Programming"
+    name: "Durvish Paliwal"
+    email: "dp2225@njit.edu"
+    office: "Campus Center 110A"
+    hours: "Weekdays 11:00 AM – 5:00 PM"
+    notes: "Data Science MS, 2nd Year. Events and programs, Board of Trustees CLC."
 
-  graduate_admissions:
-    role: "Graduate Admissions"
+  vp_communications:
+    role: "VP Communications"
+    name: "Nistha Hiteshkumar Chauhan"
+    email: "nhc27@njit.edu"
+    office: "Campus Center 110A"
+    hours: "Weekdays 11:00 AM – 5:00 PM"
+    notes: "Data Science MS, 1st Year. Student communications and outreach."
+
+  vp_public_relations:
+    role: "VP Public Relations"
+    name: "Ritwik Reddy Kolan"
+    email: "rk982@njit.edu"
+    office: "Campus Center 110A"
+    hours: "Weekdays 11:00 AM – 5:00 PM"
+    notes: "Artificial Intelligence MS, 2nd Year. External relations and media."
+
+  # ── Campus Offices ─────────────────────────────────────────────────────────
+  graduate_studies:
+    role: "Graduate Studies Office"
     name: "Office of Graduate Studies"
-    email: "gradadmissions@njit.edu"
-    office: "Fenster Hall, Room 200"
+    email: "grad@njit.edu"
+    office: "Fenster Hall"
     hours: "Mon–Fri 9:00 AM – 5:00 PM"
-    notes: "Application status, program requirements, enrollment verification."
+    notes: "Graduate enrollment, eligibility verification, academic policies, and student status."
 
   counseling_center:
-    role: "Counseling Center"
+    role: "Counseling Center (C-CAPS)"
     name: "NJIT Counseling Center"
     email: "counseling@njit.edu"
     office: "Campus Center, Room 260"
     hours: "Mon–Fri 9:00 AM – 5:00 PM; after-hours crisis: 973-596-3414"
-    notes: "Free counseling, crisis support, wellness workshops. Same-day crisis appointments available."
+    notes: "Free confidential counseling, crisis support, wellness workshops. Same-day crisis appointments available."
 
-  international_student_services:
-    role: "International Student Services"
+  peer_wellness:
+    role: "Center for Peer Wellness Coaching"
+    name: "Peer Wellness Center"
+    email: ""
+    office: "Behind NJIT Smashburger"
+    hours: "Tues 10:30AM–2:30PM, Wed 11:30AM–1PM and 2:30–5PM, Thurs 10:30–11:30AM"
+    notes: "Free, private peer wellness coaching sessions. No appointment needed during open hours."
+
+  global_initiatives:
+    role: "Office of Global Initiatives (OGI)"
     name: "Office of Global Initiatives"
     email: "international@njit.edu"
-    office: "Fenster Hall, Room 201"
+    office: "Fenster Hall"
     hours: "Mon–Fri 9:00 AM – 5:00 PM"
-    notes: "F-1/J-1 visas, OPT/CPT, travel signatures, international student advising."
+    notes: "International student support, visa advising, study abroad, and global programs. Website: njit.edu/global"
 
-  graduate_financial_aid:
-    role: "Graduate Financial Aid"
-    name: "Office of Financial Aid"
-    email: "financialaid@njit.edu"
-    office: "Fenster Hall, Room 130"
-    hours: "Mon–Fri 9:00 AM – 4:30 PM"
-    notes: "Assistantships, fellowships, loans, scholarships for graduate students."
+  library:
+    role: "NJIT Library"
+    name: "NJIT Library"
+    email: "library@njit.edu"
+    office: "NJIT Library Building"
+    hours: "See library.njit.edu for current hours"
+    notes: "Research databases, academic journals, study spaces, open access resources, Zotero workshops."
 
-  campus_safety:
-    role: "Campus Safety"
-    name: "NJIT Department of Public Safety"
-    email: "publicsafety@njit.edu"
-    office: "Redwood Building"
-    hours: "24/7 — Emergency: 973-596-3120"
-    notes: "Campus safety, lost & found, escort service, parking, emergency response."
+  highlander_hub:
+    role: "Highlander Hub / Student Organizations"
+    name: "Office of Student Life"
+    email: "studentlife@njit.edu"
+    office: "Campus Center"
+    hours: "Mon–Fri 9:00 AM – 5:00 PM"
+    notes: "Student organizations, club registration, event forms, GSA page. Website: njit.campuslabs.com/engage"
+
+  inclusive_excellence:
+    role: "Office of Inclusive Excellence"
+    name: "Office of Inclusive Excellence"
+    email: ""
+    office: "Campus Center"
+    hours: "Mon–Fri 9:00 AM – 5:00 PM"
+    notes: "Diversity, equity, and inclusion programs, resources, and support for all students."
