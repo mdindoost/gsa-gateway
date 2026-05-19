@@ -92,7 +92,7 @@ def export_events_to_json(db=None) -> int:
     for ev in events:
         ev["status"] = _status(ev["date"])
 
-    events.sort(key=lambda e: e["date"])
+    events.sort(key=lambda e: e["date"], reverse=True)
 
     output = {
         "last_updated": datetime.now(timezone.utc).isoformat(),
