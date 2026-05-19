@@ -9,7 +9,8 @@ from bot.services.knowledge_base import Event, KnowledgeBase
 
 logger = logging.getLogger(__name__)
 
-MIN_CONFIDENCE = 60.0
+MIN_CONFIDENCE = 60.0          # threshold for raw-text answers (no Ollama)
+OLLAMA_MIN_CONFIDENCE = 45.0  # threshold for passing context to Ollama
 EVENT_MIN_CONFIDENCE = 45.0
 CONTACT_MIN_CONFIDENCE = 45.0
 
@@ -32,16 +33,22 @@ class SearchService:
         self.kb = kb
         self.min_confidence = min_confidence
 
-    def search(self, query: str, limit: int = 3) -> list[SearchResult]:
-        """Return up to *limit* FAQ matches above the confidence threshold.
+    def search(
+        self,
+        query: str,
+        limit: int = 3,
+        min_confidence: float | None = None,
+    ) -> list[SearchResult]:
+        """Return up to *limit* KB matches above the confidence threshold.
 
+        min_confidence overrides self.min_confidence when provided.
         Results are ordered by score descending.
         """
+        threshold = min_confidence if min_confidence is not None else self.min_confidence
         items = self.kb.get_searchable_texts()
         if not items:
             return []
 
-        # Build id → text mapping for rapidfuzz
         choices = {item["id"]: item["text"] for item in items}
         id_map = {item["id"]: item for item in items}
 
@@ -54,7 +61,7 @@ class SearchService:
 
         results: list[SearchResult] = []
         for _matched_text, score, key in matches:
-            if score >= self.min_confidence:
+            if score >= threshold:
                 item = id_map[key]
                 results.append(
                     SearchResult(

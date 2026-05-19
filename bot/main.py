@@ -104,6 +104,13 @@ class GSABot(commands.Bot):
     async def on_ready(self) -> None:
         assert self.user is not None
         logger.info("GSA Gateway ready — logged in as %s (ID: %d)", self.user, self.user.id)
+        logger.info(
+            "Knowledge base active: %d FAQ entries, %d contacts, %d events, %d resource categories",
+            len(self.kb.faq_entries),
+            len(self.kb.contacts),
+            len(self.kb.events),
+            len(self.kb.resources),
+        )
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.watching,

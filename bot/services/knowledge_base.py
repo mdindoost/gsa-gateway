@@ -169,8 +169,14 @@ class KnowledgeBase:
     # ── Query helpers ─────────────────────────────────────────────────────────
 
     def get_searchable_texts(self) -> list[dict[str, str]]:
-        """Return a flat list of items suitable for fuzzy search."""
-        items = []
+        """Return a flat list of all KB items for fuzzy search.
+
+        Indexes FAQ entries, contacts, events, and resources so every
+        piece of data in the knowledge base is reachable via /ask.
+        """
+        items: list[dict[str, str]] = []
+
+        # ── FAQ entries ───────────────────────────────────────────────────────
         for idx, entry in enumerate(self.faq_entries):
             items.append(
                 {
@@ -178,9 +184,97 @@ class KnowledgeBase:
                     "text": entry.question,
                     "content": entry.answer,
                     "type": "faq",
-                    "section": entry.section,
+                    "section": "faq",
                 }
             )
+
+        # ── Contacts — one combined "all officers" entry + one per person ─────
+        officer_lines: list[str] = []
+        for key, contact in self.contacts.items():
+            # Per-contact entry
+            parts = [f"The {contact.role} is {contact.name}."]
+            if contact.email and contact.email != "N/A":
+                parts.append(f"Email: {contact.email}.")
+            if contact.office and contact.office != "N/A":
+                parts.append(f"Office: {contact.office}.")
+            if contact.hours and contact.hours != "N/A":
+                parts.append(f"Hours: {contact.hours}.")
+            if contact.notes:
+                parts.append(contact.notes)
+            content = " ".join(parts)
+            items.append(
+                {
+                    "id": f"contact_{key}",
+                    "text": f"{contact.role} {contact.name} contact",
+                    "content": content,
+                    "type": "contact",
+                    "section": "contacts",
+                }
+            )
+            # Accumulate for the combined officers entry
+            if any(
+                kw in contact.role.lower()
+                for kw in ("president", "vp", "vice president", "secretary")
+            ):
+                line = f"{contact.role}: {contact.name}"
+                if contact.email and contact.email != "N/A":
+                    line += f" ({contact.email})"
+                officer_lines.append(line)
+
+        if officer_lines:
+            items.append(
+                {
+                    "id": "contact_all_officers",
+                    "text": "GSA officers executive board members list",
+                    "content": (
+                        "The current GSA Executive Board officers are: "
+                        + "; ".join(officer_lines)
+                        + ". All officers are available at Campus Center 110A, "
+                        "weekdays 11:00 AM – 5:00 PM. "
+                        "General inquiries: gsa-pres@njit.edu."
+                    ),
+                    "type": "contact",
+                    "section": "contacts",
+                }
+            )
+
+        # ── Events ────────────────────────────────────────────────────────────
+        for idx, event in enumerate(self.events):
+            parts = [
+                f"{event.name} takes place on {event.date}",
+                f"at {event.time}" if event.time and event.time != "TBD" else "",
+                f"at {event.location}." if event.location and event.location != "TBD" else ".",
+                event.description,
+                f"Organized by {event.organizer}." if event.organizer else "",
+                f"RSVP: {event.rsvp_link}" if event.rsvp_link else "",
+            ]
+            content = " ".join(p for p in parts if p).strip()
+            items.append(
+                {
+                    "id": f"event_{idx}",
+                    "text": f"event {event.name} {event.category}",
+                    "content": content,
+                    "type": "event",
+                    "section": "events",
+                }
+            )
+
+        # ── Resources — group by category for richer context ──────────────────
+        for cat, resources in self.resources.items():
+            for idx, resource in enumerate(resources):
+                content = resource.description
+                if resource.url:
+                    content += f" Link: {resource.url}"
+                items.append(
+                    {
+                        "id": f"resource_{cat}_{idx}",
+                        "text": f"{resource.title} {cat} resource",
+                        "content": content,
+                        "type": "resource",
+                        "section": f"resources/{cat}",
+                    }
+                )
+
         return items
 
     def get_upcoming_events(self) -> list[Event]:

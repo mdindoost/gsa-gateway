@@ -1,4 +1,4 @@
-"""Slash command: /ask — search the knowledge base, optionally enhanced by Ollama."""
+"""Slash command: /ask — search the knowledge base, enhanced by Ollama when enabled."""
 
 import contextlib
 import logging
@@ -9,17 +9,14 @@ from discord.ext import commands
 
 from bot.config import config
 from bot.services.moderation import is_channel_allowed
+from bot.services.search import MIN_CONFIDENCE, OLLAMA_MIN_CONFIDENCE
 
 logger = logging.getLogger(__name__)
 
 FALLBACK = (
     "I'm not fully sure about that one. For the most accurate answer, "
     "please reach out to a GSA officer with `/contact` or visit us during "
-    "office hours. We're always happy to help!"
-)
-LOW_CONFIDENCE_NOTE = (
-    "\n\n_Note: My knowledge base has limited information on this topic. "
-    "For details, contact a GSA officer with `/contact`._"
+    "office hours — Campus Center 110A, weekdays 11 AM–5 PM."
 )
 AI_FOOTER = "Answer generated from GSA knowledge base"
 NJIT_RED = discord.Color.from_str("#CC0000")
@@ -35,9 +32,9 @@ class AskCog(commands.Cog, name="Ask"):
         name="ask",
         description="Ask a question about GSA, NJIT resources, or graduate student life.",
     )
-    @app_commands.describe(question="Your question (e.g. 'How do I apply for funding?')")
+    @app_commands.describe(question="Your question (e.g. 'Who are the GSA officers?')")
     async def ask(self, interaction: discord.Interaction, question: str) -> None:
-        """Fuzzy-search the knowledge base and return the best answer."""
+        """Search the knowledge base and return the best answer."""
         if not is_channel_allowed(interaction.channel, config.allowed_channels):
             await interaction.response.send_message(
                 "I'm not active in this channel. Please use a designated GSA channel.",
@@ -56,12 +53,17 @@ class AskCog(commands.Cog, name="Ask"):
 
         await interaction.response.defer(thinking=True)
 
-        results = self.bot.search_svc.search(question)  # type: ignore[attr-defined]
         ollama = getattr(self.bot, "ollama", None)
         use_ollama = config.ollama_enabled and ollama is not None
 
-        # ── Low-confidence / no results ───────────────────────────────────────
-        if not results or results[0].score < 60:
+        if use_ollama:
+            # ── Ollama path: lower threshold, always pass context to AI ───────
+            # Ollama's system prompt handles uncertainty — the search threshold
+            # should not be the gatekeeper here.
+            results = self.bot.search_svc.search(  # type: ignore[attr-defined]
+                question, limit=4, min_confidence=OLLAMA_MIN_CONFIDENCE
+            )
+
             self.bot.db.log_question(  # type: ignore[attr-defined]
                 user_id=interaction.user.id,
                 question=question,
@@ -70,68 +72,67 @@ class AskCog(commands.Cog, name="Ask"):
                 guild_id=interaction.guild_id,
             )
 
-            if use_ollama and results:
-                # Context is limited but we try anyway, with a disclaimer
-                context_chunks = [f"Q: {r.text}\nA: {r.content}" for r in results[:3]]
-                chan = interaction.channel
-                typing_ctx = chan.typing() if chan is not None else contextlib.nullcontext()
-                async with typing_ctx:
-                    ai_text = await ollama.generate_answer(question, context_chunks)
-                if ai_text:
-                    embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
-                    embed.add_field(name="Your Question", value=question[:256], inline=False)
-                    embed.add_field(
-                        name="Answer",
-                        value=(ai_text + LOW_CONFIDENCE_NOTE)[:1020],
-                        inline=False,
-                    )
-                    embed.set_footer(text=f"💡 {AI_FOOTER} · Limited context")
-                    await interaction.followup.send(embed=embed)
-                    return
+            if not results:
+                await interaction.followup.send(FALLBACK)
+                return
 
-            await interaction.followup.send(FALLBACK)
-            return
-
-        # ── Good match ────────────────────────────────────────────────────────
-        best = results[0]
-        self.bot.db.log_question(  # type: ignore[attr-defined]
-            user_id=interaction.user.id,
-            question=question,
-            matched_topic=best.text,
-            confidence=best.score,
-            guild_id=interaction.guild_id,
-        )
-
-        embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
-        embed.add_field(name="Your Question", value=question[:256], inline=False)
-        answer_text = best.content[:1000]
-
-        if use_ollama:
-            context_chunks = [f"Q: {r.text}\nA: {r.content}" for r in results[:3]]
+            context_chunks = [f"Topic: {r.text}\nInfo: {r.content}" for r in results[:4]]
             chan = interaction.channel
             typing_ctx = chan.typing() if chan is not None else contextlib.nullcontext()
             async with typing_ctx:
                 ai_text = await ollama.generate_answer(question, context_chunks)
 
             if ai_text:
-                answer_text = ai_text[:1000]
+                embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
+                embed.add_field(name="Your Question", value=question[:256], inline=False)
+                embed.add_field(name="Answer", value=ai_text[:1000], inline=False)
+                best = results[0]
                 embed.set_footer(
                     text=f"💡 {AI_FOOTER} · {best.section} · {best.score:.0f}% match"
                 )
+                await interaction.followup.send(embed=embed)
             else:
+                # Ollama failed — fall back to best raw KB text
+                best = results[0]
+                embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
+                embed.add_field(name="Your Question", value=question[:256], inline=False)
+                embed.add_field(name="Answer", value=best.content[:1000], inline=False)
                 embed.set_footer(
                     text=f"Source: {best.section} · Confidence: {best.score:.0f}%"
                 )
+                await interaction.followup.send(embed=embed)
+
         else:
-            embed.set_footer(text=f"Source: {best.section} · Confidence: {best.score:.0f}%")
+            # ── Raw KB path: strict threshold, show direct text ───────────────
+            results = self.bot.search_svc.search(  # type: ignore[attr-defined]
+                question, limit=3, min_confidence=MIN_CONFIDENCE
+            )
 
-        embed.add_field(name="Answer", value=answer_text, inline=False)
+            self.bot.db.log_question(  # type: ignore[attr-defined]
+                user_id=interaction.user.id,
+                question=question,
+                matched_topic=results[0].text if results else None,
+                confidence=results[0].score if results else 0.0,
+                guild_id=interaction.guild_id,
+            )
 
-        if len(results) > 1:
-            related = "\n".join(f"• {r.text} ({r.score:.0f}%)" for r in results[1:])
-            embed.add_field(name="Related Topics", value=related, inline=False)
+            if not results:
+                await interaction.followup.send(FALLBACK)
+                return
 
-        await interaction.followup.send(embed=embed)
+            best = results[0]
+            embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
+            embed.add_field(name="Your Question", value=question[:256], inline=False)
+            embed.add_field(name="Answer", value=best.content[:1000], inline=False)
+            embed.set_footer(
+                text=f"Source: {best.section} · Confidence: {best.score:.0f}%"
+            )
+
+            if len(results) > 1:
+                related = "\n".join(f"• {r.text} ({r.score:.0f}%)" for r in results[1:])
+                embed.add_field(name="Related Topics", value=related, inline=False)
+
+            await interaction.followup.send(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
