@@ -60,7 +60,7 @@ class AddEventModal(discord.ui.Modal, title="Add New GSA Event"):
     )
     tags_and_rsvp = discord.ui.TextInput(
         label="Category & RSVP Link  (use | as separator)",
-        placeholder="food, social | https://rsvp.link",
+        placeholder="food, social | https://rsvp.link  ← add 'food' if free food/drinks!",
         max_length=300,
         required=False,
     )
@@ -158,6 +158,7 @@ class AddEventModal(discord.ui.Modal, title="Add New GSA Event"):
             get_announcement_channel,
             get_channels_for_categories,
         )
+        from bot.services.food_detector import format_food_alert_embed
 
         event_dict = {
             "name": name, "date": date_str, "time": time_val,
@@ -168,6 +169,14 @@ class AddEventModal(discord.ui.Modal, title="Add New GSA Event"):
         embed = format_event_announcement(event_dict, "new")
 
         guild = interaction.guild
+
+        # Food events get a special alert embed for #gsa-food channel
+        food_ch = (
+            discord.utils.get(guild.text_channels, name=config.channel_food)
+            if "food" in categories and guild is not None
+            else None
+        )
+        food_embed = format_food_alert_embed(event_dict) if food_ch else None
         channels_posted: list[str] = []
 
         if guild is not None:
@@ -175,7 +184,9 @@ class AddEventModal(discord.ui.Modal, title="Add New GSA Event"):
             cat_channels = get_channels_for_categories(guild, categories)
             for ch in cat_channels:
                 try:
-                    await ch.send(embed=embed)
+                    # Food channel gets the special alert embed
+                    to_send = food_embed if (food_embed and food_ch and ch.id == food_ch.id) else embed
+                    await ch.send(embed=to_send)
                     channels_posted.append(f"#{ch.name}")
                 except discord.Forbidden:
                     logger.warning("No permission to post in #%s", ch.name)

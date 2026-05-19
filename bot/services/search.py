@@ -26,6 +26,9 @@ SYNONYMS: dict[str, list[str]] = {
     "contact":       ["email", "officer", "office", "reach", "talk", "meet"],
     "join":          ["become", "member", "involved", "participate", "volunteer"],
     "officer":       ["president", "VP", "board", "eboard", "leadership", "staff"],
+    "food":          ["free food", "lunch", "snacks", "eat", "refreshments", "pizza", "coffee", "hungry", "meal"],
+    "hungry":        ["food", "free food", "lunch", "snacks", "eat"],
+    "eat":           ["food", "free food", "lunch", "snacks", "refreshments"],
 }
 
 

@@ -8,6 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.config import config
+from bot.services.food_detector import format_food_response, get_food_events, is_food_query
 from bot.services.moderation import is_channel_allowed
 from bot.services.search import MIN_CONFIDENCE, preprocess_query
 
@@ -52,6 +53,30 @@ class AskCog(commands.Cog, name="Ask"):
             return
 
         await interaction.response.defer(thinking=True)
+
+        # ── Food shortcut: bypass KB search entirely for food queries ─────────
+        if is_food_query(question):
+            food_events = get_food_events(
+                kb=self.bot.kb,       # type: ignore[attr-defined]
+                db=self.bot.db,       # type: ignore[attr-defined]
+                days_ahead=7,
+            )
+            self.bot.db.log_question(  # type: ignore[attr-defined]
+                user_id=interaction.user.id,
+                question=question,
+                matched_topic="food events",
+                confidence=100.0,
+                guild_id=interaction.guild_id,
+            )
+            if food_events:
+                await interaction.followup.send(embed=format_food_response(food_events))
+            else:
+                await interaction.followup.send(
+                    "😔 No events with food in the next 7 days right now.\n\n"
+                    "Follow **#gsa-food** channel for announcements, or check back soon — "
+                    "GSA regularly hosts events with free food and refreshments! 🍕"
+                )
+            return
 
         ollama = getattr(self.bot, "ollama", None)
         use_ollama = config.ollama_enabled and ollama is not None
