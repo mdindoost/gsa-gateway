@@ -19,7 +19,8 @@ class Config:
     database_path: str
     ollama_enabled: bool
     ollama_model: str
-    ollama_base_url: str
+    ollama_url: str
+    ollama_timeout: int
     log_level: str
     allowed_channels: list[str]
     bot_prefix: str
@@ -41,7 +42,8 @@ def load_config() -> Config:
         database_path=os.getenv("DATABASE_PATH", "./gsa_gateway.db"),
         ollama_enabled=os.getenv("OLLAMA_ENABLED", "false").lower() == "true",
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3"),
-        ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        ollama_url=os.getenv("OLLAMA_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")),
+        ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "30")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         allowed_channels=allowed,
         bot_prefix=os.getenv("BOT_PREFIX", "gsa"),

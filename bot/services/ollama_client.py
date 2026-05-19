@@ -1,47 +1,62 @@
 """Optional Ollama local-LLM integration.
 
-The bot NEVER calls Ollama without retrieved context — hallucination is
-prevented by always providing the FAQ snippets as the sole information source.
+The bot NEVER calls Ollama without retrieved KB context — hallucination is
+prevented by always prepending FAQ snippets as the sole information source.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import aiohttp
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = (
-    "You are a helpful, warm, and professional assistant for NJIT's "
-    "Graduate Student Association (GSA). Answer the student's question "
-    "using ONLY the context provided below. If the context does not contain "
-    "enough information, say so politely and suggest the student contact a "
-    "GSA officer. Never invent facts."
+_ASK_SYSTEM = (
+    "You are GSA Gateway, a warm and professional assistant for NJIT's Graduate "
+    "Student Association. Answer the student's question using ONLY the context "
+    "sections provided below. Rules:\n"
+    "- Never invent facts, names, dates, or policies not in the context.\n"
+    "- If the context does not contain enough information, say so honestly and "
+    "suggest contacting a GSA officer with /contact or visiting office hours.\n"
+    "- Keep your answer under 200 words.\n"
+    "- Write in plain text for Discord: no markdown headers (# ##). "
+    "Simple bullet points (- item) are fine.\n"
+    "- Be warm, clear, and helpful."
+)
+
+_SUMMARY_SYSTEM = (
+    "You are helping GSA officers prepare a weekly student-engagement report. "
+    "You will receive initiative submissions and feedback from the past week. "
+    "Your tasks:\n"
+    "1. Group items by theme (e.g. academic support, social events, funding, wellness).\n"
+    "2. Identify the top 3 student concerns or requests.\n"
+    "3. Suggest 2-3 concrete action items for GSA officers.\n"
+    "Write clearly and professionally. Use simple bullet points. "
+    "Keep the entire output under 400 words. Do not invent information."
 )
 
 
 class OllamaClient:
     """Thin async wrapper around the Ollama REST API."""
 
-    def __init__(self, model: str = "llama3", base_url: str = "http://localhost:11434") -> None:
+    def __init__(
+        self,
+        model: str = "llama3",
+        base_url: str = "http://localhost:11434",
+        timeout: int = 90,
+    ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
+        self._timeout = aiohttp.ClientTimeout(total=timeout)
 
-    async def generate_answer(self, question: str, context: str) -> Optional[str]:
-        """Return an LLM-generated answer grounded in *context*, or None on failure."""
-        prompt = (
-            f"{SYSTEM_PROMPT}\n\n"
-            f"--- CONTEXT ---\n{context}\n--- END CONTEXT ---\n\n"
-            f"Student question: {question}\n\nAnswer:"
-        )
-        payload = {"model": self.model, "prompt": prompt, "stream": False}
-
+    async def _post(self, payload: dict[str, Any]) -> Optional[str]:
+        """Send a /api/generate request; return stripped response text or None."""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.base_url}/api/generate",
                     json=payload,
-                    timeout=aiohttp.ClientTimeout(total=30),
+                    timeout=self._timeout,
                 ) as resp:
                     if resp.status != 200:
                         logger.warning("Ollama returned HTTP %d", resp.status)
@@ -49,20 +64,70 @@ class OllamaClient:
                     data = await resp.json()
                     return data.get("response", "").strip() or None
         except aiohttp.ClientConnectorError:
-            logger.warning("Ollama is not reachable at %s", self.base_url)
+            logger.warning("Ollama unreachable at %s — falling back to KB text", self.base_url)
+            return None
+        except TimeoutError:
+            logger.warning("Ollama timed out — falling back to KB text")
             return None
         except Exception as exc:
-            logger.error("Ollama error: %s", exc)
+            logger.error("Ollama unexpected error: %s", exc)
             return None
 
-    async def is_available(self) -> bool:
-        """Quick health check — returns True if Ollama responds."""
+    async def generate_answer(
+        self,
+        question: str,
+        context_chunks: list[str],
+        model: Optional[str] = None,
+    ) -> Optional[str]:
+        """Return an AI answer grounded in retrieved KB chunks.
+
+        context_chunks — list of "Q: ...\\nA: ..." strings (top search results).
+        Caps at 3 chunks. Returns None if Ollama is unreachable or empty.
+        """
+        context = "\n\n".join(context_chunks[:3])
+        prompt = (
+            f"--- CONTEXT ---\n{context}\n--- END CONTEXT ---\n\n"
+            f"Student question: {question}\n\nAnswer:"
+        )
+        return await self._post(
+            {
+                "model": model or self.model,
+                "system": _ASK_SYSTEM,
+                "prompt": prompt,
+                "stream": False,
+            }
+        )
+
+    async def generate(self, prompt: str, system: str) -> Optional[str]:
+        """General-purpose generate call with an explicit system prompt."""
+        return await self._post(
+            {"model": self.model, "system": system, "prompt": prompt, "stream": False}
+        )
+
+    async def check_connection(self) -> bool:
+        """Health check — logs a warning if Ollama is unreachable, never raises."""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"{self.base_url}/api/tags",
                     timeout=aiohttp.ClientTimeout(total=5),
                 ) as resp:
-                    return resp.status == 200
+                    if resp.status == 200:
+                        logger.info(
+                            "Ollama is reachable at %s (model: %s)",
+                            self.base_url,
+                            self.model,
+                        )
+                        return True
+                    logger.warning("Ollama health check failed: HTTP %d", resp.status)
+                    return False
         except Exception:
+            logger.warning(
+                "Ollama is not reachable at %s — AI answers disabled until it restarts",
+                self.base_url,
+            )
             return False
+
+    async def is_available(self) -> bool:
+        """Alias for check_connection (backward compat)."""
+        return await self.check_connection()

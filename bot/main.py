@@ -79,9 +79,12 @@ class GSABot(commands.Bot):
             from bot.services.ollama_client import OllamaClient
 
             self.ollama = OllamaClient(
-                model=config.ollama_model, base_url=config.ollama_base_url
+                model=config.ollama_model,
+                base_url=config.ollama_url,
+                timeout=config.ollama_timeout,
             )
             logger.info("Ollama client initialised (model=%s)", config.ollama_model)
+            await self.ollama.check_connection()
 
         for ext in EXTENSIONS:
             await self.load_extension(ext)

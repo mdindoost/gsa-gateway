@@ -48,15 +48,19 @@ class AdminCog(commands.Cog, name="Admin"):
 
         await interaction.response.defer(ephemeral=True, thinking=True)
 
-        summary = self.summary_svc.weekly_summary(days=7)
+        ollama = getattr(self.bot, "ollama", None)
+        if config.ollama_enabled and ollama is not None:
+            summary = await self.summary_svc.generate_ai_summary(ollama, days=7)
+        else:
+            summary = self.summary_svc.weekly_summary(days=7)
 
         self.bot.db.log_admin_action(  # type: ignore[attr-defined]
             officer_id=interaction.user.id,
             action="admin_summary",
-            detail=None,
+            detail=f"ai={'yes' if config.ollama_enabled and ollama else 'no'}",
         )
 
-        # Split long summaries into chunks ≤ 2000 chars
+        # Split long summaries into chunks ≤ 1900 chars
         if len(summary) <= 1900:
             await interaction.followup.send(summary, ephemeral=True)
         else:

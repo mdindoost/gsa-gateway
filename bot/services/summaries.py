@@ -2,9 +2,12 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from bot.services.database import Database
+
+if TYPE_CHECKING:
+    from bot.services.ollama_client import OllamaClient
 
 logger = logging.getLogger(__name__)
 
@@ -63,3 +66,48 @@ class SummaryService:
             lines.append(f"**Recent Feedback (last {days} days):** None")
 
         return "\n".join(lines)
+
+    async def generate_ai_summary(
+        self, ollama_client: "OllamaClient", days: int = 7
+    ) -> str:
+        """Return an AI-generated themed summary using Ollama.
+
+        Falls back to weekly_summary() if Ollama is unavailable or data is empty.
+        """
+        initiatives = self.db.get_recent_initiatives(days)
+        feedback = self.db.get_recent_feedback(days)
+        generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        total_items = len(initiatives) + len(feedback)
+
+        if total_items == 0:
+            return self.weekly_summary(days)
+
+        items: list[str] = []
+        for i in initiatives:
+            items.append(
+                f"[INITIATIVE] {i['title']} ({i['category']}): "
+                f"{i['description'][:300]}"
+            )
+        for fb in feedback:
+            items.append(f"[FEEDBACK] {fb['message'][:300]}")
+
+        prompt = (
+            f"Here are {total_items} student submission(s) from the past {days} days:\n\n"
+            + "\n\n".join(items)
+            + "\n\nProvide a themed summary as instructed."
+        )
+
+        from bot.services.ollama_client import _SUMMARY_SYSTEM
+
+        ai_text = await ollama_client.generate(prompt, _SUMMARY_SYSTEM)
+
+        if not ai_text:
+            logger.warning("AI summary generation failed — using plain summary fallback")
+            return self.weekly_summary(days)
+
+        header = (
+            f"**🤖 AI-Generated Summary — Last {days} Days**\n"
+            f"*{generated} · {len(initiatives)} initiative(s), "
+            f"{len(feedback)} feedback item(s)*\n\n"
+        )
+        return header + ai_text
