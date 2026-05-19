@@ -99,7 +99,7 @@ events:
   time: TBD
 - category: food
   date: '2026-11-22'
-  description: we will have a party
+  description: Test event.
   location: TBD
   name: Mohith BirthDay
   organizer: GSA

@@ -65,8 +65,8 @@ class HelpCog(commands.Cog, name="Help"):
             value=(
                 "`/resources` — Browse available resource categories.\n"
                 "`/resources <category>` — Show resources in a specific area "
-                "(academic, funding, wellness, international, research, housing, "
-                "transportation, campus_life)."
+                "(academic, funding, wellness, international, research, governance, "
+                "campus_life)."
             ),
             inline=False,
         )

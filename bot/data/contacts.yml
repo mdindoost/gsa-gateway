@@ -68,7 +68,7 @@ contacts:
   peer_wellness:
     role: "Center for Peer Wellness Coaching"
     name: "Peer Wellness Center"
-    email: ""
+    email: "wellness@njit.edu"
     office: "Behind NJIT Smashburger"
     hours: "Tues 10:30AM–2:30PM, Wed 11:30AM–1PM and 2:30–5PM, Thurs 10:30–11:30AM"
     notes: "Free, private peer wellness coaching sessions. No appointment needed during open hours."
@@ -100,7 +100,7 @@ contacts:
   inclusive_excellence:
     role: "Office of Inclusive Excellence"
     name: "Office of Inclusive Excellence"
-    email: ""
+    email: "inclusive@njit.edu"
     office: "Campus Center"
     hours: "Mon–Fri 9:00 AM – 5:00 PM"
-    notes: "Diversity, equity, and inclusion programs, resources, and support for all students."
+    notes: "Diversity, equity, and inclusion programs, resources, and support for all students. Website: njit.edu/inclusive-excellence"

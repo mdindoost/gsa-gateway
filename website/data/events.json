@@ -1,12 +1,12 @@
 {
-  "last_updated": "2026-05-19T19:47:34.307441+00:00",
+  "last_updated": "2026-05-19T20:12:25.356771+00:00",
   "events": [
     {
       "name": "Mohith BirthDay",
       "date": "2026-11-22",
       "time": "4:00 PM",
       "location": "TBD",
-      "description": "we will have a party",
+      "description": "Test event.",
       "organizer": "GSA",
       "rsvp_link": "",
       "category": "food",
