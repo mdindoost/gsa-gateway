@@ -47,6 +47,8 @@ class GSABot(commands.Bot):
     def __init__(self) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
+        intents.members = True      # privileged — enable in Dev Portal
+        intents.presences = True    # privileged — enable in Dev Portal
         super().__init__(
             command_prefix=config.bot_prefix,
             intents=intents,

@@ -395,6 +395,19 @@ class AdminCog(commands.Cog, name="Admin"):
         stats = self.bot.db.get_stats()  # type: ignore[attr-defined]
 
         embed = discord.Embed(title="📊  GSA Gateway Stats", color=NJIT_RED)
+
+        # ── Member counts ──────────────────────────────────────────────────────
+        guild = interaction.guild
+        if guild is not None:
+            total_members = guild.member_count or 0
+            online_members = sum(
+                1 for m in guild.members
+                if m.status != discord.Status.offline and not m.bot
+            )
+            embed.add_field(name="Total Members", value=str(total_members), inline=True)
+            embed.add_field(name="Online Now",    value=str(online_members), inline=True)
+            embed.add_field(name="​",        value="​",           inline=True)
+
         embed.add_field(name="Questions",    value=str(stats["total_questions"]),  inline=True)
         embed.add_field(name="Initiatives",  value=str(stats["total_initiatives"]), inline=True)
         embed.add_field(name="Feedback Items", value=str(stats["total_feedback"]), inline=True)
