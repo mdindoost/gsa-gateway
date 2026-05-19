@@ -9,7 +9,7 @@ from discord.ext import commands
 
 from bot.config import config
 from bot.services.moderation import is_channel_allowed
-from bot.services.search import MIN_CONFIDENCE, OLLAMA_MIN_CONFIDENCE
+from bot.services.search import MIN_CONFIDENCE, preprocess_query
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,12 @@ class AskCog(commands.Cog, name="Ask"):
         use_ollama = config.ollama_enabled and ollama is not None
 
         if use_ollama:
-            # ── Ollama path: lower threshold, always pass context to AI ───────
-            # Ollama's system prompt handles uncertainty — the search threshold
-            # should not be the gatekeeper here.
+            # ── Ollama path ───────────────────────────────────────────────────
+            # Preprocess the query (expands single words like "fund" for search),
+            # then always retrieve top results — Ollama handles low-confidence context.
+            search_q = preprocess_query(question)
             results = self.bot.search_svc.search(  # type: ignore[attr-defined]
-                question, limit=4, min_confidence=OLLAMA_MIN_CONFIDENCE
+                search_q, limit=4, min_confidence=0
             )
 
             self.bot.db.log_question(  # type: ignore[attr-defined]
@@ -72,26 +73,23 @@ class AskCog(commands.Cog, name="Ask"):
                 guild_id=interaction.guild_id,
             )
 
-            if not results:
-                await interaction.followup.send(FALLBACK)
-                return
-
-            context_chunks = [f"Topic: {r.text}\nInfo: {r.content}" for r in results[:4]]
+            context_chunks = [f"Topic: {r.text}\nInfo: {r.content}" for r in results]
             chan = interaction.channel
             typing_ctx = chan.typing() if chan is not None else contextlib.nullcontext()
             async with typing_ctx:
-                ai_text = await ollama.generate_answer(question, context_chunks)
+                ai_text = await ollama.generate_answer(search_q, context_chunks)
 
             if ai_text:
                 embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
                 embed.add_field(name="Your Question", value=question[:256], inline=False)
                 embed.add_field(name="Answer", value=ai_text[:1000], inline=False)
-                best = results[0]
-                embed.set_footer(
-                    text=f"💡 {AI_FOOTER} · {best.section} · {best.score:.0f}% match"
-                )
+                best = results[0] if results else None
+                footer = f"💡 {AI_FOOTER}"
+                if best:
+                    footer += f" · {best.section} · {best.score:.0f}% match"
+                embed.set_footer(text=footer)
                 await interaction.followup.send(embed=embed)
-            else:
+            elif results:
                 # Ollama failed — fall back to best raw KB text
                 best = results[0]
                 embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
@@ -101,6 +99,8 @@ class AskCog(commands.Cog, name="Ask"):
                     text=f"Source: {best.section} · Confidence: {best.score:.0f}%"
                 )
                 await interaction.followup.send(embed=embed)
+            else:
+                await interaction.followup.send(FALLBACK)
 
         else:
             # ── Raw KB path: strict threshold, show direct text ───────────────

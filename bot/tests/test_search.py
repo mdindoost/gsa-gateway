@@ -2,7 +2,7 @@
 
 import pytest
 
-from bot.services.search import SearchService
+from bot.services.search import SearchService, preprocess_query
 
 
 class TestSearchHits:
@@ -78,6 +78,29 @@ class TestLowConfidenceFallback:
         results = high_threshold_svc.search("GSA membership join")
         for r in results:
             assert r.score >= 95.0
+
+
+class TestSynonymExpansion:
+    """Synonym expansion and query preprocessing."""
+
+    def test_synonym_expansion_fund(self, search_svc: SearchService) -> None:
+        # "fund" alone has poor fuzzy score against "Are there funding opportunities..."
+        # but synonym expansion adds "funding", "award", etc. — should get a hit
+        results = search_svc.search("fund", min_confidence=0)
+        assert len(results) >= 1
+        combined = " ".join(r.content.lower() for r in results)
+        assert any(w in combined for w in ("fund", "award", "fellowship", "assistantship"))
+
+    def test_short_query_preprocessing(self) -> None:
+        assert preprocess_query("fund") == "tell me about fund at GSA NJIT"
+        assert preprocess_query("  WELLNESS  ") == "tell me about wellness at GSA NJIT"
+        # Multi-word queries are only lowercased and stripped, not expanded
+        assert preprocess_query("how do I get funding") == "how do i get funding"
+
+    def test_low_confidence_still_returns_results(self, search_svc: SearchService) -> None:
+        # With min_confidence=0 the caller always gets top KB results
+        results = search_svc.search("some vague student query", min_confidence=0)
+        assert len(results) >= 1
 
 
 class TestEmptyKnowledgeBase:
