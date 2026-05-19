@@ -16,7 +16,7 @@ GSA Gateway is an AI-assisted student communication platform that makes GSA info
 
 | Command | What it does |
 |---|---|
-| `/ask` | AI-powered Q&A from the GSA knowledge base (llama3 via Ollama) |
+| `/ask` | AI-powered Q&A from the GSA knowledge base (llama3 via Ollama). Automatically detects food queries and returns upcoming events with free food. |
 | `/events` | List all upcoming GSA events, sorted by date |
 | `/event [name]` | Full details for a specific event |
 | `/initiative` | Submit a student initiative or idea (anonymous by default) |
@@ -29,7 +29,7 @@ GSA Gateway is an AI-assisted student communication platform that makes GSA info
 
 | Command | What it does |
 |---|---|
-| `/admin_add_event` | Add an event via a form — auto-posts announcement & schedules reminders |
+| `/admin_add_event` | Add an event via a form — auto-posts announcement & schedules reminders. Events with `food` tag post a "🍕 FREE FOOD ALERT!" to `#gsa-food`. |
 | `/admin_announce` | Post an announcement embed to any channel |
 | `/admin_summary` | AI-generated weekly summary of student submissions |
 | `/admin_export` | Download CSV of initiatives, feedback, or questions |
@@ -56,7 +56,7 @@ A **daily digest** posts to `#gsa-announcements` every morning at 9 AM if events
 | Bot | Python 3.11+, discord.py 2.x, SQLite, rapidfuzz |
 | AI | Ollama (llama3, local — no API costs, no data leaves the machine) |
 | Website | Pure HTML/CSS/JS, GitHub Pages |
-| Tests | pytest, 104 tests, ~0.3s runtime |
+| Tests | pytest, 118 tests, ~0.3s runtime |
 | Process management | systemd |
 
 ---
@@ -67,7 +67,7 @@ A **daily digest** posts to `#gsa-announcements` every morning at 9 AM if events
 gsa-gateway/
 ├── bot/
 │   ├── commands/        One file per slash command (ask, events, admin, etc.)
-│   ├── services/        Database, search, KB, Ollama, scheduler, channels, announcements
+│   ├── services/        Database, search, KB, Ollama, scheduler, channels, announcements, food_detector
 │   └── data/            Edit these YAML/Markdown files to update content
 ├── website/             Static site — deploy with one command
 ├── scripts/             Maintenance scripts and systemd service file

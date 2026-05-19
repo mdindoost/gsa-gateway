@@ -418,7 +418,7 @@ source .venv/bin/activate
 pytest bot/tests/ -v
 ```
 
-Expected: **104 tests pass**. Runtime: ~0.3 seconds.
+Expected: **118 tests pass**. Runtime: ~0.3 seconds.
 
 Run this any time you change bot code to catch regressions before restarting the live service.
 
@@ -574,13 +574,14 @@ gsa-gateway/
 │   ├── services/
 │   │   ├── database.py       All SQLite operations; events table; SHA-256 hashing
 │   │   ├── knowledge_base.py Loads gsa_faq.md, events.yml, contacts.yml, resources.yml
-│   │   ├── search.py         Fuzzy search via rapidfuzz (60% raw / 45% Ollama threshold)
+│   │   ├── search.py         Fuzzy search via rapidfuzz; synonym expansion (fund/food/hungry etc.)
 │   │   ├── moderation.py     Rate limiter, channel allowlist, admin check
 │   │   ├── ollama_client.py  Ollama HTTP wrapper — generate_answer(), check_connection()
 │   │   ├── summaries.py      weekly_summary() and generate_ai_summary()
 │   │   ├── scheduler.py      Background tasks — reminders every 30 min, digest at 9 AM UTC
 │   │   ├── channels.py       Channel routing — maps event categories to Discord channels
-│   │   └── announcements.py  Announcement embed formatter (new/7d/1d/1h)
+│   │   ├── announcements.py  Announcement embed formatter (new/7d/1d/1h)
+│   │   └── food_detector.py  Food query detection; get_food_events(); food alert embed
 │   ├── data/
 │   │   ├── gsa_faq.md        Edit to add/update FAQ entries ← edit this
 │   │   ├── events.yml        Edit to add/update events ← edit this (or use /admin_add_event)
@@ -593,7 +594,8 @@ gsa-gateway/
 │       ├── test_database.py  SQLite CRUD and privacy tests
 │       ├── test_commands.py  Rate limiter, admin role, channel allowlist
 │       ├── test_ollama.py    Ollama client tests (all mocked)
-│       └── test_scheduler.py Reminder logic, channel routing, announcement embeds
+│       ├── test_scheduler.py Reminder logic, channel routing, announcement embeds
+│       └── test_food_detector.py Food query detection and food event retrieval
 │
 ├── website/                  Static site — GitHub Pages
 │   ├── index.html            Home page
