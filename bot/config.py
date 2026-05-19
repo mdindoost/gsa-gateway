@@ -25,6 +25,18 @@ class Config:
     allowed_channels: list[str]
     bot_prefix: str
     data_dir: Path
+    # Announcement channel names (must match Discord channel names exactly)
+    channel_announcements: str
+    channel_events: str
+    channel_food: str
+    channel_funding: str
+    channel_wellness: str
+    channel_research: str
+    channel_international: str
+    # Scheduler settings
+    daily_digest_hour: int
+    daily_digest_minute: int
+    reminder_check_interval: int
 
 
 def load_config() -> Config:
@@ -48,6 +60,16 @@ def load_config() -> Config:
         allowed_channels=allowed,
         bot_prefix=os.getenv("BOT_PREFIX", "gsa"),
         data_dir=Path(__file__).parent / "data",
+        channel_announcements=os.getenv("CHANNEL_ANNOUNCEMENTS", "gsa-announcements"),
+        channel_events=os.getenv("CHANNEL_EVENTS", "gsa-events"),
+        channel_food=os.getenv("CHANNEL_FOOD", "gsa-food"),
+        channel_funding=os.getenv("CHANNEL_FUNDING", "gsa-funding"),
+        channel_wellness=os.getenv("CHANNEL_WELLNESS", "gsa-wellness"),
+        channel_research=os.getenv("CHANNEL_RESEARCH", "gsa-research"),
+        channel_international=os.getenv("CHANNEL_INTERNATIONAL", "gsa-international"),
+        daily_digest_hour=int(os.getenv("DAILY_DIGEST_HOUR", "9")),
+        daily_digest_minute=int(os.getenv("DAILY_DIGEST_MINUTE", "0")),
+        reminder_check_interval=int(os.getenv("REMINDER_CHECK_INTERVAL", "30")),
     )
 
 

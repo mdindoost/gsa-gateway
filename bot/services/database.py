@@ -81,6 +81,25 @@ class Database:
                 guild_id     TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS events (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                name              TEXT    NOT NULL,
+                date              TEXT    NOT NULL,
+                time              TEXT    NOT NULL DEFAULT 'TBD',
+                location          TEXT    NOT NULL DEFAULT 'TBD',
+                description       TEXT    NOT NULL DEFAULT '',
+                organizer         TEXT    NOT NULL DEFAULT 'GSA',
+                rsvp_link         TEXT    NOT NULL DEFAULT '',
+                category          TEXT    NOT NULL DEFAULT 'general',
+                reminder_sent_7d  INTEGER NOT NULL DEFAULT 0,
+                reminder_sent_1d  INTEGER NOT NULL DEFAULT 0,
+                reminder_sent_1h  INTEGER NOT NULL DEFAULT 0,
+                announcement_sent INTEGER NOT NULL DEFAULT 0,
+                channel_posted    TEXT,
+                created_at        TEXT    NOT NULL,
+                created_by        TEXT    NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS events_log (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_name      TEXT    NOT NULL,
@@ -98,7 +117,24 @@ class Database:
             );
         """)
         self.conn.commit()
+        self.migrate_events_columns()
         logger.info("Database tables initialised.")
+
+    def migrate_events_columns(self) -> None:
+        """Add reminder tracking columns to events table if missing (safe for old DBs)."""
+        columns = [
+            ("reminder_sent_7d",  "INTEGER NOT NULL DEFAULT 0"),
+            ("reminder_sent_1d",  "INTEGER NOT NULL DEFAULT 0"),
+            ("reminder_sent_1h",  "INTEGER NOT NULL DEFAULT 0"),
+            ("announcement_sent", "INTEGER NOT NULL DEFAULT 0"),
+            ("channel_posted",    "TEXT"),
+        ]
+        for col, typedef in columns:
+            try:
+                self.conn.execute(f"ALTER TABLE events ADD COLUMN {col} {typedef}")
+                self.conn.commit()
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
     # ── Write helpers ─────────────────────────────────────────────────────────
 
@@ -281,3 +317,80 @@ class Database:
             "SELECT id, message, timestamp FROM feedback"
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # ── Events CRUD ───────────────────────────────────────────────────────────
+
+    def add_event(
+        self,
+        name: str,
+        date: str,
+        time: str,
+        location: str,
+        description: str,
+        organizer: str,
+        rsvp_link: str,
+        category: str,
+        officer_id: int,
+    ) -> int:
+        """Insert a new event. Returns the new row ID."""
+        cur = self.conn.execute(
+            """INSERT INTO events
+               (name, date, time, location, description, organizer, rsvp_link,
+                category, created_at, created_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                name, date, time, location, description, organizer, rsvp_link,
+                category,
+                datetime.now(timezone.utc).isoformat(),
+                hash_user_id(officer_id),
+            ),
+        )
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore[return-value]
+
+    def get_events_for_reminders(self) -> list[dict[str, Any]]:
+        """Return all future (and today's) events for reminder processing."""
+        rows = self.conn.execute(
+            "SELECT * FROM events WHERE date >= date('now') ORDER BY date ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_upcoming_events_db(self, days: int = 7) -> list[dict[str, Any]]:
+        """Return events between today and today+days (inclusive)."""
+        rows = self.conn.execute(
+            """SELECT * FROM events
+               WHERE date >= date('now')
+                 AND date <= date('now', ?)
+               ORDER BY date ASC""",
+            (f"+{days} days",),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_all_events(self) -> list[dict[str, Any]]:
+        """Return all events ordered by date."""
+        rows = self.conn.execute(
+            "SELECT * FROM events ORDER BY date ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def mark_reminder_sent(self, event_id: int, reminder_type: str) -> None:
+        """Mark a reminder as sent. reminder_type: '7d', '1d', or '1h'."""
+        column_map = {
+            "7d": "reminder_sent_7d",
+            "1d": "reminder_sent_1d",
+            "1h": "reminder_sent_1h",
+        }
+        col = column_map.get(reminder_type)
+        if col is None:
+            logger.warning("Unknown reminder type: %s", reminder_type)
+            return
+        self.conn.execute(f"UPDATE events SET {col} = 1 WHERE id = ?", (event_id,))
+        self.conn.commit()
+
+    def mark_announcement_sent(self, event_id: int, channel_name: str) -> None:
+        """Mark an event's initial announcement as sent."""
+        self.conn.execute(
+            "UPDATE events SET announcement_sent = 1, channel_posted = ? WHERE id = ?",
+            (channel_name, event_id),
+        )
+        self.conn.commit()
