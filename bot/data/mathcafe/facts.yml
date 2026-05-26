@@ -1,0 +1,40 @@
+metadata:
+  total_facts: 1
+  last_updated: "2026-05-26"
+  current_index: 0
+
+facts:
+  - id: "mc_001"
+    title: "The Coin Flip Trap"
+    category: "math"
+    subcategory: "probability"
+    day_preference: "monday"
+    style: "detailed"
+    needs_image: true
+    image_filename: "coin.png"
+    posted: false
+    posted_date: null
+    discussion: true
+    reactions: ["1️⃣", "2️⃣", "3️⃣", "🔄", "🧠"]
+    reaction_labels:
+      "1️⃣": "Walk away after round 1"
+      "2️⃣": "Walk away after round 2"
+      "3️⃣": "Walk away after round 3"
+      "🔄": "Keep playing forever"
+      "🧠": "It depends on your finances"
+    body: |
+      Someone approaches you with a deal:
+
+      Flip 1: Heads → you win $1,000 | Tails → you pay $500
+      Flip 2: Heads → you win $2,000 | Tails → you pay $1,000
+      Flip 3: Heads → you win $4,000 | Tails → you pay $2,000
+      ...and so on, doubling each time.
+
+      The catch: the moment you lose, the game ends
+      and you pay. You can walk away after any win.
+
+      🤔 At what point do you walk away?
+
+      Is this purely math? Purely psychology?
+      Or something else entirely?
+    footer: "GSA MathCafe · Powered by GSA Gateway"

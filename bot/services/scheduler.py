@@ -8,6 +8,7 @@ Two tasks:
 import datetime
 import logging
 import re
+import zoneinfo
 from typing import Optional
 
 import discord
@@ -26,6 +27,11 @@ _DIGEST_TIME = datetime.time(
     tzinfo=datetime.timezone.utc,
 )
 _REMINDER_INTERVAL = config.reminder_check_interval
+_MATHCAFE_TIME = datetime.time(
+    hour=9,
+    minute=0,
+    tzinfo=zoneinfo.ZoneInfo("America/New_York"),
+)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -96,12 +102,15 @@ class SchedulerCog(commands.Cog, name="Scheduler"):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.mathcafe = getattr(bot, "mathcafe", None)
         self.check_upcoming_reminders.start()
         self.daily_digest.start()
+        self.post_mathcafe_daily.start()
 
     def cog_unload(self) -> None:
         self.check_upcoming_reminders.cancel()
         self.daily_digest.cancel()
+        self.post_mathcafe_daily.cancel()
 
     def _get_guild(self) -> Optional[discord.Guild]:
         if config.discord_guild_id:
@@ -259,6 +268,44 @@ class SchedulerCog(commands.Cog, name="Scheduler"):
 
     @daily_digest.before_loop
     async def _before_digest(self) -> None:
+        await self.bot.wait_until_ready()
+
+    # ── MathCafe daily post task ───────────────────────────────────────────────
+
+    @tasks.loop(time=_MATHCAFE_TIME)
+    async def post_mathcafe_daily(self) -> None:
+        """Post the next MathCafe fact to #gsa-mathcafe at 9 AM NJ time."""
+        mathcafe = getattr(self.bot, "mathcafe", None)
+        if mathcafe is None:
+            logger.warning("MathCafe service not initialized — skipping daily post")
+            return
+
+        guild = self._get_guild()
+        if guild is None:
+            logger.warning("Guild not found for MathCafe post")
+            return
+
+        channel = discord.utils.get(
+            guild.text_channels,
+            name=config.mathcafe_channel,
+        )
+        if channel is None:
+            logger.warning(
+                "MathCafe channel '%s' not found in Discord server. "
+                "Create a channel named exactly '%s' to enable daily posts.",
+                config.mathcafe_channel,
+                config.mathcafe_channel,
+            )
+            return
+
+        success = await mathcafe.post_fact(channel)
+        if success:
+            logger.info("MathCafe daily post completed")
+        else:
+            logger.warning("MathCafe daily post failed — no facts available")
+
+    @post_mathcafe_daily.before_loop
+    async def _before_mathcafe(self) -> None:
         await self.bot.wait_until_ready()
 
 

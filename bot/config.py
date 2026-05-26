@@ -43,6 +43,8 @@ class Config:
     conversation_max_turns: int
     embedding_model: str
     ask_gsa_channel: str
+    # MathCafe
+    mathcafe_channel: str
 
 
 def load_config() -> Config:
@@ -81,6 +83,7 @@ def load_config() -> Config:
         conversation_max_turns=int(os.getenv("CONVERSATION_MAX_TURNS", "5")),
         embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
         ask_gsa_channel=os.getenv("ASK_GSA_CHANNEL", "ask-gsa"),
+        mathcafe_channel=os.getenv("MATHCAFE_CHANNEL", "gsa-mathcafe"),
     )
 
 

@@ -1,9 +1,9 @@
 """Admin slash commands — all ephemeral, gated behind ADMIN_ROLE_NAME."""
 
 import csv
+import datetime
 import io
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
 import discord
@@ -104,7 +104,7 @@ class AddEventModal(discord.ui.Modal, title="Add New GSA Event"):
 
         # ── Validate date ──────────────────────────────────────────────────────
         try:
-            datetime.strptime(date_str, "%Y-%m-%d")
+            datetime.datetime.strptime(date_str, "%Y-%m-%d")
         except ValueError:
             await interaction.followup.send(
                 f"❌ Invalid date format: **{date_str}**\n"
@@ -578,6 +578,180 @@ class AdminCog(commands.Cog, name="Admin"):
 
         modal = AddEventModal(bot=self.bot, officer_id=interaction.user.id)
         await interaction.response.send_modal(modal)
+
+
+    # ── /mathcafe_add ──────────────────────────────────────────────────────────
+
+    @app_commands.command(
+        name="mathcafe_add",
+        description="[Admin] Add a new MathCafe fact or puzzle to the queue.",
+    )
+    async def mathcafe_add(self, interaction: discord.Interaction) -> None:
+        if not _admin_check(interaction):
+            await interaction.response.send_message(
+                NO_PERMISSION.format(role=config.admin_role_name), ephemeral=True
+            )
+            return
+        modal = MathCafeAddModal(bot=self.bot)
+        await interaction.response.send_modal(modal)
+
+    # ── /mathcafe_preview ──────────────────────────────────────────────────────
+
+    @app_commands.command(
+        name="mathcafe_preview",
+        description="[Admin] Preview the next MathCafe fact without posting it.",
+    )
+    async def mathcafe_preview(self, interaction: discord.Interaction) -> None:
+        if not _admin_check(interaction):
+            await interaction.response.send_message(
+                NO_PERMISSION.format(role=config.admin_role_name), ephemeral=True
+            )
+            return
+
+        mathcafe = getattr(self.bot, "mathcafe", None)
+        if mathcafe is None:
+            await interaction.response.send_message(
+                "MathCafe service not initialized.", ephemeral=True
+            )
+            return
+
+        next_fact = mathcafe.get_next_fact()
+        if not next_fact:
+            await interaction.response.send_message(
+                "No facts in queue.", ephemeral=True
+            )
+            return
+
+        embed = mathcafe.build_embed(next_fact, datetime.date.today())
+        embed.title = "👀 Preview (not posted yet)"
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # ── /mathcafe_post_now ─────────────────────────────────────────────────────
+
+    @app_commands.command(
+        name="mathcafe_post_now",
+        description="[Admin] Post today's MathCafe fact immediately (for testing).",
+    )
+    async def mathcafe_post_now(self, interaction: discord.Interaction) -> None:
+        if not _admin_check(interaction):
+            await interaction.response.send_message(
+                NO_PERMISSION.format(role=config.admin_role_name), ephemeral=True
+            )
+            return
+
+        mathcafe = getattr(self.bot, "mathcafe", None)
+        if mathcafe is None:
+            await interaction.response.send_message(
+                "MathCafe service not initialized.", ephemeral=True
+            )
+            return
+
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message(
+                "This command must be used inside a server.", ephemeral=True
+            )
+            return
+
+        channel = discord.utils.get(guild.text_channels, name=config.mathcafe_channel)
+        if channel is None:
+            await interaction.response.send_message(
+                f"Channel `#{config.mathcafe_channel}` not found. "
+                f"Create it in Discord first.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        success = await mathcafe.post_fact(channel)
+
+        if success:
+            await interaction.followup.send("✅ MathCafe fact posted now!", ephemeral=True)
+        else:
+            await interaction.followup.send(
+                "❌ Failed — no facts available.", ephemeral=True
+            )
+
+
+# ── MathCafe add modal ─────────────────────────────────────────────────────────
+
+class MathCafeAddModal(discord.ui.Modal, title="Add MathCafe Fact"):
+    fact_title = discord.ui.TextInput(
+        label="Title",
+        placeholder="The Monty Hall Problem",
+        max_length=100,
+        required=True,
+    )
+    body = discord.ui.TextInput(
+        label="Body",
+        style=discord.TextStyle.paragraph,
+        placeholder="Describe the fact or puzzle here...",
+        max_length=1500,
+        required=True,
+    )
+    category = discord.ui.TextInput(
+        label="Category (math / cs / history / science)",
+        placeholder="math",
+        max_length=20,
+        required=True,
+    )
+    discussion = discord.ui.TextInput(
+        label="Enable discussion thread? (yes / no)",
+        placeholder="no",
+        max_length=3,
+        required=False,
+    )
+    day_preference = discord.ui.TextInput(
+        label="Day preference (monday–friday / any)",
+        placeholder="any",
+        max_length=10,
+        required=False,
+    )
+
+    def __init__(self, bot: commands.Bot) -> None:
+        super().__init__()
+        self._bot = bot
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        mathcafe = getattr(self._bot, "mathcafe", None)
+        if mathcafe is None:
+            await interaction.followup.send(
+                "MathCafe service not initialized.", ephemeral=True
+            )
+            return
+
+        discussion_flag = self.discussion.value.strip().lower() == "yes"
+        day_pref = self.day_preference.value.strip().lower() or "any"
+
+        new_fact = await mathcafe.add_fact(
+            title=self.fact_title.value.strip(),
+            body=self.body.value.strip(),
+            category=self.category.value.strip().lower(),
+            discussion=discussion_flag,
+            day_preference=day_pref,
+        )
+
+        await interaction.followup.send(
+            f"✅ MathCafe fact added!\n"
+            f"**ID:** {new_fact['id']}\n"
+            f"**Title:** {new_fact['title']}\n"
+            f"**Category:** {new_fact['category']}\n"
+            f"**Total facts in queue:** {len(mathcafe.facts)}\n\n"
+            f"It will be posted at 9 AM NJ time on the next available day.",
+            ephemeral=True,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        logger.error("MathCafeAddModal error: %s", error, exc_info=error)
+        try:
+            await interaction.followup.send(
+                "❌ Something went wrong adding the fact. Please try again.",
+                ephemeral=True,
+            )
+        except Exception:
+            pass
 
 
 async def setup(bot: commands.Bot) -> None:

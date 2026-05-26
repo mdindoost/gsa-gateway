@@ -128,3 +128,105 @@ function escHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+// ── MathCafe loader ──────────────────────────────────────────────────────────
+
+const mcContent  = document.getElementById("mc-content");
+const mcLoading  = document.getElementById("mc-loading");
+const mcEmpty    = document.getElementById("mc-empty");
+
+if (mcLoading) {
+  loadMathCafe();
+}
+
+async function loadMathCafe() {
+  try {
+    const res = await fetch("data/mathcafe.json");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const facts = data.recent_facts || [];
+
+    if (!facts.length) {
+      mcLoading.style.display = "none";
+      mcEmpty.style.display   = "block";
+      return;
+    }
+
+    renderMathCafe(facts);
+    mcLoading.style.display  = "none";
+    mcContent.style.display  = "block";
+  } catch (err) {
+    mcLoading.style.display = "none";
+    mcEmpty.style.display   = "block";
+    console.warn("MathCafe load error:", err);
+  }
+}
+
+function mcBadgeClass(category) {
+  const map = { math: "mc-badge-math", cs: "mc-badge-cs", history: "mc-badge-history", science: "mc-badge-science" };
+  return map[category] || "mc-badge-default";
+}
+
+function renderMathCafe(facts) {
+  const latest = facts[0];
+  const recent = facts.slice(1);
+
+  // Latest card
+  const latestCard = document.getElementById("mc-latest-card");
+  if (latestCard && latest) {
+    latestCard.innerHTML = `
+      <span class="mc-badge ${mcBadgeClass(latest.category)}">${escHtml(latest.category)}</span>
+      <h2>${escHtml(latest.title)}</h2>
+      <div class="mc-body">${escHtml(latest.body)}</div>
+      <div class="mc-meta">Posted ${escHtml(latest.posted_date || "recently")}</div>
+      ${latest.discussion
+        ? `<a href="https://discord.gg/Ya4XvTE6A" class="mc-discord-btn" target="_blank" rel="noopener">
+             💬 Join the discussion on Discord →
+           </a>`
+        : ""}`;
+  }
+
+  // Recent grid
+  const grid = document.getElementById("mc-recent-grid");
+  if (grid && recent.length) {
+    grid.innerHTML = recent.map((f) => `
+      <div class="mc-card">
+        <span class="mc-badge ${mcBadgeClass(f.category)}">${escHtml(f.category)}</span>
+        <h3>${escHtml(f.title)}</h3>
+        <p class="mc-excerpt">${escHtml((f.body || "").slice(0, 100))}…</p>
+        <div class="mc-meta">${escHtml(f.posted_date || "")}</div>
+      </div>`).join("");
+  } else if (grid) {
+    grid.innerHTML = `<p style="color:var(--gray-mid);">No previous facts yet — check back tomorrow!</p>`;
+  }
+}
+
+// ── MathCafe home-page preview ───────────────────────────────────────────────
+
+const mcPreviewContainer = document.getElementById("mc-home-preview");
+
+if (mcPreviewContainer) {
+  loadMathCafePreview();
+}
+
+async function loadMathCafePreview() {
+  try {
+    const res = await fetch("data/mathcafe.json");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const latest = (data.recent_facts || [])[0];
+    if (!latest) return;
+
+    mcPreviewContainer.innerHTML = `
+      <span class="mc-badge ${mcBadgeClass(latest.category)}">${escHtml(latest.category)}</span>
+      <h3 style="margin:0.5rem 0 0.4rem;">${escHtml(latest.title)}</h3>
+      <p style="color:#555; font-size:0.9rem; line-height:1.5;">
+        ${escHtml((latest.body || "").slice(0, 120))}…
+      </p>
+      <a href="mathcafe.html" style="font-size:0.85rem; color:#8B4513; font-weight:600;">
+        See all facts →
+      </a>`;
+  } catch (err) {
+    console.warn("MathCafe preview error:", err);
+  }
+}
