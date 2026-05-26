@@ -174,9 +174,16 @@ function renderMathCafe(facts) {
   // Latest card
   const latestCard = document.getElementById("mc-latest-card");
   if (latestCard && latest) {
+    const imgHtml = (latest.needs_image && latest.image_filename)
+      ? `<img src="data/${escHtml(latest.image_filename)}"
+              alt="${escHtml(latest.title)}"
+              style="max-width:100%; border-radius:8px; margin:0.8rem 0;"
+              onerror="this.style.display='none'">`
+      : "";
     latestCard.innerHTML = `
       <span class="mc-badge ${mcBadgeClass(latest.category)}">${escHtml(latest.category)}</span>
       <h2>${escHtml(latest.title)}</h2>
+      ${imgHtml}
       <div class="mc-body">${escHtml(latest.body)}</div>
       <div class="mc-meta">Posted ${escHtml(latest.posted_date || "recently")}</div>
       ${latest.discussion

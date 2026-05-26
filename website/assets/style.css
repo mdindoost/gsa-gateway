@@ -355,6 +355,22 @@ section { padding: 3.5rem 0; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── MathCafe badges (shared across all pages) ───────────────────────────── */
+.mc-badge {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.mc-badge-math    { background: #0055AA; color: #fff; }
+.mc-badge-cs      { background: #1a7a3c; color: #fff; }
+.mc-badge-history { background: #c05e00; color: #fff; }
+.mc-badge-science { background: #6a1fa0; color: #fff; }
+.mc-badge-default { background: #555;    color: #fff; }
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .nav-links {
