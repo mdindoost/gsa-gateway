@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GSA Gateway — NJIT Graduate Student Association</title>
+  <meta name="description" content="GSA Gateway is an AI-assisted communication platform for NJIT graduate students — events, resources, and student initiatives in one place." />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav class="site-nav" role="navigation" aria-label="Main navigation">
+  <div class="container nav-inner">
+    <a href="index.html" class="nav-brand">GSA <span>Gateway</span></a>
+    <button class="nav-burger" aria-label="Toggle navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="events.html">Events</a></li>
+      <li><a href="mathcafe.html">MathCafe</a></li>
+      <li><a href="initiatives.html">Initiatives</a></li>
+      <li><a href="resources.html">Resources</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<header class="hero">
+  <div class="container">
+    <p class="hero-eyebrow">NJIT Graduate Student Association</p>
+    <h1>GSA <span>Gateway</span><br>Your voice, amplified.</h1>
+    <p class="hero-sub">
+      An AI-assisted student communication initiative designed to make GSA
+      information, events, resources, and student ideas more accessible to
+      all NJIT graduate students.
+    </p>
+    <p style="margin-top:0.75rem;font-size:0.95rem;opacity:0.85;">
+      Representing <strong>2,400+ graduate students</strong> &nbsp;·&nbsp; $150,000 annual budget &nbsp;·&nbsp; 32 Department Representatives
+    </p>
+    <div class="hero-cta">
+      <a href="https://discord.gg/Ya4XvTE6A" class="btn btn-primary" target="_blank" rel="noopener">
+        Join our Discord
+      </a>
+      <a href="events.html" class="btn btn-outline">View Events</a>
+    </div>
+  </div>
+</header>
+
+<!-- ── Features ── -->
+<section style="background: var(--gray-light);">
+  <div class="container">
+    <h2 class="section-title">What is <span class="section-accent">GSA Gateway?</span></h2>
+    <p class="section-sub">One bot. One website. Everything a graduate student needs.</p>
+    <div class="card-grid">
+      <div class="card">
+        <span class="card-tag">Knowledge Base</span>
+        <h3>Ask Anything</h3>
+        <p>Use <code>/ask</code> in Discord to search our curated FAQ — academic policies, funding, wellness, and more. Powered by fuzzy-search with optional AI enhancement.</p>
+      </div>
+      <div class="card">
+        <span class="card-tag">Events</span>
+        <h3>Stay Connected</h3>
+        <p>Browse upcoming GSA events with <code>/events</code>. Workshops, mixers, networking nights, and coffee chats — all in one place.</p>
+      </div>
+      <div class="card">
+        <span class="card-tag">Initiatives</span>
+        <h3>Drive Change</h3>
+        <p>Have an idea? Use <code>/initiative</code> to submit it directly to GSA officers through an anonymous Discord form. Your voice matters.</p>
+      </div>
+      <div class="card">
+        <span class="card-tag">Resources</span>
+        <h3>Find Support</h3>
+        <p>Quickly access curated resources in 7 categories: academic, funding, wellness, international, research, governance, and campus life — with real GSA links and forms.</p>
+      </div>
+      <div class="card">
+        <span class="card-tag">Privacy</span>
+        <h3>Anonymous by Default</h3>
+        <p>Your Discord ID is never stored in plain text. All identifiers are SHA-256 hashed. Contact info is only stored when you explicitly opt in.</p>
+      </div>
+      <div class="card">
+        <span class="card-tag">Open Source</span>
+        <h3>Transparent & Free</h3>
+        <p>GSA Gateway is open source, built with Python and discord.py. No paid APIs. No subscriptions. Runs entirely on free infrastructure.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── MathCafe preview ── -->
+<section style="background: #faf8f5; border-top: 3px solid #8B4513;">
+  <div class="container">
+    <h2 class="section-title">☕ Latest from <span class="section-accent">MathCafe</span></h2>
+    <p class="section-sub">A daily puzzle or fact posted at 9 AM for the NJIT graduate community.</p>
+    <div id="mc-home-preview" style="
+      background: #fff;
+      border: 1px solid #ddd;
+      border-left: 4px solid #8B4513;
+      border-radius: 8px;
+      padding: 1.4rem 1.6rem;
+      max-width: 680px;
+      margin: 0 auto 1.2rem;
+    ">
+      <p style="color:#888;">Loading…</p>
+    </div>
+    <div style="text-align:center;">
+      <a href="mathcafe.html" class="btn btn-outline" style="border-color:#8B4513; color:#8B4513;">
+        See all MathCafe facts →
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Quick commands ── -->
+<section>
+  <div class="container">
+    <h2 class="section-title">Discord <span class="section-accent">Commands</span></h2>
+    <p class="section-sub">All commands are slash commands — type <code>/</code> in any GSA Discord channel.</p>
+    <table class="data-table">
+      <thead>
+        <tr><th>Command</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>/ask [question]</code></td><td>Search the GSA knowledge base for answers</td></tr>
+        <tr><td><code>/events</code></td><td>List all upcoming GSA events</td></tr>
+        <tr><td><code>/event [name]</code></td><td>Get full details for a specific event</td></tr>
+        <tr><td><code>/initiative</code></td><td>Submit an idea or proposal to GSA (anonymous)</td></tr>
+        <tr><td><code>/feedback [message]</code></td><td>Send private anonymous feedback to officers</td></tr>
+        <tr><td><code>/resources [category]</code></td><td>Browse NJIT resources by category</td></tr>
+        <tr><td><code>/contact [role]</code></td><td>Find contact info for officers and offices</td></tr>
+        <tr><td><code>/help</code></td><td>Show all available commands</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<div class="cta-strip">
+  <div class="container">
+    <h2>Ready to get involved?</h2>
+    <p>Join the NJIT GSA Discord server and try <code>/help</code> to get started.</p>
+    <a href="https://discord.gg/Ya4XvTE6A" class="btn btn-outline" target="_blank" rel="noopener">
+      Join the Discord Server →
+    </a>
+  </div>
+</div>
+
+<!-- ── Footer ── -->
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-col">
+        <h4>GSA Gateway</h4>
+        <ul>
+          <li><a href="about.html">About</a></li>
+          <li><a href="events.html">Events</a></li>
+          <li><a href="initiatives.html">Initiatives</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Resources</h4>
+        <ul>
+          <li><a href="resources.html">Resource Hub</a></li>
+          <li><a href="contact.html">Contact GSA</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>NJIT GSA</h4>
+        <ul>
+          <li><a href="https://njit.campuslabs.com/engage/organization/gsa" target="_blank" rel="noopener">Highlander Hub</a></li>
+          <li><a href="https://discord.gg/Ya4XvTE6A" target="_blank" rel="noopener">Discord Server</a></li>
+          <li><a href="https://www.njit.edu" target="_blank" rel="noopener">NJIT Website</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 NJIT Graduate Student Association · GSA Gateway is open source under the MIT License.</p>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

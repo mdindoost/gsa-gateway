@@ -1,0 +1,113 @@
+{
+  "last_updated": "2026-05-19T22:36:44.007922+00:00",
+  "events": [
+    {
+      "name": "2nd NJIT Workshop on Multimedia Intelligence (MMI 2026)",
+      "date": "2026-05-21",
+      "time": "TBD",
+      "location": "NJIT Campus, Newark NJ",
+      "description": "The 2nd NJIT Workshop on Multimedia Intelligence brings together researchers and practitioners in multimedia, AI, and related fields. Open to all NJIT graduate students and researchers. Registration details at gsanjit.com/mmi2026.",
+      "organizer": "GSA NJIT",
+      "rsvp_link": "https://www.gsanjit.com/mmi2026",
+      "category": "academic",
+      "source": "yaml",
+      "status": "upcoming"
+    },
+    {
+      "name": "GSA Friday Happy Hour",
+      "date": "2026-06-06",
+      "time": "4:00 PM – 7:00 PM",
+      "location": "Highlander Pub, Campus Center 3rd Floor, NJIT",
+      "description": "Weekly Friday happy hour for graduate students to unwind and socialize. Drinks and refreshments served. Open to all grad students. 21+ for bar access with valid ID. Recurring every Friday throughout the semester — check GSA Instagram @njit.gsa for any schedule changes.",
+      "organizer": "GSA",
+      "rsvp_link": "https://www.instagram.com/njit.gsa/",
+      "category": "social",
+      "source": "yaml",
+      "status": "future"
+    },
+    {
+      "name": "GSA AI Webinar Series",
+      "date": "2026-06-13",
+      "time": "3:00 PM",
+      "location": "Zoom (link posted on GSA Instagram @njit.gsa)",
+      "description": "Recurring webinar series featuring industry and academic speakers on AI and technology topics. Past speakers include executives from Stryker and professors from GWU. Organized with partner graduate organizations. Free for all NJIT students. Check @njit.gsa for the next session date.",
+      "organizer": "GSA",
+      "rsvp_link": "https://www.instagram.com/njit.gsa/",
+      "category": "academic",
+      "source": "yaml",
+      "status": "future"
+    },
+    {
+      "name": "GSA General Assembly Meeting",
+      "date": "2026-06-20",
+      "time": "TBD",
+      "location": "Campus Center, NJIT",
+      "description": "Monthly General Assembly meeting of the GSA. All Department Representatives and Executive Board members meet to vote on policies, funding, and initiatives. Graduate students are welcome to attend and address the assembly. Contact gsa-pres@njit.edu for the agenda and location.",
+      "organizer": "GSA Executive Board",
+      "rsvp_link": "https://njit.campuslabs.com/engage/organization/gsa",
+      "category": "other",
+      "source": "yaml",
+      "status": "future"
+    },
+    {
+      "name": "Mohith BirthDay",
+      "date": "2026-11-22",
+      "time": "4:00 PM",
+      "location": "TBD",
+      "description": "Test event.",
+      "organizer": "GSA",
+      "rsvp_link": "",
+      "category": "food",
+      "source": "yaml",
+      "status": "future"
+    },
+    {
+      "name": "Three Minute Research Presentations (3MRP 2026)",
+      "date": "2026-04-28",
+      "time": "TBD",
+      "location": "Campus Center Atrium, NJIT",
+      "description": "Present your graduate research in exactly 3 minutes using one slide. Open to all NJIT graduate students. $3,000 in awards plus travel prizes. Includes an Audience Popular Vote. Organized by GSA VP Academic Affairs. Apply at gsanjit.com/3mrp.",
+      "organizer": "Mohammad Dindoost, VP Academic Affairs",
+      "rsvp_link": "https://www.gsanjit.com/3mrp",
+      "category": "academic",
+      "source": "yaml",
+      "status": "past"
+    },
+    {
+      "name": "International Student Spring Meet & Greet",
+      "date": "2026-01-30",
+      "time": "11:30 AM – 1:00 PM",
+      "location": "Campus Center Ballrooms, NJIT",
+      "description": "Welcome event for new and returning international students hosted by the Office of Global Initiatives. Free food (first-come, first-served). Check in using the Campus Community app. Co-hosted with GSA.",
+      "organizer": "Office of Global Initiatives with GSA",
+      "rsvp_link": "https://njit.campuslabs.com/engage/organization/gsa",
+      "category": "international",
+      "source": "yaml",
+      "status": "past"
+    },
+    {
+      "name": "Graduate Research Day 2025",
+      "date": "2025-11-25",
+      "time": "9:00 AM – 1:00 PM",
+      "location": "Campus Center Ballroom, NJIT",
+      "description": "Annual event showcasing graduate student research through digital poster presentations. $3,000 in travel awards available. Lunch provided. Contact gsa-vpa@njit.edu for questions about participating.",
+      "organizer": "GSA VP Academic Affairs",
+      "rsvp_link": "https://njit.campuslabs.com/engage/organization/gsa",
+      "category": "academic",
+      "source": "yaml",
+      "status": "past"
+    },
+    {
+      "name": "NJIT Science Diplomacy Forum",
+      "date": "2025-11-20",
+      "time": "11:30 AM – 1:00 PM",
+      "location": "Central King Building CKB 116, NJIT",
+      "description": "Forum bringing together ambassadors, diplomats, and NJIT faculty to foster dialogue between science, technology, and international collaboration. Organized by GSA in partnership with OGI, CSLA, and the Office of Inclusive Excellence.",
+      "organizer": "GSA with OGI, CSLA, Office of Inclusive Excellence",
+      "rsvp_link": "https://njit.campuslabs.com/engage/organization/gsa",
+      "category": "international",
+      "source": "yaml",
+      "status": "past"
+    }
+  ]
+}

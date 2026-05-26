@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Events — GSA Gateway</title>
+  <meta name="description" content="Upcoming NJIT Graduate Student Association events — workshops, mixers, and more." />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="container nav-inner">
+    <a href="index.html" class="nav-brand">GSA <span>Gateway</span></a>
+    <button class="nav-burger" aria-label="Toggle navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="events.html">Events</a></li>
+      <li><a href="mathcafe.html">MathCafe</a></li>
+      <li><a href="initiatives.html">Initiatives</a></li>
+      <li><a href="resources.html">Resources</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="page-header">
+  <div class="container">
+    <h1>Upcoming Events</h1>
+    <p>Workshops, networking nights, coffee chats, and more — all for NJIT graduate students.</p>
+  </div>
+</header>
+
+<section>
+  <div class="container">
+    <div class="info-box">
+      <strong>Stay updated:</strong> Use <code>/events</code> in the GSA Discord server for real-time
+      event listings, or <code>/event [name]</code> for full details on a specific event.
+      <a href="https://discord.gg/Ya4XvTE6A" target="_blank" rel="noopener">Join the server →</a>
+    </div>
+
+    <!-- Events are injected here by app.js -->
+    <div id="events-container"></div>
+  </div>
+</section>
+
+<div class="cta-strip">
+  <div class="container">
+    <h2>Want to suggest an event?</h2>
+    <p>Use <code>/initiative</code> in our Discord to submit event ideas directly to GSA officers.</p>
+    <a href="initiatives.html" class="btn btn-outline">Learn about Initiatives</a>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-col">
+        <h4>GSA Gateway</h4>
+        <ul>
+          <li><a href="about.html">About</a></li>
+          <li><a href="events.html">Events</a></li>
+          <li><a href="mathcafe.html">MathCafe</a></li>
+      <li><a href="initiatives.html">Initiatives</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>NJIT GSA</h4>
+        <ul>
+          <li><a href="https://njit.campuslabs.com/engage/organization/gsa" target="_blank" rel="noopener">Highlander Hub</a></li>
+          <li><a href="https://discord.gg/Ya4XvTE6A" target="_blank" rel="noopener">Discord Server</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 NJIT Graduate Student Association · GSA Gateway — MIT License</p>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
