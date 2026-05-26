@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class ConversationManager:
                 pass
 
     def _is_expired(self, session: ConversationSession) -> bool:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         delta = now - session.last_active
         return delta.total_seconds() > (self.timeout_minutes * 60)
 
@@ -84,10 +84,10 @@ class ConversationManager:
         self._ensure_cleanup_running()
         session = self.get_session(user_id)
         if session is not None:
-            session.last_active = datetime.utcnow()
+            session.last_active = datetime.now(timezone.utc)
             return session
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         session = ConversationSession(
             user_id=user_id,
             turns=[],
@@ -111,12 +111,12 @@ class ConversationManager:
         turn = ConversationTurn(
             role=role,
             content=content,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             source_files=source_files or [],
         )
         session.turns.append(turn)
         session.message_count += 1
-        session.last_active = datetime.utcnow()
+        session.last_active = datetime.now(timezone.utc)
 
         # Enforce max_turns (each turn = 1 user + 1 assistant message)
         while len(session.turns) > self.max_turns * 2:

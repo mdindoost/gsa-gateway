@@ -2,32 +2,32 @@
 All registered GSA clubs must follow the GSA Club Financial Bylaws when requesting, managing, and reporting funds. All allocations are subject to availability and GSA board approval. Clubs must submit a budget proposal each semester to the VP Finance.
 
 ## Penalty System — Three-Tier Enforcement
-GSA enforces a three-tier penalty system for financial bylaw violations:
 
-**Tier 1 — Minor Violations** ($25–$100 budget deduction):
-- Late financial report submission (past deadline by 1–7 days)
-- Missing receipts for purchases under $50
-- Failure to attend one mandatory treasurer training
+The GSA enforces a strict three-tier penalty system for financial bylaw violations.
 
-**Tier 2 — Moderate Violations** (account hold + $100–$300 budget deduction):
-- Overspending allocated budget by $100–$500
-- Late financial report submission (past deadline by 8–30 days)
-- Unauthorized purchases not pre-approved by GSA Finance Committee
-- Missing receipts for purchases over $50
+**1st Offense:**
+- Account and card placed on hold immediately
+- Hold continues until the organization VP Finance OR President meets with the Finance Committee
+- Organization is released with a formal warning
+- No budget deduction for first offense
 
-**Tier 3 — Serious Violations** (full account hold + possible club suspension):
-- Overspending allocated budget by more than $500
-- Falsified receipts or financial documents
-- Failure to return unused funds within 30 days of semester end
-- Repeated Tier 2 violations (3 or more in one academic year)
+**2nd Offense:**
+- Account and card placed on hold for exactly one full month
+- 10% of the original approved budget is deducted immediately and permanently
+- Example: $1,000 budget → $100 deducted, $900 remaining
 
-Penalties are cumulative. Tier 3 violations may result in club suspension and referral to NJIT Student Affairs.
+**3rd Offense:**
+- Account withheld for the remainder of the entire semester
+- Organization must contact Finance Committee directly for any pending payments
+- Subsequent penalties roll over to next fiscal year if organization cannot pay
+
+Note: There are NO dollar-amount tiers (Tier 1/2/3). The system is offense-count based only.
 
 ## Budget Overspending Consequences
 Clubs that exceed their allocated budget face the following consequences:
 - Overspend $1–$99: Written warning, must file a written explanation with the Finance Committee within 7 days
-- Overspend $100–$499: Tier 2 penalty — account hold and $100–$300 budget deduction from the next semester allocation
-- Overspend $500 or more: Tier 3 penalty — full account hold, all club activities suspended pending Finance Committee review
+- Overspend $100–$499: account hold and 10% budget deduction from the next semester allocation (2nd offense rules apply)
+- Overspend $500 or more: full account hold, all club activities suspended pending Finance Committee review (3rd offense rules apply)
 - Clubs may appeal within 14 days by submitting a written appeal to gsa-finance@njit.edu
 
 ## Fund Allocation Process
@@ -40,4 +40,4 @@ All reimbursements must be submitted within 30 days of the purchase date. Requir
 Any unused funds from a semester allocation must be returned to the GSA treasury within 30 days of the semester end date. Failure to return unused funds within 60 days results in a Tier 3 penalty and a proportional deduction from the following semester's allocation. Contact gsa-finance@njit.edu to arrange a fund return.
 
 ## Financial Reporting Requirements
-All clubs must submit a financial report at the end of each semester detailing all expenditures against the approved budget. Reports are due within 2 weeks of the last day of finals. Clubs failing to submit by the deadline receive a Tier 1 penalty. Reports must be signed by the club treasurer and faculty advisor.
+All clubs must submit a financial report at the end of each semester detailing all expenditures against the approved budget. Reports are due within 2 weeks of the last day of finals. Clubs failing to submit by the deadline receive a 1st offense penalty (account/card hold until VP Finance or President meets with Finance Committee, released with warning). Reports must be signed by the club treasurer and faculty advisor.

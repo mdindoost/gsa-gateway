@@ -1,6 +1,6 @@
 """Tests for the ConversationManager service."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -23,7 +23,7 @@ def test_session_expires_after_timeout(manager):
     manager.get_or_create_session("user_002")
     # Manually backdate last_active past timeout
     session = manager.sessions["user_002"]
-    session.last_active = datetime.utcnow() - timedelta(minutes=31)
+    session.last_active = datetime.now(timezone.utc) - timedelta(minutes=31)
     # Now get_session should return None
     result = manager.get_session("user_002")
     assert result is None
@@ -91,7 +91,7 @@ def test_get_stats(manager):
 
 def test_add_turn_updates_last_active(manager):
     user_id = "user_la"
-    before = datetime.utcnow()
+    before = datetime.now(timezone.utc)
     manager.add_turn(user_id, "user", "ping")
     session = manager.sessions[user_id]
     assert session.last_active >= before
