@@ -419,10 +419,96 @@ class AdminCog(commands.Cog, name="Admin"):
             )
             embed.add_field(name="Top Search Topics", value=topic_lines, inline=False)
 
+        # ── RAG stats ──────────────────────────────────────────────────────────
+        vector_store = getattr(self.bot, "vector_store", None)
+        retriever = getattr(self.bot, "retriever", None)
+        conv_manager = getattr(self.bot, "conversation_manager", None)
+
+        rag_status = "✅ Active" if retriever else "❌ Disabled"
+        embed.add_field(name="RAG Retriever", value=rag_status, inline=True)
+
+        if vector_store:
+            chunk_count = vector_store.get_chunk_count()
+            embed.add_field(name="Vector Store Chunks", value=str(chunk_count), inline=True)
+        else:
+            embed.add_field(name="Vector Store", value="Not initialized", inline=True)
+
+        if conv_manager:
+            conv_stats = conv_manager.get_stats()
+            embed.add_field(
+                name="Active Conversations",
+                value=str(conv_stats.get("active_sessions", 0)),
+                inline=True,
+            )
+            timeout = getattr(conv_manager, "timeout_minutes", 60)
+            embed.add_field(
+                name="Conv. Timeout",
+                value=f"{timeout} min",
+                inline=True,
+            )
+
         self.bot.db.log_admin_action(  # type: ignore[attr-defined]
             officer_id=interaction.user.id, action="admin_stats", detail=None
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # ── /admin_rebuild_index ───────────────────────────────────────────────────
+
+    @app_commands.command(
+        name="admin_rebuild_index",
+        description="[Admin] Rebuild the vector index from knowledge base files.",
+    )
+    async def admin_rebuild_index(self, interaction: discord.Interaction) -> None:
+        if not _admin_check(interaction):
+            await interaction.response.send_message(
+                NO_PERMISSION.format(role=config.admin_role_name), ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "🔄 Rebuilding vector index... This may take 2–5 minutes.",
+            ephemeral=True,
+        )
+
+        vector_store = getattr(self.bot, "vector_store", None)
+        embedder = getattr(self.bot, "embedder", None)
+
+        if not vector_store or not embedder:
+            await interaction.followup.send(
+                "❌ RAG services not initialized. Check Ollama connection.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            from pathlib import Path
+            from bot.services.chunker import DocumentChunker
+
+            vector_store.reset()
+            data_dir = Path("bot/data")
+            chunker = DocumentChunker(data_dir=data_dir)
+            chunks = chunker.chunk_all()
+            texts = [c.text for c in chunks]
+            embeddings = await embedder.embed_batch(texts, batch_size=10)
+            vector_store.add_chunks(chunks, embeddings)
+
+            success_count = sum(1 for e in embeddings if e is not None)
+            await interaction.followup.send(
+                f"✅ Index rebuilt: **{success_count}** chunks indexed "
+                f"({len(chunks) - success_count} failed).",
+                ephemeral=True,
+            )
+            logger.info(
+                "Admin %s rebuilt vector index: %d chunks",
+                interaction.user.id,
+                success_count,
+            )
+        except Exception as exc:
+            logger.error("admin_rebuild_index error: %s", exc, exc_info=True)
+            await interaction.followup.send(
+                f"❌ Index rebuild failed: {exc}",
+                ephemeral=True,
+            )
 
     # ── /admin_announce ────────────────────────────────────────────────────────
 

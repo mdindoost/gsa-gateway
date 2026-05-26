@@ -1,7 +1,7 @@
-"""Slash command: /ask — search the knowledge base, enhanced by Ollama when enabled."""
+"""Slash command: /ask — RAG-powered question answering."""
 
-import contextlib
 import logging
+from typing import Optional
 
 import discord
 from discord import app_commands
@@ -10,7 +10,7 @@ from discord.ext import commands
 from bot.config import config
 from bot.services.food_detector import format_food_response, get_food_events, is_food_query
 from bot.services.moderation import is_channel_allowed
-from bot.services.search import MIN_CONFIDENCE, preprocess_query
+from bot.services.retriever import SOURCE_FRIENDLY_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +19,11 @@ FALLBACK = (
     "please reach out to a GSA officer with `/contact` or visit us during "
     "office hours — Campus Center 110A, weekdays 11 AM–5 PM."
 )
-AI_FOOTER = "Answer generated from GSA knowledge base"
 NJIT_RED = discord.Color.from_str("#CC0000")
 
 
 class AskCog(commands.Cog, name="Ask"):
-    """Handles /ask — knowledge-base question answering."""
+    """Handles /ask — RAG-powered knowledge-base question answering."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -35,7 +34,6 @@ class AskCog(commands.Cog, name="Ask"):
     )
     @app_commands.describe(question="Your question (e.g. 'Who are the GSA officers?')")
     async def ask(self, interaction: discord.Interaction, question: str) -> None:
-        """Search the knowledge base and return the best answer."""
         if not is_channel_allowed(interaction.channel, config.allowed_channels):
             await interaction.response.send_message(
                 "I'm not active in this channel. Please use a designated GSA channel.",
@@ -54,11 +52,11 @@ class AskCog(commands.Cog, name="Ask"):
 
         await interaction.response.defer(thinking=True)
 
-        # ── Food shortcut: bypass KB search entirely for food queries ─────────
+        # ── Food shortcut ─────────────────────────────────────────────────────
         if is_food_query(question):
             food_events = get_food_events(
-                kb=self.bot.kb,       # type: ignore[attr-defined]
-                db=self.bot.db,       # type: ignore[attr-defined]
+                kb=self.bot.kb,  # type: ignore[attr-defined]
+                db=self.bot.db,  # type: ignore[attr-defined]
                 days_ahead=7,
             )
             self.bot.db.log_question(  # type: ignore[attr-defined]
@@ -78,88 +76,94 @@ class AskCog(commands.Cog, name="Ask"):
                 )
             return
 
+        # ── RAG pipeline ──────────────────────────────────────────────────────
+        retriever = getattr(self.bot, "retriever", None)
         ollama = getattr(self.bot, "ollama", None)
-        use_ollama = config.ollama_enabled and ollama is not None
+        conversation_manager = getattr(self.bot, "conversation_manager", None)
 
-        if use_ollama:
-            # ── Ollama path ───────────────────────────────────────────────────
-            # Preprocess the query (expands single words like "fund" for search),
-            # then always retrieve top results — Ollama handles low-confidence context.
-            search_q = preprocess_query(question)
-            results = self.bot.search_svc.search(  # type: ignore[attr-defined]
-                search_q, limit=4, min_confidence=0
+        user_id = str(interaction.user.id)
+
+        # Get conversation history for this user
+        history: list[dict] = []
+        if conversation_manager:
+            history = conversation_manager.get_history(
+                user_id, max_turns=config.conversation_max_turns
             )
 
-            self.bot.db.log_question(  # type: ignore[attr-defined]
-                user_id=interaction.user.id,
+        # Retrieve relevant chunks
+        chunks = []
+        if retriever:
+            chunks = await retriever.retrieve(
+                query=question,
+                conversation_history=history,
+            )
+
+        self.bot.db.log_question(  # type: ignore[attr-defined]
+            user_id=interaction.user.id,
+            question=question,
+            matched_topic=chunks[0].section_title if chunks else None,
+            confidence=chunks[0].relevance_score * 100 if chunks else 0.0,
+            guild_id=interaction.guild_id,
+        )
+
+        response_text: Optional[str] = None
+        used_ollama = False
+        source_note: Optional[str] = None
+
+        if chunks and ollama:
+            ai_response = await ollama.generate_answer(
                 question=question,
-                matched_topic=results[0].text if results else None,
-                confidence=results[0].score if results else 0.0,
-                guild_id=interaction.guild_id,
+                chunks=chunks,
+                conversation_history=history,
             )
-
-            context_chunks = [f"Topic: {r.text}\nInfo: {r.content}" for r in results]
-            chan = interaction.channel
-            typing_ctx = chan.typing() if chan is not None else contextlib.nullcontext()
-            async with typing_ctx:
-                ai_text = await ollama.generate_answer(search_q, context_chunks)
-
-            if ai_text:
-                embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
-                embed.add_field(name="Your Question", value=question[:256], inline=False)
-                embed.add_field(name="Answer", value=ai_text[:1000], inline=False)
-                best = results[0] if results else None
-                footer = f"💡 {AI_FOOTER}"
-                if best:
-                    footer += f" · {best.section} · {best.score:.0f}% match"
-                embed.set_footer(text=footer)
-                await interaction.followup.send(embed=embed)
-            elif results:
-                # Ollama failed — fall back to best raw KB text
-                best = results[0]
-                embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
-                embed.add_field(name="Your Question", value=question[:256], inline=False)
-                embed.add_field(name="Answer", value=best.content[:1000], inline=False)
-                embed.set_footer(
-                    text=f"Source: {best.section} · Confidence: {best.score:.0f}%"
-                )
-                await interaction.followup.send(embed=embed)
+            if ai_response:
+                response_text = ai_response
+                source_files = list({c.source_file for c in chunks})
+                source_names = [SOURCE_FRIENDLY_NAMES.get(f, f) for f in source_files[:2]]
+                source_note = " & ".join(source_names)
+                used_ollama = True
             else:
-                await interaction.followup.send(FALLBACK)
+                # Ollama timeout — fallback to best chunk raw text
+                best = chunks[0]
+                response_text = best.text[:1000]
+                source_note = SOURCE_FRIENDLY_NAMES.get(best.source_file, best.source_file)
+        elif chunks:
+            best = chunks[0]
+            response_text = best.text[:1000]
+            source_note = SOURCE_FRIENDLY_NAMES.get(best.source_file, best.source_file)
 
-        else:
-            # ── Raw KB path: strict threshold, show direct text ───────────────
-            results = self.bot.search_svc.search(  # type: ignore[attr-defined]
-                question, limit=3, min_confidence=MIN_CONFIDENCE
+        if not response_text:
+            await interaction.followup.send(FALLBACK)
+            return
+
+        embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
+        embed.add_field(name="Your Question", value=question[:256], inline=False)
+        embed.add_field(name="Answer", value=response_text[:1000], inline=False)
+
+        footer = "💡 GSA Knowledge Base"
+        if source_note:
+            footer += f" · Source: {source_note}"
+        if used_ollama:
+            footer += " · AI-generated from official GSA docs"
+        embed.set_footer(text=footer)
+
+        await interaction.followup.send(embed=embed)
+
+        # Update conversation memory
+        if conversation_manager:
+            conversation_manager.add_turn(
+                user_id=user_id,
+                role="user",
+                content=question,
+                source_files=[],
             )
-
-            self.bot.db.log_question(  # type: ignore[attr-defined]
-                user_id=interaction.user.id,
-                question=question,
-                matched_topic=results[0].text if results else None,
-                confidence=results[0].score if results else 0.0,
-                guild_id=interaction.guild_id,
+            conversation_manager.add_turn(
+                user_id=user_id,
+                role="assistant",
+                content=response_text[:500],
+                source_files=[c.source_file for c in chunks],
             )
-
-            if not results:
-                await interaction.followup.send(FALLBACK)
-                return
-
-            best = results[0]
-            embed = discord.Embed(title="GSA Knowledge Base", color=NJIT_RED)
-            embed.add_field(name="Your Question", value=question[:256], inline=False)
-            embed.add_field(name="Answer", value=best.content[:1000], inline=False)
-            embed.set_footer(
-                text=f"Source: {best.section} · Confidence: {best.score:.0f}%"
-            )
-
-            if len(results) > 1:
-                related = "\n".join(f"• {r.text} ({r.score:.0f}%)" for r in results[1:])
-                embed.add_field(name="Related Topics", value=related, inline=False)
-
-            await interaction.followup.send(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Extension entry point."""
     await bot.add_cog(AskCog(bot))

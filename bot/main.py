@@ -4,6 +4,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 import discord
 from discord.ext import commands
@@ -54,12 +55,19 @@ class GSABot(commands.Bot):
             intents=intents,
             help_command=None,  # Custom /help is implemented as a cog
         )
-        # Shared services — set in setup_hook, typed here for IDE support
+        # Core services — set in setup_hook
         self.db = None
         self.kb = None
         self.search_svc = None
         self.rate_limiter = None
         self.ollama = None
+        self.config = config
+        # RAG services
+        self.embedder = None
+        self.vector_store = None
+        self.retriever = None
+        self.conversation_manager: Optional[object] = None
+        self.intent_detector: Optional[object] = None
 
     async def setup_hook(self) -> None:
         """Initialise services and load extensions before on_ready fires."""
@@ -72,6 +80,7 @@ class GSABot(commands.Bot):
         self.db.connect()
         self.db.init_tables()
         self.db.migrate_events_columns()
+        self.db.migrate_rag_columns()
 
         self.kb = KnowledgeBase(data_dir=config.data_dir)
         self.kb.load()
@@ -81,21 +90,76 @@ class GSABot(commands.Bot):
 
         if config.ollama_enabled:
             from bot.services.ollama_client import OllamaClient
-
             self.ollama = OllamaClient(
-                model=config.ollama_model,
                 base_url=config.ollama_url,
+                model=config.ollama_model,
                 timeout=config.ollama_timeout,
+                embedding_model=config.embedding_model,
             )
             logger.info("Ollama client initialised (model=%s)", config.ollama_model)
             await self.ollama.check_connection()
 
+        # ── Conversation manager ─────────────────────────────────────────────
+        from bot.services.conversation import ConversationManager
+        self.conversation_manager = ConversationManager(
+            timeout_minutes=config.conversation_timeout_minutes,
+            max_turns=config.conversation_max_turns,
+        )
+        logger.info("Conversation manager initialized")
+
+        # ── Embedding service ────────────────────────────────────────────────
+        from bot.services.embedder import EmbeddingService
+        self.embedder = EmbeddingService(
+            base_url=config.ollama_url,
+            model=config.embedding_model,
+        )
+        embed_ok = await self.embedder.check_connection()
+        if not embed_ok:
+            logger.warning(
+                "Embedding model not available — semantic search disabled. "
+                "Run: ollama pull nomic-embed-text"
+            )
+            self.embedder = None
+
+        # ── Vector store ─────────────────────────────────────────────────────
+        from bot.services.vector_store import VectorStore
+        self.vector_store = VectorStore(db_path=config.chroma_db_path)
+
+        if self.vector_store.is_empty():
+            logger.warning(
+                "Vector store is empty! "
+                "Run: python scripts/build_index.py before starting the bot for full RAG support."
+            )
+        else:
+            chunk_count = self.vector_store.get_chunk_count()
+            logger.info("Vector store loaded: %d chunks", chunk_count)
+
+        # ── Retriever ────────────────────────────────────────────────────────
+        if self.embedder and self.vector_store:
+            from bot.services.retriever import Retriever
+            self.retriever = Retriever(
+                embedder=self.embedder,
+                vector_store=self.vector_store,
+            )
+            logger.info("RAG retriever initialized")
+        else:
+            logger.warning("Retriever not initialized — falling back to keyword search")
+
+        # ── Intent detector ──────────────────────────────────────────────────
+        from bot.services.intent_detector import IntentDetector
+        self.intent_detector = IntentDetector()
+        logger.info("Intent detector initialized")
+
+        # ── Load all extensions ──────────────────────────────────────────────
         for ext in EXTENSIONS:
             await self.load_extension(ext)
             logger.info("Loaded extension: %s", ext)
 
-        # Sync to guild for instant propagation during development,
-        # or globally when no guild ID is configured.
+        # ── Load chat handler (free-form conversation) ───────────────────────
+        await self.load_extension("bot.commands.chat")
+        logger.info("Chat handler loaded")
+
+        # Sync slash commands
         if config.discord_guild_id:
             guild = discord.Object(id=config.discord_guild_id)
             self.tree.copy_global_to(guild=guild)
@@ -115,6 +179,14 @@ class GSABot(commands.Bot):
             len(self.kb.events),
             len(self.kb.resources),
         )
+        # RAG status
+        if self.retriever:
+            chunk_count = self.vector_store.get_chunk_count() if self.vector_store else 0
+            logger.info("RAG pipeline active: %d chunks indexed", chunk_count)
+        else:
+            logger.info("RAG pipeline: disabled (no retriever)")
+        if self.conversation_manager:
+            logger.info("Conversation manager: active")
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
@@ -139,6 +211,13 @@ class GSABot(commands.Bot):
                 await interaction.response.send_message(msg, ephemeral=True)
         except Exception:
             pass  # Interaction already expired
+
+    async def close(self) -> None:
+        if self.embedder:
+            await self.embedder.close()
+        if self.ollama:
+            await self.ollama.close()
+        await super().close()
 
 
 async def main() -> None:

@@ -57,7 +57,20 @@ class Database:
                 matched_topic TEXT,
                 confidence    REAL,
                 timestamp     TEXT    NOT NULL,
-                guild_id      TEXT
+                guild_id      TEXT,
+                was_answered  BOOLEAN DEFAULT FALSE
+            );
+
+            CREATE TABLE IF NOT EXISTS conversation_stats (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id_hash        TEXT    NOT NULL,
+                session_start       TEXT    NOT NULL,
+                session_end         TEXT,
+                turn_count          INTEGER DEFAULT 0,
+                questions_answered  INTEGER DEFAULT 0,
+                sources_used        TEXT,
+                channel_name        TEXT,
+                timestamp           TEXT    DEFAULT CURRENT_TIMESTAMP
             );
 
             CREATE TABLE IF NOT EXISTS initiatives (
@@ -135,6 +148,14 @@ class Database:
                 self.conn.commit()
             except sqlite3.OperationalError:
                 pass  # Column already exists
+
+    def migrate_rag_columns(self) -> None:
+        """Add RAG-related columns to questions table if missing."""
+        try:
+            self.conn.execute("ALTER TABLE questions ADD COLUMN was_answered BOOLEAN DEFAULT FALSE")
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     # ── Write helpers ─────────────────────────────────────────────────────────
 

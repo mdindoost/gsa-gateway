@@ -1,6 +1,7 @@
 """Fuzzy search over the GSA knowledge base using rapidfuzz."""
 
 import logging
+import re
 from dataclasses import dataclass
 
 from rapidfuzz import fuzz, process
@@ -29,6 +30,17 @@ SYNONYMS: dict[str, list[str]] = {
     "food":          ["free food", "lunch", "snacks", "eat", "refreshments", "pizza", "coffee", "hungry", "meal"],
     "hungry":        ["food", "free food", "lunch", "snacks", "eat"],
     "eat":           ["food", "free food", "lunch", "snacks", "refreshments"],
+    "penalty":       ["penalties", "offense", "violation", "punishment", "consequence", "banned", "account hold", "deduction", "bylaw violation"],
+    "penalties":     ["penalty", "offense", "punishment", "consequence", "violation", "banned"],
+    "fine":          ["penalty", "deduction", "hold", "account hold", "budget cut"],
+    "banned":        ["ban", "penalty", "probation", "suspended", "removed"],
+    "overspend":     ["overspending", "exceed budget", "over budget", "penalty", "violation"],
+    "overspends":    ["overspending", "exceed budget", "over budget", "penalty", "club budget"],
+    "overspending":  ["overspend", "exceed budget", "over budget", "club budget"],
+    "chrome":        ["reimbursement", "travel award", "submission", "required documents", "receipts"],
+    "travel":        ["travel award", "conference", "reimbursement", "chrome river", "funding"],
+    "constitution":  ["eligibility", "election", "officer", "president", "gpa", "requirements"],
+    "president":     ["presidential requirements", "officer eligibility", "gpa minimum", "election"],
 }
 
 
@@ -41,12 +53,13 @@ def preprocess_query(query: str) -> str:
 
 
 def _expand_query(query: str) -> list[str]:
-    """Return query plus synonym terms for the first SYNONYMS keyword found in it."""
+    """Return query plus synonym terms for every SYNONYMS keyword found in it."""
     terms = [query]
-    for word in query.lower().split():
-        if word in SYNONYMS:
+    seen: set[str] = set()
+    for word in re.sub(r"[^\w\s]", "", query.lower()).split():
+        if word in SYNONYMS and word not in seen:
             terms.extend(SYNONYMS[word])
-            break
+            seen.add(word)
     return terms
 
 
@@ -59,6 +72,7 @@ class SearchResult:
     score: float
     source_type: str
     section: str
+    source_file: str = ""
 
 
 class SearchService:
@@ -112,9 +126,67 @@ class SearchService:
                         score=float(score),
                         source_type=item["type"],
                         section=item["section"],
+                        source_file=item.get("source_file", item["section"]),
                     )
                 )
         return results[:limit]
+
+    def search_multi_source(
+        self,
+        query: str,
+        per_source_min_confidence: float = OLLAMA_MIN_CONFIDENCE,
+    ) -> list[SearchResult]:
+        """Return the best match from each source file above the confidence threshold.
+
+        Ensures every loaded document has a chance to contribute context to Ollama,
+        rather than one file dominating all top-N slots.
+        """
+        items = self.kb.get_searchable_texts()
+        if not items:
+            return []
+
+        choices = {item["id"]: item["text"] for item in items}
+        id_map = {item["id"]: item for item in items}
+
+        search_terms = _expand_query(query)
+        best_scores: dict[str, float] = {}
+        for term in search_terms:
+            matches = process.extract(
+                term,
+                choices,
+                scorer=fuzz.token_set_ratio,
+                limit=max(20, len(choices)),
+            )
+            for _matched_text, score, key in matches:
+                if key not in best_scores or score > best_scores[key]:
+                    best_scores[key] = score
+
+        # Keep best match per source file
+        best_per_source: dict[str, tuple[str, float]] = {}
+        for key, score in best_scores.items():
+            if score < per_source_min_confidence:
+                continue
+            item = id_map[key]
+            source = item.get("source_file", item["section"])
+            if source not in best_per_source or score > best_per_source[source][1]:
+                best_per_source[source] = (key, score)
+
+        results: list[SearchResult] = []
+        for _source, (key, score) in sorted(
+            best_per_source.items(), key=lambda x: x[1][1], reverse=True
+        ):
+            item = id_map[key]
+            results.append(
+                SearchResult(
+                    text=item["text"],
+                    content=item["content"],
+                    score=float(score),
+                    source_type=item["type"],
+                    section=item["section"],
+                    source_file=item.get("source_file", item["section"]),
+                )
+            )
+        return results
 
     def search_events(self, name: str) -> list[tuple[Event, float]]:
         """Return events whose name fuzzy-matches *name*."""

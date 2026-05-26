@@ -1,0 +1,19 @@
+[Unit]
+Description=GSA Gateway Discord Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=md724
+WorkingDirectory=/home/md724/gsa-gateway
+EnvironmentFile=/home/md724/gsa-gateway/.env
+ExecStart=/home/md724/gsa-gateway/.venv/bin/python -m bot.main
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gsa-gateway
+
+[Install]
+WantedBy=multi-user.target

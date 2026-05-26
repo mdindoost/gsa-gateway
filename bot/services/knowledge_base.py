@@ -19,6 +19,14 @@ class FAQEntry:
 
 
 @dataclass
+class PolicyEntry:
+    title: str
+    content: str
+    source_file: str
+    section: str
+
+
+@dataclass
 class Event:
     name: str
     date: str
@@ -48,12 +56,20 @@ class Resource:
     category: str
 
 
+_POLICY_DOCS: list[tuple[str, str]] = [
+    ("gsa_constitution.md", "gsa_constitution"),
+    ("travel_award.md", "travel_award"),
+    ("club_finance.md", "club_finance"),
+]
+
+
 @dataclass
 class KnowledgeBase:
     """Container for all static knowledge loaded from data files."""
 
     data_dir: Path
     faq_entries: list[FAQEntry] = field(default_factory=list)
+    policy_entries: list[PolicyEntry] = field(default_factory=list)
     events: list[Event] = field(default_factory=list)
     contacts: dict[str, Contact] = field(default_factory=dict)
     resources: dict[str, list[Resource]] = field(default_factory=dict)
@@ -61,22 +77,42 @@ class KnowledgeBase:
     def load(self) -> None:
         """Load (or reload) all data files."""
         self.faq_entries.clear()
+        self.policy_entries.clear()
         self.events.clear()
         self.contacts.clear()
         self.resources.clear()
 
         self._load_faq()
+        for filename, section in _POLICY_DOCS:
+            self._load_policy_doc(filename, section)
         self._load_events()
         self._load_contacts()
         self._load_resources()
 
-        logger.info(
-            "Knowledge base loaded: %d FAQs, %d events, %d contacts, %d resource categories",
-            len(self.faq_entries),
-            len(self.events),
-            len(self.contacts),
-            len(self.resources),
+        policy_counts = {filename: 0 for filename, _ in _POLICY_DOCS}
+        for entry in self.policy_entries:
+            if entry.source_file in policy_counts:
+                policy_counts[entry.source_file] += 1
+
+        resource_count = sum(len(v) for v in self.resources.values())
+        total = (
+            len(self.faq_entries)
+            + len(self.policy_entries)
+            + len(self.contacts)
+            + len(self.events)
+            + resource_count
         )
+
+        lines = ["Knowledge base files loaded:"]
+        lines.append(f"  - gsa_faq.md: {len(self.faq_entries)} entries")
+        for filename, _ in _POLICY_DOCS:
+            lines.append(f"  - {filename}: {policy_counts.get(filename, 0)} entries")
+        lines.append(f"  - contacts.yml: {len(self.contacts)} entries")
+        lines.append(f"  - events.yml: {len(self.events)} entries")
+        lines.append(f"  - resources.yml: {resource_count} entries")
+        lines.append(f"  Total: {total} indexed items")
+        print("\n".join(lines), flush=True)
+        logger.info("\n".join(lines))
 
     # ── Loaders ───────────────────────────────────────────────────────────────
 
@@ -100,6 +136,31 @@ class KnowledgeBase:
                 )
             )
         logger.debug("FAQ entries loaded: %d", len(self.faq_entries))
+
+    def _load_policy_doc(self, filename: str, section_name: str) -> None:
+        path = self.data_dir / filename
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.warning("Cannot read policy file %s: %s", filename, exc)
+            return
+
+        pattern = re.compile(r"^## (.+?)\n(.*?)(?=^## |\Z)", re.DOTALL | re.MULTILINE)
+        count = 0
+        for m in pattern.finditer(content):
+            title = m.group(1).strip()
+            body = m.group(2).strip()
+            if body:
+                self.policy_entries.append(
+                    PolicyEntry(
+                        title=title,
+                        content=body,
+                        source_file=filename,
+                        section=section_name,
+                    )
+                )
+                count += 1
+        logger.debug("Policy entries loaded from %s: %d", filename, count)
 
     def _load_events(self) -> None:
         path = self.data_dir / "events.yml"
@@ -185,6 +246,23 @@ class KnowledgeBase:
                     "content": entry.answer,
                     "type": "faq",
                     "section": "faq",
+                    "source_file": "gsa_faq.md",
+                }
+            )
+
+        # ── Policy document entries ───────────────────────────────────────────
+        # Use title + first 300 chars of content as the search text so that
+        # natural-language queries match the document body, not just the heading.
+        for idx, entry in enumerate(self.policy_entries):
+            search_text = f"{entry.title} {entry.content[:300]}"
+            items.append(
+                {
+                    "id": f"policy_{idx}",
+                    "text": search_text,
+                    "content": entry.content,
+                    "type": "policy",
+                    "section": entry.section,
+                    "source_file": entry.source_file,
                 }
             )
 
@@ -209,6 +287,7 @@ class KnowledgeBase:
                     "content": content,
                     "type": "contact",
                     "section": "contacts",
+                    "source_file": "contacts.yml",
                 }
             )
             # Accumulate for the combined officers entry
@@ -235,6 +314,7 @@ class KnowledgeBase:
                     ),
                     "type": "contact",
                     "section": "contacts",
+                    "source_file": "contacts.yml",
                 }
             )
 
@@ -256,6 +336,7 @@ class KnowledgeBase:
                     "content": content,
                     "type": "event",
                     "section": "events",
+                    "source_file": "events.yml",
                 }
             )
 
@@ -272,6 +353,7 @@ class KnowledgeBase:
                         "content": content,
                         "type": "resource",
                         "section": f"resources/{cat}",
+                        "source_file": "resources.yml",
                     }
                 )
 

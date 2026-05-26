@@ -5,130 +5,142 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from bot.services.ollama_client import OllamaClient, _ASK_SYSTEM
+from bot.services.ollama_client import OllamaClient
+from bot.services.retriever import RetrievedChunk
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
+def make_chunk(text: str = "Answer: some info") -> RetrievedChunk:
+    return RetrievedChunk(
+        text=text,
+        source_file="gsa_faq.md",
+        source_type="faq",
+        section_title="FAQ Section",
+        similarity=0.85,
+        relevance_score=0.85,
+        metadata={},
+    )
+
 
 @pytest.fixture
 def client() -> OllamaClient:
-    return OllamaClient(model="llama3", base_url="http://localhost:11434", timeout=30)
+    return OllamaClient(
+        base_url="http://localhost:11434",
+        model="llama3.1:8b",
+        timeout=30,
+    )
 
 
-def _mock_response(status: int = 200, json_data: dict[str, Any] | None = None):
-    """Build a mock aiohttp response context manager."""
+def _mock_session_with_response(status: int = 200, json_data: dict[str, Any] | None = None):
     resp = AsyncMock()
     resp.status = status
     resp.json = AsyncMock(return_value=json_data or {"response": "Test answer."})
-    cm = AsyncMock()
-    cm.__aenter__ = AsyncMock(return_value=resp)
-    cm.__aexit__ = AsyncMock(return_value=False)
-    return cm
+    resp.__aenter__ = AsyncMock(return_value=resp)
+    resp.__aexit__ = AsyncMock(return_value=False)
 
+    session = MagicMock()
+    session.post = MagicMock(return_value=resp)
+    session.closed = False
 
-def _mock_session(response_cm):
-    """Build a mock aiohttp.ClientSession context manager."""
-    session = AsyncMock()
-    session.post = MagicMock(return_value=response_cm)
-    session.get = MagicMock(return_value=response_cm)
-    session_cm = AsyncMock()
-    session_cm.__aenter__ = AsyncMock(return_value=session)
-    session_cm.__aexit__ = AsyncMock(return_value=False)
-    return session_cm, session
+    return session
 
-
-# ── generate_answer ───────────────────────────────────────────────────────────
 
 class TestGenerateAnswer:
     @pytest.mark.asyncio
     async def test_returns_response_text(self, client: OllamaClient) -> None:
-        resp_cm = _mock_response(200, {"response": "GSA stands for Graduate Student Association."})
-        session_cm, session = _mock_session(resp_cm)
-        with patch("aiohttp.ClientSession", return_value=session_cm):
-            result = await client.generate_answer("What is GSA?", ["Q: What is GSA?\nA: It is the student body."])
+        session = _mock_session_with_response(200, {"response": "GSA stands for Graduate Student Association."})
+        client._session = session
+        chunks = [make_chunk("Question: What is GSA?\nAnswer: It is the student body.")]
+        result = await client.generate_answer("What is GSA?", chunks)
         assert result == "GSA stands for Graduate Student Association."
 
     @pytest.mark.asyncio
-    async def test_prompt_includes_context_chunks(self, client: OllamaClient) -> None:
-        resp_cm = _mock_response(200, {"response": "Answer here."})
-        session_cm, session = _mock_session(resp_cm)
-        with patch("aiohttp.ClientSession", return_value=session_cm):
-            await client.generate_answer(
-                "How do I join?",
-                ["Q: How do I join?\nA: Attend a meeting.", "Q: Events?\nA: Check events.yml."],
-            )
-        call_kwargs = session.post.call_args
-        payload = call_kwargs[1]["json"] if call_kwargs[1] else call_kwargs[0][1]
-        assert "Q: How do I join?" in payload["prompt"]
-        assert "Q: Events?" in payload["prompt"]
-        assert payload["system"] == _ASK_SYSTEM
-
-    @pytest.mark.asyncio
-    async def test_caps_at_three_context_chunks(self, client: OllamaClient) -> None:
-        resp_cm = _mock_response(200, {"response": "OK."})
-        session_cm, session = _mock_session(resp_cm)
-        chunks = [f"Q: Q{i}?\nA: A{i}." for i in range(6)]
-        with patch("aiohttp.ClientSession", return_value=session_cm):
-            await client.generate_answer("question", chunks)
+    async def test_prompt_includes_context(self, client: OllamaClient) -> None:
+        session = _mock_session_with_response(200, {"response": "Answer here."})
+        client._session = session
+        chunks = [make_chunk("Question: How do I join?\nAnswer: Attend a meeting.")]
+        await client.generate_answer("How do I join?", chunks)
         payload = session.post.call_args[1]["json"]
-        # chunk 4 and 5 must not appear in the prompt
-        assert "Q: Q4?" not in payload["prompt"]
-        assert "Q: Q5?" not in payload["prompt"]
+        assert "How do I join?" in payload["prompt"]
+        assert "system" in payload
 
     @pytest.mark.asyncio
-    async def test_returns_none_on_connection_error(self, client: OllamaClient) -> None:
-        import aiohttp
-        with patch("aiohttp.ClientSession") as MockSession:
-            MockSession.return_value.__aenter__ = AsyncMock(side_effect=aiohttp.ClientConnectorError(None, OSError()))  # type: ignore[arg-type]
-            result = await client.generate_answer("What is GSA?", ["some context"])
+    async def test_returns_none_when_no_chunks(self, client: OllamaClient) -> None:
+        result = await client.generate_answer("question", [])
         assert result is None
 
     @pytest.mark.asyncio
     async def test_returns_none_on_http_error(self, client: OllamaClient) -> None:
-        resp_cm = _mock_response(500, {})
-        session_cm, _ = _mock_session(resp_cm)
-        with patch("aiohttp.ClientSession", return_value=session_cm):
-            result = await client.generate_answer("question", ["context"])
+        session = _mock_session_with_response(500, {})
+        client._session = session
+        chunks = [make_chunk()]
+        result = await client.generate_answer("question", chunks)
         assert result is None
 
     @pytest.mark.asyncio
     async def test_returns_none_on_empty_response(self, client: OllamaClient) -> None:
-        resp_cm = _mock_response(200, {"response": "   "})
-        session_cm, _ = _mock_session(resp_cm)
-        with patch("aiohttp.ClientSession", return_value=session_cm):
-            result = await client.generate_answer("question", ["context"])
+        session = _mock_session_with_response(200, {"response": "   "})
+        client._session = session
+        chunks = [make_chunk()]
+        result = await client.generate_answer("question", chunks)
         assert result is None
 
     @pytest.mark.asyncio
     async def test_response_is_stripped(self, client: OllamaClient) -> None:
-        resp_cm = _mock_response(200, {"response": "\n\n  Trimmed answer.  \n"})
-        session_cm, _ = _mock_session(resp_cm)
-        with patch("aiohttp.ClientSession", return_value=session_cm):
-            result = await client.generate_answer("question", ["context"])
+        session = _mock_session_with_response(200, {"response": "\n\n  Trimmed answer.  \n"})
+        client._session = session
+        chunks = [make_chunk()]
+        result = await client.generate_answer("question", chunks)
         assert result == "Trimmed answer."
 
+    @pytest.mark.asyncio
+    async def test_connection_error_returns_none(self, client: OllamaClient) -> None:
+        session = MagicMock()
+        session.closed = False
+        resp = AsyncMock()
+        resp.__aenter__ = AsyncMock(side_effect=RuntimeError("connection refused"))
+        resp.__aexit__ = AsyncMock(return_value=False)
+        session.post = MagicMock(return_value=resp)
+        client._session = session
+        result = await client.generate_answer("question", [make_chunk()])
+        assert result is None
 
-# ── check_connection ──────────────────────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_conversation_history_in_system_prompt(self, client: OllamaClient) -> None:
+        session = _mock_session_with_response(200, {"response": "Step 2 is..."})
+        client._session = session
+        chunks = [make_chunk()]
+        history = [
+            {"role": "user", "content": "tell me the steps"},
+            {"role": "assistant", "content": "Step 1 is to submit..."},
+        ]
+        await client.generate_answer("what about step 2?", chunks, conversation_history=history)
+        payload = session.post.call_args[1]["json"]
+        assert "Step 1" in payload["system"]
+
 
 class TestCheckConnection:
     @pytest.mark.asyncio
     async def test_returns_true_when_ollama_up(self, client: OllamaClient) -> None:
-        resp_cm = _mock_response(200, {"models": []})
-        session_cm, _ = _mock_session(resp_cm)
-        with patch("aiohttp.ClientSession", return_value=session_cm):
-            assert await client.check_connection() is True
+        session = _mock_session_with_response(200, {"response": "ok"})
+        client._session = session
+        result = await client.check_connection()
+        assert result is True
 
     @pytest.mark.asyncio
-    async def test_returns_false_when_ollama_down(self, client: OllamaClient) -> None:
-        import aiohttp
-        with patch("aiohttp.ClientSession") as MockSession:
-            MockSession.return_value.__aenter__ = AsyncMock(
-                side_effect=aiohttp.ClientConnectorError(None, OSError())  # type: ignore[arg-type]
-            )
-            assert await client.check_connection() is False
+    async def test_returns_false_on_http_error(self, client: OllamaClient) -> None:
+        session = _mock_session_with_response(500, {})
+        client._session = session
+        result = await client.check_connection()
+        assert result is False
 
     @pytest.mark.asyncio
     async def test_never_raises(self, client: OllamaClient) -> None:
-        with patch("aiohttp.ClientSession", side_effect=RuntimeError("boom")):
-            result = await client.check_connection()
+        session = MagicMock()
+        session.closed = False
+        resp = AsyncMock()
+        resp.__aenter__ = AsyncMock(side_effect=RuntimeError("unexpected error"))
+        resp.__aexit__ = AsyncMock(return_value=False)
+        session.post = MagicMock(return_value=resp)
+        client._session = session
+        result = await client.check_connection()
         assert result is False

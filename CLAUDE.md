@@ -2,10 +2,28 @@
 
 ## Project Summary
 Discord bot + static website for NJIT's Graduate Student Association (GSA).
-- **Bot**: Python 3.11+, discord.py 2.x, SQLite, rapidfuzz, optional Ollama
+- **Bot**: Python 3.11+, discord.py 2.x, SQLite, rapidfuzz, ChromaDB, Ollama (RAG)
 - **Website**: Pure HTML/CSS/JS, GitHub Pages compatible
 - **Maintainer**: Mohammad Dindoost (VP Academic Affairs)
 - **Running on**: Always-on local machine; planned migration to NJIT server
+
+### RAG Architecture (as of 2026-05)
+The bot uses a full Retrieval-Augmented Generation pipeline:
+1. `DocumentChunker` splits all KB files into ≤350-token chunks
+2. `EmbeddingService` embeds them with `nomic-embed-text` via Ollama
+3. `VectorStore` persists them in ChromaDB at `./chroma_db`
+4. `Retriever` embeds each query, finds the top-15 by cosine similarity, then reranks to top-5
+5. `OllamaClient` generates an answer grounded in those 5 chunks using `llama3.1:8b`
+6. `ConversationManager` maintains per-user session history (60 min timeout, 5-turn window)
+7. `IntentDetector` routes messages: greetings/thanks/clear/food handled directly; questions go through RAG
+8. `ChatCog` (`on_message`) handles free-form chat in `#ask-gsa` channel and DMs
+
+**Important invariants:**
+- Vector store is PERSISTENT (`./chroma_db/`) — rebuild only needed after KB file edits
+- After editing any `bot/data/` file, run: `python scripts/build_index.py --reset`
+- The bot gracefully degrades: if ChromaDB is empty it logs a warning and continues
+- Conversation sessions are IN-MEMORY only — they reset on bot restart (by design)
+- The embedding model prefix matters: queries use `"search_query: "`, docs use `"search_document: "`
 
 ---
 
@@ -24,9 +42,16 @@ gsa-gateway/
 │   │   ├── resources.py     /resources [category] — lists YAML resources
 │   │   ├── contact.py       /contact [role] — directory lookup from contacts.yml
 │   │   ├── help_cmd.py      /help — ephemeral embed with command reference
+│   │   ├── chat.py          on_message — free-form chat in #ask-gsa and DMs
 │   │   └── admin.py         /admin_summary /admin_export /admin_stats
-│   │                        /admin_announce /admin_add_event  (all ephemeral)
+│   │                        /admin_announce /admin_add_event /admin_rebuild_index (all ephemeral)
 │   ├── services/
+│   │   ├── chunker.py       DocumentChunker — splits KB files into ≤350-token chunks
+│   │   ├── embedder.py      EmbeddingService — nomic-embed-text via Ollama /api/embed
+│   │   ├── vector_store.py  VectorStore — ChromaDB persistent collection
+│   │   ├── retriever.py     Retriever — embed query → vector search → rerank → top-5 chunks
+│   │   ├── conversation.py  ConversationManager — per-user session history (in-memory)
+│   │   ├── intent_detector.py IntentDetector — classify messages before routing
 │   │   ├── database.py      Database class — all SQLite CRUD + hash_user_id()
 │   │   ├── knowledge_base.py KnowledgeBase dataclass — loads MD + YAML files
 │   │   ├── search.py        SearchService — rapidfuzz fuzzy search over KB
@@ -107,8 +132,33 @@ Restart the bot (or call `bot.kb.load()` if you add a hot-reload command later).
 Edit `bot/data/events.yml` — copy an existing block. Then:
 ```bash
 python scripts/export_events_json.py   # updates website
+python scripts/build_index.py --reset  # rebuilds ChromaDB index
 ```
-Restart the bot.
+Restart the bot, OR use `/admin_rebuild_index` in Discord (no restart needed).
+
+### Add a new KB document (policy, guide, etc.)
+1. Place the `.md` file in `bot/data/`
+2. Add it to `DocumentChunker.chunk_all()` in `chunker.py`
+3. Add a friendly name to `SOURCE_FRIENDLY_NAMES` in `retriever.py` and `ollama_client.py`
+4. Run: `python scripts/build_index.py --reset`
+
+### Rebuild the vector index
+```bash
+python scripts/build_index.py          # interactive — prompts before reset
+python scripts/build_index.py --reset  # force rebuild without prompt
+```
+Or use `/admin_rebuild_index` in Discord (admin role required).
+
+### Check RAG status
+```bash
+# In Discord:
+/admin_stats     # shows chunk count, active sessions, RAG status
+```
+
+### Add new intent patterns
+Edit `bot/services/intent_detector.py` — add patterns to the appropriate list
+(FOOD_KEYWORDS, GREETING_PATTERNS, etc.). No restart needed for the ChatCog
+to use them after editing.
 
 ### Add a new resource category
 Edit `bot/data/resources.yml` — add a new top-level key under `resources:`.

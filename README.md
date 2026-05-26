@@ -2,7 +2,7 @@
 
 **Discord bot + static website for NJIT's Graduate Student Association.**
 
-GSA Gateway is an AI-assisted student communication platform that makes GSA information, events, resources, and student ideas accessible to all NJIT graduate students through Discord slash commands and a public website.
+GSA Gateway is a full RAG (Retrieval-Augmented Generation) conversational AI assistant that makes GSA information, events, funding, and resources accessible to all NJIT graduate students through free-form chat in Discord and slash commands.
 
 **Live website:** https://mdindoost.github.io/gsa-gateway/
 **GitHub repo:** https://github.com/mdindoost/gsa-gateway
@@ -16,7 +16,7 @@ GSA Gateway is an AI-assisted student communication platform that makes GSA info
 
 | Command | What it does |
 |---|---|
-| `/ask` | AI-powered Q&A from the GSA knowledge base (llama3 via Ollama). Automatically detects food queries and returns upcoming events with free food. |
+| `/ask` | AI-powered Q&A from the GSA knowledge base (llama3.1:8b via Ollama RAG). Supports follow-up questions with conversation memory. |
 | `/events` | List all upcoming GSA events, sorted by date |
 | `/event [name]` | Full details for a specific event |
 | `/initiative` | Submit a student initiative or idea (anonymous by default) |
@@ -33,7 +33,8 @@ GSA Gateway is an AI-assisted student communication platform that makes GSA info
 | `/admin_announce` | Post an announcement embed to any channel |
 | `/admin_summary` | AI-generated weekly summary of student submissions |
 | `/admin_export` | Download CSV of initiatives, feedback, or questions |
-| `/admin_stats` | Engagement stats and top search topics |
+| `/admin_stats` | Engagement stats, RAG chunk count, active conversation sessions |
+| `/admin_rebuild_index` | Rebuild the ChromaDB vector index after editing KB files |
 
 ---
 
@@ -54,10 +55,18 @@ A **daily digest** posts to `#gsa-announcements` every morning at 9 AM if events
 | Layer | Technology |
 |---|---|
 | Bot | Python 3.11+, discord.py 2.x, SQLite, rapidfuzz |
-| AI | Ollama (llama3, local — no API costs, no data leaves the machine) |
+| RAG | ChromaDB (vector store), nomic-embed-text (embeddings), llama3.1:8b (generation) |
+| AI | Ollama (local — no API costs, no data leaves the machine) |
 | Website | Pure HTML/CSS/JS, GitHub Pages |
-| Tests | pytest, 118 tests, ~0.3s runtime |
+| Tests | pytest, 176+ tests |
 | Process management | systemd |
+
+### Free-form Chat (new in RAG upgrade)
+- In `#ask-gsa`: just type your question — no slash commands needed
+- DM the bot for private questions
+- Follow-up questions work naturally (conversation memory, 60-min sessions)
+- Type "clear" to reset your conversation
+- @mention the bot in any other channel
 
 ---
 
