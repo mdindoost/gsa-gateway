@@ -115,6 +115,13 @@ class MathCafeService:
         )
         embed.set_footer(text=f"{fact.get('footer', 'GSA MathCafe')} · {day_name}")
 
+        if fact.get("has_spoiler") and fact.get("spoiler_text"):
+            embed.add_field(
+                name="💡 Answer (spoiler)",
+                value=f"||{fact['spoiler_text']}||",
+                inline=False,
+            )
+
         if fact.get("discussion"):
             embed.add_field(
                 name="💬 Join the discussion",

@@ -1,6 +1,6 @@
 metadata:
-  total_facts: 1
-  last_updated: '2026-05-26'
+  total_facts: 15
+  last_updated: '2026-05-27'
   current_index: 1
 facts:
 - id: mc_001
@@ -12,7 +12,7 @@ facts:
   needs_image: true
   image_filename: coin.png
   posted: true
-  posted_date: '2026-05-26'
+  posted_date: '2026-05-27'
   discussion: true
   reactions:
   - 1️⃣
@@ -52,3 +52,834 @@ facts:
 
     '
   footer: GSA MathCafe · Powered by GSA Gateway
+- id: mc_002
+  title: "When Were You Born? Your Birthday's Popularity Rank"
+  category: math
+  subcategory: statistics
+  day_preference: thursday
+  style: detailed
+  needs_image: true
+  image_filename: BD.jpeg
+  posted: false
+  posted_date: null
+  discussion: true
+  reactions:
+  - 🔝
+  - 📈
+  - 📊
+  - 📉
+  - 🦄
+  reaction_labels:
+    🔝: Top 50 — very common birthday
+    📈: Rank 51-150
+    📊: Rank 151-250
+    📉: Rank 251-350
+    🦄: Rank 351-366 — rare birthday!
+  body: |
+    Not all birthdays are created equal.
+
+    According to Australian Bureau of Statistics
+    data, birthdays are ranked from 1 (most common)
+    to 366 (least common — yes, including Feb 29).
+
+    Some surprising findings from the data:
+    - September dominates the top spots
+    - February 29 is the rarest (rank 366)
+    - Christmas Day and New Year's Day are
+      among the LEAST common birthdays
+    - Most common birth months: September
+      and October
+
+    🤔 Where does YOUR birthday rank?
+    Check the chart and drop your rank
+    in the reactions below!
+
+    Fun fact: If you were born in September,
+    your parents were likely celebrating the
+    holidays 9 months earlier... 🎄
+  footer: "GSA MathCafe · Source: ABS 2017 · Powered by GSA Gateway"
+- id: mc_003
+  title: "Can You Identify This Function?"
+  category: math
+  subcategory: calculus
+  day_preference: monday
+  style: detailed
+  needs_image: true
+  image_filename: function.jpeg
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: true
+  reactions:
+  - 🤔
+  - ✅
+  - ❓
+  - 🧮
+  - 💡
+  reaction_labels:
+    🤔: Still thinking
+    ✅: I got it!
+    ❓: Never seen this before
+    🧮: Recognized it immediately
+    💡: Learned something new
+  body: |
+    Look at this graph carefully before scrolling.
+
+    What you can observe:
+    - Symmetric about the y-axis
+    - Behaves like a parabola for large |x|
+    - Something very strange happens near x = 0
+    - Oscillations become infinitely rapid
+      as you approach the origin
+
+    🤔 What function produces this graph?
+    Drop your answer in the discussion thread!
+  spoiler_text: |
+    **Answer: f(x) = x² · cos(1/x)**
+
+    The x² term creates the parabolic envelope
+    you see for large values. The cos(1/x) term
+    oscillates infinitely fast as x approaches 0
+    since 1/x → ∞.
+
+    This is a classic calculus example because
+    it is continuous everywhere including at x = 0
+    (where we define f(0) = 0), yet oscillates
+    infinitely many times near the origin.
+
+    It is differentiable at x = 0 with f'(0) = 0,
+    but behaves wildly at points arbitrarily close
+    to 0. A beautiful mathematical monster. 🎭
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_004
+  title: "Why Are You Still Typing on a 150-Year-Old Keyboard Layout?"
+  category: cs
+  subcategory: history
+  day_preference: tuesday
+  style: detailed
+  needs_image: true
+  image_filename: keyboard.jpeg
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: false
+  reactions:
+  - ⌨️
+  - 🔄
+  - 🤔
+  - 🏃
+  - 😤
+  reaction_labels:
+    ⌨️: Never switching, too comfortable
+    🔄: Already use Dvorak or Colemak
+    🤔: Never thought about this before
+    🏃: Would switch for the speed gain
+    😤: Annoyed I never knew this
+  body: |
+    The keyboard you are using right now was
+    designed in 1873 — for a mechanical typewriter.
+
+    QWERTY was created by Christopher Latham Sholes
+    to solve a mechanical problem: commonly paired
+    letters were placed apart so physical metal
+    typebars would not jam together mid-sentence.
+
+    That problem has not existed since the 1980s.
+
+    The heatmap tells the story clearly:
+    - Red = most heavily used keys
+    - QWERTY constantly pulls fingers off home row
+    - Dvorak and Colemak place the 10 most common
+      English letters directly under your fingers
+    - Studies show the average typist travels
+      over 20km per day on QWERTY fingers
+
+    Fun detail: the word "TYPEWRITER" can be typed
+    entirely on the top row of QWERTY — almost
+    certainly not a coincidence for a salesman
+    demonstrating the machine in 1873.
+
+    🤔 Would you switch layouts if it meant
+    relearning to type for 3-4 weeks?
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_005
+  title: "Only Legends Get It"
+  category: math
+  subcategory: patterns
+  day_preference: wednesday
+  style: short
+  needs_image: true
+  image_filename: legends.jpeg
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: true
+  reactions:
+  - 🌀
+  - 🤯
+  - 📚
+  - ❓
+  - 🔢
+  reaction_labels:
+    🌀: Got it immediately
+    🤯: Mind blown
+    📚: Had to look it up
+    ❓: Still confused
+    🔢: Fibonacci fan
+  body: |
+    Each colored rectangle represents a day
+    of the week. The sizes are not random.
+
+    🤔 What mathematical pattern connects
+    the size of each day?
+
+    Drop your answer in the discussion thread!
+  spoiler_text: |
+    **Answer: The Fibonacci Sequence**
+
+    The side lengths follow: 1, 1, 2, 3, 5, 8, 13
+    where each number = sum of the two before it.
+
+    Sunday=1, Saturday=1, Friday=2, Thursday=3,
+    Wednesday=5, Tuesday=8, Monday=13
+
+    Connecting the corners creates the Golden Spiral
+    — found in nautilus shells, sunflower seeds,
+    galaxies, hurricanes, and the Parthenon.
+
+    The ratio of consecutive Fibonacci numbers
+    approaches φ = 1.6180339...
+    the Golden Ratio — arguably the most beautiful
+    number in mathematics.
+
+    A whole week. An infinite mathematical truth. 🌀
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_006
+  title: "The Ball Transfer Problem"
+  category: math
+  subcategory: probability
+  day_preference: monday
+  style: detailed
+  needs_image: true
+  image_filename: balls.jpeg
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: true
+  reactions:
+  - ✅
+  - 🤔
+  - 🔢
+  - 🧮
+  - 🤯
+  reaction_labels:
+    ✅: Got 7/12 correct!
+    🤔: I said 50%
+    🔢: Got a different answer
+    🧮: Solved it differently
+    🤯: Never would have got this
+  body: |
+    Container A: 1,000 green + 3,000 red = 4,000 balls
+    Container B: 3,000 green + 1,000 red = 4,000 balls
+
+    Here is what happens:
+    1. Take exactly HALF the balls from A at random
+    2. Transfer them all to B
+    3. Pick ONE ball from B at random
+
+    🤔 What is the probability the picked
+    ball is green?
+
+    Most people's gut says 50%.
+    Are you most people?
+
+    Drop your answer in the discussion thread!
+  spoiler_text: |
+    **Answer: 7/12 ≈ 58.33%**
+
+    Step 1 — What leaves container A?
+    You take 2,000 balls randomly from A.
+    A has 1/4 green and 3/4 red, so:
+    - 500 green balls transferred
+    - 1,500 red balls transferred
+
+    Step 2 — Container B after transfer:
+    - Green: 3,000 + 500  = 3,500
+    - Red:   1,000 + 1,500 = 2,500
+    - Total: 6,000 balls
+
+    Step 3 — Pick one from B:
+    P(green) = 3,500 / 6,000 = 7/12 ≈ 58.33%
+
+    The trick most people miss: transferring
+    balls changes the TOTAL SIZE of B from
+    4,000 to 6,000. Your intuition forgets
+    to account for that.
+
+    The moral: always track the denominator. 🎯
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_007
+  title: "The Mathematician They Called a Nurse"
+  category: history
+  subcategory: data visualization
+  day_preference: thursday
+  style: detailed
+  needs_image: true
+  image_filename: Nightingale.jpeg
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: false
+  reactions:
+  - 🌹
+  - 🤯
+  - 👩‍🔬
+  - 📊
+  - 💡
+  reaction_labels:
+    🌹: Already knew this
+    🤯: Completely surprised
+    👩‍🔬: More women in STEM history please
+    📊: Now I want to make a Rose Diagram
+    💡: This changed how I think about data
+  body: |
+    You know Florence Nightingale as the
+    founder of modern nursing. That is true
+    but deeply incomplete.
+
+    She was primarily a brilliant mathematician
+    and statistician who used data to save lives
+    at a time when almost no one trusted data.
+
+    During the Crimean War (1854-1856), she
+    collected meticulous records on soldier
+    deaths and discovered something shocking:
+    - Deaths from battle wounds: relatively few
+    - Deaths from preventable infections and
+      poor sanitation: the vast majority
+
+    But no one believed her words. So she
+    invented an entirely new type of chart —
+    the Polar Area Diagram, now called the
+    Nightingale Rose Diagram — to make the
+    data impossible to ignore.
+
+    She presented it to British Parliament
+    and Queen Victoria. The visualization was
+    so compelling it directly led to sanitation
+    reforms that saved hundreds of thousands
+    of lives.
+
+    She was one of the first people in history
+    to use data visualization as a tool of
+    persuasion and policy change.
+
+    Today every research paper, every dashboard,
+    every data presentation owes something to
+    Florence Nightingale.
+
+    💡 Next time someone says your research
+    does not matter — remember her. 🌹
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_008
+  title: "The Unreachable Number"
+  category: math
+  subcategory: combinatorics
+  day_preference: monday
+  style: detailed
+  needs_image: false
+  image_filename: null
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: true
+  reactions:
+  - 🎯
+  - ❌
+  - 🤔
+  - 🧮
+  - 💥
+  reaction_labels:
+    🎯: Got 31 correct!
+    ❌: My answer was wrong
+    🤔: Still working on it
+    🧮: Found a different approach
+    💥: This broke my brain
+  body: |
+    Using only the numbers 1, 2, 3 and the
+    operators + − × ÷ ^ what is the smallest
+    positive integer you CANNOT form?
+
+    Rules:
+    - Maximum 3 numbers total
+    - Maximum 2 operators
+    - Parentheses allowed
+    - No concatenation (1 and 2 cannot make 12)
+    - Numbers can repeat (2,2,3 is valid)
+
+    Examples of what IS possible:
+    ✅ 7  = 2³ − 1
+    ✅ 13 = 3² + 2²
+    ✅ 17 = 3² + 2³
+    ✅ 22 = 3³ − 3 − 2
+    ✅ 29 = 3³ + 2
+
+    🤔 What is the first number you CANNOT reach?
+
+    Post your answer in the thread and
+    show your working for bonus respect! 👇
+  spoiler_text: |
+    **Answer: 31**
+
+    Key building blocks available:
+    3³ = 27, 2³ = 8, 3² = 9
+    2^(3+2) = 32 ← overshoots by 1
+
+    To make 31 you need 32 − 1 but
+    2^(3+2) already uses all 3 numbers (2,3,2)
+    leaving nothing for the −1.
+
+    You also need 27 + 4 but the largest
+    single number available is 3, giving
+    only 27+3 = 30.
+
+    No combination of three numbers from
+    {1,2,3} with two operators reaches 31.
+
+    31 stands alone. Unreachable. 🎯
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_009
+  title: "One Operator to Rule Them All"
+  category: math
+  subcategory: research
+  day_preference: tuesday
+  style: detailed
+  needs_image: true
+  image_filename: element.jpeg
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: false
+  reactions:
+  - 🤯
+  - 🔢
+  - 🧪
+  - 📄
+  - 💡
+  reaction_labels:
+    🤯: Cannot believe this is true
+    🔢: Already reading the paper
+    🧪: Want to verify it myself
+    📄: Share the paper link please
+    💡: The NAND analogy clicked for me
+  body: |
+    From a recent paper that made mathematicians
+    do a double take:
+
+    Every elementary function you have ever used
+    — sin, cos, tan, exp, log, powers, roots,
+    hyperbolic functions, and even the constants
+    π and e — can ALL be generated from just
+    ONE binary operator and the number 1.
+
+    That operator is:
+    eml(x, y) = exp(x) − ln(y)
+
+    Think about what this means:
+    - sin(x)? Derivable from eml alone.
+    - π? Derivable from eml alone.
+    - x²? Derivable from eml alone.
+    - The entire landscape of elementary
+      mathematics — one operator.
+
+    The CS analogy: NAND gates.
+    A single logic gate from which every
+    circuit, every processor, every computation
+    can be built. Mathematics just found its
+    NAND gate for elementary functions.
+
+    Important note: this does not mean
+    calculations become simpler. Composing
+    eml many times to recover sin(x) is
+    computationally expensive. But the
+    theoretical result is profound — the
+    entire zoo of elementary functions
+    is one family with one common ancestor.
+
+    🤔 What does this make you think about
+    the deeper structure of mathematics?
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_010
+  title: "The Cookie Jar Problem"
+  category: math
+  subcategory: probability
+  day_preference: monday
+  style: detailed
+  needs_image: true
+  image_filename: cookies.jpeg
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: true
+  reactions:
+  - 🍪
+  - 🤯
+  - ✅
+  - 🧮
+  - ❓
+  reaction_labels:
+    🍪: Got the right answer!
+    🤯: Harmonic series — did not see that coming
+    ✅: Different method, same answer
+    🧮: Still working through the math
+    ❓: What is a harmonic number?
+  body: |
+    A jar has 15 cookies. Each day you pick
+    one cookie at random:
+
+    If it is a WHOLE cookie:
+      eat half, put the other half back
+
+    If it is a HALF cookie:
+      eat it entirely
+
+    🤔 What is the EXPECTED number of half
+    cookies in the jar at the moment you
+    pick the very last whole cookie?
+
+    Think carefully — this is trickier
+    than it looks.
+
+    Drop your answer in the discussion thread!
+  spoiler_text: |
+    **Answer: H(15) − 1 ≈ 2.38 half cookies**
+
+    H(15) is the 15th Harmonic Number:
+    H(15) = 1 + 1/2 + 1/3 + ... + 1/15 ≈ 3.38
+
+    Solution uses linearity of expectation.
+
+    For each of the first 14 whole cookies eaten,
+    the half cookie it creates has probability
+    1/(16−k) of surviving until the last whole
+    is picked, where k is the order it was eaten.
+
+    This is because among that half cookie and
+    the (15−k) remaining whole cookies, the
+    probability the half comes last is 1/(16−k).
+
+    Summing over k = 1 to 14:
+    E[H] = 1/15 + 1/14 + ... + 1/2
+         = H(15) − 1 ≈ 2.38
+
+    The harmonic series appears naturally here —
+    the same series that governs coupon collecting,
+    binary search, and quicksort analysis.
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_011
+  title: "Why Does Math Describe Reality?"
+  category: science
+  subcategory: philosophy of math
+  day_preference: wednesday
+  style: detailed
+  needs_image: false
+  image_filename: null
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: false
+  reactions:
+  - 🌌
+  - 🤯
+  - 🧠
+  - 📐
+  - ❓
+  reaction_labels:
+    🌌: Math and reality are the same thing
+    🤯: Never thought about this before
+    🧠: Wigner was right to be puzzled
+    📐: Math is discovered not invented
+    ❓: I have a theory about this
+  body: |
+    In 1960, physicist Eugene Wigner wrote a
+    famous paper titled:
+    "The Unreasonable Effectiveness of Mathematics
+    in the Natural Sciences"
+
+    His puzzle: why does mathematics — invented
+    purely inside the human mind — describe
+    physical reality so precisely?
+
+    Consider these examples:
+    - Maxwell's equations predicted radio waves
+      before anyone knew they existed
+    - Complex numbers invented for pure algebra
+      turned out to perfectly describe quantum
+      mechanics
+    - Riemann invented non-Euclidean geometry
+      as abstract play — Einstein used it 60
+      years later to describe spacetime
+
+    Nobody asked mathematicians to make these
+    things useful. They just were.
+
+    Is mathematics invented or discovered?
+    Is the universe fundamentally mathematical?
+    Or is this just a spectacular coincidence?
+
+    Wigner never answered his own question.
+    Neither has anyone else — yet.
+
+    🤔 What do you think?
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_012
+  title: "The Exam That Cannot Exist (But Does)"
+  category: math
+  subcategory: logic
+  day_preference: wednesday
+  style: detailed
+  needs_image: false
+  image_filename: null
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: false
+  reactions:
+  - 😤
+  - 🤔
+  - 🧠
+  - 📚
+  - 💥
+  reaction_labels:
+    😤: I would still be surprised
+    🤔: The logic seems valid though
+    🧠: I know how to resolve this
+    📚: There is a name for this paradox
+    💥: My brain just broke
+  body: |
+    A professor announces:
+
+    "There will be a surprise exam next week.
+    It will be on a day you cannot predict
+    the night before."
+
+    A clever student reasons:
+
+    It cannot be Friday — by Thursday night
+    we would know it must be Friday, so it
+    would not be a surprise.
+
+    Therefore Friday is eliminated.
+    But now it cannot be Thursday either —
+    by Wednesday night we would know it must
+    be Thursday.
+
+    Eliminate Thursday. Now Wednesday falls
+    by the same logic. Then Tuesday. Then Monday.
+
+    Conclusion: the exam cannot happen
+    at all — it is logically impossible.
+
+    The professor gives the exam on Tuesday.
+    Everyone is completely surprised.
+
+    This is the Unexpected Hanging Paradox,
+    first published in 1948. Despite decades
+    of debate by logicians and philosophers,
+    there is still no universally agreed
+    resolution.
+
+    🤔 Where does the student's logic break down?
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_013
+  title: "Einstein Is Saving Your Navigation Right Now"
+  category: science
+  subcategory: physics / engineering
+  day_preference: wednesday
+  style: detailed
+  needs_image: false
+  image_filename: null
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: false
+  reactions:
+  - 🛸
+  - 🤯
+  - 📡
+  - 🧭
+  - ✅
+  reaction_labels:
+    🛸: Relativity is everywhere
+    🤯: Had no idea GPS used Einstein
+    📡: I work with GPS systems
+    🧭: Already knew this
+    ✅: Now checking my GPS app differently
+  body: |
+    Every time you use GPS navigation,
+    Einstein's equations run in the background.
+
+    Here is why:
+
+    GPS satellites carry incredibly precise
+    atomic clocks. But relativity predicts
+    two opposing effects on those clocks:
+
+    Special Relativity effect:
+    Satellites move at ~14,000 km/h relative
+    to Earth. Moving clocks run SLOW.
+    Effect: −7 microseconds per day.
+
+    General Relativity effect:
+    Satellites sit 20,000 km up where gravity
+    is weaker. Weaker gravity means clocks
+    run FAST.
+    Effect: +45 microseconds per day.
+
+    Net effect: satellite clocks gain
+    +38 microseconds every single day.
+
+    38 microseconds sounds tiny.
+    But GPS uses the speed of light to
+    calculate position.
+    Light travels ~11km in 38 microseconds.
+
+    Without relativistic correction:
+    Your GPS would be wrong by 11km —
+    and getting worse every day.
+
+    Every Uber, every Google Maps route,
+    every aircraft landing — Einstein's
+    1905 and 1915 papers are doing the math.
+
+    Pure theory. Completely practical. 🛸
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_014
+  title: "The Most Expensive Hyphen in History"
+  category: cs
+  subcategory: history / software engineering
+  day_preference: friday
+  style: detailed
+  needs_image: false
+  image_filename: null
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: false
+  reactions:
+  - 😱
+  - 💻
+  - 📝
+  - 🚀
+  - 😬
+  reaction_labels:
+    😱: A hyphen caused this??
+    💻: This is why we do code review
+    📝: Documentation saves lives
+    🚀: Space software is terrifying
+    😬: I have never felt better about my bugs
+  body: |
+    In 1962, NASA lost the Mariner 1 spacecraft
+    293 seconds after launch.
+
+    The cause: a missing hyphen in the
+    flight software code.
+
+    The cost: $18.5 million.
+    ($170 million in today's dollars)
+
+    What happened:
+    A handwritten formula specifying the
+    guidance system was transcribed into code.
+    One hyphen — indicating that a derivative
+    should be used instead of raw radar data —
+    was omitted during transcription.
+
+    The result: the rocket began making wild
+    course corrections based on noisy raw data
+    instead of smoothed data. Mission Control
+    had no choice but to destroy it.
+
+    Arthur C. Clarke, author of 2001: A Space
+    Odyssey, called it:
+    "The most expensive hyphen in history."
+
+    The software was correct on paper.
+    The review process missed the transcription.
+    The rocket never reached Venus.
+
+    Lessons that still apply today:
+    - Code review exists for a reason
+    - Transcription errors are real errors
+    - The difference between − and nothing
+      is sometimes $170 million
+
+    Next time someone rushes your code review —
+    tell them about Mariner 1. 🚀
+  footer: "GSA MathCafe · Powered by GSA Gateway"
+- id: mc_015
+  title: "The PhD That Built the Internet"
+  category: cs
+  subcategory: history / inspiration
+  day_preference: friday
+  style: detailed
+  needs_image: false
+  image_filename: null
+  posted: false
+  posted_date: null
+  discussion: true
+  has_spoiler: false
+  reactions:
+  - 🎓
+  - 💡
+  - 🚀
+  - 🤯
+  - 💻
+  reaction_labels:
+    🎓: My dissertation might matter too
+    💡: Ideas rejected everywhere succeed elsewhere
+    🚀: Motivation unlocked
+    🤯: They tried to sell it for $750k??
+    💻: PageRank is genuinely elegant math
+  body: |
+    In 1998, two Stanford PhD students could
+    not get anyone to buy their side project.
+
+    They approached Excite — the leading
+    search engine at the time — and offered
+    to sell for $1 million.
+    Turned down.
+
+    They offered again for $750,000.
+    Turned down again.
+
+    So Larry Page and Sergey Brin kept
+    working on their PhD research project,
+    which they had originally named BackRub.
+
+    They renamed it Google.
+    Incorporated in a garage on September 4, 1998.
+
+    The core technology — PageRank — was
+    literally Larry Page's PhD thesis.
+    It modeled the web as a graph and ranked
+    pages by the probability a random surfer
+    would arrive there. Pure graph theory.
+    Pure linear algebra.
+
+    The academic insight was simple:
+    a page is important if important pages
+    link to it. Recursive, elegant, and
+    worth approximately $2 trillion today.
+
+    What Excite rejected:
+    - A PhD thesis
+    - Two grad students
+    - $750,000
+
+    What they passed on:
+    - The most used website in human history
+
+    Your dissertation might matter more
+    than you think. 🎓
+  footer: "GSA MathCafe · Powered by GSA Gateway"
