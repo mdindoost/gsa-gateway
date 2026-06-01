@@ -6,7 +6,7 @@ GSA Gateway is a full RAG (Retrieval-Augmented Generation) conversational AI ass
 
 **Live website:** https://mdindoost.github.io/gsa-gateway/
 **GitHub repo:** https://github.com/mdindoost/gsa-gateway
-**Discord:** https://discord.gg/Ya4XvTE6A
+**Discord:** https://discord.gg/a4mvbEmSAq
 
 > For how to run, maintain, and extend this project — see **[MANUAL.md](MANUAL.md)**.
 
@@ -79,7 +79,11 @@ gsa-gateway/
 │   ├── services/        Database, search, KB, Ollama, scheduler, channels, announcements, food_detector
 │   └── data/            Edit these YAML/Markdown files to update content
 ├── website/             Static site — deploy with one command
-├── scripts/             Maintenance scripts and systemd service file
+├── scripts/
+│   ├── health_check.sh  Check all services + auto-restart on issues (--fix flag)
+│   ├── build_index.py   Rebuild ChromaDB vector index after KB edits
+│   ├── export_events_json.py  Sync events.yml → website/data/events.json
+│   └── gsa-gateway.service   systemd unit file
 └── docs/                Architecture, deployment, admin guide, privacy policy
 ```
 

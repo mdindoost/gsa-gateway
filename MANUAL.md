@@ -8,6 +8,12 @@ Written for Mohammad Dindoost (VP Academic Affairs) and anyone who takes over th
 ## Quick Reference
 
 ```bash
+# Health check (no changes)
+bash scripts/health_check.sh
+
+# Health check + auto-restart anything broken
+bash scripts/health_check.sh --fix
+
 # Stop everything
 sudo systemctl stop gsa-gateway
 sudo systemctl stop ollama
@@ -103,6 +109,32 @@ python -m bot.main
 ```
 
 Press `Ctrl+C` to stop.
+
+---
+
+## Health Check
+
+The `scripts/health_check.sh` script checks all services and auto-fixes common issues:
+
+```bash
+bash scripts/health_check.sh          # check only — report issues
+bash scripts/health_check.sh --fix    # check + auto-restart on issues
+```
+
+**What it checks:**
+- `ollama.service` is running and API is responding
+- LLM model (`llama3.1:8b`) is available in Ollama
+- `gsa-gateway.service` is running
+- No ChromaDB `NotFoundError` since last startup (stale collection — happens if index is rebuilt while bot is running)
+- Discord gateway connected
+- Bot memory usage (warns if over 500 MB)
+
+**Tip:** Add to cron to auto-fix every 15 minutes:
+```bash
+crontab -e
+# Add:
+*/15 * * * * bash /home/md724/gsa-gateway/scripts/health_check.sh --fix >> /home/md724/gsa-gateway/health.log 2>&1
+```
 
 ---
 
