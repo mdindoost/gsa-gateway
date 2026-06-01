@@ -38,6 +38,7 @@ EXTENSIONS = [
     "bot.commands.contact",
     "bot.commands.help_cmd",
     "bot.commands.admin",
+    "bot.commands.qrcode_cmd",
     "bot.services.scheduler",
 ]
 
