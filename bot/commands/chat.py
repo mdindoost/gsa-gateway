@@ -15,6 +15,7 @@ from bot.services.intent_detector import (
     INTENT_GREETING,
     INTENT_HELP,
     INTENT_QUESTION,
+    INTENT_SOCIAL,
     INTENT_STATEMENT,
     INTENT_THANKS,
 )
@@ -202,6 +203,12 @@ class ChatCog(commands.Cog, name="Chat"):
                         db=self.db,
                         days_ahead=7,
                     )
+                elif intent == INTENT_SOCIAL:
+                    if self.retriever:
+                        chunks = await self.retriever.retrieve(
+                            query="social events activities networking happy hour graduate students",
+                            source_type_filter="event",
+                        )
                 elif self.retriever:
                     chunks = await self.retriever.retrieve(
                         query=clean_text,

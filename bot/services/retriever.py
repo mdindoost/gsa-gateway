@@ -106,8 +106,11 @@ class Retriever:
             base_score = chunk["similarity"]
             text_lower = chunk["text"].lower()
 
-            # Keyword match bonus
-            keyword_hits = sum(1 for kw in query_words if kw in text_lower)
+            # Keyword match bonus — word boundary to avoid "fun" matching "funding"
+            keyword_hits = sum(
+                1 for kw in query_words
+                if re.search(rf'\b{re.escape(kw)}\b', text_lower)
+            )
             keyword_bonus = min(keyword_hits * 0.05, 0.25)
 
             # Source type bonus

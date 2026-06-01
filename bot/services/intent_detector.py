@@ -4,6 +4,7 @@ import re
 from typing import Optional
 
 INTENT_FOOD = "food"
+INTENT_SOCIAL = "social"
 INTENT_GREETING = "greeting"
 INTENT_CLEAR_HISTORY = "clear_history"
 INTENT_QUESTION = "question"
@@ -58,6 +59,12 @@ FOOD_KEYWORDS = [
     "meal", "free lunch", "free snacks",
 ]
 
+SOCIAL_KEYWORDS = [
+    "fun", "social", "hangout", "hang out", "chill",
+    "party", "meet people", "socialize", "activities",
+    "networking", "mixer", "happy hour",
+]
+
 _QUESTION_STARTERS = {
     "what", "how", "when", "where", "who", "why",
     "can", "is", "are", "do", "does", "will",
@@ -79,24 +86,31 @@ class IntentDetector:
             if kw in msg:
                 return INTENT_FOOD, 1.0
 
-        # 3. Greeting (short messages only)
+        # 3. Social / fun activities (short messages only, word boundary to avoid
+        #    "fun" matching inside "funding", "function", etc.)
+        if len(msg) < 40:
+            for kw in SOCIAL_KEYWORDS:
+                if re.search(rf'\b{re.escape(kw)}\b', msg):
+                    return INTENT_SOCIAL, 1.0
+
+        # 4. Greeting (short messages only)
         if len(msg) < 30:
             for pattern in GREETING_PATTERNS:
                 if re.search(pattern, msg):
                     return INTENT_GREETING, 1.0
 
-        # 4. Thanks (short messages only)
+        # 5. Thanks (short messages only)
         if len(msg) < 50:
             for pattern in THANKS_PATTERNS:
                 if re.search(pattern, msg):
                     return INTENT_THANKS, 1.0
 
-        # 5. Help
+        # 6. Help
         for pattern in HELP_PATTERNS:
             if re.search(pattern, msg):
                 return INTENT_HELP, 1.0
 
-        # 6. Question
+        # 7. Question
         if msg.endswith("?"):
             return INTENT_QUESTION, 0.9
         first_word = msg.split()[0] if msg.split() else ""
@@ -106,7 +120,7 @@ class IntentDetector:
         if first_three & _QUESTION_STARTERS:
             return INTENT_QUESTION, 0.9
 
-        # 7. Statement (still processed as question by RAG)
+        # 8. Statement (still processed as question by RAG)
         return INTENT_STATEMENT, 0.5
 
     def should_respond(
