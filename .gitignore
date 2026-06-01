@@ -17,6 +17,9 @@ env/
 *.db-shm
 *.db-wal
 
+# ChromaDB vector store (generated, rebuilt via build_index.py)
+chroma_db/
+
 # Logs
 *.log
 logs/
