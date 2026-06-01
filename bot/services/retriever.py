@@ -20,6 +20,7 @@ SOURCE_FRIENDLY_NAMES = {
     "travel_award.md": "Travel Award Guide",
     "club_finance.md": "Club Financial Bylaws",
     "rules.md": "GSA Community Rules",
+    "mmi_workshop.md": "MMI Workshop Series",
     "events.yml": "GSA Events",
     "contacts.yml": "GSA Contacts",
     "resources.yml": "GSA Resources",

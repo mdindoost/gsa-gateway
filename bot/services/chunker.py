@@ -125,9 +125,10 @@ class DocumentChunker:
                 question = question.strip()
                 answer = answer.strip()
                 text = f"Question: {question}\nAnswer: {answer}"
+                file_prefix = filepath.stem
                 if self.count_tokens(text) <= MAX_TOKENS:
                     chunks.append(DocumentChunk(
-                        chunk_id=f"faq_{section_idx}_{qa_idx}_0",
+                        chunk_id=f"{file_prefix}_faq_{section_idx}_{qa_idx}_0",
                         text=text,
                         source_file=filepath.name,
                         source_type="faq",
@@ -145,7 +146,7 @@ class DocumentChunker:
                         )
                         chunk_text = prefix + part
                         chunks.append(DocumentChunk(
-                            chunk_id=f"faq_{section_idx}_{qa_idx}_{chunk_idx}",
+                            chunk_id=f"{file_prefix}_faq_{section_idx}_{qa_idx}_{chunk_idx}",
                             text=chunk_text,
                             source_file=filepath.name,
                             source_type="faq",
@@ -356,6 +357,7 @@ class DocumentChunker:
             ("travel_award.md",     self.chunk_markdown_policy),
             ("club_finance.md",     self.chunk_markdown_policy),
             ("rules.md",            self.chunk_markdown_policy),
+            ("mmi_workshop.md",     self.chunk_markdown_faq),
             ("events.yml",          self.chunk_yaml_events),
             ("contacts.yml",        self.chunk_yaml_contacts),
             ("resources.yml",       self.chunk_yaml_resources),
