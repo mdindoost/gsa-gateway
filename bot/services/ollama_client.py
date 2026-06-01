@@ -79,6 +79,20 @@ _EXPAND_EXAMPLES = (
     "Input: contact → How can I contact a GSA officer at NJIT?\n"
     "Input: fun → What social events does GSA organize for graduate students?\n"
     "Input: 3MRP → What is the Three Minute Research Presentation competition?\n"
+    "Input: workshop → What is the MMI Workshop Series at NJIT?\n"
+    "Input: Fernando → Who is Fernando Vera Buschmann and what is his role at GSA NJIT?\n"
+    "Input: Mohammad → Who is Mohammad Dindoost and what is his role at GSA NJIT?\n"
+    "Input: Mohith → Who is Mohith Oduru and what is his role at GSA NJIT?\n"
+    "Input: mohith gsa → Who is Mohith Oduru and what is his role at GSA NJIT?\n"
+    "Input: Durvish → Who is Durvish Paliwal and what is his role at GSA NJIT?\n"
+    "Input: Nistha → Who is Nistha Chauhan and what is her role at GSA NJIT?\n"
+    "Input: Ritwik → Who is Ritwik Reddy Kolan and what is his role at GSA NJIT?\n"
+    "Input: president → Who is the GSA president at NJIT?\n"
+    "Input: vp finances → Who is the GSA VP of Finances at NJIT?\n"
+    "Input: vp programming → Who is the GSA VP of Programming at NJIT?\n"
+    "Input: vp communications → Who is the GSA VP of Communications at NJIT?\n"
+    "Input: vp public relations → Who is the GSA VP of Public Relations at NJIT?\n"
+    "Input: officers → Who are the GSA officers at NJIT?\n"
 )
 
 _SUMMARY_SYSTEM = (

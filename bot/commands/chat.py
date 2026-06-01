@@ -195,10 +195,32 @@ class ChatCog(commands.Cog, name="Chat"):
                     )
 
                 # STEP 2: Expand short/vague queries before retrieval
+                _OFFICER_FIRST_NAMES = {
+                    "fernando", "mohammad", "mohith",
+                    "durvish", "nistha", "ritwik",
+                }
+                _words = clean_text.split()
+                _core = clean_text.strip("?!.,").strip().lower()
+
+                # Detect officer name queries — force contacts retrieval
+                _is_officer_query = any(
+                    name in _core.split() or _core == name
+                    for name in _OFFICER_FIRST_NAMES
+                )
+
                 search_query = clean_text
-                if (
+                _contact_filter = None
+
+                if _is_officer_query:
+                    search_query = (
+                        f"Who is {_core.split()[0].title()} at GSA NJIT? "
+                        f"Contact information and role for {_core.split()[0].title()}"
+                    )
+                    _contact_filter = "contact"
+                    logger.info("Officer query detected: '%s' → contacts filter", clean_text)
+                elif (
                     self.ollama
-                    and len(clean_text.split()) <= 3
+                    and len(_words) <= 3
                     and intent not in (INTENT_FOOD, INTENT_SOCIAL)
                 ):
                     expanded = await self.ollama.expand_query(clean_text)
@@ -227,6 +249,7 @@ class ChatCog(commands.Cog, name="Chat"):
                     chunks = await self.retriever.retrieve(
                         query=search_query,
                         conversation_history=history,
+                        source_type_filter=_contact_filter,
                     )
 
                 # STEP 4: Generate answer
