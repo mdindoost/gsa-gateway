@@ -194,7 +194,21 @@ class ChatCog(commands.Cog, name="Chat"):
                         user_id, max_turns=max_turns
                     )
 
-                # STEP 2: Retrieve relevant chunks
+                # STEP 2: Expand short/vague queries before retrieval
+                search_query = clean_text
+                if (
+                    self.ollama
+                    and len(clean_text.split()) <= 3
+                    and intent not in (INTENT_FOOD, INTENT_SOCIAL)
+                ):
+                    expanded = await self.ollama.expand_query(clean_text)
+                    if expanded and expanded.lower() != clean_text.lower():
+                        logger.info(
+                            "Query expanded: '%s' → '%s'", clean_text, expanded
+                        )
+                        search_query = expanded
+
+                # STEP 3: Retrieve relevant chunks
                 if intent == INTENT_FOOD:
                     if self.retriever:
                         chunks = await self.retriever.retrieve_for_food_query()
@@ -211,11 +225,11 @@ class ChatCog(commands.Cog, name="Chat"):
                         )
                 elif self.retriever:
                     chunks = await self.retriever.retrieve(
-                        query=clean_text,
+                        query=search_query,
                         conversation_history=history,
                     )
 
-                # STEP 3: Generate answer
+                # STEP 4: Generate answer
                 if intent == INTENT_FOOD and food_events:
                     food_embed = format_food_response(food_events)
                     await message.reply(embed=food_embed, mention_author=False)
@@ -290,7 +304,7 @@ class ChatCog(commands.Cog, name="Chat"):
                     source_note = None
                     used_ollama = False
 
-                # STEP 4: Build Discord embed response
+                # STEP 5: Build Discord embed response
                 embed = discord.Embed(color=NJIT_RED)
                 if len(response_text) <= 4096:
                     embed.description = response_text
@@ -306,7 +320,7 @@ class ChatCog(commands.Cog, name="Chat"):
 
                 await message.reply(embed=embed, mention_author=False)
 
-                # STEP 5: Update conversation memory
+                # STEP 6: Update conversation memory
                 if self.conversation_manager:
                     self.conversation_manager.add_turn(
                         user_id=user_id,
@@ -321,7 +335,7 @@ class ChatCog(commands.Cog, name="Chat"):
                         source_files=[c.source_file for c in chunks],
                     )
 
-                # STEP 6: Log interaction
+                # STEP 7: Log interaction
                 if self.db:
                     self.db.log_question(
                         user_id=int(user_id),

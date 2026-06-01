@@ -63,6 +63,24 @@ BASE_SYSTEM_PROMPT = (
     "'events', 'help'), ask them to clarify what they are looking for rather than guessing."
 )
 
+_EXPAND_SYSTEM = (
+    "You are a query rewriter for a university chatbot. "
+    "Rewrite the student's short message as a clear, specific question about "
+    "NJIT GSA (Graduate Student Association) services, events, funding, or workshops. "
+    "Output ONLY the rewritten question — no explanation, no preamble, no punctuation at the end."
+)
+
+_EXPAND_EXAMPLES = (
+    "Examples:\n"
+    "Input: MMI → What is the MMI Workshop Series at NJIT?\n"
+    "Input: funding → What funding opportunities are available for NJIT graduate students through GSA?\n"
+    "Input: travel → How can I apply for a GSA travel award?\n"
+    "Input: events → What GSA events are coming up at NJIT?\n"
+    "Input: contact → How can I contact a GSA officer at NJIT?\n"
+    "Input: fun → What social events does GSA organize for graduate students?\n"
+    "Input: 3MRP → What is the Three Minute Research Presentation competition?\n"
+)
+
 _SUMMARY_SYSTEM = (
     "You are helping GSA officers prepare a weekly student-engagement report. "
     "You will receive initiative submissions and feedback from the past week. "
@@ -188,6 +206,37 @@ class OllamaClient:
         except Exception as exc:
             logger.error("Ollama unexpected error: %s", exc, exc_info=True)
             return None
+
+    async def expand_query(self, query: str) -> str:
+        """Rewrite a short/vague query into a full question for better retrieval.
+        Always returns a string — falls back to the original query on any failure.
+        """
+        prompt = f"{_EXPAND_EXAMPLES}\nInput: {query} →"
+        payload = {
+            "model": self.model,
+            "system": _EXPAND_SYSTEM,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.1,
+                "num_predict": 60,
+                "stop": ["\n", "Input:"],
+            },
+        }
+        try:
+            session = await self._get_session()
+            async with session.post(
+                self.generate_url,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    return query
+                data = await resp.json()
+                expanded = data.get("response", "").strip().strip("\"'")
+                return expanded if expanded else query
+        except Exception:
+            return query
 
     async def generate(self, prompt: str, system: str) -> Optional[str]:
         """General-purpose generate call (used by SummaryService)."""
