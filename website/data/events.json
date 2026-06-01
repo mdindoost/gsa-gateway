@@ -1,18 +1,6 @@
 {
-  "last_updated": "2026-05-19T22:36:44.007922+00:00",
+  "last_updated": "2026-06-01T14:04:22.547177+00:00",
   "events": [
-    {
-      "name": "2nd NJIT Workshop on Multimedia Intelligence (MMI 2026)",
-      "date": "2026-05-21",
-      "time": "TBD",
-      "location": "NJIT Campus, Newark NJ",
-      "description": "The 2nd NJIT Workshop on Multimedia Intelligence brings together researchers and practitioners in multimedia, AI, and related fields. Open to all NJIT graduate students and researchers. Registration details at gsanjit.com/mmi2026.",
-      "organizer": "GSA NJIT",
-      "rsvp_link": "https://www.gsanjit.com/mmi2026",
-      "category": "academic",
-      "source": "yaml",
-      "status": "upcoming"
-    },
     {
       "name": "GSA Friday Happy Hour",
       "date": "2026-06-06",
@@ -23,7 +11,7 @@
       "rsvp_link": "https://www.instagram.com/njit.gsa/",
       "category": "social",
       "source": "yaml",
-      "status": "future"
+      "status": "upcoming"
     },
     {
       "name": "GSA AI Webinar Series",
@@ -50,16 +38,16 @@
       "status": "future"
     },
     {
-      "name": "Mohith BirthDay",
-      "date": "2026-11-22",
-      "time": "4:00 PM",
-      "location": "TBD",
-      "description": "Test event.",
-      "organizer": "GSA",
-      "rsvp_link": "",
-      "category": "food",
+      "name": "2nd NJIT Workshop on Multimedia Intelligence (MMI 2026)",
+      "date": "2026-05-21",
+      "time": "TBD",
+      "location": "NJIT Campus, Newark NJ",
+      "description": "The 2nd NJIT Workshop on Multimedia Intelligence brings together researchers and practitioners in multimedia, AI, and related fields. Open to all NJIT graduate students and researchers. Registration details at gsanjit.com/mmi2026.",
+      "organizer": "GSA NJIT",
+      "rsvp_link": "https://www.gsanjit.com/mmi2026",
+      "category": "academic",
       "source": "yaml",
-      "status": "future"
+      "status": "past"
     },
     {
       "name": "Three Minute Research Presentations (3MRP 2026)",

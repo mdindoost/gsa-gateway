@@ -1,7 +1,57 @@
 {
-  "last_updated": "2026-05-27",
-  "total_facts": 1,
+  "last_updated": "2026-06-01",
+  "total_facts": 15,
   "recent_facts": [
+    {
+      "id": "mc_006",
+      "title": "The Ball Transfer Problem",
+      "category": "math",
+      "body": "Container A: 1,000 green + 3,000 red = 4,000 balls\nContainer B: 3,000 green + 1,000 red = 4,000 balls\n\nHere is what happens:\n1. Take exactly HALF the balls from A at random\n2. Transfer them all to B\n3. Pick ONE ball from B at random\n\n🤔 What is the probability the picked\nball is green?\n\nMost people's gut says 50%.\nAre you most people?\n\nDrop your answer in the discussion thread!\n",
+      "posted_date": "2026-06-01",
+      "discussion": true,
+      "needs_image": true,
+      "image_filename": "balls.jpeg"
+    },
+    {
+      "id": "mc_005",
+      "title": "Only Legends Get It",
+      "category": "math",
+      "body": "Each colored rectangle represents a day\nof the week. The sizes are not random.\n\n🤔 What mathematical pattern connects\nthe size of each day?\n\nDrop your answer in the discussion thread!\n",
+      "posted_date": "2026-05-31",
+      "discussion": true,
+      "needs_image": true,
+      "image_filename": "legends.jpeg"
+    },
+    {
+      "id": "mc_004",
+      "title": "Why Are You Still Typing on a 150-Year-Old Keyboard Layout?",
+      "category": "cs",
+      "body": "The keyboard you are using right now was\ndesigned in 1873 — for a mechanical typewriter.\n\nQWERTY was created by Christopher Latham Sholes\nto solve a mechanical problem: commonly paired\nletters were placed apart so physical metal\ntypebars would not jam together mid-sentence.\n\nThat problem has not existed since the 1980s.\n\nThe heatmap tells the story clearly:\n- Red = most heavily used keys\n- QWERTY constantly pulls fingers off home row\n- Dvorak and Colemak place the 10 most common\n  English letters directly under your fingers\n- Studies show the average typist travels\n  over 20km per day on QWERTY fingers\n\nFun detail: the word \"TYPEWRITER\" can be typed\nentirely on the top row of QWERTY — almost\ncertainly not a coincidence for a salesman\ndemonstrating the machine in 1873.\n\n🤔 Would you switch layouts if it meant\nrelearning to type for 3-4 weeks?\n",
+      "posted_date": "2026-05-30",
+      "discussion": true,
+      "needs_image": true,
+      "image_filename": "keyboard.jpeg"
+    },
+    {
+      "id": "mc_003",
+      "title": "Can You Identify This Function?",
+      "category": "math",
+      "body": "Look at this graph carefully before scrolling.\n\nWhat you can observe:\n- Symmetric about the y-axis\n- Behaves like a parabola for large |x|\n- Something very strange happens near x = 0\n- Oscillations become infinitely rapid\n  as you approach the origin\n\n🤔 What function produces this graph?\nDrop your answer in the discussion thread!\n",
+      "posted_date": "2026-05-29",
+      "discussion": true,
+      "needs_image": true,
+      "image_filename": "function.jpeg"
+    },
+    {
+      "id": "mc_002",
+      "title": "When Were You Born? Your Birthday's Popularity Rank",
+      "category": "math",
+      "body": "Not all birthdays are created equal.\n\nAccording to Australian Bureau of Statistics\ndata, birthdays are ranked from 1 (most common)\nto 366 (least common — yes, including Feb 29).\n\nSome surprising findings from the data:\n- September dominates the top spots\n- February 29 is the rarest (rank 366)\n- Christmas Day and New Year's Day are\n  among the LEAST common birthdays\n- Most common birth months: September\n  and October\n\n🤔 Where does YOUR birthday rank?\nCheck the chart and drop your rank\nin the reactions below!\n\nFun fact: If you were born in September,\nyour parents were likely celebrating the\nholidays 9 months earlier... 🎄\n",
+      "posted_date": "2026-05-28",
+      "discussion": true,
+      "needs_image": true,
+      "image_filename": "BD.jpeg"
+    },
     {
       "id": "mc_001",
       "title": "The Coin Flip Trap",
