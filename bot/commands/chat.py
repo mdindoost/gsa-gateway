@@ -2,6 +2,7 @@
 
 import logging
 import random
+import time
 from typing import Optional
 
 import discord
@@ -24,10 +25,13 @@ from bot.services.retriever import SOURCE_FRIENDLY_NAMES
 logger = logging.getLogger(__name__)
 
 NJIT_RED = discord.Color.from_rgb(204, 0, 0)
+_OLLAMA_ALERT_COOLDOWN = 3600  # 1 hour between admin DMs
 
 
 class ChatCog(commands.Cog, name="Chat"):
     """Handles free-form conversation in #ask-gsa channel and DMs."""
+
+    _last_ollama_alert: float = 0.0
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -38,6 +42,31 @@ class ChatCog(commands.Cog, name="Chat"):
         self.intent_detector = getattr(bot, "intent_detector", None)
         self.db = getattr(bot, "db", None)
         self.rate_limiter = getattr(bot, "rate_limiter", None)
+
+    async def _notify_ollama_down(self, trigger_channel: discord.abc.Messageable) -> None:
+        """DM the admin once per cooldown period when Ollama is unreachable."""
+        now = time.monotonic()
+        if now - ChatCog._last_ollama_alert < _OLLAMA_ALERT_COOLDOWN:
+            return
+        ChatCog._last_ollama_alert = now
+
+        admin_id = self.config.admin_discord_id if self.config else None
+        if not admin_id:
+            return
+        try:
+            user = await self.bot.fetch_user(admin_id)
+            channel_ref = getattr(trigger_channel, "mention", str(trigger_channel))
+            await user.send(
+                f"⚠️ **GSA Gateway — LLM alert**\n"
+                f"Ollama did not respond to a student question in {channel_ref}.\n"
+                f"The bot fell back to raw KB text.\n\n"
+                f"Check with: `systemctl status ollama` or `ollama ps`\n"
+                f"Restart: `sudo systemctl restart ollama`\n\n"
+                f"_(This alert won't repeat for 1 hour)_"
+            )
+            logger.info("Admin DM sent: Ollama down alert to user %d", admin_id)
+        except Exception as exc:
+            logger.warning("Could not DM admin about Ollama failure: %s", exc)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -294,17 +323,20 @@ class ChatCog(commands.Cog, name="Chat"):
                         source_note = " & ".join(source_names)
                         used_ollama = True
                     else:
-                        # Ollama timeout — fallback to best chunk
+                        # Ollama timeout / unreachable — fallback to best chunk
                         best = chunks[0]
                         response_text = (
                             f"{best.text[:800]}\n\n"
-                            "_⚠️ AI is busy right now — here is the raw info from our "
-                            "knowledge base. Try again in a moment for a better answer._"
+                            "_⚠️ The AI engine is currently unavailable. "
+                            "Here is the raw information from the GSA knowledge base. "
+                            "Please try again in a few minutes, or contact a GSA officer "
+                            "at **gsa-pres@njit.edu** if this persists._"
                         )
                         source_note = SOURCE_FRIENDLY_NAMES.get(
                             best.source_file, best.source_file
                         )
                         used_ollama = False
+                        await self._notify_ollama_down(message.channel)
                 elif chunks:
                     # Ollama disabled — raw best chunk
                     best = chunks[0]
