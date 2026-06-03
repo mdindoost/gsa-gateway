@@ -11,7 +11,7 @@ from bot.services.vector_store import VectorStore
 logger = logging.getLogger(__name__)
 
 MIN_SIMILARITY = 0.3
-TOP_K_RETRIEVAL = 15
+TOP_K_RETRIEVAL = 20
 TOP_K_FINAL = 7
 
 SOURCE_FRIENDLY_NAMES = {
@@ -102,18 +102,32 @@ class Retriever:
             w.lower() for w in re.findall(r'\b\w+\b', query)
             if w.lower() not in _STOP_WORDS
         }
+        # Proper nouns: capitalized, not sentence-initial stop words.
+        # Names like "Singh", "MARCuS", "Gurrin" are the strongest disambiguation
+        # signal — they deserve a higher bonus than generic content words.
+        proper_nouns = {
+            w.lower() for w in re.findall(r'\b[A-Z][a-zA-Z]+\b', query)
+            if w.lower() not in _STOP_WORDS
+        }
+        common_words = query_words - proper_nouns
 
         results: list[RetrievedChunk] = []
         for chunk in chunks:
             base_score = chunk["similarity"]
             text_lower = chunk["text"].lower()
 
-            # Keyword match bonus — word boundary to avoid "fun" matching "funding"
-            keyword_hits = sum(
-                1 for kw in query_words
+            # Common keyword hits (0.05 each) + proper noun hits (0.15 each).
+            # Proper nouns uniquely identify the requested topic (person, system,
+            # concept), so they receive 3× the weight of generic words.
+            common_hits = sum(
+                1 for kw in common_words
                 if re.search(rf'\b{re.escape(kw)}\b', text_lower)
             )
-            keyword_bonus = min(keyword_hits * 0.05, 0.25)
+            proper_hits = sum(
+                1 for pn in proper_nouns
+                if re.search(rf'\b{re.escape(pn)}\b', text_lower)
+            )
+            keyword_bonus = min(common_hits * 0.05 + proper_hits * 0.15, 0.35)
 
             # Source type bonus
             source_type_bonus = {

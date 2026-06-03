@@ -56,6 +56,24 @@ Day 2 (May 22, 2026):
 - 2:15–3:00 PM: Prof. Lesia Semenova (Rutgers)
 - 3:00–3:10 PM: Closing Remarks — Prof. Vincent Oria
 
+## Q: Which talks were on Day 2 of MMI 2026?
+**A:** Day 2 of MMI 2026 took place on May 22, 2026 at NJIT GITC 1100 and featured five talks:
+- 9:30–10:40 AM: Keynote — Prof. Cathal Gurrin (Dublin City University) — "Lifelogs and Personal Data. An Unsolved Challenge"
+- 11:00–11:45 AM: Prof. Enrique Dunn (Stevens Institute of Technology) — "Augmented Reality for Perceptual Task Guidance"
+- 11:45–12:30 PM: Prof. Shin'ichi Satoh (National Institute of Informatics, Japan) — "Biases in Machine Learning and AI"
+- 1:30–2:15 PM: Prof. Yan Sun (NJIT) — "Uncertainty Quantification for Generative Models"
+- 2:15–3:00 PM: Prof. Lesia Semenova (Rutgers University) — "Beyond the Single Best Model"
+Closing Remarks were given by Prof. Vincent Oria at 3:00–3:10 PM.
+
+## Q: Which talks were on Day 1 of MMI 2026?
+**A:** Day 1 of MMI 2026 took place on May 21, 2026 at NJIT GITC 1100 and featured five talks:
+- 9:30–10:40 AM: Keynote — Prof. Tat-Seng Chua (National University of Singapore) — "Safety in the Agentic AI Era"
+- 11:00–11:45 AM: Prof. Michael E. Houle (NJIT) — "Dimensionality-Aware Analysis of Local Intrinsic Structure in Multimedia Data"
+- 11:45–12:30 PM: Prof. Zining Zhu (Stevens Institute of Technology) — "Mechanistic Interpretation and Reasoning AI"
+- 1:30–2:15 PM: Prof. Vivek K. Singh (Rutgers University) — "How modalities impact safety in information seeking"
+- 2:15–3:00 PM: Prof. Ping Wang (Stevens Institute of Technology) — "Towards Reasoning-Augmented Natural Language Querying for Domain-Specific NoSQL Databases"
+Day 1 ended with a Panel Discussion on Future Directions in Multimedia Intelligence (3:20–4:20 PM) and a Networking Reception at the Highlander Pub (4:20–6:20 PM).
+
 ## Q: Are the MMI 2026 presentation slides available?
 **A:** Yes. PDF slides for all 10 MMI 2026 talks are available on the workshop recap page at the MMI Workshop website. The recap page also includes photos from the event (44 photos).
 
@@ -155,6 +173,9 @@ Before joining Rutgers, she was a postdoctoral researcher at Microsoft Research 
 
 ## Q: What did Prof. Cathal Gurrin present at MMI 2026?
 **A:** Prof. Cathal Gurrin delivered the Day 2 Keynote at MMI 2026 (May 22, 2026, 9:30–10:40 AM) titled "Lifelogs and Personal Data. An Unsolved Challenge." Lifelogging refers to the capture, storage, and access of large archives of personal media gathered over an extended period of time. In the most well-known form, lifelogs are gathered passively using devices such as wearable cameras and other hardware and software sensors. Over the past decade, significant progress has been made in organizing and accessing such lifelogs, turning them from large data repositories into impactful information systems supporting a wide variety of access mechanisms with the promise of becoming always-on daily life assistants. The talk reviewed how modern lifelog retrieval systems work and explored the challenge of obtaining sufficient lifelog data to develop and evaluate such systems. It examined the latest lifelog-related datasets being created and concluded with a suggestion of what an ideal next-generation dataset would look like.
+
+## Q: What is MARCuS?
+**A:** MARCuS (Multi-Modal AR Cube Solver) is a HoloLens-based augmented reality system developed to demonstrate Perceptual Task Guidance — an AR paradigm in which the system uses visual perception, task modeling, language grounding, user modeling, and spatial communication to assist humans during complex physical tasks. MARCuS combines perception-enabled AR, multimodal guidance, adaptive visual feedback, and state verification. It was presented as a case study by Prof. Enrique Dunn (Stevens Institute of Technology) in his MMI 2026 talk "Augmented Reality for Perceptual Task Guidance."
 
 ## Q: What did Prof. Enrique Dunn present at MMI 2026?
 **A:** Prof. Enrique Dunn presented "Augmented Reality for Perceptual Task Guidance" at MMI 2026 (Day 2, May 22, 2026, 11:00–11:45 AM). Artificial intelligence, computer vision, and augmented reality are converging to create interactive systems that can perceive the physical world, reason about human activity, and deliver context-sensitive guidance. The talk revisited the foundations and evolution of augmented and extended reality, from early head-mounted displays and virtual fixtures to contemporary spatial computing platforms, situated within broader advances in computer vision and AI. The central focus was Perceptual Task Guidance, an emerging paradigm in which AR systems use visual perception, task modeling, language grounding, user modeling, and spatial communication to assist humans during complex physical tasks. The talk discussed the technical goals of building an AR apparatus capable of grounded physical mapping, automated task understanding, responsive interaction, customization, and generalization across tasks and users. A case study, MARCuS (Multi-Modal AR Cube Solver), demonstrated these ideas through a HoloLens-based system combining perception-enabled AR, multimodal guidance, adaptive visual feedback, and state verification.
