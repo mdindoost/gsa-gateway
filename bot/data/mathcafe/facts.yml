@@ -1,7 +1,58 @@
 metadata:
   total_facts: 15
   last_updated: '2026-06-03'
-  current_index: 7
+  current_index: 8
+special_dates:
+  05-12:
+    id: mc_special_0512
+    title: Happy Birthday, Maryam Mirzakhani 🌸
+    category: history
+    subcategory: inspiration
+    needs_image: true
+    image_filename: Maryam.png
+    discussion: true
+    has_spoiler: false
+    last_posted_year: null
+    reactions:
+    - 🌸
+    - 🎓
+    - 💡
+    - 📜
+    - ❤️
+    reaction_labels:
+      🌸: In her memory
+      🎓: First and only woman — Fields Medal
+      💡: Her work inspires me
+      📜: I want to read more about her
+      ❤️: Happy Birthday, Maryam
+    body: 'Today is Maryam Mirzakhani’s birthday.
+
+
+      Born May 12, 1977 in Tehran, Iran. As a child, she wanted to be a writer. By
+      high school, she won back-to-back gold medals at the International Mathematical
+      Olympiad — the second with a perfect score.
+
+
+      In 2014, she became the first — and still the only — woman to win the Fields
+      Medal, mathematics’ highest honor, for her groundbreaking work on the geometry
+      of Riemann surfaces and their moduli spaces.
+
+
+      She was a professor at Stanford. She described her work as “painting” — she
+      would spread enormous sheets of paper across the floor and fill them with diagrams,
+      thinking with her whole body. Her daughter simply called it: “painting.”
+
+
+      She passed away on July 14, 2017, at 40 years old, from breast cancer.
+
+
+      May 12 is celebrated worldwide as International Women in Mathematics Day in
+      her honor — so that every student knows the highest peak in mathematics has
+      been reached.
+
+
+      If your research feels invisible today — remember her. 🌸'
+    footer: GSA MathCafe · International Women in Mathematics Day · May 12
 facts:
 - id: mc_001
   title: The Coin Flip Trap
@@ -391,8 +442,8 @@ facts:
   style: detailed
   needs_image: false
   image_filename: null
-  posted: false
-  posted_date: null
+  posted: true
+  posted_date: '2026-06-03'
   discussion: true
   has_spoiler: true
   reactions:

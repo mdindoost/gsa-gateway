@@ -32,6 +32,7 @@ class MathCafeService:
         self._facts_file = facts_file or FACTS_FILE
         self._images_dir = images_dir or IMAGES_DIR
         self.facts: list[dict] = []
+        self.special_dates: dict = {}
         self.current_index: int = 0
         self.load_facts()
 
@@ -46,6 +47,7 @@ class MathCafeService:
             return
 
         self.facts = data.get("facts", [])
+        self.special_dates = data.get("special_dates", {})
         meta = data.get("metadata", {})
         self.current_index = int(meta.get("current_index", 0))
         logger.info(
@@ -61,6 +63,7 @@ class MathCafeService:
                 "last_updated": datetime.date.today().isoformat(),
                 "current_index": self.current_index,
             },
+            "special_dates": self.special_dates,
             "facts": self.facts,
         }
         self._facts_file.parent.mkdir(parents=True, exist_ok=True)
@@ -88,6 +91,16 @@ class MathCafeService:
             fact["posted_date"] = None
         self.current_index = 0
         return self.facts[0]
+
+    def get_special_date_fact(self, today: datetime.date) -> Optional[dict]:
+        """Return the special-date fact for today if it hasn't posted this year."""
+        key = today.strftime("%m-%d")
+        fact = self.special_dates.get(key)
+        if fact is None:
+            return None
+        if fact.get("last_posted_year") == today.year:
+            return None
+        return fact
 
     # ── Discord helpers ───────────────────────────────────────────────────────
 
@@ -140,12 +153,18 @@ class MathCafeService:
     # ── Post ─────────────────────────────────────────────────────────────────
 
     async def post_fact(self, channel: discord.TextChannel) -> bool:
-        fact = self.get_next_fact()
+        today = datetime.date.today()
+
+        # Special date facts take priority and never consume a queue slot
+        special = self.get_special_date_fact(today)
+        is_special = special is not None
+        fact = special if is_special else self.get_next_fact()
+
         if fact is None:
             logger.warning("MathCafe: no facts available to post")
             return False
 
-        embed = self.build_embed(fact, datetime.date.today())
+        embed = self.build_embed(fact, today)
         image_file = self.get_image_file(fact)
 
         if image_file:
@@ -172,10 +191,14 @@ class MathCafeService:
             except (discord.Forbidden, discord.HTTPException) as exc:
                 logger.warning("MathCafe: could not create discussion thread: %s", exc)
 
-        # Mark as posted
-        fact["posted"] = True
-        fact["posted_date"] = datetime.date.today().isoformat()
-        self.current_index += 1
+        # Mark as posted — special facts track by year, regular facts by boolean
+        if is_special:
+            fact["last_posted_year"] = today.year
+        else:
+            fact["posted"] = True
+            fact["posted_date"] = today.isoformat()
+            self.current_index += 1
+
         self.save_facts()
         self.export_mathcafe_json()
 

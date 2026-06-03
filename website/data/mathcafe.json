@@ -13,6 +13,16 @@
       "image_filename": "Nightingale.jpeg"
     },
     {
+      "id": "mc_008",
+      "title": "The Unreachable Number",
+      "category": "math",
+      "body": "Using only the numbers 1, 2, 3 and the\noperators + − × ÷ ^ what is the smallest\npositive integer you CANNOT form?\n\nRules:\n- Maximum 3 numbers total\n- Maximum 2 operators\n- Parentheses allowed\n- No concatenation (1 and 2 cannot make 12)\n- Numbers can repeat (2,2,3 is valid)\n\nExamples of what IS possible:\n✅ 7  = 2³ − 1\n✅ 13 = 3² + 2²\n✅ 17 = 3² + 2³\n✅ 22 = 3³ − 3 − 2\n✅ 29 = 3³ + 2\n\n🤔 What is the first number you CANNOT reach?\n\nPost your answer in the thread and\nshow your working for bonus respect! 👇\n",
+      "posted_date": "2026-06-03",
+      "discussion": true,
+      "needs_image": false,
+      "image_filename": null
+    },
+    {
       "id": "mc_006",
       "title": "The Ball Transfer Problem",
       "category": "math",
