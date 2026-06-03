@@ -41,3 +41,12 @@ Thumbs.db
 .pytest_cache/
 htmlcov/
 .coverage
+
+# LaTeX build artifacts
+*.aux
+*.out
+*.toc
+*.log
+*.fls
+*.fdb_latexmk
+*.synctex.gz
