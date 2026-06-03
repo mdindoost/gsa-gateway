@@ -61,7 +61,11 @@ BASE_SYSTEM_PROMPT = (
     "9. If a student seems distressed, acknowledge their concern and point them to the "
     "Counseling Center (C-CAPS) or Peer Wellness Coaching in addition to the GSA resource.\n"
     "10. If the student's message is a single vague word (like 'fun', 'stuff', 'things', "
-    "'events', 'help'), ask them to clarify what they are looking for rather than guessing."
+    "'events', 'help'), ask them to clarify what they are looking for rather than guessing.\n"
+    "11. When asked to list, count, or enumerate items that match criteria (e.g. 'which "
+    "speakers from X', 'how many Y', 'all talks about Z'), scan EVERY provided document "
+    "systematically before answering. Do not stop at the first match. Report the complete "
+    "set of matching items."
 )
 
 _EXPAND_SYSTEM = (

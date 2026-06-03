@@ -1,18 +1,20 @@
-"""RAG retriever — embeds a query and returns the most relevant KB chunks."""
+"""RAG retriever — hybrid BM25 + vector search with reciprocal rank fusion."""
 
 import logging
 import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from bot.services.bm25_index import BM25Index
 from bot.services.embedder import EmbeddingService
 from bot.services.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
 MIN_SIMILARITY = 0.3
-TOP_K_RETRIEVAL = 20
-TOP_K_FINAL = 7
+TOP_K_RETRIEVAL = 20   # candidates from each of vector and BM25 before fusion
+TOP_K_FINAL = 7        # chunks passed to the LLM after reranking
+RRF_K = 60             # reciprocal rank fusion constant (standard default)
 
 SOURCE_FRIENDLY_NAMES = {
     "gsa_faq.md": "GSA FAQ",
@@ -55,23 +57,92 @@ class Retriever:
     ) -> None:
         self.embedder = embedder
         self.vector_store = vector_store
+        self._bm25: Optional[BM25Index] = None
+        self._build_bm25_index()
+
+    # ── BM25 index lifecycle ─────────────────────────────────────────────────
+
+    def _build_bm25_index(self) -> None:
+        chunks = self.vector_store.get_all_chunks()
+        if chunks:
+            self._bm25 = BM25Index(chunks)
+        else:
+            logger.warning("BM25 index not built — vector store is empty")
+            self._bm25 = None
+
+    def rebuild_bm25_index(self) -> None:
+        """Rebuild the BM25 index after the vector store has been updated.
+        Called by /admin_rebuild_index after new chunks are added.
+        """
+        self._build_bm25_index()
+        count = len(self._bm25.chunks) if self._bm25 else 0
+        logger.info("BM25 index rebuilt: %d chunks", count)
+
+    # ── Reciprocal rank fusion ───────────────────────────────────────────────
+
+    @staticmethod
+    def _reciprocal_rank_fusion(
+        vector_results: list[dict],
+        bm25_results: list[dict],
+    ) -> list[dict]:
+        """Merge two ranked lists into one using reciprocal rank fusion.
+
+        Each chunk receives score = Σ 1/(RRF_K + rank) across both lists.
+        Chunks in both lists are boosted; BM25-only chunks (exact term matches
+        the vector model missed) are included with a fair base score.
+
+        The normalized RRF score is stored as "rrf_score" so the reranker
+        uses it as the base instead of the raw vector similarity — this
+        prevents BM25-only chunks from being penalized by the 0.5 placeholder.
+        """
+        scores: dict[str, float] = {}
+        chunk_map: dict[str, dict] = {}
+
+        for rank, chunk in enumerate(vector_results):
+            cid = chunk["chunk_id"]
+            scores[cid] = scores.get(cid, 0.0) + 1.0 / (RRF_K + rank + 1)
+            chunk_map[cid] = chunk
+
+        for rank, chunk in enumerate(bm25_results):
+            cid = chunk.get("chunk_id", "")
+            if not cid:
+                continue
+            scores[cid] = scores.get(cid, 0.0) + 1.0 / (RRF_K + rank + 1)
+            if cid not in chunk_map:
+                chunk_map[cid] = dict(chunk)
+                chunk_map[cid].setdefault("similarity", 0.5)
+
+        # Normalize RRF scores to [0.40, 0.95] and store on each chunk so
+        # the reranker can use a single consistent base regardless of origin.
+        if scores:
+            lo = min(scores.values())
+            hi = max(scores.values())
+            span = (hi - lo) or 1.0
+            for cid, chunk in chunk_map.items():
+                chunk["rrf_score"] = 0.40 + ((scores[cid] - lo) / span) * 0.55
+
+        return sorted(
+            chunk_map.values(),
+            key=lambda c: c.get("rrf_score", 0.0),
+            reverse=True,
+        )
+
+    # ── Query preparation ────────────────────────────────────────────────────
 
     def _build_search_query(
         self,
         current_question: str,
         conversation_history: Optional[list[dict]] = None,
     ) -> str:
-        # Clean the question
         clean = current_question.strip()
-        clean = re.sub(r'<@!?\d+>', '', clean)   # remove @mentions
-        clean = re.sub(r'<#\d+>', '', clean)      # remove #channel refs
+        clean = re.sub(r'<@!?\d+>', '', clean)
+        clean = re.sub(r'<#\d+>', '', clean)
         clean = clean.strip()
 
         if not conversation_history:
             logger.debug("Search query: '%s'", clean)
             return clean
 
-        # Extract topic keywords from the last assistant response
         recent_assistant = [
             t["content"] for t in conversation_history
             if t.get("role") == "assistant"
@@ -93,6 +164,8 @@ class Retriever:
         logger.debug("Search query: '%s'", enhanced)
         return enhanced
 
+    # ── Reranker ─────────────────────────────────────────────────────────────
+
     def _rerank(
         self,
         query: str,
@@ -102,9 +175,9 @@ class Retriever:
             w.lower() for w in re.findall(r'\b\w+\b', query)
             if w.lower() not in _STOP_WORDS
         }
-        # Proper nouns: capitalized, not sentence-initial stop words.
+        # Proper nouns (capitalized, non-stop) get 3× the bonus of common words.
         # Names like "Singh", "MARCuS", "Gurrin" are the strongest disambiguation
-        # signal — they deserve a higher bonus than generic content words.
+        # signal when many chunks have near-identical cosine similarity scores.
         proper_nouns = {
             w.lower() for w in re.findall(r'\b[A-Z][a-zA-Z]+\b', query)
             if w.lower() not in _STOP_WORDS
@@ -113,12 +186,11 @@ class Retriever:
 
         results: list[RetrievedChunk] = []
         for chunk in chunks:
-            base_score = chunk["similarity"]
+            # Use rrf_score when available (hybrid search path) so BM25-retrieved
+            # chunks get a base score that reflects their rank, not a placeholder.
+            base_score = chunk.get("rrf_score", chunk["similarity"])
             text_lower = chunk["text"].lower()
 
-            # Common keyword hits (0.05 each) + proper noun hits (0.15 each).
-            # Proper nouns uniquely identify the requested topic (person, system,
-            # concept), so they receive 3× the weight of generic words.
             common_hits = sum(
                 1 for kw in common_words
                 if re.search(rf'\b{re.escape(kw)}\b', text_lower)
@@ -129,7 +201,6 @@ class Retriever:
             )
             keyword_bonus = min(common_hits * 0.05 + proper_hits * 0.15, 0.35)
 
-            # Source type bonus
             source_type_bonus = {
                 "faq": 0.05,
                 "policy": 0.03,
@@ -138,7 +209,6 @@ class Retriever:
                 "resource": 0.01,
             }.get(chunk.get("source_type", ""), 0.0)
 
-            # Section title match bonus
             section_title = chunk.get("section_title", "").lower()
             title_bonus = 0.10 if any(kw in section_title for kw in query_words) else 0.0
 
@@ -160,13 +230,10 @@ class Retriever:
         results.sort(key=lambda x: x.relevance_score, reverse=True)
         return results[:TOP_K_FINAL]
 
-    def _include_siblings(self, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
-        """For any multi-part chunk in the results, include all its siblings.
+    # ── Sibling expansion ────────────────────────────────────────────────────
 
-        A Q&A answer that exceeds MAX_TOKENS is split into continuation chunks
-        tagged with qa_base_id. If only one part is retrieved, the LLM sees an
-        incomplete answer. This method fetches and appends any missing parts.
-        """
+    def _include_siblings(self, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+        """For any multi-part chunk, include all sibling continuation parts."""
         seen_texts: set[str] = {c.text for c in chunks}
         seen_qa_bases: set[str] = set()
         extra: list[RetrievedChunk] = []
@@ -192,9 +259,11 @@ class Retriever:
                 ))
 
         if extra:
-            logger.debug("Sibling expansion added %d chunk(s) for multi-part Q&A", len(extra))
+            logger.debug("Sibling expansion added %d chunk(s)", len(extra))
 
         return chunks + extra
+
+    # ── Public retrieve ──────────────────────────────────────────────────────
 
     async def retrieve(
         self,
@@ -204,29 +273,41 @@ class Retriever:
     ) -> list[RetrievedChunk]:
         search_query = self._build_search_query(query, conversation_history)
 
+        # Vector search
         query_embedding = await self.embedder.embed_query(search_query)
         if query_embedding is None:
             logger.error("Embedding failed for query: '%s'", query[:80])
             return []
 
-        raw_results = self.vector_store.query(
+        vector_results = self.vector_store.query(
             query_embedding=query_embedding,
             n_results=TOP_K_RETRIEVAL,
             source_type_filter=source_type_filter,
         )
+        vector_results = [r for r in vector_results if r["similarity"] >= MIN_SIMILARITY]
 
-        filtered = [r for r in raw_results if r["similarity"] >= MIN_SIMILARITY]
-        if not filtered:
-            logger.warning(
-                "No results above MIN_SIMILARITY threshold for query: '%s'", query[:80]
-            )
+        # BM25 search (lexical — catches exact/sparse terms the embedding misses)
+        bm25_results: list[dict] = []
+        if self._bm25 and not source_type_filter:
+            bm25_results = self._bm25.search(search_query, n_results=TOP_K_RETRIEVAL)
+
+        if not vector_results and not bm25_results:
+            logger.warning("No results for query: '%s'", query[:80])
             return []
 
-        final_chunks = self._include_siblings(self._rerank(query, filtered))
+        # Fuse, rerank, expand siblings
+        if bm25_results:
+            fused = self._reciprocal_rank_fusion(vector_results, bm25_results)
+            logger.debug(
+                "Hybrid retrieval: %d vector + %d BM25 -> %d fused candidates",
+                len(vector_results), len(bm25_results), len(fused),
+            )
+        else:
+            fused = vector_results
 
-        logger.info(
-            "Retrieved %d chunks for query: '%s'", len(final_chunks), query[:50]
-        )
+        final_chunks = self._include_siblings(self._rerank(query, fused))
+
+        logger.info("Retrieved %d chunks for query: '%s'", len(final_chunks), query[:50])
         for chunk in final_chunks:
             logger.debug(
                 "  [%.2f] %s: %s",

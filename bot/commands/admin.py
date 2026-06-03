@@ -492,6 +492,10 @@ class AdminCog(commands.Cog, name="Admin"):
             embeddings = await embedder.embed_batch(texts, batch_size=10)
             vector_store.add_chunks(chunks, embeddings)
 
+            retriever = getattr(self.bot, "retriever", None)
+            if retriever:
+                retriever.rebuild_bm25_index()
+
             success_count = sum(1 for e in embeddings if e is not None)
             await interaction.followup.send(
                 f"✅ Index rebuilt: **{success_count}** chunks indexed "

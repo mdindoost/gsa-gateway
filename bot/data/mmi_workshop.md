@@ -56,6 +56,18 @@ Day 2 (May 22, 2026):
 - 2:15–3:00 PM: Prof. Lesia Semenova (Rutgers)
 - 3:00–3:10 PM: Closing Remarks — Prof. Vincent Oria
 
+## Q: Which speakers appeared at both MMI 2025 and MMI 2026?
+**A:** Two speakers appeared at both editions of the MMI Workshop:
+- Prof. Shin'ichi Satoh (National Institute of Informatics, Japan) — spoke at MMI 2025 on "Possibilities and Limitations of Vision-Language Pretrained Models" and at MMI 2026 on "Biases in Machine Learning and AI."
+- Prof. Cathal Gurrin (Dublin City University, Ireland) — spoke at MMI 2025 on "Learnings from A Decade of Lifelog Access and Retrieval" and at MMI 2026 as Day 2 Keynote on "Lifelogs and Personal Data. An Unsolved Challenge."
+Prof. Satoh is also a co-organizer of the MMI Workshop Series.
+
+## Q: Which speakers at MMI 2026 were from Stevens Institute of Technology?
+**A:** Three speakers at MMI 2026 were from Stevens Institute of Technology:
+- Prof. Zining Zhu — "Mechanistic Interpretation and Reasoning AI" (Day 1, 11:45 AM–12:30 PM)
+- Prof. Ping Wang — "Towards Reasoning-Augmented Natural Language Querying for Domain-Specific NoSQL Databases" (Day 1, 2:15–3:00 PM)
+- Prof. Enrique Dunn — "Augmented Reality for Perceptual Task Guidance" (Day 2, 11:00–11:45 AM)
+
 ## Q: Which talks were on Day 2 of MMI 2026?
 **A:** Day 2 of MMI 2026 took place on May 22, 2026 at NJIT GITC 1100 and featured five talks:
 - 9:30–10:40 AM: Keynote — Prof. Cathal Gurrin (Dublin City University) — "Lifelogs and Personal Data. An Unsolved Challenge"
