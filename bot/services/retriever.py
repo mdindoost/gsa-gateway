@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 MIN_SIMILARITY = 0.3
 TOP_K_RETRIEVAL = 15
-TOP_K_FINAL = 5
+TOP_K_FINAL = 7
 
 SOURCE_FRIENDLY_NAMES = {
     "gsa_faq.md": "GSA FAQ",
@@ -146,6 +146,42 @@ class Retriever:
         results.sort(key=lambda x: x.relevance_score, reverse=True)
         return results[:TOP_K_FINAL]
 
+    def _include_siblings(self, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+        """For any multi-part chunk in the results, include all its siblings.
+
+        A Q&A answer that exceeds MAX_TOKENS is split into continuation chunks
+        tagged with qa_base_id. If only one part is retrieved, the LLM sees an
+        incomplete answer. This method fetches and appends any missing parts.
+        """
+        seen_texts: set[str] = {c.text for c in chunks}
+        seen_qa_bases: set[str] = set()
+        extra: list[RetrievedChunk] = []
+
+        for chunk in chunks:
+            qa_base_id = chunk.metadata.get("qa_base_id")
+            if not qa_base_id or qa_base_id in seen_qa_bases:
+                continue
+            seen_qa_bases.add(qa_base_id)
+
+            for sibling in self.vector_store.get_sibling_chunks(qa_base_id):
+                if sibling["text"] in seen_texts:
+                    continue
+                seen_texts.add(sibling["text"])
+                extra.append(RetrievedChunk(
+                    text=sibling["text"],
+                    source_file=sibling["source_file"],
+                    source_type=sibling["source_type"],
+                    section_title=sibling["section_title"],
+                    similarity=chunk.similarity,
+                    relevance_score=chunk.relevance_score,
+                    metadata=sibling["metadata"],
+                ))
+
+        if extra:
+            logger.debug("Sibling expansion added %d chunk(s) for multi-part Q&A", len(extra))
+
+        return chunks + extra
+
     async def retrieve(
         self,
         query: str,
@@ -172,7 +208,7 @@ class Retriever:
             )
             return []
 
-        final_chunks = self._rerank(query, filtered)
+        final_chunks = self._include_siblings(self._rerank(query, filtered))
 
         logger.info(
             "Retrieved %d chunks for query: '%s'", len(final_chunks), query[:50]

@@ -126,9 +126,10 @@ class DocumentChunker:
                 answer = answer.strip()
                 text = f"Question: {question}\nAnswer: {answer}"
                 file_prefix = filepath.stem
+                base_id = f"{file_prefix}_faq_{section_idx}_{qa_idx}"
                 if self.count_tokens(text) <= MAX_TOKENS:
                     chunks.append(DocumentChunk(
-                        chunk_id=f"{file_prefix}_faq_{section_idx}_{qa_idx}_0",
+                        chunk_id=f"{base_id}_0",
                         text=text,
                         source_file=filepath.name,
                         source_type="faq",
@@ -146,12 +147,12 @@ class DocumentChunker:
                         )
                         chunk_text = prefix + part
                         chunks.append(DocumentChunk(
-                            chunk_id=f"{file_prefix}_faq_{section_idx}_{qa_idx}_{chunk_idx}",
+                            chunk_id=f"{base_id}_{chunk_idx}",
                             text=chunk_text,
                             source_file=filepath.name,
                             source_type="faq",
                             section_title=section_title,
-                            metadata={},
+                            metadata={"qa_base_id": base_id, "chunk_index": chunk_idx},
                             token_count=self.count_tokens(chunk_text),
                         ))
             section_idx += 1

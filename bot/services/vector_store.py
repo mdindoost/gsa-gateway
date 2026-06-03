@@ -182,6 +182,33 @@ class VectorStore:
             logger.error("VectorStore query error: %s", exc, exc_info=True)
             return []
 
+    def get_sibling_chunks(self, qa_base_id: str) -> list[dict]:
+        """Return all chunks that belong to the same multi-part Q&A, sorted by chunk_index."""
+        try:
+            results = self.collection.get(
+                where={"qa_base_id": qa_base_id},
+                include=["documents", "metadatas"],
+            )
+            parsed: list[dict] = []
+            for chunk_id, text, meta in zip(
+                results.get("ids", []),
+                results.get("documents", []),
+                results.get("metadatas", []),
+            ):
+                parsed.append({
+                    "chunk_id": chunk_id,
+                    "text": text,
+                    "source_file": meta.get("source_file", ""),
+                    "source_type": meta.get("source_type", ""),
+                    "section_title": meta.get("section_title", ""),
+                    "metadata": meta,
+                })
+            parsed.sort(key=lambda x: int(x["metadata"].get("chunk_index", "0")))
+            return parsed
+        except Exception as exc:
+            logger.error("VectorStore get_sibling_chunks error: %s", exc)
+            return []
+
     def get_chunk_count(self) -> int:
         return self.collection.count()
 
