@@ -40,6 +40,10 @@ def mock_vector_store():
         make_chunk_dict("Club finance penalties", similarity=0.75),
         make_chunk_dict("GSA president contact info", similarity=0.65),
     ])
+    # Hybrid retrieval: BM25 index needs all chunks; empty list disables BM25 in tests
+    vs.get_all_chunks = MagicMock(return_value=[])
+    # Sibling expansion: no siblings in unit tests
+    vs.get_sibling_chunks = MagicMock(return_value=[])
     return vs
 
 
@@ -133,25 +137,30 @@ async def test_retrieve_returns_empty_on_embed_failure(mock_vector_store):
     assert results == []
 
 
+def _make_vs_with_chunks(chunks):
+    vs = MagicMock()
+    vs.query = MagicMock(return_value=chunks)
+    vs.get_all_chunks = MagicMock(return_value=[])
+    vs.get_sibling_chunks = MagicMock(return_value=[])
+    return vs
+
+
 @pytest.mark.asyncio
 async def test_min_similarity_filter(mock_embedder):
-    vs = MagicMock()
-    vs.query = MagicMock(return_value=[
+    vs = _make_vs_with_chunks([
         make_chunk_dict("highly relevant", similarity=0.8),
         make_chunk_dict("barely relevant", similarity=MIN_SIMILARITY - 0.01),
         make_chunk_dict("not relevant", similarity=0.1),
     ])
     retriever = Retriever(embedder=mock_embedder, vector_store=vs)
     results = await retriever.retrieve("test query")
-    # Only chunks above MIN_SIMILARITY should appear
     for r in results:
         assert r.similarity >= MIN_SIMILARITY
 
 
 @pytest.mark.asyncio
 async def test_retrieve_no_results_returns_empty(mock_embedder):
-    vs = MagicMock()
-    vs.query = MagicMock(return_value=[])
+    vs = _make_vs_with_chunks([])
     retriever = Retriever(embedder=mock_embedder, vector_store=vs)
     results = await retriever.retrieve("obscure question")
     assert results == []
