@@ -1,7 +1,17 @@
 {
-  "last_updated": "2026-06-01",
+  "last_updated": "2026-06-03",
   "total_facts": 15,
   "recent_facts": [
+    {
+      "id": "mc_007",
+      "title": "The Mathematician They Called a Nurse",
+      "category": "history",
+      "body": "You know Florence Nightingale as the\nfounder of modern nursing. That is true\nbut deeply incomplete.\n\nShe was primarily a brilliant mathematician\nand statistician who used data to save lives\nat a time when almost no one trusted data.\n\nDuring the Crimean War (1854-1856), she\ncollected meticulous records on soldier\ndeaths and discovered something shocking:\n- Deaths from battle wounds: relatively few\n- Deaths from preventable infections and\n  poor sanitation: the vast majority\n\nBut no one believed her words. So she\ninvented an entirely new type of chart —\nthe Polar Area Diagram, now called the\nNightingale Rose Diagram — to make the\ndata impossible to ignore.\n\nShe presented it to British Parliament\nand Queen Victoria. The visualization was\nso compelling it directly led to sanitation\nreforms that saved hundreds of thousands\nof lives.\n\nShe was one of the first people in history\nto use data visualization as a tool of\npersuasion and policy change.\n\nToday every research paper, every dashboard,\nevery data presentation owes something to\nFlorence Nightingale.\n\n💡 Next time someone says your research\ndoes not matter — remember her. 🌹\n",
+      "posted_date": "2026-06-03",
+      "discussion": true,
+      "needs_image": true,
+      "image_filename": "Nightingale.jpeg"
+    },
     {
       "id": "mc_006",
       "title": "The Ball Transfer Problem",

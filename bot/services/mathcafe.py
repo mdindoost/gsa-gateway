@@ -103,6 +103,12 @@ class MathCafeService:
         logger.warning("MathCafe image not found: %s. Place image at %s", filename, image_path)
         return None
 
+    @staticmethod
+    def _truncate(text: str, limit: int = 1024) -> str:
+        if len(text) <= limit:
+            return text
+        return text[: limit - 1] + "…"
+
     def build_embed(self, fact: dict, post_date: datetime.date) -> discord.Embed:
         embed = discord.Embed(title="☕ GSA MathCafe", color=MATHCAFE_COLOR)
         day_name = post_date.strftime("%A, %B %d")
@@ -110,15 +116,16 @@ class MathCafeService:
 
         embed.add_field(
             name=f"{icon} {fact['title']}",
-            value=fact["body"],
+            value=self._truncate(fact["body"]),
             inline=False,
         )
         embed.set_footer(text=f"{fact.get('footer', 'GSA MathCafe')} · {day_name}")
 
         if fact.get("has_spoiler") and fact.get("spoiler_text"):
+            spoiler = self._truncate(fact["spoiler_text"], limit=1020)  # 4 chars for || ||
             embed.add_field(
                 name="💡 Answer (spoiler)",
-                value=f"||{fact['spoiler_text']}||",
+                value=f"||{spoiler}||",
                 inline=False,
             )
 

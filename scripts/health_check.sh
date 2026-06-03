@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# health_check.sh — Check GSA Gateway services and auto-fix common issues
+# health_check.sh — Check GSA Gateway services status
 # Usage:
-#   bash scripts/health_check.sh          # check only, report issues
+#   bash scripts/health_check.sh          # check only
 #   bash scripts/health_check.sh --fix    # check + auto-restart on issues
 
 set -euo pipefail
 
-# ── Colors ────────────────────────────────────────────────────────────────────
-RED='\033[0;31m'
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
@@ -18,128 +17,171 @@ FIX=false
 
 ISSUES=0
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-ok()    { echo -e "  ${GREEN}✓${NC}  $1"; }
-warn()  { echo -e "  ${YELLOW}⚠${NC}  $1"; ISSUES=$((ISSUES + 1)); }
-fail()  { echo -e "  ${RED}✗${NC}  $1"; ISSUES=$((ISSUES + 1)); }
-info()  { echo -e "  ${BLUE}→${NC}  $1"; }
+ok()   { echo -e "  ${GREEN}✓${NC}  $1"; }
+fail() { echo -e "  ${RED}✗${NC}  $1"; ISSUES=$((ISSUES + 1)); }
+warn() { echo -e "  ${YELLOW}⚠${NC}  $1"; ISSUES=$((ISSUES + 1)); }
+info() { echo -e "  ${BLUE}→${NC}  $1"; }
 
-restart_svc() {
-  local svc="$1"
-  if $FIX; then
-    info "Restarting $svc..."
-    sudo systemctl restart "$svc"
-    sleep 4
-    if systemctl is-active --quiet "$svc"; then
-      ok "$svc restarted successfully"
-    else
-      fail "$svc failed to restart — check: sudo journalctl -u $svc -n 30"
-    fi
-  else
-    info "Run with --fix to auto-restart"
-  fi
-}
+cd "$(dirname "$0")/.."
+LOG_FILE="$(pwd)/gsa_gateway.log"
+ENV_FILE="$(pwd)/.env"
 
 echo ""
 echo "══════════════════════════════════════════════"
 echo "  GSA Gateway Health Check — $(date '+%Y-%m-%d %H:%M:%S')"
 echo "══════════════════════════════════════════════"
 
-# ── 1. Ollama service ─────────────────────────────────────────────────────────
+# ── 1. Ollama LLM ─────────────────────────────────────────────────────────────
 echo ""
-echo "[ Ollama ]"
+echo "[ Ollama LLM ]"
 
-if systemctl is-active --quiet ollama; then
-  ok "ollama.service is running"
+if systemctl is-active --quiet ollama 2>/dev/null; then
+    ok "ollama.service is running"
 else
-  fail "ollama.service is NOT running"
-  restart_svc ollama
+    fail "ollama.service is NOT running"
+    if $FIX; then
+        info "Restarting Ollama..."
+        sudo systemctl restart ollama && sleep 3
+        systemctl is-active --quiet ollama && ok "Ollama restarted" || fail "Ollama failed to restart"
+    else
+        info "Fix: bash scripts/restart.sh"
+    fi
 fi
 
-# ── 2. Ollama API reachable ───────────────────────────────────────────────────
 if curl -sf --max-time 5 http://localhost:11434/api/tags > /dev/null 2>&1; then
-  ok "Ollama API responding on :11434"
+    ok "Ollama API responding on :11434"
 else
-  warn "Ollama API not responding on :11434"
-  restart_svc ollama
+    fail "Ollama API not responding on :11434"
 fi
 
-# ── 3. LLM model available ────────────────────────────────────────────────────
-ENV_FILE="$(dirname "$0")/../.env"
-MODEL=$(grep -E '^OLLAMA_MODEL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2 | tr -d '"' || echo "llama3.1:8b")
+MODEL=$(grep -E '^OLLAMA_MODEL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2 | tr -d '"')
 MODEL="${MODEL:-llama3.1:8b}"
-
 if curl -sf --max-time 5 http://localhost:11434/api/tags 2>/dev/null | grep -q "${MODEL%%:*}"; then
-  ok "Model '$MODEL' is available"
+    ok "Model '$MODEL' is loaded"
 else
-  warn "Model '$MODEL' not found in Ollama"
-  info "Fix: ollama pull $MODEL"
+    warn "Model '$MODEL' not found — run: ollama pull $MODEL"
 fi
 
-# ── 4. Bot service ────────────────────────────────────────────────────────────
+# ── 2. GSA Gateway Bot ────────────────────────────────────────────────────────
 echo ""
 echo "[ GSA Gateway Bot ]"
 
-if systemctl is-active --quiet gsa-gateway; then
-  ok "gsa-gateway.service is running"
-  SINCE=$(systemctl show gsa-gateway --property=ActiveEnterTimestamp | cut -d= -f2)
-  info "Running since: $SINCE"
+BOT_PID=$(pgrep -f "python.*bot.main" 2>/dev/null | head -1 || true)
+
+if [[ -n "$BOT_PID" ]]; then
+    ok "Bot is running (PID $BOT_PID)"
+    # Uptime from /proc
+    if [[ -f /proc/$BOT_PID/stat ]]; then
+        START_TICKS=$(awk '{print $22}' /proc/$BOT_PID/stat 2>/dev/null || echo "")
+        if [[ -n "$START_TICKS" ]]; then
+            CLK=$(getconf CLK_TCK 2>/dev/null || echo 100)
+            BOOT=$(awk '/btime/{print $2}' /proc/stat)
+            START_EPOCH=$(( BOOT + START_TICKS / CLK ))
+            UPTIME_SEC=$(( $(date +%s) - START_EPOCH ))
+            UPTIME_MIN=$(( UPTIME_SEC / 60 ))
+            UPTIME_HR=$(( UPTIME_MIN / 60 ))
+            if (( UPTIME_HR > 0 )); then
+                info "Uptime: ${UPTIME_HR}h $((UPTIME_MIN % 60))m"
+            else
+                info "Uptime: ${UPTIME_MIN}m"
+            fi
+        fi
+    fi
+    # Memory via /proc
+    MEM_KB=$(grep VmRSS /proc/$BOT_PID/status 2>/dev/null | awk '{print $2}' || echo "")
+    if [[ -n "$MEM_KB" ]]; then
+        MEM_MB=$(( MEM_KB / 1024 ))
+        if (( MEM_MB > 500 )); then
+            warn "Memory high: ${MEM_MB} MB"
+        else
+            ok "Memory: ${MEM_MB} MB"
+        fi
+    fi
 else
-  fail "gsa-gateway.service is NOT running"
-  restart_svc gsa-gateway
+    fail "Bot is NOT running"
+    if $FIX; then
+        info "Starting bot..."
+        nohup .venv/bin/python -m bot.main > /dev/null 2>&1 &
+        sleep 5
+        NEW_PID=$(pgrep -f "python.*bot.main" 2>/dev/null | head -1 || true)
+        if [[ -n "$NEW_PID" ]]; then
+            ok "Bot started (PID $NEW_PID)"
+        else
+            fail "Bot failed to start — check: tail -20 gsa_gateway.log"
+        fi
+    else
+        info "Fix: bash scripts/restart.sh"
+    fi
 fi
 
-# ── Log file — only lines since the last bot startup ─────────────────────────
-LOG_FILE="$(cd "$(dirname "$0")/.." && pwd)/gsa_gateway.log"
+# ── 3. Log checks (since last startup) ───────────────────────────────────────
+echo ""
+echo "[ Log & Activity ]"
+
 RECENT_LOGS=""
 if [[ -f "$LOG_FILE" ]]; then
-  # Find the line number of the last startup marker so we ignore old errors
-  STARTUP_LINE=$(grep -n "GSA Gateway ready" "$LOG_FILE" 2>/dev/null | tail -1 | cut -d: -f1)
-  if [[ -n "$STARTUP_LINE" ]]; then
-    RECENT_LOGS=$(tail -n "+${STARTUP_LINE}" "$LOG_FILE" 2>/dev/null)
-  else
-    RECENT_LOGS=$(tail -300 "$LOG_FILE" 2>/dev/null)
-  fi
+    STARTUP_LINE=$(grep -n "GSA Gateway ready" "$LOG_FILE" 2>/dev/null | tail -1 | cut -d: -f1)
+    if [[ -n "$STARTUP_LINE" ]]; then
+        RECENT_LOGS=$(tail -n "+${STARTUP_LINE}" "$LOG_FILE")
+    else
+        RECENT_LOGS=$(tail -300 "$LOG_FILE")
+    fi
 fi
 
-# ── 5. ChromaDB stale collection error ───────────────────────────────────────
-if echo "$RECENT_LOGS" | grep -q "NotFoundError"; then
-  warn "ChromaDB NotFoundError in recent logs (stale collection — index rebuilt while bot was running)"
-  restart_svc gsa-gateway
-else
-  ok "No ChromaDB errors in recent logs"
-fi
-
-# ── 6. Discord gateway connected ──────────────────────────────────────────────
+# Discord gateway
 if echo "$RECENT_LOGS" | grep -qE "connected to Gateway|RESUMED session|GSA Gateway ready"; then
-  ok "Discord gateway connected"
+    LAST_CONN=$(echo "$RECENT_LOGS" | grep -E "connected to Gateway|RESUMED session|GSA Gateway ready" | tail -1 | awk '{print $1, $2}')
+    ok "Discord gateway connected  ($LAST_CONN)"
 else
-  warn "No Discord connection event found in recent logs"
-  restart_svc gsa-gateway
+    fail "No Discord connection in recent logs"
 fi
 
-# ── 7. Memory usage ───────────────────────────────────────────────────────────
-MEM_RAW=$(systemctl show gsa-gateway --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
-if [[ "$MEM_RAW" =~ ^[0-9]+$ ]] && [[ "$MEM_RAW" != "18446744073709551615" ]]; then
-  MEM_MB=$((MEM_RAW / 1024 / 1024))
-  if [ "$MEM_MB" -gt 500 ]; then
-    warn "Bot memory usage high: ${MEM_MB} MB — consider restarting"
-  else
-    ok "Bot memory: ${MEM_MB} MB"
-  fi
+# Last activity
+LAST_LINE=$(echo "$RECENT_LOGS" | grep -v "RESUMED\|connected to Gateway" | tail -1)
+if [[ -n "$LAST_LINE" ]]; then
+    LAST_TIME=$(echo "$LAST_LINE" | awk '{print $1, $2}')
+    ok "Last activity: $LAST_TIME"
+fi
+
+# ChromaDB errors
+if echo "$RECENT_LOGS" | grep -q "NotFoundError"; then
+    warn "ChromaDB NotFoundError in logs (rebuild index or restart bot)"
+else
+    ok "No ChromaDB errors"
+fi
+
+# MathCafe last post
+LAST_MATHCAFE=$(grep "MathCafe posted\|MathCafe daily post completed" "$LOG_FILE" 2>/dev/null | tail -1 || true)
+if [[ -n "$LAST_MATHCAFE" ]]; then
+    MC_TIME=$(echo "$LAST_MATHCAFE" | awk '{print $1, $2}')
+    ok "MathCafe last posted: $MC_TIME"
+else
+    warn "MathCafe has never posted successfully — use /admin_mathcafe_post_now in Discord"
+fi
+
+# Errors since last startup
+ERROR_COUNT=$(echo "$RECENT_LOGS" | grep -c "\[ERROR\]" || true)
+if (( ERROR_COUNT > 0 )); then
+    warn "$ERROR_COUNT error(s) since last startup"
+    echo "$RECENT_LOGS" | grep "\[ERROR\]" | tail -3 | while IFS= read -r line; do
+        info "  $line"
+    done
+else
+    ok "No errors since last startup"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════"
-if [ "$ISSUES" -eq 0 ]; then
-  echo -e "  ${GREEN}All systems OK${NC}"
+if (( ISSUES == 0 )); then
+    echo -e "  ${GREEN}All systems OK${NC}"
 else
-  echo -e "  ${YELLOW}${ISSUES} issue(s) found${NC}"
-  if ! $FIX; then
-    echo ""
-    echo "  Auto-fix: bash scripts/health_check.sh --fix"
-  fi
+    echo -e "  ${YELLOW}${ISSUES} issue(s) found${NC}"
+    if ! $FIX; then
+        echo ""
+        echo "  Auto-fix:  bash scripts/health_check.sh --fix"
+        echo "  Full restart: bash scripts/restart.sh"
+    fi
 fi
 echo "══════════════════════════════════════════════"
 echo ""

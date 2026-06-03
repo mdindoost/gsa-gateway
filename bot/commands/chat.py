@@ -101,6 +101,18 @@ class ChatCog(commands.Cog, name="Chat"):
         if not should_respond and not is_dm:
             return
 
+        # GATE 3.5 — Ignore messages directed at another user
+        # Check both resolved mentions and raw <@id> patterns in the message
+        # content (Discord doesn't always populate message.mentions for every
+        # mention type). Either way, if another user is referenced and the bot
+        # was not mentioned, this is a member-to-member exchange — stay silent.
+        if not bot_was_mentioned and not is_dm:
+            other_mentions = [u for u in message.mentions if u != bot_user]
+            bot_mention_str = f"<@{bot_user.id}>" if bot_user else ""
+            content_without_bot = message.content.replace(bot_mention_str, "").strip()
+            if other_mentions or "<@" in content_without_bot:
+                return
+
         # GATE 4 — Rate limiting
         user_id = str(message.author.id)
         if self.rate_limiter and not self.rate_limiter.is_allowed(user_id):

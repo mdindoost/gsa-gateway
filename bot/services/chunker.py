@@ -358,6 +358,7 @@ class DocumentChunker:
             ("club_finance.md",     self.chunk_markdown_policy),
             ("rules.md",            self.chunk_markdown_policy),
             ("mmi_workshop.md",     self.chunk_markdown_faq),
+            ("bot_features.md",     self.chunk_markdown_faq),
             ("events.yml",          self.chunk_yaml_events),
             ("contacts.yml",        self.chunk_yaml_contacts),
             ("resources.yml",       self.chunk_yaml_resources),

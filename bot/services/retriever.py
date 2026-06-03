@@ -21,6 +21,7 @@ SOURCE_FRIENDLY_NAMES = {
     "club_finance.md": "Club Financial Bylaws",
     "rules.md": "GSA Community Rules",
     "mmi_workshop.md": "MMI Workshop Series",
+    "bot_features.md": "GSA Gateway Bot Guide",
     "events.yml": "GSA Events",
     "contacts.yml": "GSA Contacts",
     "resources.yml": "GSA Resources",

@@ -1,7 +1,7 @@
 metadata:
   total_facts: 15
-  last_updated: '2026-06-01'
-  current_index: 6
+  last_updated: '2026-06-03'
+  current_index: 7
 facts:
 - id: mc_001
   title: The Coin Flip Trap
@@ -350,8 +350,8 @@ facts:
   style: detailed
   needs_image: true
   image_filename: Nightingale.jpeg
-  posted: false
-  posted_date: null
+  posted: true
+  posted_date: '2026-06-03'
   discussion: true
   has_spoiler: false
   reactions:
