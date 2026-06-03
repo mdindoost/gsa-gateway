@@ -1,0 +1,1271 @@
+\documentclass[12pt,letterpaper]{article}
+
+% ── Encoding ────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+% ── Packages ────────────────────────────────────────────────────────────────
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{courier}
+\usepackage{mdframed}
+\usepackage{tcolorbox}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{float}
+
+% ── Colors ──────────────────────────────────────────────────────────────────
+\definecolor{njitred}{RGB}{204,0,0}
+\definecolor{darkgray}{RGB}{51,51,51}
+\definecolor{lightgray}{RGB}{245,245,245}
+\definecolor{codegray}{RGB}{240,240,240}
+\definecolor{commentgreen}{RGB}{0,128,0}
+\definecolor{keywordblue}{RGB}{0,0,180}
+\definecolor{stringbrown}{RGB}{160,82,45}
+
+% ── Hyperref setup ──────────────────────────────────────────────────────────
+\hypersetup{
+  colorlinks=true,
+  linkcolor=njitred,
+  urlcolor=njitred,
+  citecolor=njitred,
+  pdftitle={GSA Gateway Technical Reference},
+  pdfauthor={Mohammad Dindoost},
+}
+
+% ── Code listing style ───────────────────────────────────────────────────────
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codegray},
+  frame=single,
+  rulecolor=\color{darkgray!40},
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=4,
+  showstringspaces=false,
+  keywordstyle=\color{keywordblue}\bfseries,
+  commentstyle=\color{commentgreen}\itshape,
+  stringstyle=\color{stringbrown},
+  numbers=left,
+  numberstyle=\tiny\color{darkgray},
+  numbersep=5pt,
+  captionpos=b,
+  extendedchars=true,
+  inputencoding=utf8,
+  literate=
+    {->}{{$\rightarrow$}}{2}
+    {->\ }{{$\rightarrow$\ }}{3}
+    {-->}{{$\longrightarrow$}}{3}
+    {->|}{{$\rightarrow$|}}{3}
+    {<-}{{$\leftarrow$}}{2}
+    {=>}{{$\Rightarrow$}}{2}
+    {~}{{$\sim$}}{1}
+    {<=}{{$\leq$}}{2}
+    {>=}{{$\geq$}}{2}
+    {!=}{{$\neq$}}{2}
+    {|}{{$|$}}{1}
+    {``}{{\textquoteleft\textquoteleft}}{2}
+    {''}{{"}}{2}
+    {"}{{"}}{1}
+    {"}{{"}}{1}
+    {'}{{'}}{1}
+    {'}{{'}}{1}
+    {--}{{--}}{2}
+    {---}{{---}}{3}
+    {*}{{\textasteriskcentered}}{1}
+    {euro}{{\euro}}{4}
+    {<==>}{{$\Longleftrightarrow$}}{4}
+    {<=>}{{$\Leftrightarrow$}}{3}
+    ,
+}
+
+% ── Section title colors ─────────────────────────────────────────────────────
+\titleformat{\section}
+  {\Large\bfseries\color{njitred}}{\thesection}{1em}{}[\color{njitred}\titlerule]
+\titleformat{\subsection}
+  {\large\bfseries\color{darkgray}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}
+  {\normalsize\bfseries\color{darkgray}}{\thesubsubsection}{1em}{}
+
+% ── Header / Footer ─────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textcolor{njitred}{\textbf{GSA Gateway}} — Technical Reference}
+\fancyhead[R]{\small NJIT Graduate Student Association}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{njitred}\leaders\hrule height \headrulewidth\hfill}}
+
+% ── Highlight box ────────────────────────────────────────────────────────────
+\tcbuselibrary{skins,breakable}
+\newtcolorbox{infobox}[1][]{
+  colback=lightgray,
+  colframe=njitred,
+  fonttitle=\bfseries,
+  title=#1,
+  breakable,
+}
+\newtcolorbox{warningbox}[1][]{
+  colback=yellow!10,
+  colframe=orange!80!black,
+  fonttitle=\bfseries,
+  title=#1,
+  breakable,
+}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+% ── Title Page ───────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\Huge\bfseries\color{njitred} GSA Gateway\\[0.5em]}
+  {\Large\color{darkgray} Technical Reference for New Contributors}\\[2em]
+  \rule{0.6\textwidth}{0.4pt}\\[1.5em]
+  {\large New Jersey Institute of Technology\\
+   Graduate Student Association\\[1em]
+   Discord Bot + Static Website}\\[2em]
+  {\normalsize
+    \textbf{Author:} Mohammad Dindoost\\
+    \textbf{Role:} VP Academic Affairs, Ph.D.\ Candidate in Computer Science\\
+    \textbf{Contact:} \href{mailto:md724@njit.edu}{md724@njit.edu}\\[1em]
+    \textbf{Repository:} \texttt{gsa-gateway}\\
+    \textbf{Branch:} \texttt{main}\\[1em]
+    \textbf{Document Version:} June 2026
+  }\\[3em]
+  \rule{0.6\textwidth}{0.4pt}\\[1em]
+  {\small This document is intended for new contributors, student developers, and
+   researchers who want to understand how GSA Gateway is built, why specific
+   technology choices were made, and how to extend the system.}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% =============================================================================
+\section{Project Overview}
+% =============================================================================
+
+GSA Gateway is the official digital infrastructure of the NJIT Graduate Student
+Association. It consists of two independently deployable components:
+
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{Discord Bot} — A Python bot that answers student questions using a
+        full Retrieval-Augmented Generation (RAG) pipeline, manages slash commands for
+        events, resources, feedback, and travel funding, and runs automated daily
+        digests.
+  \item \textbf{Static Website} — A pure HTML/CSS/JS website hosted on GitHub Pages
+        that surfaces the same information (events, officers, resources) to students
+        without Discord.
+\end{enumerate}
+
+\subsection{What Problems Does It Solve?}
+
+Before GSA Gateway, students had no single place to answer questions like:
+\begin{itemize}[leftmargin=2em]
+  \item ``How do I apply for a travel award and what is the deadline?''
+  \item ``Who is the GSA VP of Finances and how do I reach them?''
+  \item ``What events are happening this month?''
+  \item ``What is the reimbursement cap for international travel?''
+\end{itemize}
+
+Officers answered these repetitively via email and Discord messages. GSA Gateway
+automates this by grounding every answer in official documents and routing
+questions intelligently.
+
+\subsection{Technology Stack at a Glance}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Component} & \textbf{Technology} & \textbf{Why} \\
+\midrule
+Bot framework & discord.py 2.x & Mature, async-native, slash command support \\
+Language & Python 3.11+ & Async ecosystem, ML libraries \\
+LLM (generation) & Ollama + llama3.1:8b & Local, no API cost, privacy-safe \\
+Embedding model & nomic-embed-text & Open source, strong semantic quality \\
+Vector database & ChromaDB & Persistent, zero-server, Python-native \\
+Relational database & SQLite & Simple, file-based, no infrastructure \\
+Fuzzy search & rapidfuzz & Fast approximate string matching \\
+Tokenizer & tiktoken (cl100k\_base) & Accurate token counting for chunking \\
+Website & HTML/CSS/JS & No framework, GitHub Pages compatible \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% =============================================================================
+\section{Repository Structure}
+% =============================================================================
+
+\begin{lstlisting}[language=bash, caption={Top-level directory layout}]
+gsa-gateway/
++-- bot/                    # All Python bot code
+|   +-- main.py             # Entry point -- GSABot class, startup sequence
+|   +-- config.py           # Reads .env -> typed Config dataclass
+|   +-- commands/           # Discord slash commands (cogs)
+|   +-- services/           # Business logic, RAG pipeline, database
+|   \-- data/               # Knowledge base files (Markdown + YAML)
++-- website/                # Static site
+|   +-- *.html              # One file per page
+|   +-- assets/             # style.css, app.js
+|   \-- data/events.json    # Auto-generated from events.yml
++-- scripts/                # Utility scripts (setup, index build, export)
++-- docs/                   # Architecture and deployment documentation
++-- chroma_db/              # ChromaDB persistent store (auto-created)
++-- gsa_gateway.db          # SQLite database (auto-created)
++-- gsa_gateway.log         # Runtime log (auto-created)
+\-- .env                    # Local secrets (never committed)
+\end{lstlisting}
+
+\subsection{The \texttt{bot/commands/} Directory}
+
+Each file here is a Discord \emph{cog} — a self-contained class that registers
+one or more slash commands. Adding a new command means creating a new file and
+listing it in \texttt{EXTENSIONS} in \texttt{main.py}. No other wiring needed.
+
+\begin{center}
+\begin{longtable}{lp{9cm}}
+\toprule
+\textbf{File} & \textbf{Responsibility} \\
+\midrule
+\texttt{ask.py} & \texttt{/ask} — fuzzy-searches knowledge base, optional Ollama LLM answer \\
+\texttt{chat.py} & \texttt{on\_message} handler — free-form chat in \#ask-gsa and DMs; full RAG pipeline \\
+\texttt{events.py} & \texttt{/events} (list) and \texttt{/event [name]} (detail) \\
+\texttt{initiative.py} & \texttt{/initiative} — Discord Modal collecting 5 fields, stored to SQLite \\
+\texttt{feedback.py} & \texttt{/feedback} — anonymous message stored to SQLite \\
+\texttt{resources.py} & \texttt{/resources [category]} — lists YAML-sourced resources \\
+\texttt{contact.py} & \texttt{/contact [role]} — directory lookup from \texttt{contacts.yml} \\
+\texttt{help\_cmd.py} & \texttt{/help} — ephemeral embed with full command reference \\
+\texttt{admin.py} & \texttt{/admin\_summary}, \texttt{/admin\_export}, \texttt{/admin\_stats}, \texttt{/admin\_announce}, \texttt{/admin\_add\_event}, \texttt{/admin\_rebuild\_index} (all ephemeral, admin role gated) \\
+\texttt{qrcode\_cmd.py} & \texttt{/qrcode} — generates GSA-branded QR code with color options \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\subsection{The \texttt{bot/services/} Directory}
+
+Services are the business logic layer. They have no knowledge of Discord; they
+receive plain Python objects and return plain Python objects. This separation
+makes them independently testable.
+
+\begin{center}
+\begin{longtable}{lp{9cm}}
+\toprule
+\textbf{File} & \textbf{Responsibility} \\
+\midrule
+\texttt{chunker.py} & Splits all KB files into $\leq$350-token chunks for vector storage \\
+\texttt{embedder.py} & Converts text to vectors using Ollama's \texttt{nomic-embed-text} \\
+\texttt{vector\_store.py} & Wraps ChromaDB — stores chunks, queries by cosine similarity \\
+\texttt{bm25\_index.py} & BM25Okapi lexical index over all chunks — exact/sparse term retrieval \\
+\texttt{retriever.py} & Hybrid: vector + BM25 in parallel, RRF fusion, rerank to top-7, expand siblings \\
+\texttt{ollama\_client.py} & Sends prompts to Ollama LLM, builds system/user prompt from chunks \\
+\texttt{conversation.py} & Per-user in-memory session history (60 min timeout, 5-turn window) \\
+\texttt{intent\_detector.py} & Classifies messages — greeting, food, thanks, help, question, statement \\
+\texttt{knowledge\_base.py} & Loads all \texttt{.md} and \texttt{.yml} data files into memory at startup \\
+\texttt{search.py} & rapidfuzz fuzzy search over KB entries (threshold: 60.0) \\
+\texttt{database.py} & All SQLite CRUD operations, privacy hashing, statistics \\
+\texttt{moderation.py} & \texttt{RateLimiter} (5 calls/60s), channel allowlist, admin role check \\
+\texttt{summaries.py} & \texttt{weekly\_summary()} — generates markdown summary from SQLite data \\
+\texttt{mathcafe.py} & Posts a daily math fact to \#gsa-mathcafe; tracks Maryam Mirzakhani birthday \\
+\texttt{scheduler.py} & Daily digest cog — posts announcements on schedule \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\subsection{The \texttt{bot/data/} Directory}
+
+This is the knowledge base. Every fact the bot can answer comes from one of
+these files. Editing a Markdown or YAML file here changes what the bot knows.
+After editing, you must rebuild the vector index.
+
+\begin{center}
+\begin{longtable}{lll}
+\toprule
+\textbf{File} & \textbf{Format} & \textbf{Content} \\
+\midrule
+\texttt{gsa\_faq.md} & Markdown FAQ & 12+ Q\&A pairs about GSA services \\
+\texttt{mmi\_workshop.md} & Markdown FAQ & Full MMI 2025 and 2026 knowledge base \\
+\texttt{bot\_features.md} & Markdown FAQ & Bot command reference for \#ask-gsa \\
+\texttt{gsa\_constitution.md} & Markdown policy & GSA constitution and bylaws \\
+\texttt{travel\_award.md} & Markdown policy & Travel award process, tiers, Chrome River \\
+\texttt{club\_finance.md} & Markdown policy & Club financial bylaws \\
+\texttt{rules.md} & Markdown policy & Community guidelines \\
+\texttt{events.yml} & YAML & 5+ events with dates, locations, descriptions \\
+\texttt{contacts.yml} & YAML & 9 officers and campus offices with emails \\
+\texttt{resources.yml} & YAML & 8 categories $\times$ 3–4 resources each \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\begin{infobox}[Markdown FAQ Format]
+All \texttt{.md} FAQ files must follow this exact format so the chunker can
+parse them correctly:
+\begin{lstlisting}
+## Q: Your question here?
+**A:** Your answer here (can span multiple lines).
+\end{lstlisting}
+\end{infobox}
+
+% =============================================================================
+\section{System Architecture}
+% =============================================================================
+
+\subsection{Startup Sequence}
+
+When the bot starts, \texttt{GSABot.setup\_hook()} runs before Discord marks the
+bot as online. This ensures all services are ready before any user message
+arrives.
+
+\begin{lstlisting}[language=Python, caption={Startup sequence (simplified from main.py)}]
+async def setup_hook(self):
+    # 1. Relational database
+    self.db = Database(config.database_path)
+    self.db.connect()
+    self.db.init_tables()
+
+    # 2. Knowledge base (loads .md and .yml files into memory)
+    self.kb = KnowledgeBase(data_dir=config.data_dir)
+    self.kb.load()
+
+    # 3. Fuzzy search over loaded KB
+    self.search_svc = SearchService(self.kb)
+
+    # 4. Rate limiter (in-memory, resets on restart)
+    self.rate_limiter = RateLimiter(max_calls=5, period_seconds=60)
+
+    # 5. LLM client (only if OLLAMA_ENABLED=true)
+    self.ollama = OllamaClient(...)
+
+    # 6. Conversation manager (in-memory per-user sessions)
+    self.conversation_manager = ConversationManager(...)
+
+    # 7. Embedding service (nomic-embed-text via Ollama)
+    self.embedder = EmbeddingService(...)
+
+    # 8. ChromaDB vector store (reads from ./chroma_db/)
+    self.vector_store = VectorStore(db_path=config.chroma_db_path)
+
+    # 9. Retriever (ties embedder + vector store together)
+    self.retriever = Retriever(embedder=self.embedder,
+                               vector_store=self.vector_store)
+
+    # 10. Intent detector
+    self.intent_detector = IntentDetector()
+
+    # 11. Load all cogs (commands)
+    for ext in EXTENSIONS:
+        await self.load_extension(ext)
+\end{lstlisting}
+
+All services are attached to the \texttt{bot} instance. Every cog accesses them
+via \texttt{self.bot.db}, \texttt{self.bot.retriever}, etc.
+
+\subsection{Message Routing Flow}
+
+When a student sends a message in \#ask-gsa (or DMs the bot), the
+\texttt{ChatCog.on\_message} handler processes it through a series of gates:
+
+\begin{lstlisting}[language=bash, caption={Message routing gates (chat.py)}]
+Gate 1: Is this the bot's own message?      -> ignore
+Gate 2: Is this a slash command?            -> ignore (handled by cog)
+Gate 3: Does message mention another user?  -> ignore (avoid cross-talk)
+Gate 4: Is it the ask-gsa channel or DM?   -> proceed | ignore
+Gate 5: IntentDetector classifies intent
+  - greeting    -> warm reply, no RAG
+  - thanks      -> acknowledgement, no RAG
+  - food        -> retrieve events with food tag
+  - social      -> retrieve social events
+  - clear       -> wipe session history
+  - help        -> show command list
+  - question/statement -> full RAG pipeline
+Gate 6: Rate limiter check (5 req/60s)      -> throttle if exceeded
+Gate 7: RAG pipeline                        -> generate answer
+\end{lstlisting}
+
+% =============================================================================
+\section{The RAG Pipeline — End to End}
+% =============================================================================
+
+Retrieval-Augmented Generation (RAG) is the core intelligence of the bot.
+Instead of fine-tuning a model on GSA data (expensive, hard to update), RAG
+retrieves relevant documents at query time and injects them into the LLM prompt.
+The LLM is explicitly instructed to answer \emph{only} from the provided
+documents, preventing hallucination.
+
+\subsection{Offline Phase: Building the Index}
+
+This runs once (or after any KB file edit) via
+\texttt{python scripts/build\_index.py --reset}.
+
+\begin{figure}[H]
+\centering
+\begin{mdframed}
+\begin{lstlisting}[language=bash, numbers=none]
+  Knowledge Base Files
+  (.md, .yml in bot/data/)
+         |
+         v
+  [DocumentChunker]
+  Splits each file into <= 350-token chunks
+  Each chunk: text + source_file + section_title + metadata
+         |
+         v
+  [EmbeddingService]
+  Calls Ollama /api/embed with "search_document: {text}"
+  Model: nomic-embed-text  |  Output: 768-dimensional float vector
+         |
+         v
+  [VectorStore (ChromaDB)]
+  Stores: chunk_id, text, embedding, metadata
+  Location: ./chroma_db/   (persistent, survives restart)
+  143 chunks total from 10 source files
+\end{lstlisting}
+\end{mdframed}
+\caption{Offline indexing pipeline}
+\end{figure}
+
+\subsection{Online Phase: Answering a Question}
+
+This runs for every student message that reaches the RAG path.
+
+\begin{figure}[H]
+\centering
+\begin{mdframed}
+\begin{lstlisting}[language=bash, numbers=none]
+  Student message: "How many speakers at MMI 2026 from Rutgers?"
+         |
+         v
+  [OllamaClient.expand_query()]          (optional)
+  Short/vague queries are rewritten:
+  "MMI" -> "What is the MMI Workshop Series at NJIT?"
+         |
+         v
+  [Retriever._build_search_query()]
+  Cleans mentions/channels, optionally appends
+  topic keywords from conversation history
+         |
+         v
+  PARALLEL:
+  [EmbeddingService.embed_query()]        [BM25Index.search()]
+  Semantic vector search                  Lexical exact-term search
+  "search_query: " prefix                 tokenize + BM25Okapi scores
+  top-20 by cosine similarity             top-20 by BM25 score
+         |                                       |
+         +---------------+   +-------------------+
+                         |   |
+                         v   v
+  [Retriever._reciprocal_rank_fusion()]
+  Merge both ranked lists: score = sum(1 / (60 + rank))
+  Normalize fused scores to [0.40, 0.95] -> stored as rrf_score
+  BM25-only chunks (unknown terms, sparse matches) are included
+  Result: up to 40 unique candidates
+         |
+         v
+  [Retriever._rerank()]
+  base_score   = rrf_score (not raw cosine -- fair for BM25 chunks)
+  common_bonus = word-boundary hits * 0.05 (max common contribution)
+  proper_bonus = capitalized non-stopword hits * 0.15 (3x weight:
+                 names like "Singh", "MARCuS" are key disambiguators)
+  source_bonus = faq:0.05, policy:0.03, event:0.02
+  title_bonus  = 0.10 if query word in section title
+  Keeps top-7 by relevance_score
+         |
+         v
+  [Retriever._include_siblings()]
+  For any chunk tagged with qa_base_id:
+  fetch all continuation parts of split Q&A answers
+         |
+         v
+  [OllamaClient.generate_answer()]
+  SYSTEM: GSA Gateway persona + 11 rules (incl. exhaustive enumeration)
+          + conversation history
+  USER:   [Document 1...Document N] + student question
+  Calls Ollama /api/generate  (llama3.1:8b, temp=0.3)
+         |
+         v
+  Discord reply with source attribution
+  "According to Document 2: MMI Workshop Series..."
+\end{lstlisting}
+\end{mdframed}
+\caption{Online hybrid retrieval and generation pipeline (as of June 2026)}\end{figure}
+
+\subsection{The Embedding Asymmetry}
+
+A subtle but important design decision: documents and queries are embedded with
+different prefixes. This is specific to \texttt{nomic-embed-text}:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Case} & \textbf{Prefix added before embedding} \\
+\midrule
+Indexing a document chunk & \texttt{"search\_document: \{text\}"} \\
+Embedding a user query & \texttt{"search\_query: \{text\}"} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+This is called \emph{asymmetric dense retrieval}. The model was trained to align
+query vectors with document vectors even when the phrasing differs. Without the
+correct prefix, retrieval quality degrades noticeably.
+
+\subsection{Chunking Strategy}
+
+The \texttt{DocumentChunker} uses different strategies per file type:
+
+\subsubsection{Markdown FAQ Files (\texttt{chunk\_markdown\_faq})}
+
+Splits on \texttt{\#\#} headings. Each Q\&A pair becomes one chunk. If the full
+\texttt{"Question: ...\textbackslash nAnswer: ..."} text exceeds 350 tokens, the
+answer is split using \texttt{split\_text\_by\_tokens()}, which:
+\begin{itemize}[leftmargin=2em]
+  \item Splits text into sentences (on \texttt{.!?} boundaries and newlines)
+  \item Accumulates sentences until the 350-token limit is approached
+  \item Carries a 50-token overlap into the next chunk for context continuity
+  \item Tags multi-part chunks with \texttt{qa\_base\_id} and \texttt{chunk\_index}
+        metadata so the retriever can always include all parts of a split answer
+\end{itemize}
+
+\subsubsection{Markdown Policy Files (\texttt{chunk\_markdown\_policy})}
+
+Splits on \texttt{\#\#} headings. Each section becomes one chunk. If a section
+exceeds 350 tokens, it is sub-chunked with the same sentence-aware splitter.
+Section titles are prepended to each sub-chunk for context.
+
+\subsubsection{YAML Events (\texttt{chunk\_yaml\_events})}
+
+One chunk per event, formatted as structured text:
+\begin{lstlisting}[numbers=none]
+Event: MMI Workshop 2026
+Date: 2026-05-21
+Location: NJIT GITC 1100
+Description: ...
+\end{lstlisting}
+
+\subsubsection{YAML Contacts (\texttt{chunk\_yaml\_contacts})}
+
+One chunk per officer entry, one chunk per campus office entry. Each contains
+role, name, email, responsibilities.
+
+\subsubsection{YAML Resources (\texttt{chunk\_yaml\_resources})}
+
+One chunk per resource item across all categories. Each chunk includes the
+category name for context.
+
+\subsection{Conversation Memory}
+
+\texttt{ConversationManager} maintains per-user session history entirely
+\textbf{in memory} — there is no database table for conversations. This is
+intentional: session data is private by design and does not need to persist
+across restarts.
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Setting} & \textbf{Value (configurable in .env)} \\
+\midrule
+Session timeout & 60 minutes of inactivity \\
+Max turns kept & 5 user+assistant pairs (10 total turns) \\
+Cleanup interval & Every 5 minutes (background async task) \\
+Storage & Python dict in-memory, never on disk \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+When conversation history exists, two things change:
+\begin{enumerate}[leftmargin=2em]
+  \item The retriever appends up to 5 topic keywords from recent assistant
+        responses to the search query, improving follow-up retrieval.
+  \item The LLM system prompt is extended with the last 5 turns so it can
+        resolve references like ``what about step 2?'' or ``how much is that?''
+\end{enumerate}
+
+\subsection{Query Expansion}
+
+When a student types something very short or ambiguous (e.g., ``MMI'',
+``funding'', ``travel''), a preliminary call to \texttt{expand\_query()} rewrites
+it to a full question before retrieval. This prevents poor embedding alignment
+from a single token query.
+
+\begin{lstlisting}[numbers=none]
+Input:  "MMI"
+Output: "What is the MMI Workshop Series at NJIT?"
+
+Input:  "travel"
+Output: "How can I apply for a GSA travel award?"
+\end{lstlisting}
+
+The expansion uses \texttt{llama3.1:8b} with temperature 0.1 and \texttt{num\_predict=60},
+making it fast. If Ollama is unavailable, the original query is used as-is.
+
+% =============================================================================
+\section{Vector Database: ChromaDB}
+% =============================================================================
+
+\subsection{What is a Vector Database?}
+
+A vector database stores high-dimensional float vectors (embeddings) and
+retrieves the nearest neighbours by distance metric. In this system:
+
+\begin{itemize}[leftmargin=2em]
+  \item Every KB chunk is converted to a 768-dimensional vector by
+        \texttt{nomic-embed-text}
+  \item At query time, the student's question is also converted to a vector
+  \item The database returns the chunks whose vectors are closest to the query
+        vector (cosine similarity)
+  \item Semantic similarity is captured, not just keyword matching
+\end{itemize}
+
+\subsection{Why ChromaDB?}
+
+\begin{center}
+\begin{longtable}{p{3cm}p{10cm}}
+\toprule
+\textbf{Reason} & \textbf{Detail} \\
+\midrule
+No server required & ChromaDB runs in-process. You do not need to start a
+  separate database server. For a bot running on a single machine, this
+  eliminates an entire infrastructure dependency. \\
+\midrule
+Persistent by default & \texttt{chromadb.PersistentClient(path="./chroma\_db")}
+  writes to disk automatically. The index survives restarts without any extra
+  configuration. \\
+\midrule
+Python-native API & Direct Python calls with no query language. Adding chunks,
+  querying, filtering, and resetting are all single function calls. \\
+\midrule
+Metadata filtering & Supports \texttt{where=\{"source\_type": "faq"\}} style
+  filters, which we use to restrict food queries to event chunks only. \\
+\midrule
+Small-to-medium scale & For 143 chunks (our current size), ChromaDB uses HNSW
+  indexing with cosine space, which is extremely fast. Even at 10,000 chunks it
+  remains suitable. \\
+\midrule
+Open source, free & MIT license. No usage limits, no API keys. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\subsection{ChromaDB in Our Codebase}
+
+The \texttt{VectorStore} class (\texttt{bot/services/vector\_store.py}) wraps
+all ChromaDB interaction:
+
+\begin{lstlisting}[language=Python, caption={Key VectorStore methods}]
+class VectorStore:
+    def add_chunks(chunks, embeddings)
+        # Bulk add during index build
+
+    def query(query_embedding, n_results=20, source_type_filter=None)
+        # Vector similarity search, returns list[dict] with similarity scores
+
+    def get_all_chunks()
+        # Return every chunk -- used to build the BM25 index at startup
+
+    def get_sibling_chunks(qa_base_id)
+        # Fetch all continuation parts of a split Q&A answer
+
+    def get_chunk_count()
+        # Total chunks in the collection
+
+    def reset()
+        # Delete and recreate collection (used by build_index.py --reset)
+\end{lstlisting}
+
+ChromaDB stores three things per chunk:
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{ID} — unique string identifier (e.g., \texttt{mmi\_workshop\_faq\_7\_0\_1})
+  \item \textbf{Document} — the raw chunk text
+  \item \textbf{Metadata} — structured fields: \texttt{source\_file},
+        \texttt{source\_type}, \texttt{section\_title}, \texttt{token\_count},
+        and optionally \texttt{qa\_base\_id} + \texttt{chunk\_index} for
+        multi-part answers
+\end{enumerate}
+
+\subsection{Alternatives to ChromaDB}
+
+Understanding why we chose ChromaDB requires understanding the alternatives.
+
+\begin{center}
+\begin{longtable}{p{2.5cm}p{4cm}p{4cm}p{2.5cm}}
+\toprule
+\textbf{Database} & \textbf{Strengths} & \textbf{Weaknesses} & \textbf{Best for} \\
+\midrule
+\textbf{ChromaDB}
+  & No server, persistent, Python-native, free
+  & Not suitable for multi-node or billion-scale
+  & Our use case \\
+\midrule
+\textbf{FAISS} (Meta)
+  & Extremely fast, industry-proven, supports GPU indexing
+  & In-memory only by default (no built-in persistence), no metadata filtering, lower-level API
+  & High-performance search where you manage persistence yourself \\
+\midrule
+\textbf{Qdrant}
+  & High performance, rich filtering, Rust internals, can run as embedded or server
+  & Slightly more complex setup than ChromaDB
+  & Production systems needing advanced filters \\
+\midrule
+\textbf{Weaviate}
+  & GraphQL API, multi-modal, schema-driven
+  & Requires running a separate server, heavier infrastructure
+  & Enterprise, multi-modal (image+text) retrieval \\
+\midrule
+\textbf{Pinecone}
+  & Fully managed cloud, serverless option, scales automatically
+  & Paid after free tier, data leaves your infrastructure
+  & Teams that do not want to manage infrastructure \\
+\midrule
+\textbf{Milvus}
+  & Billion-scale, distributed, battle-tested at Zilliz
+  & Heavy infrastructure (requires etcd, MinIO, Pulsar)
+  & Large-scale enterprise with dedicated DevOps \\
+\midrule
+\textbf{pgvector}
+  & Lives inside PostgreSQL, SQL-native, easy to join with relational data
+  & Requires PostgreSQL, slower than dedicated vector DBs at scale
+  & Teams already running PostgreSQL \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\begin{infobox}[When you would migrate away from ChromaDB]
+If the knowledge base grows beyond $\sim$50,000 chunks, or if you need to
+deploy on multiple machines, Qdrant (embedded mode) or pgvector are the natural
+next steps. Both can be swapped in by replacing only \texttt{vector\_store.py} —
+no other code changes needed.
+\end{infobox}
+
+\subsection{The Distance Metric: Cosine Similarity}
+
+ChromaDB is configured with \texttt{"hnsw:space": "cosine"}. Cosine similarity
+measures the angle between two vectors, ignoring magnitude:
+
+\[
+\text{cosine\_similarity}(A, B) = \frac{A \cdot B}{\|A\| \cdot \|B\|}
+\]
+
+A score of 1.0 means the vectors point in exactly the same direction (identical
+semantic meaning). A score of 0.0 means perpendicular (unrelated). ChromaDB
+returns distances (\texttt{1.0 - similarity}), which we convert back:
+\texttt{similarity = 1.0 - distance}.
+
+Our minimum similarity threshold is \textbf{0.3}. Chunks below this are
+discarded before reranking.
+
+% =============================================================================
+\section{The Embedding Model: nomic-embed-text}
+% =============================================================================
+
+\texttt{nomic-embed-text} is an open-source text embedding model developed by
+Nomic AI. It produces 768-dimensional vectors and is specifically designed for
+retrieval tasks.
+
+\subsection{Why This Model?}
+
+\begin{itemize}[leftmargin=2em]
+  \item Runs locally via Ollama — no API key, no network call, no cost
+  \item Strong performance on standard retrieval benchmarks (BEIR suite)
+  \item Supports asymmetric retrieval via task prefixes
+        (\texttt{search\_query:} vs \texttt{search\_document:})
+  \item Fast enough to embed 143 chunks in under 1 second on a CPU
+\end{itemize}
+
+\subsection{Alternatives}
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+\textbf{Model} & \textbf{Dimensions} & \textbf{Local?} & \textbf{Cost} \\
+\midrule
+nomic-embed-text (ours) & 768 & Yes (Ollama) & Free \\
+text-embedding-3-small (OpenAI) & 1536 & No & \$0.02/1M tokens \\
+text-embedding-3-large (OpenAI) & 3072 & No & \$0.13/1M tokens \\
+mxbai-embed-large & 1024 & Yes (Ollama) & Free \\
+all-MiniLM-L6-v2 (sentence-transformers) & 384 & Yes & Free \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+To swap the embedding model, change \texttt{EMBEDDING\_MODEL} in \texttt{.env}
+and rebuild the index. The vector store must be fully rebuilt because vector
+dimensions and semantic spaces differ between models.
+
+% =============================================================================
+\section{The LLM: Ollama + llama3.1:8b}
+% =============================================================================
+
+\subsection{What Ollama Is}
+
+Ollama is a local model server that downloads and serves open-weight language
+models. The bot talks to it via HTTP on \texttt{localhost:11434}.
+
+\begin{lstlisting}[language=bash, caption={Ollama endpoints used}]
+POST /api/generate   # Text generation (question answering, query expansion)
+POST /api/embed      # Text embedding (used by EmbeddingService)
+\end{lstlisting}
+
+\subsection{The System Prompt Design}
+
+\texttt{OllamaClient} constructs a two-part prompt for every RAG answer:
+
+\textbf{System prompt} (always present):
+\begin{itemize}[leftmargin=2em]
+  \item Defines the GSA Gateway persona
+  \item Lists 10 explicit rules (never hallucinate, cite documents, format for Discord, etc.)
+  \item Appends conversation history when a session exists
+\end{itemize}
+
+\textbf{User prompt} (built per query):
+\begin{itemize}[leftmargin=2em]
+  \item Injects retrieved chunks as numbered documents with source names and relevance scores
+  \item Appends the student's question
+  \item Instructs the model to answer only from the provided documents
+\end{itemize}
+
+Generation parameters: \texttt{temperature=0.3} (low randomness for factual
+answers), \texttt{top\_p=0.9}, \texttt{num\_predict=512} (max response tokens).
+
+\subsection{Graceful Degradation}
+
+If Ollama is unavailable or times out (60-second default), the bot falls back to
+the \texttt{SearchService} fuzzy-search answer. If fuzzy search also yields no
+result above 60\% confidence, the bot returns a polite referral message to a
+GSA officer. The system never silently fails.
+
+% =============================================================================
+\section{The Relational Database: SQLite}
+% =============================================================================
+
+SQLite stores everything that needs to persist across restarts and that has
+structured, queryable form.
+
+\subsection{Tables}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Table} & \textbf{Contents} \\
+\midrule
+\texttt{feedback} & Anonymous student feedback submissions \\
+\texttt{initiatives} & Initiative proposals (5-field Modal form) \\
+\texttt{events} & Events added via \texttt{/admin\_add\_event} \\
+\texttt{message\_stats} & Per-channel message counts for weekly summaries \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Privacy Design}
+
+User IDs are never stored in plain text. Before any database write,
+\texttt{hash\_user\_id(user\_id)} applies a SHA-256 hash (with a secret salt
+from \texttt{.env}). This means GSA officers can see aggregate statistics
+(``12 feedback submissions this week'') but cannot identify which student
+submitted which entry.
+
+% =============================================================================
+\section{Fuzzy Search: rapidfuzz}
+% =============================================================================
+
+\texttt{SearchService} (\texttt{bot/services/search.py}) provides keyword-based
+approximate matching as a fallback when RAG is unavailable or as a complement to
+it in the \texttt{/ask} command.
+
+\texttt{rapidfuzz} uses the WRatio algorithm (Weighted Ratio), which combines
+multiple string similarity measures and returns a score from 0–100. The
+confidence threshold is \textbf{60.0}: matches below this are discarded and a
+fallback message is shown.
+
+\begin{lstlisting}[language=Python, caption={How the threshold works}]
+# In search.py
+result = process.extractOne(query, candidates, scorer=fuzz.WRatio)
+if result and result[1] >= 60.0:
+    return best_match
+else:
+    return None  # triggers fallback message
+\end{lstlisting}
+
+% =============================================================================
+\section{Configuration System}
+% =============================================================================
+
+All configuration lives in a \texttt{.env} file (never committed to git). The
+\texttt{Config} dataclass in \texttt{bot/config.py} reads these at startup and
+provides typed access throughout the codebase.
+
+\begin{lstlisting}[language=bash, caption={Key .env variables}]
+# Required
+DISCORD_TOKEN=your_token_here
+DISCORD_GUILD_ID=your_guild_id
+
+# Ollama
+OLLAMA_ENABLED=true
+OLLAMA_MODEL=llama3.1:8b
+OLLAMA_URL=http://localhost:11434
+OLLAMA_TIMEOUT=60
+EMBEDDING_MODEL=nomic-embed-text
+
+# Bot behavior
+ADMIN_ROLE_NAME=GSA Officer
+ALLOWED_CHANNELS=ask-gsa,gsa-bot-testing
+ASK_GSA_CHANNEL=ask-gsa
+BOT_PREFIX=gsa
+
+# RAG / vector store
+CHROMA_DB_PATH=./chroma_db
+CONVERSATION_TIMEOUT_MINUTES=60
+CONVERSATION_MAX_TURNS=5
+
+# Database and privacy
+DATABASE_PATH=./gsa_gateway.db
+USER_ID_SALT=your_random_salt_here
+
+# Channel names (must match Discord channel names exactly)
+CHANNEL_ANNOUNCEMENTS=gsa-announcements
+CHANNEL_EVENTS=gsa-events
+CHANNEL_FOOD=gsa-food
+MATHCAFE_CHANNEL=gsa-mathcafe
+\end{lstlisting}
+
+% =============================================================================
+\section{Scripts}
+% =============================================================================
+
+\begin{center}
+\begin{longtable}{lp{9cm}}
+\toprule
+\textbf{Script} & \textbf{Purpose} \\
+\midrule
+\texttt{scripts/setup.sh} & Full first-time setup: creates venv, installs dependencies,
+  initialises SQLite tables, runs tests. Run once on a new machine. \\
+\texttt{scripts/build\_index.py} & Rebuilds the ChromaDB vector index from all
+  \texttt{bot/data/} files. Run after any KB file edit.
+  \texttt{--reset} flag forces full rebuild without prompting. \\
+\texttt{scripts/run\_bot.sh} & Starts the bot process with log output to
+  \texttt{gsa\_gateway.log}. \\
+\texttt{scripts/restart.sh} & Stops any running bot process, optionally restarts
+  Ollama, and starts the bot fresh. Safe to run during active sessions. \\
+\texttt{scripts/health\_check.sh} & Checks whether the bot process is running,
+  how long it has been up, memory usage, and MathCafe last-post status. \\
+\texttt{scripts/export\_events\_json.py} & Syncs \texttt{events.yml} to
+  \texttt{website/data/events.json} for the static website. Run after
+  adding events. \\
+\texttt{scripts/export\_weekly\_summary.py} & Generates and prints the 7-day
+  admin summary to stdout or a file. \\
+\texttt{scripts/init\_db.py} & Creates SQLite tables. Safe to re-run
+  (idempotent). \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+% =============================================================================
+\section{The Static Website}
+% =============================================================================
+
+The website at \texttt{website/} is pure HTML, CSS, and JavaScript with no
+build step and no framework. It is designed to be hosted on GitHub Pages.
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{File} & \textbf{Content} \\
+\midrule
+\texttt{index.html} & Hero section, feature cards, slash command table \\
+\texttt{about.html} & GSA mission, officer bios \\
+\texttt{events.html} & Loads and renders \texttt{data/events.json} via \texttt{fetch()} \\
+\texttt{initiatives.html} & Call to action for using \texttt{/initiative} in Discord \\
+\texttt{resources.html} & Static resource listings by category \\
+\texttt{contact.html} & Officer and campus office directory \\
+\texttt{assets/style.css} & NJIT red \texttt{\#CC0000} + dark gray, mobile-first, no frameworks \\
+\texttt{assets/app.js} & Nav toggle, events loader, HTML escaping for XSS safety \\
+\texttt{data/events.json} & Auto-exported from \texttt{events.yml} by the export script \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{warningbox}[Keeping events in sync]
+The website reads \texttt{events.json}, not \texttt{events.yml}. After editing
+\texttt{events.yml}, you must run \texttt{python scripts/export\_events\_json.py}
+and commit the updated \texttt{events.json}. If you forget, the website will
+show stale events.
+\end{warningbox}
+
+% =============================================================================
+\section{MathCafe Feature}
+% =============================================================================
+
+\texttt{MathCafeService} (\texttt{bot/services/mathcafe.py}) posts a daily
+mathematics fact to the \texttt{\#gsa-mathcafe} Discord channel. Facts are drawn
+from a queue in \texttt{bot/data/mathcafe/facts.yml}.
+
+Special behavior: on \textbf{May 12th} (Maryam Mirzakhani's birthday), the bot
+posts a dedicated tribute fact using \texttt{bot/data/mathcafe/images/Maryam.png}
+and a biographical message regardless of the regular queue. It tracks
+\texttt{last\_posted\_year} to ensure this fires exactly once per year.
+
+% =============================================================================
+\section{Security and Privacy Design}
+% =============================================================================
+
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{User IDs are hashed.} No Discord user ID is ever stored in
+        plain text. SHA-256 with a secret salt is applied in
+        \texttt{database.py:hash\_user\_id()}.
+  \item \textbf{Admin commands are ephemeral.} All responses in \texttt{admin.py}
+        use \texttt{ephemeral=True}, meaning only the requesting officer sees them.
+  \item \textbf{Rate limiting} prevents abuse: 5 RAG requests per user per 60 seconds.
+  \item \textbf{Channel allowlist} restricts bot responses to named channels only.
+  \item \textbf{LLM grounding.} The system prompt explicitly forbids the LLM from
+        answering outside the provided context, preventing prompt injection from
+        fabricating GSA policies.
+  \item \textbf{Admin role gate.} Admin commands check the \texttt{ADMIN\_ROLE\_NAME}
+        Discord role before executing.
+  \item \textbf{Message gate 3.} Messages that mention another user (via
+        \texttt{message.mentions} or raw \texttt{<@...>}) are ignored when the
+        bot was not directly mentioned, preventing the bot from joining
+        cross-user conversations uninvited.
+\end{enumerate}
+
+% =============================================================================
+\section{Running the System: Quick Reference}
+% =============================================================================
+
+\subsection{First-Time Setup}
+
+\begin{lstlisting}[language=bash]
+# 1. Clone and enter the repo
+git clone <repo-url> gsa-gateway
+cd gsa-gateway
+
+# 2. Run the setup script (creates venv, installs deps, inits DB)
+bash scripts/setup.sh
+
+# 3. Copy and fill in the environment file
+cp .env.example .env
+# Edit .env with your DISCORD_TOKEN and settings
+
+# 4. Pull required Ollama models
+ollama pull llama3.1:8b
+ollama pull nomic-embed-text
+
+# 5. Build the vector index
+python3 scripts/build_index.py --reset
+
+# 6. Start the bot
+bash scripts/run_bot.sh
+\end{lstlisting}
+
+\subsection{After Editing Knowledge Base Files}
+
+\begin{lstlisting}[language=bash]
+# Rebuild vector index (required after any .md or .yml edit in bot/data/)
+python3 scripts/build_index.py --reset
+
+# If you added events, also sync the website
+python3 scripts/export_events_json.py
+
+# Restart the bot to reload the knowledge base into memory
+bash scripts/restart.sh
+\end{lstlisting}
+
+\subsection{Health Check}
+
+\begin{lstlisting}[language=bash]
+bash scripts/health_check.sh          # Process status, uptime, memory
+tail -f gsa_gateway.log               # Live log stream
+# In Discord (admin only):
+/admin_stats                          # RAG chunk count, active sessions
+\end{lstlisting}
+
+% =============================================================================
+\section{Testing}
+% =============================================================================
+
+Tests live in \texttt{bot/tests/} and use \texttt{pytest}. They operate on
+in-memory fixtures and do not require Ollama or Discord to be running.
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{File} & \textbf{What It Tests} \\
+\midrule
+\texttt{conftest.py} & Fixtures: in-memory SQLite, KB, SearchService \\
+\texttt{test\_search.py} & Fuzzy search hits, misses, confidence thresholds \\
+\texttt{test\_database.py} & CRUD operations, privacy hashing, aggregate stats \\
+\texttt{test\_commands.py} & Admin role check, rate limiter, channel allowlist \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}[language=bash]
+# Run all tests
+pytest bot/tests/ -v
+
+# Run a specific test file
+pytest bot/tests/test_search.py -v
+\end{lstlisting}
+
+% =============================================================================
+\section{Key Invariants for Contributors}
+% =============================================================================
+
+These are rules the system depends on. Breaking them causes silent failures,
+not errors.
+
+\begin{infobox}[Must-know rules]
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Never store raw user IDs.} Always call \texttt{hash\_user\_id()}
+        before writing to the database.
+  \item \textbf{Admin commands must use \texttt{ephemeral=True}.} Officer-only
+        data should never be visible to the whole channel.
+  \item \textbf{Rebuild the index after any KB edit.} The ChromaDB store does
+        not watch files; it must be explicitly rebuilt.
+  \item \textbf{The embedding prefix matters.} Documents use
+        \texttt{"search\_document: "}, queries use \texttt{"search\_query: "}.
+        Swapping them degrades retrieval silently.
+  \item \textbf{Conversation sessions are in-memory only.} They reset on restart.
+        This is a feature, not a bug.
+  \item \textbf{The LLM never answers without context.} If \texttt{chunks} is
+        empty, \texttt{generate\_answer()} returns \texttt{None} and the bot
+        falls back to fuzzy search.
+  \item \textbf{All config comes from \texttt{.env}.} Never hardcode tokens,
+        paths, or channel IDs in Python files.
+\end{enumerate}
+\end{infobox}
+
+% =============================================================================
+\section{Architecture Decision Log}
+% =============================================================================
+
+This section explains \emph{why} specific choices were made, so future
+contributors do not reverse them accidentally.
+
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{Why SQLite and not PostgreSQL?} The bot runs on a single
+        machine with one writer at a time (the bot process). SQLite is
+        sufficient, requires no server, and makes deployment trivial. If
+        the bot is ever deployed across multiple servers, PostgreSQL would
+        be the migration target.
+
+  \item \textbf{Why Ollama and not OpenAI API?} Two reasons: cost (the
+        bot serves students continuously; API calls accumulate) and privacy
+        (student questions about visa status, mental health resources, and
+        finances should not leave the server). Local inference with
+        \texttt{llama3.1:8b} covers the quality bar for factual Q\&A.
+
+  \item \textbf{Why ChromaDB and not FAISS?} FAISS does not persist
+        to disk natively and has no metadata filtering. ChromaDB does both
+        out of the box. For 143 chunks, performance difference is
+        immeasurable.
+
+  \item \textbf{Why \texttt{nomic-embed-text} and not a sentence-transformer?}
+        It runs via the same Ollama endpoint already in use for generation,
+        keeping infrastructure uniform. It also natively supports asymmetric
+        retrieval prefixes, which measurably improves recall for short
+        student queries against longer document chunks.
+
+  \item \textbf{Why 350-token chunk limit?} Empirically chosen to balance
+        two competing forces: embedding quality degrades for very long texts
+        (over $\sim$500 tokens), and retrieval misses context if chunks are
+        too short (under $\sim$100 tokens). 350 tokens keeps the typical
+        Q\&A answer together while fitting within the model's sweet spot.
+
+  \item \textbf{Why sibling chunk expansion (added June 2026)?} Long Q\&A
+        answers that exceed 350 tokens are split into continuation chunks.
+        The reranker would sometimes drop the second part because the first
+        part scored higher (more keyword hits). The sibling system ensures
+        that whenever any part of a split answer is retrieved, all parts
+        are included. This fixed a bug where Prof.\ Enrique Dunn (Day 2
+        schedule) was invisible to queries about Stevens speakers.
+
+  \item \textbf{Why hybrid BM25 + vector retrieval (added June 2026)?}
+        Pure vector search has two systematic failure modes. First, the
+        embedding model has no representation for novel terms (acronyms,
+        technical strings like ``InstructEx'', proper names). These terms
+        score identically across all chunks by cosine similarity, so the
+        relevant chunk is never retrieved. Second, when many chunks have
+        near-identical cosine scores, the wrong chunk surfaces. BM25 lexical
+        search solves the first problem via exact term matching; the proper
+        noun bonus (3$\times$ weight) in the reranker solves the second.
+        Reciprocal Rank Fusion merges both lists with a normalized score
+        used as the reranker base, so BM25-only chunks are not penalized
+        by a placeholder similarity value. Tested against 10 hard questions;
+        all answered correctly after implementation.
+
+  \item \textbf{Why BM25Okapi and not BM25Plus or BM25L?} BM25Okapi is the
+        standard formulation used in most IR literature and is the default
+        in \texttt{rank\_bm25}. For the KB size (165 chunks), the length
+        normalization differences between variants are negligible. BM25Okapi
+        was sufficient once the RRF score normalization fixed the base-score
+        collapse for BM25-only results. Migrate to BM25Plus if the KB grows
+        significantly and long chunks are consistently under-ranked.
+\end{enumerate}
+
+% =============================================================================
+\section{Glossary}
+% =============================================================================
+
+\begin{description}[leftmargin=3em, style=nextline]
+  \item[RAG (Retrieval-Augmented Generation)] Architecture where a retrieval
+    step fetches relevant documents before generation. The LLM is grounded in
+    retrieved facts rather than relying solely on training data.
+  \item[Embedding] A high-dimensional float vector that represents the semantic
+    meaning of a piece of text. Similar texts produce similar vectors.
+  \item[Cosine similarity] Distance metric between two vectors measured as the
+    cosine of the angle between them. Value range: $[0, 1]$ after normalization.
+  \item[Chunk] A fragment of a knowledge base document, sized to fit within a
+    token limit, that becomes one entry in the vector store.
+  \item[HNSW] Hierarchical Navigable Small World — the approximate nearest
+    neighbour algorithm used by ChromaDB for fast vector search.
+  \item[Cog] discord.py term for a module that groups related commands and
+    event listeners. Loaded and unloaded as a unit.
+  \item[Ephemeral message] A Discord message visible only to the user who
+    triggered the command, not to the rest of the channel.
+  \item[Intent detection] Classifying the purpose of an incoming message
+    (greeting, question, food query, etc.) to route it to the right handler
+    without involving the LLM for simple cases.
+  \item[Reranking] A second scoring pass after initial retrieval. Combines
+    cosine similarity with keyword density, source type, and section title
+    matches to improve the ordering of retrieved chunks.
+  \item[qa\_base\_id] Metadata tag added to continuation chunks of a multi-part
+    Q\&A answer. Enables the retriever to fetch all sibling parts when any
+    one part is retrieved.
+  \item[Asymmetric retrieval] Using different prefix strings when embedding
+    queries vs.\ documents. Exploits model training to better align short
+    questions with longer document passages.
+  \item[BM25 (Best Match 25)] Probabilistic lexical retrieval algorithm that
+    scores chunks by term frequency and inverse document frequency. Handles
+    exact/sparse term matching that semantic embeddings cannot. Used alongside
+    vector search in hybrid retrieval.
+  \item[Reciprocal Rank Fusion (RRF)] A method for merging multiple ranked
+    lists. Each item scores $\sum 1/(k + \text{rank})$. Items appearing in
+    both vector and BM25 results receive combined scores; BM25-only items
+    (exact term matches) are still included. $k{=}60$ is the standard constant.
+  \item[Hybrid retrieval] Running vector search and BM25 in parallel and
+    fusing the results. Fixes two failure classes: novel/unknown terms and
+    near-equal cosine similarity ties.
+\end{description}
+
+% =============================================================================
+\vspace{2em}
+\begin{center}
+\rule{0.5\textwidth}{0.4pt}\\[0.5em]
+{\small GSA Gateway — NJIT Graduate Student Association\\
+Contact: \href{mailto:md724@njit.edu}{md724@njit.edu} $\cdot$
+Discord: \texttt{discord.gg/a4mvbEmSAq} $\cdot$
+June 2026}
+\end{center}
+
+\end{document}
