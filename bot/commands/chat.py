@@ -1,31 +1,17 @@
 """Free-form conversation handler — responds to natural language in #ask-gsa and DMs."""
 
 import logging
-import random
 import time
-from typing import Optional
 
 import discord
 from discord.ext import commands
 
-from bot.services.database import hash_user_id
-from bot.services.food_detector import format_food_response, get_food_events
-from bot.services.intent_detector import (
-    INTENT_CLEAR_HISTORY,
-    INTENT_FOOD,
-    INTENT_GREETING,
-    INTENT_HELP,
-    INTENT_QUESTION,
-    INTENT_SOCIAL,
-    INTENT_STATEMENT,
-    INTENT_THANKS,
-)
-from bot.services.retriever import SOURCE_FRIENDLY_NAMES
+from bot.core.message_handler import MessageRequest
 
 logger = logging.getLogger(__name__)
 
 NJIT_RED = discord.Color.from_rgb(204, 0, 0)
-_OLLAMA_ALERT_COOLDOWN = 3600  # 1 hour between admin DMs
+_OLLAMA_ALERT_COOLDOWN = 3600
 
 
 class ChatCog(commands.Cog, name="Chat"):
@@ -36,20 +22,14 @@ class ChatCog(commands.Cog, name="Chat"):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.config = getattr(bot, "config", None)
-        self.retriever = getattr(bot, "retriever", None)
-        self.ollama = getattr(bot, "ollama", None)
-        self.conversation_manager = getattr(bot, "conversation_manager", None)
         self.intent_detector = getattr(bot, "intent_detector", None)
-        self.db = getattr(bot, "db", None)
-        self.rate_limiter = getattr(bot, "rate_limiter", None)
+        self.message_handler = getattr(bot, "message_handler", None)
 
     async def _notify_ollama_down(self, trigger_channel: discord.abc.Messageable) -> None:
-        """DM the admin once per cooldown period when Ollama is unreachable."""
         now = time.monotonic()
         if now - ChatCog._last_ollama_alert < _OLLAMA_ALERT_COOLDOWN:
             return
         ChatCog._last_ollama_alert = now
-
         admin_id = self.config.admin_discord_id if self.config else None
         if not admin_id:
             return
@@ -64,7 +44,6 @@ class ChatCog(commands.Cog, name="Chat"):
                 f"Restart: `sudo systemctl restart ollama`\n\n"
                 f"_(This alert won't repeat for 1 hour)_"
             )
-            logger.info("Admin DM sent: Ollama down alert to user %d", admin_id)
         except Exception as exc:
             logger.warning("Could not DM admin about Ollama failure: %s", exc)
 
@@ -74,7 +53,7 @@ class ChatCog(commands.Cog, name="Chat"):
         if message.author.bot:
             return
 
-        # GATE 2 — Ignore slash command interactions
+        # GATE 2 — Ignore slash commands
         if message.content.startswith("/"):
             return
 
@@ -83,10 +62,7 @@ class ChatCog(commands.Cog, name="Chat"):
         is_dm = isinstance(message.channel, discord.DMChannel)
         bot_user = self.bot.user
         bot_was_mentioned = (bot_user in message.mentions) if bot_user else False
-
-        ask_gsa_channel = (
-            self.config.ask_gsa_channel if self.config else "ask-gsa"
-        )
+        ask_gsa_channel = self.config.ask_gsa_channel if self.config else "ask-gsa"
 
         if self.intent_detector:
             should_respond = self.intent_detector.should_respond(
@@ -101,11 +77,7 @@ class ChatCog(commands.Cog, name="Chat"):
         if not should_respond and not is_dm:
             return
 
-        # GATE 3.5 — Ignore messages directed at another user
-        # Check both resolved mentions and raw <@id> patterns in the message
-        # content (Discord doesn't always populate message.mentions for every
-        # mention type). Either way, if another user is referenced and the bot
-        # was not mentioned, this is a member-to-member exchange — stay silent.
+        # GATE 3.5 — Ignore member-to-member messages
         if not bot_was_mentioned and not is_dm:
             other_mentions = [u for u in message.mentions if u != bot_user]
             bot_mention_str = f"<@{bot_user.id}>" if bot_user else ""
@@ -113,18 +85,7 @@ class ChatCog(commands.Cog, name="Chat"):
             if other_mentions or "<@" in content_without_bot:
                 return
 
-        # GATE 4 — Rate limiting
-        user_id = str(message.author.id)
-        if self.rate_limiter and not self.rate_limiter.is_allowed(user_id):
-            remaining = getattr(self.rate_limiter, "get_retry_after", lambda _: 30)(user_id)
-            await message.reply(
-                f"⏳ You're sending messages too quickly. "
-                f"Please wait {int(remaining)} seconds.",
-                mention_author=False,
-            )
-            return
-
-        # GATE 5 — Clean message
+        # Clean text (strip bot mention)
         bot_mention = f"<@{bot_user.id}>" if bot_user else ""
         if self.intent_detector:
             clean_text = self.intent_detector.clean_message(
@@ -137,280 +98,37 @@ class ChatCog(commands.Cog, name="Chat"):
         if not clean_text:
             return
 
-        # GATE 6 — Detect intent
-        if self.intent_detector:
-            intent, confidence = self.intent_detector.detect(clean_text)
-        else:
-            intent, confidence = INTENT_QUESTION, 0.9
-
-        # ── Handle non-RAG intents ────────────────────────────────────────────
-
-        if intent == INTENT_CLEAR_HISTORY:
-            if self.conversation_manager:
-                self.conversation_manager.clear_session(user_id)
-            await message.reply(
-                "🔄 Conversation cleared! Starting fresh. "
-                "What would you like to know about GSA?",
-                mention_author=False,
-            )
-            return
-
-        if intent == INTENT_GREETING:
-            session = (
-                self.conversation_manager.get_session(user_id)
-                if self.conversation_manager else None
-            )
-            if session and len(session.turns) > 0:
-                response = (
-                    "👋 Welcome back! What else can I help you with?\n"
-                    "_(Type 'clear' to start a new conversation)_"
-                )
-            else:
-                response = (
-                    "👋 Hi! I'm **GSA Gateway**, NJIT's Graduate "
-                    "Student Association AI assistant.\n\n"
-                    "I can help you with:\n"
-                    "- GSA events and announcements\n"
-                    "- Travel awards and funding\n"
-                    "- Club financial rules\n"
-                    "- Officer contacts\n"
-                    "- GSA constitution and policies\n"
-                    "- Campus resources\n\n"
-                    "Just ask me anything! For example:\n"
-                    "_\"How do I apply for a travel award?\"_\n"
-                    "_\"What are the penalties for clubs?\"_\n"
-                    "_\"Who is the GSA president?\"_"
-                )
-            await message.reply(response, mention_author=False)
-            return
-
-        if intent == INTENT_THANKS:
-            responses = [
-                "You're welcome! Let me know if you have more questions about GSA. 😊",
-                "Happy to help! Feel free to ask anything else about GSA services.",
-                "Glad I could help! Don't hesitate to ask if you need more information.",
-            ]
-            await message.reply(random.choice(responses), mention_author=False)
-            return
-
-        if intent == INTENT_HELP:
-            await message.reply(
-                "Here's how to use GSA Gateway:\n\n"
-                "**In #ask-gsa or via DM:**\n"
-                "Just type your question naturally — no commands needed!\n\n"
-                "**In other channels:**\n"
-                "Mention me: @GSA Gateway your question here\n\n"
-                "**Slash commands:**\n"
-                "- `/events` — see upcoming events\n"
-                "- `/contact [role]` — find GSA contacts\n"
-                "- `/resources [category]` — campus resources\n"
-                "- `/initiative` — submit an idea to GSA\n"
-                "- `/feedback` — send anonymous feedback\n\n"
-                "**Tips:**\n"
-                "- Ask follow-up questions naturally\n"
-                "- Type 'clear' to reset our conversation\n"
-                "- DM me for private questions 🔒",
-                mention_author=False,
-            )
-            return
-
-        # ── RAG pipeline for FOOD, QUESTION, STATEMENT ───────────────────────
-
+        # Delegate to MessageHandler
         async with message.channel.typing():
             try:
-                chunks = []
-                food_events: list[dict] = []
-                response_text = ""
-                source_note: Optional[str] = None
-                used_ollama = False
-
-                # STEP 1: Get conversation history
-                history: list[dict] = []
-                if self.conversation_manager:
-                    max_turns = (
-                        self.config.conversation_max_turns
-                        if self.config else 5
-                    )
-                    history = self.conversation_manager.get_history(
-                        user_id, max_turns=max_turns
-                    )
-
-                # STEP 2: Expand short/vague queries before retrieval
-                _OFFICER_FIRST_NAMES = {
-                    "fernando", "mohammad", "mohith",
-                    "durvish", "nistha", "ritwik",
-                }
-                _words = clean_text.split()
-                _core = clean_text.strip("?!.,").strip().lower()
-
-                # Detect officer name queries — force contacts retrieval
-                _is_officer_query = any(
-                    name in _core.split() or _core == name
-                    for name in _OFFICER_FIRST_NAMES
+                req = MessageRequest(
+                    user_id=str(message.author.id),
+                    text=clean_text,
+                    platform="discord",
+                    guild_id=getattr(message.guild, "id", None),
                 )
+                resp = await self.message_handler.handle(req)
 
-                search_query = clean_text
-                _contact_filter = None
-
-                if _is_officer_query:
-                    search_query = (
-                        f"Who is {_core.split()[0].title()} at GSA NJIT? "
-                        f"Contact information and role for {_core.split()[0].title()}"
-                    )
-                    _contact_filter = "contact"
-                    logger.info("Officer query detected: '%s' → contacts filter", clean_text)
-                elif (
-                    self.ollama
-                    and len(_words) <= 3
-                    and intent not in (INTENT_FOOD, INTENT_SOCIAL)
-                ):
-                    expanded = await self.ollama.expand_query(clean_text)
-                    if expanded and expanded.lower() != clean_text.lower():
-                        logger.info(
-                            "Query expanded: '%s' → '%s'", clean_text, expanded
-                        )
-                        search_query = expanded
-
-                # STEP 3: Retrieve relevant chunks
-                if intent == INTENT_FOOD:
-                    if self.retriever:
-                        chunks = await self.retriever.retrieve_for_food_query()
-                    food_events = get_food_events(
-                        kb=getattr(self.bot, "kb", None),
-                        db=self.db,
-                        days_ahead=7,
-                    )
-                elif intent == INTENT_SOCIAL:
-                    if self.retriever:
-                        chunks = await self.retriever.retrieve(
-                            query="social events activities networking happy hour graduate students",
-                            source_type_filter="event",
-                        )
-                elif self.retriever:
-                    chunks = await self.retriever.retrieve(
-                        query=search_query,
-                        conversation_history=history,
-                        source_type_filter=_contact_filter,
-                    )
-
-                # STEP 4: Generate answer
-                if intent == INTENT_FOOD and food_events:
-                    food_embed = format_food_response(food_events)
-                    await message.reply(embed=food_embed, mention_author=False)
-                    if self.conversation_manager:
-                        self.conversation_manager.add_turn(
-                            user_id=user_id,
-                            role="user",
-                            content=clean_text,
-                            channel_id=str(message.channel.id),
-                        )
-                        self.conversation_manager.add_turn(
-                            user_id=user_id,
-                            role="assistant",
-                            content="[Food events listed]",
-                            source_files=["events.yml"],
-                        )
-                    if self.db:
-                        self.db.log_question(
-                            user_id=int(user_id),
-                            question=clean_text,
-                            matched_topic="food events",
-                            confidence=100.0,
-                            guild_id=getattr(message.guild, "id", None),
-                        )
+                if not resp.text:
                     return
 
-                if chunks and self.ollama:
-                    ai_response = await self.ollama.generate_answer(
-                        question=clean_text,
-                        chunks=chunks,
-                        conversation_history=history,
-                    )
-                    if ai_response:
-                        response_text = ai_response
-                        source_files = list({c.source_file for c in chunks})
-                        source_names = [
-                            SOURCE_FRIENDLY_NAMES.get(f, f) for f in source_files[:2]
-                        ]
-                        source_note = " & ".join(source_names)
-                        used_ollama = True
-                    else:
-                        # Ollama timeout / unreachable — fallback to best chunk
-                        best = chunks[0]
-                        response_text = (
-                            f"{best.text[:800]}\n\n"
-                            "_⚠️ The AI engine is currently unavailable. "
-                            "Here is the raw information from the GSA knowledge base. "
-                            "Please try again in a few minutes, or contact a GSA officer "
-                            "at **gsa-pres@njit.edu** if this persists._"
-                        )
-                        source_note = SOURCE_FRIENDLY_NAMES.get(
-                            best.source_file, best.source_file
-                        )
-                        used_ollama = False
-                        await self._notify_ollama_down(message.channel)
-                elif chunks:
-                    # Ollama disabled — raw best chunk
-                    best = chunks[0]
-                    response_text = best.text[:800]
-                    source_note = SOURCE_FRIENDLY_NAMES.get(
-                        best.source_file, best.source_file
-                    )
-                    used_ollama = False
-                else:
-                    # No chunks — true fallback
-                    response_text = (
-                        "I wasn't able to find specific information about that "
-                        "in the GSA knowledge base.\n\n"
-                        "For accurate information, please:\n"
-                        "- Visit the GSA office at **Campus Center 110A** "
-                        "(weekdays 11AM–5PM)\n"
-                        "- Email us at **gsa-pres@njit.edu**\n"
-                        "- Use `/contact` to find the right officer"
-                    )
-                    source_note = None
-                    used_ollama = False
-
-                # STEP 5: Build Discord embed response
                 embed = discord.Embed(color=NJIT_RED)
-                if len(response_text) <= 4096:
-                    embed.description = response_text
+                if len(resp.text) <= 4096:
+                    embed.description = resp.text
                 else:
-                    embed.description = response_text[:4093] + "..."
+                    embed.description = resp.text[:4093] + "..."
 
                 footer_parts = ["💡 GSA Gateway"]
-                if source_note:
-                    footer_parts.append(f"Source: {source_note}")
-                if used_ollama:
+                if resp.source_note:
+                    footer_parts.append(f"Source: {resp.source_note}")
+                if resp.used_ai:
                     footer_parts.append("AI-generated from official GSA docs")
                 embed.set_footer(text=" · ".join(footer_parts))
 
                 await message.reply(embed=embed, mention_author=False)
 
-                # STEP 6: Update conversation memory
-                if self.conversation_manager:
-                    self.conversation_manager.add_turn(
-                        user_id=user_id,
-                        role="user",
-                        content=clean_text,
-                        channel_id=str(message.channel.id),
-                    )
-                    self.conversation_manager.add_turn(
-                        user_id=user_id,
-                        role="assistant",
-                        content=response_text[:500],
-                        source_files=[c.source_file for c in chunks],
-                    )
-
-                # STEP 7: Log interaction
-                if self.db:
-                    self.db.log_question(
-                        user_id=int(user_id),
-                        question=clean_text,
-                        matched_topic=chunks[0].section_title if chunks else None,
-                        confidence=chunks[0].relevance_score * 100 if chunks else 0.0,
-                        guild_id=getattr(message.guild, "id", None),
-                    )
+                if resp.ollama_failed:
+                    await self._notify_ollama_down(message.channel)
 
             except Exception as exc:
                 logger.error("ChatCog on_message error: %s", exc, exc_info=True)

@@ -71,6 +71,8 @@ class GSABot(commands.Bot):
         self.intent_detector: Optional[object] = None
         # MathCafe
         self.mathcafe = None
+        # Message handler
+        self.message_handler = None
 
     async def setup_hook(self) -> None:
         """Initialise services and load extensions before on_ready fires."""
@@ -152,6 +154,20 @@ class GSABot(commands.Bot):
         from bot.services.intent_detector import IntentDetector
         self.intent_detector = IntentDetector()
         logger.info("Intent detector initialized")
+
+        # ── Message handler ──────────────────────────────────────────────────
+        from bot.core.message_handler import MessageHandler
+        self.message_handler = MessageHandler(
+            retriever=self.retriever,
+            ollama=self.ollama,
+            conversation_manager=self.conversation_manager,
+            intent_detector=self.intent_detector,
+            db=self.db,
+            rate_limiter=self.rate_limiter,
+            kb=self.kb,
+            config=config,
+        )
+        logger.info("Message handler initialized")
 
         # ── MathCafe service ─────────────────────────────────────────────────
         from bot.services.mathcafe import MathCafeService
