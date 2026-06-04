@@ -1,7 +1,17 @@
 {
-  "last_updated": "2026-06-03",
+  "last_updated": "2026-06-04",
   "total_facts": 15,
   "recent_facts": [
+    {
+      "id": "mc_009",
+      "title": "One Operator to Rule Them All",
+      "category": "math",
+      "body": "From a recent paper that made mathematicians\ndo a double take:\n\nEvery elementary function you have ever used\n— sin, cos, tan, exp, log, powers, roots,\nhyperbolic functions, and even the constants\nπ and e — can ALL be generated from just\nONE binary operator and the number 1.\n\nThat operator is:\neml(x, y) = exp(x) − ln(y)\n\nThink about what this means:\n- sin(x)? Derivable from eml alone.\n- π? Derivable from eml alone.\n- x²? Derivable from eml alone.\n- The entire landscape of elementary\n  mathematics — one operator.\n\nThe CS analogy: NAND gates.\nA single logic gate from which every\ncircuit, every processor, every computation\ncan be built. Mathematics just found its\nNAND gate for elementary functions.\n\nImportant note: this does not mean\ncalculations become simpler. Composing\neml many times to recover sin(x) is\ncomputationally expensive. But the\ntheoretical result is profound — the\nentire zoo of elementary functions\nis one family with one common ancestor.\n\n🤔 What does this make you think about\nthe deeper structure of mathematics?\n",
+      "posted_date": "2026-06-04",
+      "discussion": true,
+      "needs_image": true,
+      "image_filename": "element.jpeg"
+    },
     {
       "id": "mc_007",
       "title": "The Mathematician They Called a Nurse",

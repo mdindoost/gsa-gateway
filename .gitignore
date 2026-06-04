@@ -50,3 +50,6 @@ htmlcov/
 *.fls
 *.fdb_latexmk
 *.synctex.gz
+
+# Temporary working directories
+TEMP CONTENT/

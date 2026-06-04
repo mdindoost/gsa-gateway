@@ -1,7 +1,7 @@
 metadata:
   total_facts: 15
-  last_updated: '2026-06-03'
-  current_index: 8
+  last_updated: '2026-06-04'
+  current_index: 9
 special_dates:
   05-12:
     id: mc_special_0512
@@ -540,8 +540,8 @@ facts:
   style: detailed
   needs_image: true
   image_filename: element.jpeg
-  posted: false
-  posted_date: null
+  posted: true
+  posted_date: '2026-06-04'
   discussion: true
   has_spoiler: false
   reactions:
