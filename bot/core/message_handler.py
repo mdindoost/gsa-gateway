@@ -104,15 +104,21 @@ class MessageHandler:
                 )
             else:
                 text = (
-                    "Hi! I'm GSA Gateway, NJIT's Graduate Student Association assistant.\n\n"
+                    "Hi! I'm **GSA Gateway**, NJIT's Graduate Student Association assistant.\n\n"
                     "I can help you with:\n"
-                    "- GSA events and announcements\n"
+                    "- MMI Workshop series (Multimedia Intelligence research workshop)\n"
+                    "- **GSA** events and announcements\n"
                     "- Travel awards and funding\n"
                     "- Club financial rules\n"
                     "- Officer contacts\n"
                     "- GSA constitution and policies\n"
                     "- Campus resources\n\n"
-                    "Just ask me anything!"
+                    "Just ask me anything! For example:\n"
+                    "_\"How do I apply for a travel award?\"_\n"
+                    "_\"What are the penalties for clubs?\"_\n"
+                    "_\"Who is the GSA president?\"_\n"
+                    "_\"What is the MMI workshop?\"_\n"
+                    "_\"How do I register for MMI 2026?\"_"
                 )
             return MessageResponse(text=text)
 

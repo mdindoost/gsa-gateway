@@ -1,18 +1,21 @@
 # GSA Gateway
 
-**Discord bot + static website for NJIT's Graduate Student Association.**
+**Discord bot + Telegram bot + static website for NJIT's Graduate Student Association.**
 
-GSA Gateway is a full RAG (Retrieval-Augmented Generation) conversational AI assistant that makes GSA information, events, funding, and resources accessible to all NJIT graduate students through free-form chat in Discord and slash commands.
+GSA Gateway is a full RAG (Retrieval-Augmented Generation) conversational AI assistant that makes GSA information, events, funding, and resources accessible to all NJIT graduate students through free-form chat on Discord and Telegram.
 
 **Live website:** https://mdindoost.github.io/gsa-gateway/
 **GitHub repo:** https://github.com/mdindoost/gsa-gateway
 **Discord:** https://discord.gg/a4mvbEmSAq
+**Telegram:** https://t.me/njit_gsa_bot
 
 > For how to run, maintain, and extend this project — see **[MANUAL.md](MANUAL.md)**.
 
 ---
 
 ## Student Commands
+
+### Discord
 
 | Command | What it does |
 |---|---|
@@ -25,7 +28,19 @@ GSA Gateway is a full RAG (Retrieval-Augmented Generation) conversational AI ass
 | `/contact [role]` | Look up GSA officers and key NJIT campus offices |
 | `/help` | Full command reference |
 
-## Officer Commands
+### Telegram (@njit_gsa_bot)
+
+| Command | What it does |
+|---|---|
+| `/events` | Upcoming GSA events with date, time, and location |
+| `/contact [role]` | GSA officers and their contact info |
+| `/resources [category]` | Curated campus resources by category |
+| `/help` | How to use the bot |
+| _(free text)_ | Ask any question — same RAG pipeline as Discord |
+
+---
+
+## Officer Commands (Discord only)
 
 | Command | What it does |
 |---|---|
@@ -54,19 +69,43 @@ A **daily digest** posts to `#gsa-announcements` every morning at 9 AM if events
 
 | Layer | Technology |
 |---|---|
-| Bot | Python 3.11+, discord.py 2.x, SQLite, rapidfuzz |
+| Discord bot | Python 3.11+, discord.py 2.x, SQLite, rapidfuzz |
+| Telegram bot | python-telegram-bot 20.x |
 | RAG | ChromaDB (vector store), nomic-embed-text (embeddings), llama3.1:8b (generation) |
 | AI | Ollama (local — no API costs, no data leaves the machine) |
 | Website | Pure HTML/CSS/JS, GitHub Pages |
-| Tests | pytest, 176+ tests |
+| Tests | pytest, 212+ tests |
 | Process management | systemd |
 
-### Free-form Chat (new in RAG upgrade)
-- In `#ask-gsa`: just type your question — no slash commands needed
-- DM the bot for private questions
+### Free-form Chat
+Both Discord and Telegram support natural language questions through the same RAG pipeline:
+- Just type your question — no slash commands needed
 - Follow-up questions work naturally (conversation memory, 60-min sessions)
 - Type "clear" to reset your conversation
-- @mention the bot in any other channel
+- **Discord:** use `#ask-gsa`, DM the bot, or @mention it in any channel
+- **Telegram:** DM @njit_gsa_bot directly
+
+---
+
+## Running the Bots
+
+```bash
+# Both bots together (development)
+bash scripts/run_bot.sh
+
+# Restart both
+bash scripts/restart.sh
+
+# Health check
+bash scripts/health_check.sh
+bash scripts/health_check.sh --fix   # auto-restart if down
+```
+
+For production (systemd):
+```bash
+sudo systemctl start gsa-gateway gsa-telegram
+sudo systemctl restart gsa-gateway gsa-telegram
+```
 
 ---
 
@@ -76,14 +115,19 @@ A **daily digest** posts to `#gsa-announcements` every morning at 9 AM if events
 gsa-gateway/
 ├── bot/
 │   ├── commands/        One file per slash command (ask, events, admin, etc.)
-│   ├── services/        Database, search, KB, Ollama, scheduler, channels, announcements, food_detector
+│   ├── connectors/      Platform connectors: base.py, telegram_connector.py
+│   ├── core/            Platform-agnostic brain: message_handler.py
+│   ├── services/        Database, search, KB, Ollama, scheduler, channels, announcements
 │   └── data/            Edit these YAML/Markdown files to update content
+├── run_telegram.py      Telegram bot entry point (runs independently)
 ├── website/             Static site — deploy with one command
 ├── scripts/
-│   ├── health_check.sh  Check all services + auto-restart on issues (--fix flag)
-│   ├── build_index.py   Rebuild ChromaDB vector index after KB edits
-│   ├── export_events_json.py  Sync events.yml → website/data/events.json
-│   └── gsa-gateway.service   systemd unit file
+│   ├── health_check.sh         Check all services + auto-restart (--fix flag)
+│   ├── restart.sh              Restart both bots
+│   ├── build_index.py          Rebuild ChromaDB vector index after KB edits
+│   ├── export_events_json.py   Sync events.yml → website/data/events.json
+│   ├── gsa-gateway.service     systemd unit — Discord bot
+│   └── gsa-telegram.service    systemd unit — Telegram bot
 └── docs/                Architecture, deployment, admin guide, privacy policy
 ```
 
@@ -91,7 +135,7 @@ gsa-gateway/
 
 ## Privacy
 
-User IDs are SHA-256 hashed before any database write. Raw Discord IDs are never stored. See [docs/privacy_policy.md](docs/privacy_policy.md).
+User IDs are SHA-256 hashed before any database write. Raw Discord and Telegram IDs are never stored. See [docs/privacy_policy.md](docs/privacy_policy.md).
 
 ---
 

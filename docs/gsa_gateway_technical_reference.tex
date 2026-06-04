@@ -136,7 +136,7 @@
   \rule{0.6\textwidth}{0.4pt}\\[1.5em]
   {\large New Jersey Institute of Technology\\
    Graduate Student Association\\[1em]
-   Discord Bot + Static Website}\\[2em]
+   Discord Bot + Telegram Bot + Static Website}\\[2em]
   {\normalsize
     \textbf{Author:} Mohammad Dindoost\\
     \textbf{Role:} VP Academic Affairs, Ph.D.\ Candidate in Computer Science\\
@@ -166,9 +166,13 @@ Association. It consists of two independently deployable components:
         full Retrieval-Augmented Generation (RAG) pipeline, manages slash commands for
         events, resources, feedback, and travel funding, and runs automated daily
         digests.
+  \item \textbf{Telegram Bot} (\texttt{@njit\_gsa\_bot}) — An independent bot that
+        shares the same RAG brain as the Discord bot, providing free-form Q\&A and
+        commands (\texttt{/events}, \texttt{/contact}, \texttt{/resources}) to students
+        on Telegram.
   \item \textbf{Static Website} — A pure HTML/CSS/JS website hosted on GitHub Pages
         that surfaces the same information (events, officers, resources) to students
-        without Discord.
+        without Discord or Telegram.
 \end{enumerate}
 
 \subsection{What Problems Does It Solve?}
@@ -192,7 +196,8 @@ questions intelligently.
 \toprule
 \textbf{Component} & \textbf{Technology} & \textbf{Why} \\
 \midrule
-Bot framework & discord.py 2.x & Mature, async-native, slash command support \\
+Discord framework & discord.py 2.x & Mature, async-native, slash command support \\
+Telegram framework & python-telegram-bot 20.x & Async-native, matches asyncio stack \\
 Language & Python 3.11+ & Async ecosystem, ML libraries \\
 LLM (generation) & Ollama + llama3.1:8b & Local, no API cost, privacy-safe \\
 Embedding model & nomic-embed-text & Open source, strong semantic quality \\
@@ -212,20 +217,26 @@ Website & HTML/CSS/JS & No framework, GitHub Pages compatible \\
 \begin{lstlisting}[language=bash, caption={Top-level directory layout}]
 gsa-gateway/
 +-- bot/                    # All Python bot code
-|   +-- main.py             # Entry point -- GSABot class, startup sequence
+|   +-- main.py             # Discord entry point -- GSABot class, startup sequence
 |   +-- config.py           # Reads .env -> typed Config dataclass
 |   +-- commands/           # Discord slash commands (cogs)
+|   +-- connectors/         # Platform connectors: base.py, telegram_connector.py
+|   +-- core/               # Platform-agnostic brain: message_handler.py
 |   +-- services/           # Business logic, RAG pipeline, database
 |   \-- data/               # Knowledge base files (Markdown + YAML)
++-- run_telegram.py         # Telegram entry point (independent process)
 +-- website/                # Static site
 |   +-- *.html              # One file per page
 |   +-- assets/             # style.css, app.js
 |   \-- data/events.json    # Auto-generated from events.yml
 +-- scripts/                # Utility scripts (setup, index build, export)
+|   +-- gsa-gateway.service # systemd unit -- Discord bot
+|   \-- gsa-telegram.service# systemd unit -- Telegram bot
 +-- docs/                   # Architecture and deployment documentation
 +-- chroma_db/              # ChromaDB persistent store (auto-created)
 +-- gsa_gateway.db          # SQLite database (auto-created)
-+-- gsa_gateway.log         # Runtime log (auto-created)
++-- gsa_gateway.log         # Discord bot log (auto-created)
++-- telegram_bot.log        # Telegram bot log (auto-created)
 \-- .env                    # Local secrets (never committed)
 \end{lstlisting}
 
