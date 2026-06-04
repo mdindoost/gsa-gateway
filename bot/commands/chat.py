@@ -98,6 +98,10 @@ class ChatCog(commands.Cog, name="Chat"):
         if not clean_text:
             return
 
+        if not self.message_handler:
+            logger.warning("ChatCog: message_handler not initialized, skipping message")
+            return
+
         # Delegate to MessageHandler
         async with message.channel.typing():
             try:

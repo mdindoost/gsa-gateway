@@ -104,7 +104,7 @@ class MessageHandler:
                 )
             else:
                 text = (
-                    "Hi! I'm *GSA Gateway*, NJIT's Graduate Student Association assistant.\n\n"
+                    "Hi! I'm GSA Gateway, NJIT's Graduate Student Association assistant.\n\n"
                     "I can help you with:\n"
                     "- GSA events and announcements\n"
                     "- Travel awards and funding\n"
@@ -126,11 +126,11 @@ class MessageHandler:
                 text=(
                     "Here's how to use GSA Gateway:\n\n"
                     "Just type your question naturally!\n\n"
-                    "*Commands:*\n"
+                    "Commands:\n"
                     "- /events — see upcoming events\n"
                     "- /contact [role] — find GSA contacts\n"
                     "- /resources [category] — campus resources\n\n"
-                    "*Tips:*\n"
+                    "Tips:\n"
                     "- Ask follow-up questions naturally\n"
                     "- Type 'clear' to reset our conversation"
                 )
@@ -236,10 +236,10 @@ class MessageHandler:
                     best = chunks[0]
                     response_text = (
                         f"{best.text[:800]}\n\n"
-                        "*⚠️ The AI engine is temporarily unavailable. "
+                        "_⚠️ The AI engine is temporarily unavailable. "
                         "This is raw information from the GSA knowledge base. "
                         "Please try again in a few minutes, or contact a GSA officer "
-                        "at gsa-pres@njit.edu if this persists.*"
+                        "at gsa-pres@njit.edu if this persists._"
                     )
                     source_note = SOURCE_FRIENDLY_NAMES.get(best.source_file, best.source_file)
                     ollama_failed = True
@@ -252,8 +252,8 @@ class MessageHandler:
                     "I wasn't able to find specific information about that "
                     "in the GSA knowledge base.\n\n"
                     "For accurate information, please:\n"
-                    "- Visit the GSA office at *Campus Center 110A* (weekdays 11AM–5PM)\n"
-                    "- Email us at *gsa-pres@njit.edu*\n"
+                    "- Visit the GSA office at Campus Center 110A (weekdays 11AM–5PM)\n"
+                    "- Email us at gsa-pres@njit.edu\n"
                     "- Use /contact to find the right officer"
                 )
 
