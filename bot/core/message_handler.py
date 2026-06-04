@@ -207,6 +207,7 @@ class MessageHandler:
                             matched_topic="food events",
                             confidence=100.0,
                             guild_id=req.guild_id,
+                            platform=req.platform,
                         )
                     return MessageResponse(
                         text=format_food_text(food_events),
@@ -283,6 +284,7 @@ class MessageHandler:
                     matched_topic=chunks[0].section_title if chunks else None,
                     confidence=chunks[0].relevance_score * 100 if chunks else 0.0,
                     guild_id=req.guild_id,
+                    platform=req.platform,
                 )
 
             return MessageResponse(

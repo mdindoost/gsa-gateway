@@ -58,7 +58,8 @@ class Database:
                 confidence    REAL,
                 timestamp     TEXT    NOT NULL,
                 guild_id      TEXT,
-                was_answered  BOOLEAN DEFAULT FALSE
+                was_answered  BOOLEAN DEFAULT FALSE,
+                platform      TEXT    DEFAULT 'discord'
             );
 
             CREATE TABLE IF NOT EXISTS conversation_stats (
@@ -151,11 +152,15 @@ class Database:
 
     def migrate_rag_columns(self) -> None:
         """Add RAG-related columns to questions table if missing."""
-        try:
-            self.conn.execute("ALTER TABLE questions ADD COLUMN was_answered BOOLEAN DEFAULT FALSE")
-            self.conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Column already exists
+        for col, typedef in [
+            ("was_answered", "BOOLEAN DEFAULT FALSE"),
+            ("platform",     "TEXT DEFAULT 'discord'"),
+        ]:
+            try:
+                self.conn.execute(f"ALTER TABLE questions ADD COLUMN {col} {typedef}")
+                self.conn.commit()
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
     # ── Write helpers ─────────────────────────────────────────────────────────
 
@@ -166,12 +171,13 @@ class Database:
         matched_topic: str | None,
         confidence: float | None,
         guild_id: int | str | None,
+        platform: str = "discord",
     ) -> int:
         """Store a student question. Returns the new row ID."""
         cur = self.conn.execute(
             """INSERT INTO questions
-               (user_id_hash, question_text, matched_topic, confidence, timestamp, guild_id)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (user_id_hash, question_text, matched_topic, confidence, timestamp, guild_id, platform)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 hash_user_id(user_id),
                 question,
@@ -179,6 +185,7 @@ class Database:
                 confidence,
                 datetime.now(timezone.utc).isoformat(),
                 str(guild_id) if guild_id is not None else None,
+                platform,
             ),
         )
         self.conn.commit()
