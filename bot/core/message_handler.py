@@ -159,16 +159,18 @@ class MessageHandler:
             # Expand short/officer queries
             words = clean_text.split()
             core = clean_text.strip("?!.,").strip().lower()
-            is_officer_query = any(
-                name in core.split() or core == name for name in _OFFICER_FIRST_NAMES
+            matched_officer = next(
+                (name for name in _OFFICER_FIRST_NAMES if name in core.split() or core == name),
+                None,
             )
+            is_officer_query = matched_officer is not None
             search_query = clean_text
             contact_filter = None
 
             if is_officer_query:
                 search_query = (
-                    f"Who is {core.split()[0].title()} at GSA NJIT? "
-                    f"Contact information and role for {core.split()[0].title()}"
+                    f"Who is {matched_officer.title()} at GSA NJIT? "
+                    f"Contact information and role for {matched_officer.title()}"
                 )
                 contact_filter = "contact"
             elif self.ollama and len(words) <= 3 and intent not in (INTENT_FOOD, INTENT_SOCIAL):
@@ -194,7 +196,7 @@ class MessageHandler:
                         )
                     if self.db:
                         self.db.log_question(
-                            user_id=int(user_id),
+                            user_id=user_id,
                             question=clean_text,
                             matched_topic="food events",
                             confidence=100.0,
@@ -264,7 +266,7 @@ class MessageHandler:
             # Log to DB
             if self.db:
                 self.db.log_question(
-                    user_id=int(user_id),
+                    user_id=user_id,
                     question=clean_text,
                     matched_topic=chunks[0].section_title if chunks else None,
                     confidence=chunks[0].relevance_score * 100 if chunks else 0.0,
