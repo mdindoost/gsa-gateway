@@ -47,6 +47,8 @@ class Config:
     mathcafe_channel: str
     # Admin notification
     admin_discord_id: int | None
+    # Telegram
+    telegram_token: str
 
 
 def load_config() -> Config:
@@ -87,6 +89,7 @@ def load_config() -> Config:
         ask_gsa_channel=os.getenv("ASK_GSA_CHANNEL", "ask-gsa"),
         mathcafe_channel=os.getenv("MATHCAFE_CHANNEL", "gsa-mathcafe"),
         admin_discord_id=int(raw_admin) if (raw_admin := os.getenv("ADMIN_DISCORD_ID", "").strip()) else None,
+        telegram_token=os.getenv("TELEGRAM_TOKEN", ""),
     )
 
 
