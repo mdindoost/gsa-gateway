@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from bot.services.food_detector import get_food_events, is_food_query
+from bot.services.food_detector import get_food_events, is_food_query, format_food_text
 
 
 class TestFoodKeywords:
@@ -94,3 +94,20 @@ class TestGetFoodEvents:
         events = get_food_events(db=db, days_ahead=7)
         names = [e["name"] for e in events]
         assert names.index("Earlier Food Event") < names.index("Later Food Event")
+
+
+class TestFormatFoodText:
+    def test_format_food_text_today_and_upcoming(self) -> None:
+        today = date.today().isoformat()
+        events = [
+            {"name": "Pizza Party", "date": today, "time": "5 PM", "location": "CC 110", "description": ""},
+            {"name": "Ice Cream Social", "date": "2099-12-31", "time": "3 PM", "location": "Atrium", "description": ""},
+        ]
+        result = format_food_text(events)
+        assert "pizza party" in result.lower()
+        assert "ice cream social" in result.lower()
+        assert "5 pm" in result.lower()
+
+    def test_format_food_text_empty(self) -> None:
+        result = format_food_text([])
+        assert result == "" or "no" in result.lower()

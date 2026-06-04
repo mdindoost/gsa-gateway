@@ -131,6 +131,45 @@ def format_food_response(food_events: list[dict]) -> discord.Embed:
     return embed
 
 
+def format_food_text(food_events: list[dict]) -> str:
+    """Format food events as plain Markdown text (platform-agnostic).
+
+    Returns a formatted string suitable for any platform (Discord, Telegram, etc).
+    Empty if no events provided.
+    """
+    if not food_events:
+        return "No upcoming food events found this week."
+
+    today_str = date.today().isoformat()
+    today_events = [e for e in food_events if e["date"] == today_str]
+    upcoming_events = [e for e in food_events if e["date"] > today_str]
+
+    lines = []
+
+    if today_events:
+        lines.append("**Free Food Today!**\n")
+        for ev in today_events[:5]:
+            lines.append(f"**{ev['name']}**")
+            lines.append(f"⏰ {ev['time']} | 📍 {ev['location']}")
+            if ev.get("description"):
+                lines.append(str(ev["description"])[:120])
+            lines.append("")
+
+    if upcoming_events:
+        lines.append("**Upcoming Food Events This Week**\n")
+        for ev in upcoming_events[:5]:
+            try:
+                d = date.fromisoformat(ev["date"])
+                day_str = f"{d.strftime('%A, %b')} {d.day}"
+            except ValueError:
+                day_str = ev["date"]
+            lines.append(f"**{day_str} — {ev['name']}**")
+            lines.append(f"⏰ {ev['time']} | 📍 {ev['location']}")
+            lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 def format_food_alert_embed(event: dict) -> discord.Embed:
     """Create a '🍕 FREE FOOD ALERT!' embed for posting to #gsa-food."""
     embed = discord.Embed(
