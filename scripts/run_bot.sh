@@ -1,20 +1,28 @@
 #!/usr/bin/env bash
-# Start the GSA Gateway bot with logging.
+# Start both GSA Gateway bots (Discord + Telegram) with logging.
 # Usage: bash scripts/run_bot.sh
+# Ctrl+C stops both.
 
 set -euo pipefail
 
-# Activate virtual environment if present
 if [ -d ".venv" ]; then
     source .venv/bin/activate
 fi
 
-# Verify .env exists
 if [ ! -f ".env" ]; then
-    echo "ERROR: .env not found. Copy .env.example to .env and fill in DISCORD_TOKEN."
+    echo "ERROR: .env not found. Copy .env.example to .env and fill in your tokens."
     exit 1
 fi
 
-echo "Starting GSA Gateway bot... (Ctrl+C to stop)"
-echo "Logs: gsa_gateway.log"
+# Start Telegram bot in background
+echo "Starting Telegram bot...   (logs: telegram_bot.log)"
+python run_telegram.py &
+TG_PID=$!
+
+# Kill Telegram on exit (Ctrl+C, script exit, or error)
+trap "echo ''; echo 'Stopping both bots...'; kill $TG_PID 2>/dev/null; exit" INT TERM EXIT
+
+# Start Discord bot in foreground
+echo "Starting Discord bot...    (logs: gsa_gateway.log)"
+echo "(Ctrl+C to stop both)"
 python -m bot.main

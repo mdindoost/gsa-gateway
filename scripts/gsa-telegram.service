@@ -1,0 +1,19 @@
+[Unit]
+Description=GSA Gateway Telegram Bot
+After=network-online.target ollama.service gsa-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=md724
+WorkingDirectory=/home/md724/gsa-gateway
+EnvironmentFile=/home/md724/gsa-gateway/.env
+ExecStart=/home/md724/gsa-gateway/.venv/bin/python run_telegram.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gsa-telegram
+
+[Install]
+WantedBy=multi-user.target

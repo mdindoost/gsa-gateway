@@ -62,15 +62,14 @@ else
     warn "Model '$MODEL' not found — run: ollama pull $MODEL"
 fi
 
-# ── 2. GSA Gateway Bot ────────────────────────────────────────────────────────
+# ── 2. Discord Bot ────────────────────────────────────────────────────────────
 echo ""
-echo "[ GSA Gateway Bot ]"
+echo "[ Discord Bot ]"
 
 BOT_PID=$(pgrep -f "python.*bot.main" 2>/dev/null | head -1 || true)
 
 if [[ -n "$BOT_PID" ]]; then
-    ok "Bot is running (PID $BOT_PID)"
-    # Uptime from /proc
+    ok "Discord bot running (PID $BOT_PID)"
     if [[ -f /proc/$BOT_PID/stat ]]; then
         START_TICKS=$(awk '{print $22}' /proc/$BOT_PID/stat 2>/dev/null || echo "")
         if [[ -n "$START_TICKS" ]]; then
@@ -87,7 +86,6 @@ if [[ -n "$BOT_PID" ]]; then
             fi
         fi
     fi
-    # Memory via /proc
     MEM_KB=$(grep VmRSS /proc/$BOT_PID/status 2>/dev/null | awk '{print $2}' || echo "")
     if [[ -n "$MEM_KB" ]]; then
         MEM_MB=$(( MEM_KB / 1024 ))
@@ -98,23 +96,53 @@ if [[ -n "$BOT_PID" ]]; then
         fi
     fi
 else
-    fail "Bot is NOT running"
+    fail "Discord bot is NOT running"
     if $FIX; then
-        info "Starting bot..."
+        info "Starting Discord bot..."
         nohup .venv/bin/python -m bot.main > /dev/null 2>&1 &
         sleep 5
         NEW_PID=$(pgrep -f "python.*bot.main" 2>/dev/null | head -1 || true)
         if [[ -n "$NEW_PID" ]]; then
-            ok "Bot started (PID $NEW_PID)"
+            ok "Discord bot started (PID $NEW_PID)"
         else
-            fail "Bot failed to start — check: tail -20 gsa_gateway.log"
+            fail "Discord bot failed to start — check: tail -20 gsa_gateway.log"
         fi
     else
         info "Fix: bash scripts/restart.sh"
     fi
 fi
 
-# ── 3. Log checks (since last startup) ───────────────────────────────────────
+# ── 3. Telegram Bot ───────────────────────────────────────────────────────────
+echo ""
+echo "[ Telegram Bot ]"
+
+TG_PID=$(pgrep -f "python.*run_telegram" 2>/dev/null | head -1 || true)
+
+if [[ -n "$TG_PID" ]]; then
+    ok "Telegram bot running (PID $TG_PID)"
+    MEM_KB=$(grep VmRSS /proc/$TG_PID/status 2>/dev/null | awk '{print $2}' || echo "")
+    if [[ -n "$MEM_KB" ]]; then
+        MEM_MB=$(( MEM_KB / 1024 ))
+        ok "Memory: ${MEM_MB} MB"
+    fi
+else
+    fail "Telegram bot is NOT running"
+    if $FIX; then
+        info "Starting Telegram bot..."
+        nohup .venv/bin/python run_telegram.py > /dev/null 2>&1 &
+        sleep 5
+        NEW_PID=$(pgrep -f "python.*run_telegram" 2>/dev/null | head -1 || true)
+        if [[ -n "$NEW_PID" ]]; then
+            ok "Telegram bot started (PID $NEW_PID)"
+        else
+            fail "Telegram bot failed to start — check: tail -20 telegram_bot.log"
+        fi
+    else
+        info "Fix: bash scripts/restart.sh"
+    fi
+fi
+
+# ── 4. Log checks (since last startup) ───────────────────────────────────────
 echo ""
 echo "[ Log & Activity ]"
 

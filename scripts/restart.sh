@@ -42,45 +42,73 @@ else
     fi
 fi
 
-# ── 2. Stop existing bot ──────────────────────────────────────────────────────
+# ── 2. Stop existing Discord bot ─────────────────────────────────────────────
 echo ""
-echo "[ GSA Gateway Bot ]"
+echo "[ Discord Bot ]"
 if pgrep -f "python.*bot.main" > /dev/null 2>&1; then
-    info "Stopping existing bot process..."
+    info "Stopping existing Discord bot..."
     pkill -f "python.*bot.main" || true
     sleep 2
-    ok "Bot stopped"
+    ok "Discord bot stopped"
 else
-    info "Bot was not running"
+    info "Discord bot was not running"
 fi
 
-# ── 3. Start bot in background ────────────────────────────────────────────────
-info "Starting bot..."
+info "Starting Discord bot..."
 nohup .venv/bin/python -m bot.main > /dev/null 2>&1 &
 BOT_PID=$!
-echo $BOT_PID > /tmp/gsa-gateway.pid
+echo $BOT_PID > /tmp/gsa-gateway-discord.pid
 sleep 5
 
-# ── 4. Verify bot started ─────────────────────────────────────────────────────
 if kill -0 "$BOT_PID" 2>/dev/null; then
-    # Check log for the ready message
-    if grep -q "GSA Gateway ready" <(tail -20 gsa_gateway.log); then
-        ok "Bot is running (PID $BOT_PID)"
+    if grep -q "GSA Gateway ready" <(tail -20 gsa_gateway.log 2>/dev/null); then
+        ok "Discord bot running (PID $BOT_PID)"
         READY_LINE=$(grep "GSA Gateway ready" gsa_gateway.log | tail -1)
         ok "$READY_LINE"
     else
-        warn "Bot process is up (PID $BOT_PID) but 'ready' not confirmed yet"
+        warn "Discord bot process up (PID $BOT_PID) — 'ready' not confirmed yet"
         info "Watch logs: tail -f gsa_gateway.log"
     fi
 else
-    fail "Bot failed to start — last 10 log lines:"
-    tail -10 gsa_gateway.log
+    fail "Discord bot failed to start — last 10 log lines:"
+    tail -10 gsa_gateway.log 2>/dev/null || true
+fi
+
+# ── 3. Stop existing Telegram bot ────────────────────────────────────────────
+echo ""
+echo "[ Telegram Bot ]"
+if pgrep -f "python.*run_telegram" > /dev/null 2>&1; then
+    info "Stopping existing Telegram bot..."
+    pkill -f "python.*run_telegram" || true
+    sleep 2
+    ok "Telegram bot stopped"
+else
+    info "Telegram bot was not running"
+fi
+
+info "Starting Telegram bot..."
+nohup .venv/bin/python run_telegram.py > /dev/null 2>&1 &
+TG_PID=$!
+echo $TG_PID > /tmp/gsa-gateway-telegram.pid
+sleep 5
+
+if kill -0 "$TG_PID" 2>/dev/null; then
+    if grep -q "Telegram bot polling" <(tail -20 telegram_bot.log 2>/dev/null); then
+        ok "Telegram bot running (PID $TG_PID)"
+    else
+        warn "Telegram bot process up (PID $TG_PID) — polling not confirmed yet"
+        info "Watch logs: tail -f telegram_bot.log"
+    fi
+else
+    fail "Telegram bot failed to start — last 10 log lines:"
+    tail -10 telegram_bot.log 2>/dev/null || true
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════"
 echo -e "  ${GREEN}Done.${NC} To watch live logs:"
-echo "  tail -f gsa_gateway.log"
+echo "  tail -f gsa_gateway.log        (Discord)"
+echo "  tail -f telegram_bot.log       (Telegram)"
 echo "══════════════════════════════════════════════"
 echo ""
