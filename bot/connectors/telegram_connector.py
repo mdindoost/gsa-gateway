@@ -55,7 +55,7 @@ class TelegramConnector(BasePlatform):
             self._stop_event.set()
 
     async def _on_message(self, update: Update, context) -> None:
-        if not update.message or not update.message.text:
+        if not update.message or not update.message.text or not update.effective_user:
             return
         req = MessageRequest(
             user_id=str(update.effective_user.id),
@@ -74,6 +74,8 @@ class TelegramConnector(BasePlatform):
             await update.message.reply_text(text)
 
     async def _cmd_events(self, update: Update, context) -> None:
+        if not update.message:
+            return
         events = self.kb.events
         if not events:
             await update.message.reply_text("No upcoming events found.")
@@ -86,11 +88,16 @@ class TelegramConnector(BasePlatform):
             if ev.description:
                 lines.append(str(ev.description)[:120])
             lines.append("")
-        await update.message.reply_text(
-            "\n".join(lines).strip(), parse_mode="Markdown"
-        )
+        text = "\n".join(lines).strip()
+        try:
+            await update.message.reply_text(text, parse_mode="Markdown")
+        except Exception as exc:
+            logger.warning("Markdown parse failed in _cmd_events, sending plain: %s", exc)
+            await update.message.reply_text(text)
 
     async def _cmd_contact(self, update: Update, context) -> None:
+        if not update.message:
+            return
         args = context.args or []
         contacts = list(self.kb.contacts.values())
         if args:
@@ -109,11 +116,16 @@ class TelegramConnector(BasePlatform):
             if c.office and c.office != "N/A":
                 lines.append(f"🏢 {c.office}")
             lines.append("")
-        await update.message.reply_text(
-            "\n".join(lines).strip(), parse_mode="Markdown"
-        )
+        text = "\n".join(lines).strip()
+        try:
+            await update.message.reply_text(text, parse_mode="Markdown")
+        except Exception as exc:
+            logger.warning("Markdown parse failed in _cmd_contact, sending plain: %s", exc)
+            await update.message.reply_text(text)
 
     async def _cmd_resources(self, update: Update, context) -> None:
+        if not update.message:
+            return
         args = context.args or []
         resources = self.kb.resources
         if args:
@@ -134,11 +146,16 @@ class TelegramConnector(BasePlatform):
                     line += f": {item.url}"
                 lines.append(line)
             lines.append("")
-        await update.message.reply_text(
-            "\n".join(lines).strip(), parse_mode="Markdown"
-        )
+        text = "\n".join(lines).strip()
+        try:
+            await update.message.reply_text(text, parse_mode="Markdown")
+        except Exception as exc:
+            logger.warning("Markdown parse failed in _cmd_resources, sending plain: %s", exc)
+            await update.message.reply_text(text)
 
     async def _cmd_help(self, update: Update, context) -> None:
+        if not update.message:
+            return
         text = (
             "*GSA Gateway — Telegram Bot*\n\n"
             "I answer questions about NJIT's Graduate Student Association.\n\n"
@@ -149,4 +166,8 @@ class TelegramConnector(BasePlatform):
             "/help — This message\n\n"
             "Or just type your question naturally!"
         )
-        await update.message.reply_text(text, parse_mode="Markdown")
+        try:
+            await update.message.reply_text(text, parse_mode="Markdown")
+        except Exception as exc:
+            logger.warning("Markdown parse failed in _cmd_help, sending plain: %s", exc)
+            await update.message.reply_text(text)

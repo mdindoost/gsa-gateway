@@ -150,3 +150,13 @@ async def test_cmd_resources_with_category(connector):
     await connector._cmd_resources(update, context)
     reply_text = update.message.reply_text.call_args[0][0]
     assert "njit library" in reply_text.lower()
+
+
+@pytest.mark.asyncio
+async def test_cmd_help_returns_intro(connector):
+    update, context = _make_update_context("/help")
+    await connector._cmd_help(update, context)
+    update.message.reply_text.assert_called_once()
+    reply_text = update.message.reply_text.call_args[0][0]
+    assert "gsa gateway" in reply_text.lower()
+    assert "/events" in reply_text
