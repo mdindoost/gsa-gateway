@@ -106,7 +106,7 @@ class MessageHandler:
                 text = (
                     "Hi! I'm **GSA Gateway**, NJIT's Graduate Student Association assistant.\n\n"
                     "I can help you with:\n"
-                    "- MMI Workshop series (Multimedia Intelligence research workshop)\n"
+                    "- MMI Workshop series\n"
                     "- **GSA** events and announcements\n"
                     "- Travel awards and funding\n"
                     "- Club financial rules\n"
