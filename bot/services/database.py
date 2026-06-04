@@ -161,7 +161,7 @@ class Database:
 
     def log_question(
         self,
-        user_id: int,
+        user_id: int | str,
         question: str,
         matched_topic: str | None,
         confidence: float | None,

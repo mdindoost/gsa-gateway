@@ -234,7 +234,13 @@ class MessageHandler:
                     used_ai = True
                 else:
                     best = chunks[0]
-                    response_text = best.text[:800]
+                    response_text = (
+                        f"{best.text[:800]}\n\n"
+                        "*⚠️ The AI engine is temporarily unavailable. "
+                        "This is raw information from the GSA knowledge base. "
+                        "Please try again in a few minutes, or contact a GSA officer "
+                        "at gsa-pres@njit.edu if this persists.*"
+                    )
                     source_note = SOURCE_FRIENDLY_NAMES.get(best.source_file, best.source_file)
                     ollama_failed = True
             elif chunks:
