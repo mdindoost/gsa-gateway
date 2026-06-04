@@ -23,7 +23,12 @@ from bot.services.vector_store import VectorStore
 def _configure_logging() -> None:
     level = getattr(logging, config.log_level, logging.INFO)
     fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    logging.basicConfig(level=level, format=fmt, handlers=[logging.StreamHandler()])
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    try:
+        handlers.append(logging.FileHandler("telegram_bot.log", encoding="utf-8"))
+    except OSError:
+        pass
+    logging.basicConfig(level=level, format=fmt, handlers=handlers)
 
 
 _configure_logging()
@@ -31,6 +36,8 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
+    # Token check must happen before any resources are allocated
+    # (sys.exit bypasses the finally block)
     if not config.telegram_token:
         logger.error("TELEGRAM_TOKEN is not set in .env — cannot start Telegram bot")
         sys.exit(1)
