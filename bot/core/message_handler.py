@@ -105,7 +105,7 @@ class MessageHandler:
                 )
             else:
                 text = (
-                    "سلام · ¡Hola! · नमस्ते · 你好 · হ্যালো · ආයුබෝවන් · Hello!\n"
+                    "سلام · Hola · नमस्ते · 你好 · হ্যালো · ආයුබෝවන් · Olá · Merhaba · Hello\n"
                     "_Don't see your language? Ask Mohammad — he'll happily add it!_\n\n"
                     "Hi! I'm **GSA Gateway**, NJIT's Graduate Student Association assistant.\n\n"
                     "I can help you with:\n"
