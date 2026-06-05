@@ -6,6 +6,7 @@ from typing import Optional
 INTENT_FOOD = "food"
 INTENT_SOCIAL = "social"
 INTENT_GREETING = "greeting"
+INTENT_FAREWELL = "farewell"
 INTENT_CLEAR_HISTORY = "clear_history"
 INTENT_QUESTION = "question"
 INTENT_STATEMENT = "statement"
@@ -42,6 +43,36 @@ THANKS_PATTERNS = [
     r"\bawesome\b",
     r"\bthat helps?\b",
     r"\bgot it\b",
+]
+
+FAREWELL_PATTERNS = [
+    r"^bye\b",
+    r"^goodbye\b",
+    r"^good bye\b",
+    r"^good night\b",
+    r"^goodnight\b",
+    r"^see you\b",
+    r"^see ya\b",
+    r"^later\b",
+    r"^take care\b",
+    r"^ciao\b",
+    r"^adios\b",
+    r"^farewell\b",
+    r"^ttyl\b",
+    r"^cu\b",
+    r"^have a good",
+    r"^have a nice",
+    r"^خداحافظ",   # Persian
+    r"^خدانگهدار",  # Persian (alternate)
+    r"^hasta",      # Spanish (hasta luego / hasta pronto)
+    r"^adiós",
+    r"^tchau",      # Portuguese
+    r"^hoşça",      # Turkish
+    r"^güle",       # Turkish (güle güle)
+    r"^अलविदा",    # Hindi
+    r"^再见",       # Chinese
+    r"^拜拜",       # Chinese (informal)
+    r"^বিদায়",    # Bengali
 ]
 
 HELP_PATTERNS = [
@@ -98,6 +129,12 @@ class IntentDetector:
             for pattern in GREETING_PATTERNS:
                 if re.search(pattern, msg):
                     return INTENT_GREETING, 1.0
+
+        # 4b. Farewell (short messages only)
+        if len(msg) < 40:
+            for pattern in FAREWELL_PATTERNS:
+                if re.search(pattern, msg):
+                    return INTENT_FAREWELL, 1.0
 
         # 5. Thanks (short messages only)
         if len(msg) < 50:

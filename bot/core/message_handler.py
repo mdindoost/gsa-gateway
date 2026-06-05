@@ -9,6 +9,7 @@ from typing import Optional
 from bot.services.food_detector import format_food_text, get_food_events
 from bot.services.intent_detector import (
     INTENT_CLEAR_HISTORY,
+    INTENT_FAREWELL,
     INTENT_FOOD,
     INTENT_GREETING,
     INTENT_HELP,
@@ -119,6 +120,20 @@ class MessageHandler:
                     "Just ask me anything!"
                 )
             return MessageResponse(text=text)
+
+        if intent == INTENT_FAREWELL:
+            vpa = self.kb.contacts.get("vp_academic_affairs") if self.kb else None
+            vpa_name  = vpa.name  if vpa else "Mohammad Dindoost"
+            vpa_email = vpa.email if vpa else "gsa-vpa@njit.edu"
+            return MessageResponse(
+                text=(
+                    "خداحافظ · Adiós · अलविदा · 再见 · বিদায় · Tchau · Hoşçakal · Goodbye\n\n"
+                    "It was great chatting! Feel free to come back anytime.\n\n"
+                    f"For any academic questions or GSA matters, reach out to your "
+                    f"VP Academic Affairs:\n"
+                    f"**{vpa_name}** — {vpa_email} · md72@njit.edu"
+                )
+            )
 
         if intent == INTENT_THANKS:
             return MessageResponse(
