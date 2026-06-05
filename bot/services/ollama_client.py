@@ -180,6 +180,7 @@ class OllamaClient:
         question: str,
         chunks: list[RetrievedChunk],
         conversation_history: Optional[list[dict]] = None,
+        temperature: float = 0.3,
     ) -> Optional[str]:
         if not chunks:
             return None
@@ -194,7 +195,7 @@ class OllamaClient:
             "prompt": user_prompt,
             "stream": False,
             "options": {
-                "temperature": 0.3,
+                "temperature": temperature,
                 "top_p": 0.9,
                 "num_predict": 512,
                 "stop": ["Student:", "===", "Human:"],

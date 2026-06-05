@@ -452,6 +452,110 @@ class AdminCog(commands.Cog, name="Admin"):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    # ── /admin_gaps ────────────────────────────────────────────────────────────
+
+    @app_commands.command(
+        name="admin_gaps",
+        description="[Admin] Show knowledge-base gaps: unanswered and low-rated questions.",
+    )
+    @app_commands.describe(days="Look-back window in days (default 30).")
+    async def admin_gaps(
+        self,
+        interaction: discord.Interaction,
+        days: int = 30,
+    ) -> None:
+        if not _admin_check(interaction):
+            await interaction.response.send_message(
+                NO_PERMISSION.format(role=config.admin_role_name), ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        db = self.bot.db  # type: ignore[attr-defined]
+        summary = db.get_gaps_summary(days=days)
+
+        total_q   = summary["total_questions"]
+        rate      = summary["answered_rate"]
+        fb        = summary["feedback_totals"]
+        top_gaps  = summary["top_gaps"]
+        never     = summary["never_matched_topics"]
+
+        embed = discord.Embed(
+            title=f"📉  GSA Knowledge Gaps — Last {days} Days",
+            color=NJIT_RED,
+        )
+
+        # ── Overview ───────────────────────────────────────────────────────────
+        answered_n = round(total_q * rate / 100) if total_q else 0
+        embed.add_field(
+            name="Coverage",
+            value=f"**{rate}%** answered ({answered_n}/{total_q} questions matched well)",
+            inline=False,
+        )
+
+        sat = fb.get("satisfaction_rate")
+        up  = fb.get("thumbs_up", 0)
+        dn  = fb.get("thumbs_down", 0)
+        rg  = fb.get("regenerate", 0)
+        sat_str = f"{sat}%" if sat is not None else "no ratings yet"
+        embed.add_field(
+            name="Satisfaction",
+            value=f"**{sat_str}**  👍 {up}  👎 {dn}  🔄 {rg}",
+            inline=False,
+        )
+
+        # ── Top gaps ───────────────────────────────────────────────────────────
+        if not top_gaps:
+            embed.add_field(
+                name="Gaps",
+                value="✅ No significant gaps detected in the last {days} days.".format(
+                    days=days
+                ),
+                inline=False,
+            )
+        else:
+            lines = []
+            for i, g in enumerate(top_gaps[:10], 1):
+                q_text  = g["question_text"][:60]
+                score   = g["priority_score"]
+                asked   = g["times_asked"]
+                td      = g["thumbs_down_count"]
+                conf    = g["avg_confidence"]
+                td_str  = f", {td} 👎" if td else ""
+                lines.append(
+                    f"**{i}.** [{score:.1f}] \"{q_text}\" — "
+                    f"asked {asked}×{td_str}, conf {conf:.0f}%"
+                )
+            embed.add_field(
+                name="Top Gaps to Fix (by priority score)",
+                value="\n".join(lines),
+                inline=False,
+            )
+
+        # ── Never matched ──────────────────────────────────────────────────────
+        if never:
+            nm_lines = [f"• {q[:70]}" for q in never[:5]]
+            embed.add_field(
+                name="No KB Match At All",
+                value="\n".join(nm_lines),
+                inline=False,
+            )
+
+        embed.set_footer(
+            text=(
+                "Priority = (times_asked × 2) + (👎 × 3) + (1 − confidence) × 5  "
+                "· Higher = fix first"
+            )
+        )
+
+        db.log_admin_action(
+            officer_id=interaction.user.id,
+            action="admin_gaps",
+            detail=f"days={days} total_q={total_q} gaps={len(top_gaps)}",
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
     # ── /admin_rebuild_index ───────────────────────────────────────────────────
 
     @app_commands.command(

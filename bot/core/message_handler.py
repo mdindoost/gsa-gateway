@@ -39,6 +39,7 @@ class MessageResponse:
     source_note: Optional[str] = None
     used_ai: bool = False
     ollama_failed: bool = False
+    question_id: Optional[int] = None
 
 
 class MessageHandler:
@@ -104,6 +105,8 @@ class MessageHandler:
                 )
             else:
                 text = (
+                    "سلام · ¡Hola! · नमस्ते · 你好 · হ্যালো · ආයුබෝවන් · Hello!\n"
+                    "_Don't see your language? Ask Mohammad — he'll happily add it!_\n\n"
                     "Hi! I'm **GSA Gateway**, NJIT's Graduate Student Association assistant.\n\n"
                     "I can help you with:\n"
                     "- MMI Workshop series\n"
@@ -113,12 +116,7 @@ class MessageHandler:
                     "- Officer contacts\n"
                     "- GSA constitution and policies\n"
                     "- Campus resources\n\n"
-                    "Just ask me anything! For example:\n"
-                    "_\"How do I apply for a travel award?\"_\n"
-                    "_\"What are the penalties for clubs?\"_\n"
-                    "_\"Who is the GSA president?\"_\n"
-                    "_\"What is the MMI workshop?\"_\n"
-                    "_\"How do I register for MMI 2026?\"_"
+                    "Just ask me anything!"
                 )
             return MessageResponse(text=text)
 
@@ -145,8 +143,22 @@ class MessageHandler:
         # ── RAG pipeline ──────────────────────────────────────────────────────
         return await self._rag_pipeline(req, clean_text, intent)
 
+    async def retry_question(self, req: MessageRequest) -> MessageResponse:
+        """Re-run RAG at temperature=0.7 for the 🔄 retry button.
+
+        Skips rate limiting and intent detection — the original request already
+        passed both.  Returns a fresh MessageResponse with a new question_id.
+        """
+        return await self._rag_pipeline(
+            req, req.text.strip(), INTENT_QUESTION, temperature=0.7
+        )
+
     async def _rag_pipeline(
-        self, req: MessageRequest, clean_text: str, intent: str
+        self,
+        req: MessageRequest,
+        clean_text: str,
+        intent: str,
+        temperature: float = 0.3,
     ) -> MessageResponse:
         user_id = req.user_id
         try:
@@ -200,8 +212,9 @@ class MessageHandler:
                             content="[Food events listed]",
                             source_files=["events.yml"],
                         )
+                    food_q_id: Optional[int] = None
                     if self.db:
-                        self.db.log_question(
+                        food_q_id = self.db.log_question(
                             user_id=user_id,
                             question=clean_text,
                             matched_topic="food events",
@@ -212,6 +225,7 @@ class MessageHandler:
                     return MessageResponse(
                         text=format_food_text(food_events),
                         source_note="GSA Events",
+                        question_id=food_q_id,
                     )
             elif intent == INTENT_SOCIAL:
                 if self.retriever:
@@ -232,6 +246,7 @@ class MessageHandler:
                     question=clean_text,
                     chunks=chunks,
                     conversation_history=history,
+                    temperature=temperature,
                 )
                 if ai_resp:
                     response_text = ai_resp
@@ -277,8 +292,9 @@ class MessageHandler:
                 )
 
             # Log to DB
+            question_id: Optional[int] = None
             if self.db:
-                self.db.log_question(
+                question_id = self.db.log_question(
                     user_id=user_id,
                     question=clean_text,
                     matched_topic=chunks[0].section_title if chunks else None,
@@ -292,6 +308,7 @@ class MessageHandler:
                 source_note=source_note,
                 used_ai=used_ai,
                 ollama_failed=ollama_failed,
+                question_id=question_id,
             )
 
         except Exception as exc:

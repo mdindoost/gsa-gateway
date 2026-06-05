@@ -1,7 +1,17 @@
 {
-  "last_updated": "2026-06-04",
+  "last_updated": "2026-06-05",
   "total_facts": 15,
   "recent_facts": [
+    {
+      "id": "mc_010",
+      "title": "The Cookie Jar Problem",
+      "category": "math",
+      "body": "A jar has 15 cookies. Each day you pick\none cookie at random:\n\nIf it is a WHOLE cookie:\n  eat half, put the other half back\n\nIf it is a HALF cookie:\n  eat it entirely\n\n🤔 What is the EXPECTED number of half\ncookies in the jar at the moment you\npick the very last whole cookie?\n\nThink carefully — this is trickier\nthan it looks.\n\nDrop your answer in the discussion thread!\n",
+      "posted_date": "2026-06-05",
+      "discussion": true,
+      "needs_image": true,
+      "image_filename": "cookies.jpeg"
+    },
     {
       "id": "mc_009",
       "title": "One Operator to Rule Them All",

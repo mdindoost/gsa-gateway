@@ -11,6 +11,7 @@ from bot.config import config
 from bot.services.food_detector import format_food_response, get_food_events, is_food_query
 from bot.services.moderation import is_channel_allowed
 from bot.services.retriever import SOURCE_FRIENDLY_NAMES
+from bot.ui.feedback import FeedbackView
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class AskCog(commands.Cog, name="Ask"):
                 db=self.bot.db,  # type: ignore[attr-defined]
                 days_ahead=7,
             )
-            self.bot.db.log_question(  # type: ignore[attr-defined]
+            question_id = self.bot.db.log_question(  # type: ignore[attr-defined]
                 user_id=interaction.user.id,
                 question=question,
                 matched_topic="food events",
@@ -67,7 +68,16 @@ class AskCog(commands.Cog, name="Ask"):
                 guild_id=interaction.guild_id,
             )
             if food_events:
-                await interaction.followup.send(embed=format_food_response(food_events))
+                food_embed = format_food_response(food_events)
+                food_view = FeedbackView(
+                    question_id=question_id,
+                    asker_id=interaction.user.id,
+                    question_text=question,
+                    answer_text="[Food events listing]",
+                    bot=self.bot,
+                    guild_id=interaction.guild_id,
+                ) if question_id else None
+                await interaction.followup.send(embed=food_embed, view=food_view)
             else:
                 await interaction.followup.send(
                     "😔 No events with food in the next 7 days right now.\n\n"
@@ -98,7 +108,7 @@ class AskCog(commands.Cog, name="Ask"):
                 conversation_history=history,
             )
 
-        self.bot.db.log_question(  # type: ignore[attr-defined]
+        question_id = self.bot.db.log_question(  # type: ignore[attr-defined]
             user_id=interaction.user.id,
             question=question,
             matched_topic=chunks[0].section_title if chunks else None,
@@ -147,7 +157,16 @@ class AskCog(commands.Cog, name="Ask"):
             footer += " · AI-generated from official GSA docs"
         embed.set_footer(text=footer)
 
-        await interaction.followup.send(embed=embed)
+        rag_view = FeedbackView(
+            question_id=question_id,
+            asker_id=interaction.user.id,
+            question_text=question,
+            answer_text=response_text,
+            bot=self.bot,
+            guild_id=interaction.guild_id,
+        ) if question_id else None
+
+        await interaction.followup.send(embed=embed, view=rag_view)
 
         # Update conversation memory
         if conversation_manager:

@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands
 
 from bot.core.message_handler import MessageRequest
+from bot.ui.feedback import FeedbackView
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,18 @@ class ChatCog(commands.Cog, name="Chat"):
                     footer_parts.append("AI-generated from official GSA docs")
                 embed.set_footer(text=" · ".join(footer_parts))
 
-                await message.reply(embed=embed, mention_author=False)
+                feedback_view = None
+                if resp.question_id:
+                    feedback_view = FeedbackView(
+                        question_id=resp.question_id,
+                        asker_id=message.author.id,
+                        question_text=clean_text,
+                        answer_text=resp.text,
+                        bot=self.bot,
+                        guild_id=getattr(message.guild, "id", None),
+                    )
+
+                await message.reply(embed=embed, view=feedback_view, mention_author=False)
 
                 if resp.ollama_failed:
                     await self._notify_ollama_down(message.channel)

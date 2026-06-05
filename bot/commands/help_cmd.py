@@ -87,6 +87,21 @@ class HelpCog(commands.Cog, name="Help"):
             ),
             inline=False,
         )
+        embed.add_field(
+            name="🛡️  Admin Tools",
+            value=(
+                "`/admin_summary` — Weekly digest of initiatives and feedback.\n"
+                "`/admin_stats` — Engagement counts, RAG status, active sessions.\n"
+                "`/admin_gaps` — Knowledge-base gap analysis: unanswered and low-rated "
+                "questions ranked by priority score.\n"
+                "`/admin_export` — Export questions, initiatives, or feedback as CSV.\n"
+                "`/admin_announce` — Post an announcement to a specific channel.\n"
+                "`/admin_add_event` — Add a new event via form (auto-announces).\n"
+                "`/admin_rebuild_index` — Rebuild the RAG vector index from KB files.\n"
+                "_Requires the GSA Admin role._"
+            ),
+            inline=False,
+        )
         embed.set_footer(
             text="GSA Gateway · NJIT Graduate Student Association · Questions? /ask or /contact"
         )
