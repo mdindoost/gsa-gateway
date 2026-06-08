@@ -2,11 +2,14 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from bot.core.message_handler import MessageHandler, MessageRequest, MessageResponse
+from bot.core.message_handler import MessageHandler, MessageRequest, MessageResponse, FREE_MODE_SYSTEM_PROMPT
 from bot.services.intent_detector import (
     INTENT_CLEAR_HISTORY,
+    INTENT_FREE_MODE,
     INTENT_GREETING,
+    INTENT_GSA_MODE,
     INTENT_HELP,
+    INTENT_IDENTITY,
     INTENT_QUESTION,
     INTENT_THANKS,
 )
@@ -178,3 +181,38 @@ async def test_logs_question_to_db(handler):
     handler.db.log_question.assert_called_once()
     call_kwargs = handler.db.log_question.call_args.kwargs
     assert call_kwargs["guild_id"] == 42
+
+
+# ── Identity intent ───────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_identity_with_ollama_includes_model_name(mock_services):
+    mock_services["ollama"] = MagicMock()
+    mock_services["ollama"].model = "llama3.1:8b"
+    mock_services["intent_detector"].detect.return_value = (INTENT_IDENTITY, 1.0)
+    h = MessageHandler(**mock_services)
+    resp = await h.handle(MessageRequest(user_id="u1", text="who are you", platform="discord"))
+    assert "GSA Gateway" in resp.text
+    assert "llama3.1:8b" in resp.text
+    assert resp.used_ai is False
+    assert resp.source_note is None
+
+
+@pytest.mark.asyncio
+async def test_identity_without_ollama_omits_model_name(mock_services):
+    mock_services["ollama"] = None
+    mock_services["intent_detector"].detect.return_value = (INTENT_IDENTITY, 1.0)
+    h = MessageHandler(**mock_services)
+    resp = await h.handle(MessageRequest(user_id="u1", text="what are you", platform="telegram"))
+    assert "GSA Gateway" in resp.text
+    assert resp.text
+
+
+@pytest.mark.asyncio
+async def test_identity_does_not_call_retriever(mock_services):
+    mock_services["ollama"] = MagicMock()
+    mock_services["ollama"].model = "mistral:7b"
+    mock_services["intent_detector"].detect.return_value = (INTENT_IDENTITY, 1.0)
+    h = MessageHandler(**mock_services)
+    await h.handle(MessageRequest(user_id="u1", text="who are you", platform="discord"))
+    mock_services["retriever"].retrieve.assert_not_called()

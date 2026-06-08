@@ -11,8 +11,11 @@ from bot.services.intent_detector import (
     INTENT_CLEAR_HISTORY,
     INTENT_FAREWELL,
     INTENT_FOOD,
+    INTENT_FREE_MODE,
     INTENT_GREETING,
+    INTENT_GSA_MODE,
     INTENT_HELP,
+    INTENT_IDENTITY,
     INTENT_QUESTION,
     INTENT_SOCIAL,
     INTENT_THANKS,
@@ -24,6 +27,14 @@ logger = logging.getLogger(__name__)
 _OFFICER_FIRST_NAMES = {
     "fernando", "mohammad", "mohith", "durvish", "nistha", "ritwik",
 }
+
+FREE_MODE_SYSTEM_PROMPT = (
+    "You are GSA Gateway, the official AI assistant for NJIT's Graduate Student "
+    "Association. The student has switched to general chat mode. Answer helpfully "
+    "and conversationally. You may answer questions beyond GSA topics, but "
+    "periodically remind students you can also help with GSA events, funding, "
+    "and campus resources."
+)
 
 
 @dataclass
@@ -154,6 +165,24 @@ class MessageHandler:
                     "- Type 'clear' to reset our conversation"
                 )
             )
+
+        if intent == INTENT_IDENTITY:
+            model_name = self.ollama.model if self.ollama else None
+            if model_name:
+                text = (
+                    "I'm **GSA Gateway**, the official AI assistant for NJIT's Graduate Student Association.\n\n"
+                    f"I'm powered by **{model_name}** — a local language model running on NJIT infrastructure, "
+                    "not a cloud service. Unlike ChatGPT, I'm purpose-built for GSA: my answers come directly "
+                    "from official GSA documents, policies, and contacts. I don't browse the internet or answer "
+                    "general topics outside NJIT GSA.\n\n"
+                    "Ask me about events, travel awards, club funding, officer contacts, or anything GSA-related!"
+                )
+            else:
+                text = (
+                    "I'm **GSA Gateway**, the official AI assistant for NJIT's Graduate Student Association — "
+                    "purpose-built to answer questions about GSA services, events, funding, and campus resources."
+                )
+            return MessageResponse(text=text)
 
         # ── RAG pipeline ──────────────────────────────────────────────────────
         return await self._rag_pipeline(req, clean_text, intent)
