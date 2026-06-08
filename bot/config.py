@@ -45,10 +45,21 @@ class Config:
     ask_gsa_channel: str
     # MathCafe
     mathcafe_channel: str
+    mathcafe_enabled: bool
     # Admin notification
     admin_discord_id: int | None
     # Telegram
     telegram_token: str
+    telegram_enabled: bool
+    # Football / World Cup
+    football_api_key: str
+    football_enabled: bool
+    football_channel: str
+    football_poll_interval: int
+    # Telegram channel broadcasting (in addition to existing DM connector)
+    telegram_channel_id: str
+    telegram_chat_id: str
+    telegram_broadcast_target: str  # chat_id preferred, channel_id as fallback
 
 
 def load_config() -> Config:
@@ -88,8 +99,17 @@ def load_config() -> Config:
         embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
         ask_gsa_channel=os.getenv("ASK_GSA_CHANNEL", "ask-gsa"),
         mathcafe_channel=os.getenv("MATHCAFE_CHANNEL", "gsa-mathcafe"),
+        mathcafe_enabled=os.getenv("MATHCAFE_ENABLED", "true").lower() == "true",
         admin_discord_id=int(raw_admin) if (raw_admin := os.getenv("ADMIN_DISCORD_ID", "").strip()) else None,
         telegram_token=os.getenv("TELEGRAM_TOKEN", ""),
+        telegram_enabled=os.getenv("TELEGRAM_ENABLED", "false").lower() == "true",
+        football_api_key=os.getenv("FOOTBALL_API_KEY", ""),
+        football_enabled=os.getenv("FOOTBALL_ENABLED", "false").lower() == "true",
+        football_channel=os.getenv("FOOTBALL_CHANNEL", "world-cup-2026"),
+        football_poll_interval=int(os.getenv("FOOTBALL_POLL_INTERVAL", "60")),
+        telegram_channel_id=os.getenv("TELEGRAM_CHANNEL_ID", ""),
+        telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
+        telegram_broadcast_target=os.getenv("TELEGRAM_CHAT_ID", "") or os.getenv("TELEGRAM_CHANNEL_ID", ""),
     )
 
 
