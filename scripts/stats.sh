@@ -231,6 +231,24 @@ TELEGRAM_U=$(q "SELECT COUNT(DISTINCT user_id_hash) FROM questions WHERE platfor
 echo -e "  Discord:   ${GREEN}${DISCORD_U}${NC} unique users"
 echo -e "  Telegram:  ${GREEN}${TELEGRAM_U}${NC} unique users"
 
+# ── 2b. Questions by Mode ─────────────────────────────────────────────────────
+echo ""
+echo -e "${CYAN}[ Questions by Mode ]${NC}"
+
+HAS_MODE=$(q "SELECT COUNT(*) FROM pragma_table_info('questions') WHERE name='mode';")
+if [ "$HAS_MODE" = "1" ]; then
+    GSA_Q=$(q  "SELECT COUNT(*)                     FROM questions WHERE mode='gsa'  $FILTER_DATE;")
+    FREE_Q=$(q "SELECT COUNT(*)                     FROM questions WHERE mode='free' $FILTER_DATE;")
+    GSA_U=$(q  "SELECT COUNT(DISTINCT user_id_hash) FROM questions WHERE mode='gsa'  $FILTER_DATE;")
+    FREE_U=$(q "SELECT COUNT(DISTINCT user_id_hash) FROM questions WHERE mode='free' $FILTER_DATE;")
+    printf "  %-12s  %8s  %8s\n" "" "Questions" "Users"
+    printf "  %-12s  %8s  %8s\n" "------------" "--------" "--------"
+    printf "  %-12s  %8s  %8s\n" "GSA Mode"  "$GSA_Q"  "$GSA_U"
+    printf "  %-12s  %8s  %8s\n" "Free Mode" "$FREE_Q" "$FREE_U"
+else
+    echo -e "  ${YELLOW}(mode column not yet added — restart the bot once)${NC}"
+fi
+
 # ── 3. Daily breakdown (last 14 days) ─────────────────────────────────────────
 echo ""
 echo -e "${CYAN}[ Daily Activity — Last 14 Days ]${NC}"
@@ -310,14 +328,14 @@ fi
 if $SHOW_QUESTIONS; then
     echo ""
     echo -e "${CYAN}[ Recent Questions (last 20) ]${NC}"
-    printf "  %-10s  %-10s  %-55s\n" "Date" "Platform" "Question"
-    printf "  %-10s  %-10s  %-55s\n" "----------" "----------" "-------------------------------------------------------"
+    printf "  %-10s  %-10s  %-6s  %-55s\n" "Date" "Platform" "Mode" "Question"
+    printf "  %-10s  %-10s  %-6s  %-55s\n" "----------" "----------" "------" "-------------------------------------------------------"
 
-    q "SELECT DATE(timestamp), platform, question_text
+    q "SELECT DATE(timestamp), platform, COALESCE(mode,'gsa'), question_text
        FROM questions $WHERE
        ORDER BY timestamp DESC
-       LIMIT 20;" | while IFS='|' read -r day plat question; do
-        printf "  %-10s  %-10s  %-55s\n" "$day" "$plat" "${question:0:55}"
+       LIMIT 20;" | while IFS='|' read -r day plat mode question; do
+        printf "  %-10s  %-10s  %-6s  %-55s\n" "$day" "$plat" "$mode" "${question:0:55}"
     done
 fi
 

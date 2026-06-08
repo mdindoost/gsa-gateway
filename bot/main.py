@@ -71,6 +71,7 @@ class GSABot(commands.Bot):
         self.intent_detector: Optional[object] = None
         # MathCafe
         self.mathcafe = None
+        self.telegram_connector = None
         # Message handler
         self.message_handler = None
 
@@ -174,10 +175,23 @@ class GSABot(commands.Bot):
         self.mathcafe = MathCafeService(self)
         logger.info("MathCafe loaded: %d facts in queue", len(self.mathcafe.facts))
 
+        # ── Telegram broadcaster (send-only, for channel announcements) ──────────
+        self.telegram_connector = None
+        if config.telegram_enabled and config.telegram_token:
+            from bot.services.telegram_broadcaster import TelegramBroadcaster
+            self.telegram_connector = TelegramBroadcaster(token=config.telegram_token)
+            logger.info("Telegram broadcaster initialized (target: %s)", config.telegram_broadcast_target)
+
         # ── Load all extensions ──────────────────────────────────────────────
         for ext in EXTENSIONS:
             await self.load_extension(ext)
             logger.info("Loaded extension: %s", ext)
+
+        if config.football_enabled:
+            await self.load_extension("bot.commands.worldcup")
+            logger.info("World Cup command loaded")
+        else:
+            logger.info("World Cup disabled — set FOOTBALL_ENABLED=true to enable")
 
         # ── Load chat handler (free-form conversation) ───────────────────────
         await self.load_extension("bot.commands.chat")
@@ -241,6 +255,9 @@ class GSABot(commands.Bot):
             await self.embedder.close()
         if self.ollama:
             await self.ollama.close()
+        football_client = getattr(self, "football_client", None)
+        if football_client:
+            await football_client.close()
         await super().close()
 
 
