@@ -34,6 +34,7 @@ class MathCafeService:
         self.facts: list[dict] = []
         self.special_dates: dict = {}
         self.current_index: int = 0
+        self.last_posted_fact: Optional[dict] = None
         self.load_facts()
 
     # ── Load / Save ───────────────────────────────────────────────────────────
@@ -202,6 +203,7 @@ class MathCafeService:
         self.save_facts()
         self.export_mathcafe_json()
 
+        self.last_posted_fact = fact
         logger.info("MathCafe posted: '%s'", fact["title"])
         return True
 

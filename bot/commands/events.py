@@ -32,7 +32,7 @@ def _event_embed(event) -> discord.Embed:
     embed.add_field(name="Organizer", value=event.organizer, inline=True)
     embed.add_field(name="Category", value=event.category.title(), inline=True)
     if event.rsvp_link:
-        embed.add_field(name="RSVP", value=event.rsvp_link, inline=False)
+        embed.add_field(name="RSVP", value=f"[Register →]({event.rsvp_link})", inline=False)
     embed.set_footer(text="GSA Gateway · /events for full list")
     return embed
 

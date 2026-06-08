@@ -1,7 +1,47 @@
 {
-  "last_updated": "2026-06-05",
+  "last_updated": "2026-06-08",
   "total_facts": 15,
   "recent_facts": [
+    {
+      "id": "mc_014",
+      "title": "The Most Expensive Hyphen in History",
+      "category": "cs",
+      "body": "In 1962, NASA lost the Mariner 1 spacecraft\n293 seconds after launch.\n\nThe cause: a missing hyphen in the\nflight software code.\n\nThe cost: $18.5 million.\n($170 million in today's dollars)\n\nWhat happened:\nA handwritten formula specifying the\nguidance system was transcribed into code.\nOne hyphen — indicating that a derivative\nshould be used instead of raw radar data —\nwas omitted during transcription.\n\nThe result: the rocket began making wild\ncourse corrections based on noisy raw data\ninstead of smoothed data. Mission Control\nhad no choice but to destroy it.\n\nArthur C. Clarke, author of 2001: A Space\nOdyssey, called it:\n\"The most expensive hyphen in history.\"\n\nThe software was correct on paper.\nThe review process missed the transcription.\nThe rocket never reached Venus.\n\nLessons that still apply today:\n- Code review exists for a reason\n- Transcription errors are real errors\n- The difference between − and nothing\n  is sometimes $170 million\n\nNext time someone rushes your code review —\ntell them about Mariner 1. 🚀\n",
+      "posted_date": "2026-06-08",
+      "discussion": true,
+      "needs_image": false,
+      "image_filename": null
+    },
+    {
+      "id": "mc_012",
+      "title": "The Exam That Cannot Exist (But Does)",
+      "category": "math",
+      "body": "A professor announces:\n\n\"There will be a surprise exam next week.\nIt will be on a day you cannot predict\nthe night before.\"\n\nA clever student reasons:\n\nIt cannot be Friday — by Thursday night\nwe would know it must be Friday, so it\nwould not be a surprise.\n\nTherefore Friday is eliminated.\nBut now it cannot be Thursday either —\nby Wednesday night we would know it must\nbe Thursday.\n\nEliminate Thursday. Now Wednesday falls\nby the same logic. Then Tuesday. Then Monday.\n\nConclusion: the exam cannot happen\nat all — it is logically impossible.\n\nThe professor gives the exam on Tuesday.\nEveryone is completely surprised.\n\nThis is the Unexpected Hanging Paradox,\nfirst published in 1948. Despite decades\nof debate by logicians and philosophers,\nthere is still no universally agreed\nresolution.\n\n🤔 Where does the student's logic break down?\n",
+      "posted_date": "2026-06-07",
+      "discussion": true,
+      "needs_image": false,
+      "image_filename": null
+    },
+    {
+      "id": "mc_013",
+      "title": "Einstein Is Saving Your Navigation Right Now",
+      "category": "science",
+      "body": "Every time you use GPS navigation,\nEinstein's equations run in the background.\n\nHere is why:\n\nGPS satellites carry incredibly precise\natomic clocks. But relativity predicts\ntwo opposing effects on those clocks:\n\nSpecial Relativity effect:\nSatellites move at ~14,000 km/h relative\nto Earth. Moving clocks run SLOW.\nEffect: −7 microseconds per day.\n\nGeneral Relativity effect:\nSatellites sit 20,000 km up where gravity\nis weaker. Weaker gravity means clocks\nrun FAST.\nEffect: +45 microseconds per day.\n\nNet effect: satellite clocks gain\n+38 microseconds every single day.\n\n38 microseconds sounds tiny.\nBut GPS uses the speed of light to\ncalculate position.\nLight travels ~11km in 38 microseconds.\n\nWithout relativistic correction:\nYour GPS would be wrong by 11km —\nand getting worse every day.\n\nEvery Uber, every Google Maps route,\nevery aircraft landing — Einstein's\n1905 and 1915 papers are doing the math.\n\nPure theory. Completely practical. 🛸\n",
+      "posted_date": "2026-06-07",
+      "discussion": true,
+      "needs_image": false,
+      "image_filename": null
+    },
+    {
+      "id": "mc_011",
+      "title": "Why Does Math Describe Reality?",
+      "category": "science",
+      "body": "In 1960, physicist Eugene Wigner wrote a\nfamous paper titled:\n\"The Unreasonable Effectiveness of Mathematics\nin the Natural Sciences\"\n\nHis puzzle: why does mathematics — invented\npurely inside the human mind — describe\nphysical reality so precisely?\n\nConsider these examples:\n- Maxwell's equations predicted radio waves\n  before anyone knew they existed\n- Complex numbers invented for pure algebra\n  turned out to perfectly describe quantum\n  mechanics\n- Riemann invented non-Euclidean geometry\n  as abstract play — Einstein used it 60\n  years later to describe spacetime\n\nNobody asked mathematicians to make these\nthings useful. They just were.\n\nIs mathematics invented or discovered?\nIs the universe fundamentally mathematical?\nOr is this just a spectacular coincidence?\n\nWigner never answered his own question.\nNeither has anyone else — yet.\n\n🤔 What do you think?\n",
+      "posted_date": "2026-06-06",
+      "discussion": true,
+      "needs_image": false,
+      "image_filename": null
+    },
     {
       "id": "mc_010",
       "title": "The Cookie Jar Problem",
@@ -61,46 +101,6 @@
       "discussion": true,
       "needs_image": true,
       "image_filename": "legends.jpeg"
-    },
-    {
-      "id": "mc_004",
-      "title": "Why Are You Still Typing on a 150-Year-Old Keyboard Layout?",
-      "category": "cs",
-      "body": "The keyboard you are using right now was\ndesigned in 1873 — for a mechanical typewriter.\n\nQWERTY was created by Christopher Latham Sholes\nto solve a mechanical problem: commonly paired\nletters were placed apart so physical metal\ntypebars would not jam together mid-sentence.\n\nThat problem has not existed since the 1980s.\n\nThe heatmap tells the story clearly:\n- Red = most heavily used keys\n- QWERTY constantly pulls fingers off home row\n- Dvorak and Colemak place the 10 most common\n  English letters directly under your fingers\n- Studies show the average typist travels\n  over 20km per day on QWERTY fingers\n\nFun detail: the word \"TYPEWRITER\" can be typed\nentirely on the top row of QWERTY — almost\ncertainly not a coincidence for a salesman\ndemonstrating the machine in 1873.\n\n🤔 Would you switch layouts if it meant\nrelearning to type for 3-4 weeks?\n",
-      "posted_date": "2026-05-30",
-      "discussion": true,
-      "needs_image": true,
-      "image_filename": "keyboard.jpeg"
-    },
-    {
-      "id": "mc_003",
-      "title": "Can You Identify This Function?",
-      "category": "math",
-      "body": "Look at this graph carefully before scrolling.\n\nWhat you can observe:\n- Symmetric about the y-axis\n- Behaves like a parabola for large |x|\n- Something very strange happens near x = 0\n- Oscillations become infinitely rapid\n  as you approach the origin\n\n🤔 What function produces this graph?\nDrop your answer in the discussion thread!\n",
-      "posted_date": "2026-05-29",
-      "discussion": true,
-      "needs_image": true,
-      "image_filename": "function.jpeg"
-    },
-    {
-      "id": "mc_002",
-      "title": "When Were You Born? Your Birthday's Popularity Rank",
-      "category": "math",
-      "body": "Not all birthdays are created equal.\n\nAccording to Australian Bureau of Statistics\ndata, birthdays are ranked from 1 (most common)\nto 366 (least common — yes, including Feb 29).\n\nSome surprising findings from the data:\n- September dominates the top spots\n- February 29 is the rarest (rank 366)\n- Christmas Day and New Year's Day are\n  among the LEAST common birthdays\n- Most common birth months: September\n  and October\n\n🤔 Where does YOUR birthday rank?\nCheck the chart and drop your rank\nin the reactions below!\n\nFun fact: If you were born in September,\nyour parents were likely celebrating the\nholidays 9 months earlier... 🎄\n",
-      "posted_date": "2026-05-28",
-      "discussion": true,
-      "needs_image": true,
-      "image_filename": "BD.jpeg"
-    },
-    {
-      "id": "mc_001",
-      "title": "The Coin Flip Trap",
-      "category": "math",
-      "body": "Someone approaches you with a deal:\n\nFlip 1: Heads → you win $1,000 | Tails → you pay $500\nFlip 2: Heads → you win $2,000 | Tails → you pay $1,000\nFlip 3: Heads → you win $4,000 | Tails → you pay $2,000\n...and so on, doubling each time.\n\nThe catch: the moment you lose, the game ends\nand you pay. You can walk away after any win.\n\n🤔 At what point do you walk away?\n\nIs this purely math? Purely psychology?\nOr something else entirely?\n",
-      "posted_date": "2026-05-27",
-      "discussion": true,
-      "needs_image": true,
-      "image_filename": "coin.png"
     }
   ]
 }

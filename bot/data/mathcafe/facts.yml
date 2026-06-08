@@ -1,7 +1,7 @@
 metadata:
   total_facts: 15
-  last_updated: '2026-06-05'
-  current_index: 10
+  last_updated: '2026-06-08'
+  current_index: 14
 special_dates:
   05-12:
     id: mc_special_0512
@@ -618,8 +618,8 @@ facts:
   style: detailed
   needs_image: false
   image_filename: null
-  posted: false
-  posted_date: null
+  posted: true
+  posted_date: '2026-06-06'
   discussion: true
   has_spoiler: false
   reactions:
@@ -655,8 +655,8 @@ facts:
   style: detailed
   needs_image: false
   image_filename: null
-  posted: false
-  posted_date: null
+  posted: true
+  posted_date: '2026-06-07'
   discussion: true
   has_spoiler: false
   reactions:
@@ -738,8 +738,8 @@ facts:
   style: detailed
   needs_image: false
   image_filename: null
-  posted: false
-  posted_date: null
+  posted: true
+  posted_date: '2026-06-07'
   discussion: true
   has_spoiler: false
   reactions:
@@ -829,8 +829,8 @@ facts:
   style: detailed
   needs_image: false
   image_filename: null
-  posted: false
-  posted_date: null
+  posted: true
+  posted_date: '2026-06-08'
   discussion: true
   has_spoiler: false
   reactions:

@@ -44,7 +44,7 @@ def format_event_announcement(
             embed.add_field(name="Description", value=desc[:500], inline=False)
         embed.add_field(name="Organizer", value=organizer, inline=True)
         if rsvp:
-            embed.add_field(name="RSVP / Info", value=rsvp, inline=True)
+            embed.add_field(name="RSVP / Info", value=f"[Register →]({rsvp})", inline=True)
         embed.set_footer(text="Add to your calendar • GSA Gateway")
 
     elif announcement_type == "reminder_7d":
@@ -55,7 +55,7 @@ def format_event_announcement(
         if desc:
             embed.add_field(name="About", value=desc[:300], inline=False)
         if rsvp:
-            embed.add_field(name="RSVP / Info", value=rsvp, inline=False)
+            embed.add_field(name="RSVP / Info", value=f"[Register →]({rsvp})", inline=False)
         embed.set_footer(text="7 days away • GSA Gateway")
 
     elif announcement_type == "reminder_1d":
@@ -64,7 +64,7 @@ def format_event_announcement(
         embed.add_field(name="Time",     value=time_val, inline=True)
         embed.add_field(name="Location", value=location, inline=True)
         if rsvp:
-            embed.add_field(name="RSVP / Info", value=rsvp, inline=False)
+            embed.add_field(name="RSVP / Info", value=f"[Register →]({rsvp})", inline=False)
         embed.set_footer(text="Don't forget! • GSA Gateway")
 
     elif announcement_type == "reminder_1h":
@@ -72,7 +72,7 @@ def format_event_announcement(
         embed.add_field(name="Time",     value=time_val, inline=True)
         embed.add_field(name="Location", value=location, inline=True)
         if rsvp:
-            embed.add_field(name="RSVP / Info", value=rsvp, inline=False)
+            embed.add_field(name="RSVP / Info", value=f"[Register →]({rsvp})", inline=False)
         embed.set_footer(text="Starting in 1 hour • GSA Gateway")
 
     else:
