@@ -216,3 +216,80 @@ async def test_identity_does_not_call_retriever(mock_services):
     h = MessageHandler(**mock_services)
     await h.handle(MessageRequest(user_id="u1", text="who are you", platform="discord"))
     mock_services["retriever"].retrieve.assert_not_called()
+
+
+# ── Free mode toggle ──────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_free_mode_toggle_sets_mode_and_confirms(mock_services):
+    mock_services["ollama"] = MagicMock()
+    mock_services["ollama"].model = "llama3.1:8b"
+    mock_services["intent_detector"].detect.return_value = (INTENT_FREE_MODE, 1.0)
+    h = MessageHandler(**mock_services)
+    resp = await h.handle(MessageRequest(user_id="u1", text="free mode", platform="discord"))
+    assert "General Chat Mode" in resp.text
+    mock_services["conversation_manager"].set_mode.assert_called_once_with("u1", "free")
+
+
+@pytest.mark.asyncio
+async def test_free_mode_unavailable_without_ollama(mock_services):
+    mock_services["ollama"] = None
+    mock_services["intent_detector"].detect.return_value = (INTENT_FREE_MODE, 1.0)
+    h = MessageHandler(**mock_services)
+    resp = await h.handle(MessageRequest(user_id="u1", text="free mode", platform="discord"))
+    assert "isn't available" in resp.text or "not available" in resp.text.lower()
+    mock_services["conversation_manager"].set_mode.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_gsa_mode_toggle_sets_mode_and_confirms(mock_services):
+    mock_services["intent_detector"].detect.return_value = (INTENT_GSA_MODE, 1.0)
+    h = MessageHandler(**mock_services)
+    resp = await h.handle(MessageRequest(user_id="u1", text="gsa mode", platform="discord"))
+    assert "GSA Mode" in resp.text
+    mock_services["conversation_manager"].set_mode.assert_called_once_with("u1", "gsa")
+
+
+# ── Free mode routing in _rag_pipeline ───────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_free_mode_skips_rag_and_calls_generate(mock_services):
+    mock_services["ollama"] = AsyncMock()
+    mock_services["ollama"].model = "llama3.1:8b"
+    mock_services["ollama"].generate = AsyncMock(return_value="Paris is the capital of France.")
+    mock_services["conversation_manager"].get_mode.return_value = "free"
+    mock_services["intent_detector"].detect.return_value = (INTENT_QUESTION, 0.9)
+    h = MessageHandler(**mock_services)
+    resp = await h.handle(
+        MessageRequest(user_id="u1", text="what is the capital of France?", platform="discord")
+    )
+    assert resp.text == "Paris is the capital of France."
+    assert resp.source_note == "General Chat Mode"
+    mock_services["ollama"].generate.assert_called_once_with(
+        prompt="what is the capital of France?",
+        system=FREE_MODE_SYSTEM_PROMPT,
+    )
+    mock_services["retriever"].retrieve.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_free_mode_ollama_failure_returns_error_message(mock_services):
+    mock_services["ollama"] = AsyncMock()
+    mock_services["ollama"].model = "llama3.1:8b"
+    mock_services["ollama"].generate = AsyncMock(return_value=None)
+    mock_services["conversation_manager"].get_mode.return_value = "free"
+    mock_services["intent_detector"].detect.return_value = (INTENT_QUESTION, 0.9)
+    h = MessageHandler(**mock_services)
+    resp = await h.handle(MessageRequest(user_id="u1", text="something", platform="discord"))
+    assert resp.source_note == "General Chat Mode"
+    assert "try again" in resp.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_gsa_mode_still_uses_rag(mock_services):
+    mock_services["conversation_manager"].get_mode.return_value = "gsa"
+    mock_services["retriever"].retrieve = AsyncMock(return_value=[])
+    mock_services["intent_detector"].detect.return_value = (INTENT_QUESTION, 0.9)
+    h = MessageHandler(**mock_services)
+    await h.handle(MessageRequest(user_id="u1", text="what is the travel award?", platform="discord"))
+    mock_services["retriever"].retrieve.assert_called_once()

@@ -184,6 +184,27 @@ class MessageHandler:
                 )
             return MessageResponse(text=text)
 
+        if intent == INTENT_FREE_MODE:
+            if not self.ollama:
+                return MessageResponse(
+                    text=(
+                        "General chat mode requires the AI engine, which isn't available right now. "
+                        "I'll continue answering GSA questions from the knowledge base."
+                    )
+                )
+            if self.conversation_manager:
+                self.conversation_manager.set_mode(user_id, "free")
+            return MessageResponse(
+                text="Switched to **General Chat Mode**. Ask me anything! Type `gsa mode` to return to GSA topics."
+            )
+
+        if intent == INTENT_GSA_MODE:
+            if self.conversation_manager:
+                self.conversation_manager.set_mode(user_id, "gsa")
+            return MessageResponse(
+                text="Switched back to **GSA Mode**. I'll answer from official GSA documents."
+            )
+
         # ── RAG pipeline ──────────────────────────────────────────────────────
         return await self._rag_pipeline(req, clean_text, intent)
 
@@ -206,6 +227,21 @@ class MessageHandler:
     ) -> MessageResponse:
         user_id = req.user_id
         try:
+            # Free mode: skip RAG entirely, go direct to LLM
+            mode = self.conversation_manager.get_mode(user_id) if self.conversation_manager else "gsa"
+            if mode == "free" and self.ollama:
+                result = await self.ollama.generate(prompt=clean_text, system=FREE_MODE_SYSTEM_PROMPT)
+                if self.conversation_manager:
+                    self.conversation_manager.add_turn(user_id=user_id, role="user", content=clean_text)
+                    if result:
+                        self.conversation_manager.add_turn(
+                            user_id=user_id, role="assistant", content=result[:500]
+                        )
+                return MessageResponse(
+                    text=result or "The AI engine didn't respond. Please try again.",
+                    source_note="General Chat Mode",
+                )
+
             chunks = []
             response_text = ""
             source_note = None
