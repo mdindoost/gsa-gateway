@@ -25,6 +25,7 @@ class ConversationSession:
     last_active: datetime
     channel_id: Optional[str]
     message_count: int
+    mode: str = "gsa"
 
 
 class ConversationManager:
@@ -144,6 +145,14 @@ class ConversationManager:
         if user_id in self.sessions:
             del self.sessions[user_id]
         logger.info("Session cleared for user %s...", user_id[:8])
+
+    def get_mode(self, user_id: str) -> str:
+        session = self.get_session(user_id)
+        return session.mode if session is not None else "gsa"
+
+    def set_mode(self, user_id: str, mode: str) -> None:
+        session = self.get_or_create_session(user_id)
+        session.mode = mode
 
     def get_stats(self) -> dict:
         return {

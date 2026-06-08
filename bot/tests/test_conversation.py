@@ -95,3 +95,36 @@ def test_add_turn_updates_last_active(manager):
     manager.add_turn(user_id, "user", "ping")
     session = manager.sessions[user_id]
     assert session.last_active >= before
+
+
+# ── Mode field ────────────────────────────────────────────────────────────────
+
+def test_session_default_mode_is_gsa(manager):
+    session = manager.get_or_create_session("user_mode_1")
+    assert session.mode == "gsa"
+
+
+def test_get_mode_returns_gsa_for_unknown_user(manager):
+    assert manager.get_mode("never_seen") == "gsa"
+
+
+def test_set_mode_to_free(manager):
+    manager.set_mode("user_mode_2", "free")
+    assert manager.get_mode("user_mode_2") == "free"
+
+
+def test_set_mode_back_to_gsa(manager):
+    manager.set_mode("user_mode_3", "free")
+    manager.set_mode("user_mode_3", "gsa")
+    assert manager.get_mode("user_mode_3") == "gsa"
+
+
+def test_mode_resets_on_clear_session(manager):
+    manager.set_mode("user_mode_4", "free")
+    manager.clear_session("user_mode_4")
+    assert manager.get_mode("user_mode_4") == "gsa"
+
+
+def test_mode_is_per_user(manager):
+    manager.set_mode("user_mode_5", "free")
+    assert manager.get_mode("user_mode_6") == "gsa"
