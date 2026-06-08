@@ -5,6 +5,7 @@ import datetime
 import io
 import logging
 from pathlib import Path
+from typing import Optional
 
 import discord
 import yaml
@@ -203,6 +204,22 @@ class AddEventModal(discord.ui.Modal, title="Add New GSA Event"):
         # Mark announcement sent
         if channels_posted:
             db.mark_announcement_sent(event_id, ", ".join(channels_posted))
+
+        # ── Telegram broadcast ─────────────────────────────────────────────────
+        tg = getattr(self._bot, "telegram_connector", None)
+        if tg and channels_posted:
+            tg_text = f"📅 <b>NEW EVENT: {name}</b>\n\n"
+            tg_text += f"📅 {date_str} · {time_val}\n"
+            tg_text += f"📍 {location}\n"
+            if desc:
+                tg_text += f"\n{desc[:400]}\n"
+            if rsvp_link:
+                tg_text += f"\n<a href=\"{rsvp_link}\">Register / RSVP</a>\n"
+            tg_text += "\n<i>NJIT Graduate Student Association</i>"
+            try:
+                await tg.broadcast(tg_text, parse_mode="HTML")
+            except Exception as exc:
+                logger.warning("Telegram broadcast failed for new event: %s", exc)
 
         db.log_event_action(name, "created", self._officer_id)
         db.log_admin_action(
@@ -411,6 +428,21 @@ class AdminCog(commands.Cog, name="Admin"):
         embed.add_field(name="Questions",    value=str(stats["total_questions"]),  inline=True)
         embed.add_field(name="Initiatives",  value=str(stats["total_initiatives"]), inline=True)
         embed.add_field(name="Feedback Items", value=str(stats["total_feedback"]), inline=True)
+
+        by_mode = stats.get("questions_by_mode", {})
+        gsa  = by_mode.get("gsa",  {"questions": 0, "users": 0})
+        free = by_mode.get("free", {"questions": 0, "users": 0})
+        embed.add_field(
+            name="GSA Mode",
+            value=f"{gsa['questions']} questions\n{gsa['users']} users",
+            inline=True,
+        )
+        embed.add_field(
+            name="Free Mode",
+            value=f"{free['questions']} questions\n{free['users']} users",
+            inline=True,
+        )
+        embed.add_field(name="​", value="​", inline=True)
 
         if stats["top_topics"]:
             topic_lines = "\n".join(
@@ -661,13 +693,166 @@ class AdminCog(commands.Cog, name="Admin"):
             )
             return
 
+        tg = getattr(self.bot, "telegram_connector", None)
+        if tg:
+            try:
+                await tg.broadcast(message.strip())
+            except Exception as exc:
+                logger.warning("Telegram broadcast failed for admin_announce: %s", exc)
+
         self.bot.db.log_admin_action(  # type: ignore[attr-defined]
             officer_id=interaction.user.id,
             action="admin_announce",
             detail=f"channel={channel.name}",
         )
         await interaction.response.send_message(
-            f"✅ Announcement posted in {channel.mention}.", ephemeral=True
+            f"✅ Announcement posted in {channel.mention} and Telegram channel.", ephemeral=True
+        )
+
+    # ── /admin_announce_event ─────────────────────────────────────────────────
+
+    @app_commands.command(
+        name="admin_announce_event",
+        description="[Admin] Manually post a formatted event announcement from the KB.",
+    )
+    @app_commands.describe(
+        event_name="Name of the event (partial names work).",
+        channel="Channel to post in (defaults to #gsa-announcements).",
+    )
+    async def admin_announce_event(
+        self,
+        interaction: discord.Interaction,
+        event_name: str,
+        channel: Optional[discord.TextChannel] = None,
+    ) -> None:
+        if not _admin_check(interaction):
+            await interaction.response.send_message(
+                NO_PERMISSION.format(role=config.admin_role_name), ephemeral=True
+            )
+            return
+
+        from bot.services.announcements import format_event_announcement
+        from bot.services.channels import get_announcement_channel
+
+        # Fuzzy-match the event from the KB
+        matches = self.bot.search_svc.search_events(event_name)  # type: ignore[attr-defined]
+        if not matches:
+            await interaction.response.send_message(
+                f"No event found matching **{event_name}**. Use `/events` to see available events.",
+                ephemeral=True,
+            )
+            return
+
+        event, _ = matches[0]
+        event_dict = {
+            "name": event.name,
+            "date": event.date,
+            "time": event.time,
+            "location": event.location,
+            "description": event.description,
+            "organizer": event.organizer,
+            "rsvp_link": event.rsvp_link,
+            "category": event.category,
+        }
+
+        target = channel or get_announcement_channel(interaction.guild)
+        if target is None:
+            await interaction.response.send_message(
+                "No announcement channel found. Pass a channel or create #gsa-announcements.",
+                ephemeral=True,
+            )
+            return
+
+        embed = format_event_announcement(event_dict, "new")
+        try:
+            await target.send(embed=embed)
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                f"I don't have permission to post in {target.mention}.", ephemeral=True
+            )
+            return
+
+        tg = getattr(self.bot, "telegram_connector", None)
+        if tg:
+            tg_text = f"📅 <b>NEW EVENT: {event.name}</b>\n\n"
+            tg_text += f"📅 {event.date} · {event.time}\n"
+            tg_text += f"📍 {event.location}\n"
+            if event.description:
+                tg_text += f"\n{event.description[:400]}\n"
+            if event.rsvp_link:
+                tg_text += f"\n<a href=\"{event.rsvp_link}\">Register / RSVP</a>\n"
+            tg_text += "\n<i>NJIT Graduate Student Association</i>"
+            try:
+                await tg.broadcast(tg_text, parse_mode="HTML")
+            except Exception as exc:
+                logger.warning("Telegram broadcast failed for announce_event: %s", exc)
+
+        self.bot.db.log_admin_action(  # type: ignore[attr-defined]
+            officer_id=interaction.user.id,
+            action="admin_announce_event",
+            detail=f"event={event.name}, channel={target.name}",
+        )
+        await interaction.response.send_message(
+            f"✅ Announcement for **{event.name}** posted in {target.mention}.", ephemeral=True
+        )
+
+    # ── /admin_broadcast ──────────────────────────────────────────────────────
+
+    @app_commands.command(
+        name="admin_broadcast",
+        description="[Admin] Broadcast a message to a Discord channel and Telegram channel.",
+    )
+    @app_commands.describe(
+        message="The message to broadcast.",
+        channel="Discord channel name to post in (default: gsa-announcements).",
+    )
+    async def admin_broadcast(
+        self,
+        interaction: discord.Interaction,
+        message: str,
+        channel: str = "gsa-announcements",
+    ) -> None:
+        if not _admin_check(interaction):
+            await interaction.response.send_message(
+                NO_PERMISSION.format(role=config.admin_role_name), ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        results: list[str] = []
+
+        # ── Discord ───────────────────────────────────────────────────────────
+        guild = interaction.guild
+        discord_channel = discord.utils.get(guild.text_channels, name=channel) if guild else None
+        if discord_channel:
+            try:
+                await discord_channel.send(message)
+                results.append(f"✅ Discord #{channel}")
+            except discord.Forbidden:
+                results.append(f"❌ Discord #{channel} — missing permission")
+        else:
+            results.append(f"❌ Discord #{channel} not found")
+
+        # ── Telegram ──────────────────────────────────────────────────────────
+        tg = getattr(self.bot, "telegram_connector", None)
+        if tg:
+            success = await tg.broadcast(message)
+            if success:
+                results.append("✅ Telegram channel")
+            else:
+                results.append("❌ Telegram channel (check logs)")
+        else:
+            results.append("⚠️ Telegram not configured")
+
+        self.bot.db.log_admin_action(  # type: ignore[attr-defined]
+            officer_id=interaction.user.id,
+            action="admin_broadcast",
+            detail=f"channel={channel}",
+        )
+        await interaction.followup.send(
+            "Broadcast results:\n" + "\n".join(results),
+            ephemeral=True,
         )
 
     # ── /admin_add_event ───────────────────────────────────────────────────────
@@ -774,7 +959,22 @@ class AdminCog(commands.Cog, name="Admin"):
         success = await mathcafe.post_fact(channel)
 
         if success:
-            await interaction.followup.send("✅ MathCafe fact posted now!", ephemeral=True)
+            tg = getattr(self.bot, "telegram_connector", None)
+            fact = getattr(mathcafe, "last_posted_fact", None)
+            if tg and fact:
+                title  = fact.get("title", "")
+                body   = fact.get("body", "")
+                footer = fact.get("footer", "GSA MathCafe")
+                text   = f"☕ <b>GSA MathCafe</b>\n\n<b>{title}</b>\n\n{body}"
+                if fact.get("has_spoiler") and fact.get("spoiler_text"):
+                    text += f"\n\n<tg-spoiler>{fact['spoiler_text']}</tg-spoiler>"
+                text += f"\n\n<i>{footer}</i>"
+                if fact.get("needs_image") and fact.get("image_filename"):
+                    image_path = f"bot/data/mathcafe/images/{fact['image_filename']}"
+                    await tg.broadcast_photo(photo_path=image_path, caption=text, parse_mode="HTML")
+                else:
+                    await tg.broadcast(text, parse_mode="HTML")
+            await interaction.followup.send("✅ MathCafe fact posted to Discord and Telegram!", ephemeral=True)
         else:
             await interaction.followup.send(
                 "❌ Failed — no facts available.", ephemeral=True

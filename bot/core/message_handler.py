@@ -237,6 +237,16 @@ class MessageHandler:
                         self.conversation_manager.add_turn(
                             user_id=user_id, role="assistant", content=result[:500]
                         )
+                if self.db:
+                    self.db.log_question(
+                        user_id=user_id,
+                        question=clean_text,
+                        matched_topic=None,
+                        confidence=None,
+                        guild_id=req.guild_id,
+                        platform=req.platform,
+                        mode="free",
+                    )
                 return MessageResponse(
                     text=result or "The AI engine didn't respond. Please try again.",
                     source_note="General Chat Mode",

@@ -59,7 +59,8 @@ class Database:
                 timestamp     TEXT    NOT NULL,
                 guild_id      TEXT,
                 was_answered  BOOLEAN DEFAULT FALSE,
-                platform      TEXT    DEFAULT 'discord'
+                platform      TEXT    DEFAULT 'discord',
+                mode          TEXT    DEFAULT 'gsa'
             );
 
             CREATE TABLE IF NOT EXISTS response_feedback (
@@ -166,6 +167,7 @@ class Database:
         for col, typedef in [
             ("was_answered", "BOOLEAN DEFAULT FALSE"),
             ("platform",     "TEXT DEFAULT 'discord'"),
+            ("mode",         "TEXT DEFAULT 'gsa'"),
         ]:
             try:
                 self.conn.execute(f"ALTER TABLE questions ADD COLUMN {col} {typedef}")
@@ -217,12 +219,13 @@ class Database:
         confidence: float | None,
         guild_id: int | str | None,
         platform: str = "discord",
+        mode: str = "gsa",
     ) -> int:
         """Store a student question. Returns the new row ID."""
         cur = self.conn.execute(
             """INSERT INTO questions
-               (user_id_hash, question_text, matched_topic, confidence, timestamp, guild_id, platform)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (user_id_hash, question_text, matched_topic, confidence, timestamp, guild_id, platform, mode)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 hash_user_id(user_id),
                 question,
@@ -231,6 +234,7 @@ class Database:
                 datetime.now(timezone.utc).isoformat(),
                 str(guild_id) if guild_id is not None else None,
                 platform,
+                mode,
             ),
         )
         self.conn.commit()
@@ -348,6 +352,18 @@ class Database:
         stats["total_questions"] = self.conn.execute(
             "SELECT COUNT(*) FROM questions"
         ).fetchone()[0]
+
+        rows = self.conn.execute(
+            """SELECT mode,
+                      COUNT(*)                    AS questions,
+                      COUNT(DISTINCT user_id_hash) AS users
+               FROM questions
+               GROUP BY mode"""
+        ).fetchall()
+        stats["questions_by_mode"] = {
+            r["mode"]: {"questions": r["questions"], "users": r["users"]}
+            for r in rows
+        }
 
         stats["total_initiatives"] = self.conn.execute(
             "SELECT COUNT(*) FROM initiatives"
