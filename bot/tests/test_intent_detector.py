@@ -5,8 +5,11 @@ import pytest
 from bot.services.intent_detector import (
     INTENT_CLEAR_HISTORY,
     INTENT_FOOD,
+    INTENT_FREE_MODE,
     INTENT_GREETING,
     INTENT_HELP,
+    INTENT_IDENTITY,
+    INTENT_GSA_MODE,
     INTENT_QUESTION,
     INTENT_STATEMENT,
     INTENT_THANKS,
@@ -212,3 +215,97 @@ def test_clean_message_removes_channel_refs(detector):
 def test_clean_message_strips_whitespace(detector):
     result = detector.clean_message("   hello world   ")
     assert result == "hello world"
+
+
+# ── Identity intent ───────────────────────────────────────────────────────────
+
+def test_identity_who_are_you(detector):
+    intent, conf = detector.detect("who are you")
+    assert intent == INTENT_IDENTITY
+    assert conf == 1.0
+
+
+def test_identity_what_are_you(detector):
+    intent, _ = detector.detect("what are you")
+    assert intent == INTENT_IDENTITY
+
+
+def test_identity_whats_your_name(detector):
+    intent, _ = detector.detect("what's your name")
+    assert intent == INTENT_IDENTITY
+
+
+def test_identity_are_you_chatgpt(detector):
+    intent, _ = detector.detect("are you chatgpt")
+    assert intent == INTENT_IDENTITY
+
+
+def test_identity_are_you_an_ai(detector):
+    intent, _ = detector.detect("are you an ai")
+    assert intent == INTENT_IDENTITY
+
+
+def test_identity_what_model(detector):
+    intent, _ = detector.detect("what model are you")
+    assert intent == INTENT_IDENTITY
+
+
+def test_identity_how_smart(detector):
+    intent, _ = detector.detect("how smart are you")
+    assert intent == INTENT_IDENTITY
+
+
+def test_identity_does_not_shadow_help(detector):
+    intent, _ = detector.detect("what can you do")
+    assert intent == INTENT_HELP
+
+
+def test_regular_question_not_identity(detector):
+    intent, _ = detector.detect("what is the travel award?")
+    assert intent == INTENT_QUESTION
+
+
+# ── Free mode intent ──────────────────────────────────────────────────────────
+
+def test_free_mode_trigger(detector):
+    intent, conf = detector.detect("free mode")
+    assert intent == INTENT_FREE_MODE
+    assert conf == 1.0
+
+
+def test_free_mode_exclamation(detector):
+    intent, _ = detector.detect("!free")
+    assert intent == INTENT_FREE_MODE
+
+
+def test_general_mode_trigger(detector):
+    intent, _ = detector.detect("general mode")
+    assert intent == INTENT_FREE_MODE
+
+
+def test_switch_to_free_trigger(detector):
+    intent, _ = detector.detect("switch to free")
+    assert intent == INTENT_FREE_MODE
+
+
+def test_free_mode_not_confused_with_clear(detector):
+    intent, _ = detector.detect("free mode")
+    assert intent != INTENT_CLEAR_HISTORY
+
+
+# ── GSA mode intent ───────────────────────────────────────────────────────────
+
+def test_gsa_mode_trigger(detector):
+    intent, conf = detector.detect("gsa mode")
+    assert intent == INTENT_GSA_MODE
+    assert conf == 1.0
+
+
+def test_gsa_mode_exclamation(detector):
+    intent, _ = detector.detect("!gsa")
+    assert intent == INTENT_GSA_MODE
+
+
+def test_switch_to_gsa_trigger(detector):
+    intent, _ = detector.detect("switch to gsa")
+    assert intent == INTENT_GSA_MODE

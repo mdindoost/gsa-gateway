@@ -12,6 +12,9 @@ INTENT_QUESTION = "question"
 INTENT_STATEMENT = "statement"
 INTENT_THANKS = "thanks"
 INTENT_HELP = "help"
+INTENT_IDENTITY = "identity"
+INTENT_FREE_MODE = "free_mode"
+INTENT_GSA_MODE = "gsa_mode"
 
 GREETING_PATTERNS = [
     r"^hi\b",
@@ -96,6 +99,34 @@ SOCIAL_KEYWORDS = [
     "networking", "mixer", "happy hour",
 ]
 
+IDENTITY_PATTERNS = [
+    r"who are you",
+    r"what are you",
+    r"what'?s your name",
+    r"\byour name\b",
+    r"tell me about yourself",
+    r"are you (an? )?(chatgpt|gpt|ai|bot|llm)",
+    r"what model are you",
+    r"which (llm|model)",
+    r"what (llm|language model)",
+    r"how smart are you",
+]
+
+FREE_MODE_PATTERNS = [
+    r"^free mode$",
+    r"^!free$",
+    r"^general mode$",
+    r"^switch to free",
+    r"^freemode$",
+]
+
+GSA_MODE_PATTERNS = [
+    r"^gsa mode$",
+    r"^!gsa$",
+    r"^switch to gsa",
+    r"^gsamode$",
+]
+
 _QUESTION_STARTERS = {
     "what", "how", "when", "where", "who", "why",
     "can", "is", "are", "do", "does", "will",
@@ -111,6 +142,14 @@ class IntentDetector:
         for pattern in CLEAR_PATTERNS:
             if re.search(pattern, msg):
                 return INTENT_CLEAR_HISTORY, 1.0
+
+        # 1b. Free mode / GSA mode toggle
+        for pattern in FREE_MODE_PATTERNS:
+            if re.search(pattern, msg):
+                return INTENT_FREE_MODE, 1.0
+        for pattern in GSA_MODE_PATTERNS:
+            if re.search(pattern, msg):
+                return INTENT_GSA_MODE, 1.0
 
         # 2. Food
         for kw in FOOD_KEYWORDS:
@@ -146,6 +185,11 @@ class IntentDetector:
         for pattern in HELP_PATTERNS:
             if re.search(pattern, msg):
                 return INTENT_HELP, 1.0
+
+        # 6b. Identity (after HELP so "what can you do" stays as HELP)
+        for pattern in IDENTITY_PATTERNS:
+            if re.search(pattern, msg):
+                return INTENT_IDENTITY, 1.0
 
         # 7. Question
         if msg.endswith("?"):
