@@ -158,8 +158,13 @@ def parse_profile(url: str, html: str) -> dict:
     if pane("publications"):
         for div in pane("publications").find_all("div"):
             txt = PUB_TYPE.sub("", re.sub(r"\s+", " ", div.get_text(" ", strip=True)).strip())
+            # skip container divs that wrap many citations (the 40KB-card bug) and
+            # noise; keep individual citations, each trimmed to stay lean.
+            if not (40 < len(txt) <= 600) or not re.search(r"\b(19|20)\d{2}\b", txt):
+                continue
+            txt = txt[:300]
             key = txt[:100].lower()
-            if len(txt) > 40 and re.search(r"\b(19|20)\d{2}\b", txt) and key not in seen:
+            if key not in seen:
                 seen.add(key)
                 pubs.append(txt)
     pubs = pubs[:10]
@@ -191,7 +196,7 @@ def build_record(p: dict) -> dict:
     if p["research"]:
         parts.append("Research: " + p["research"][:800])
     if p["publications"]:
-        parts.append("Selected publications:\n- " + "\n- ".join(p["publications"]))
+        parts.append("Selected publications:\n- " + "\n- ".join(p["publications"][:6]))
     contact = " · ".join(x for x in [p["email"], p["phone"], p["office"]] if x)
     if contact:
         parts.append("Contact: " + contact)
