@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GSA Gateway v2 — Admin Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- sql.js (SQLite compiled to WebAssembly) — reads the .db locally, no server -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+  <!-- Chart.js loaded now; used by Tab 5 (Analytics) in a later checkpoint -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- ───────── Sidebar ───────── -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">GSA</span>
+        <span class="brand-text">Gateway <small>v2</small></span>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-tab="overview"><span>📊</span> Overview</button>
+        <button class="nav-item" data-tab="posts"><span>📢</span> Posts</button>
+        <button class="nav-item" data-tab="kb"><span>📚</span> Knowledge Base</button>
+        <button class="nav-item" data-tab="org"><span>🏛️</span> Organization</button>
+        <button class="nav-item" data-tab="analytics"><span>📈</span> Analytics</button>
+        <button class="nav-item" data-tab="settings"><span>⚙️</span> Settings</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div id="db-status" class="db-status">No database loaded</div>
+      </div>
+    </aside>
+
+    <!-- ───────── Main ───────── -->
+    <main class="main">
+      <header class="topbar">
+        <h1 id="page-title">Overview</h1>
+        <div class="topbar-actions">
+          <span id="db-name" class="db-name"></span>
+          <label class="btn btn-primary">
+            <input type="file" id="db-file" accept=".db,.sqlite,.sqlite3" hidden />
+            Load Database
+          </label>
+        </div>
+      </header>
+
+      <!-- Empty state shown before a db is loaded -->
+      <section id="empty-state" class="empty-state">
+        <div class="empty-card">
+          <div class="empty-icon">🗄️</div>
+          <h2>Connect to GSA Gateway</h2>
+          <div class="conn-options">
+            <div class="conn-card">
+              <h3>🌐 Connect to server</h3>
+              <p>Full read/write over an SSH tunnel. Changes apply instantly.</p>
+              <input type="text" id="server-url" value="http://localhost:5555" />
+              <button class="btn btn-primary" id="server-connect">Connect</button>
+            </div>
+            <div class="conn-card">
+              <h3>📁 Load database file</h3>
+              <p>Open a local <code>.db</code> copy. Reads work; writes produce a
+                SQL patch you apply in the terminal.</p>
+              <label class="btn btn-ghost">
+                <input type="file" id="db-file2" accept=".db,.sqlite,.sqlite3" hidden />
+                Load database file
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab content host -->
+      <section id="tab-overview" class="tab" hidden></section>
+      <section id="tab-posts" class="tab placeholder" hidden>
+        <p>Posts — coming in Checkpoint B.</p>
+      </section>
+      <section id="tab-kb" class="tab placeholder" hidden>
+        <p>Knowledge Base — coming in Checkpoint C.</p>
+      </section>
+      <section id="tab-org" class="tab placeholder" hidden>
+        <p>Organization Tree — coming in Checkpoint D.</p>
+      </section>
+      <section id="tab-analytics" class="tab placeholder" hidden>
+        <p>Analytics — coming in Checkpoint E.</p>
+      </section>
+      <section id="tab-settings" class="tab placeholder" hidden>
+        <p>Settings — coming in Checkpoint F.</p>
+      </section>
+    </main>
+  </div>
+
+  <!-- Detail modal -->
+  <div id="modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <button class="modal-close" id="modal-close">&times;</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- toast -->
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="posts_logic.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

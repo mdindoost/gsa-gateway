@@ -53,3 +53,12 @@ htmlcov/
 
 # Temporary working directories
 TEMP CONTENT/
+
+# Node (dashboard loads sql.js/Chart.js from CDN; any local install is cruft)
+node_modules/
+
+# DB backups and migration dry-run/dev copies (runtime state, never tracked)
+*.backup_*
+*.dryrun_*
+gsa_gateway_v2dev.db
+v2_test.db

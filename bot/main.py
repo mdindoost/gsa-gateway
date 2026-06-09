@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -74,6 +75,8 @@ class GSABot(commands.Bot):
         self.telegram_connector = None
         # Message handler
         self.message_handler = None
+        # V2 publishing (Wire B) — started in on_ready when enabled
+        self.v2_scheduler_runner = None
 
     async def setup_hook(self) -> None:
         """Initialise services and load extensions before on_ready fires."""
@@ -141,13 +144,20 @@ class GSABot(commands.Bot):
             logger.info("Vector store loaded: %d chunks", chunk_count)
 
         # ── Retriever ────────────────────────────────────────────────────────
-        if self.embedder and self.vector_store:
+        # WIRE A: V2 retriever is a drop-in shim with v1's exact interface, so
+        # message_handler.py and ask.py are untouched. Flag-gated; default = v1.
+        if os.getenv("V2_RETRIEVER_ENABLED", "false").lower() == "true":
+            from v2.integration.retriever_shim import V2RetrieverShim
+            from v2.core.retrieval.embedder import Embedder
+            self.retriever = V2RetrieverShim(db_path="gsa_gateway.db", embedder=Embedder())
+            logger.info("V2 Retriever active")
+        elif self.embedder and self.vector_store:
             from bot.services.retriever import Retriever
             self.retriever = Retriever(
                 embedder=self.embedder,
                 vector_store=self.vector_store,
             )
-            logger.info("RAG retriever initialized")
+            logger.info("V1 Retriever active (default)")
         else:
             logger.warning("Retriever not initialized — falling back to keyword search")
 
@@ -225,6 +235,29 @@ class GSABot(commands.Bot):
             logger.info("RAG pipeline: disabled (no retriever)")
         if self.conversation_manager:
             logger.info("Conversation manager: active")
+
+        # WIRE B: start the v2 scheduler once ready (guilds populated for Discord).
+        # Independent of v1's scheduler cog — only sends posts from the posts table.
+        if os.getenv("V2_SCHEDULER_ENABLED", "false").lower() == "true":
+            if self.v2_scheduler_runner is None:
+                from v2.integration.scheduler_runner import SchedulerRunner
+                from v2.core.connectors.registry import ConnectorRegistry
+                from v2.core.connectors.discord_connector import DiscordConnector
+                from v2.core.connectors.telegram_connector import TelegramConnector
+                from v2.integration.discord_client import DiscordClientAdapter
+                from v2.integration.telegram_client import TelegramClientAdapter
+                registry = ConnectorRegistry()
+                registry.register(DiscordConnector(client=DiscordClientAdapter(self)))
+                if self.telegram_connector:
+                    registry.register(TelegramConnector(
+                        client=TelegramClientAdapter(self.telegram_connector)))
+                self.v2_scheduler_runner = SchedulerRunner("gsa_gateway.db", registry)
+                await self.v2_scheduler_runner.start()
+                logger.info("V2 Scheduler active (%d connector(s))",
+                            len(registry.get_enabled()))
+        else:
+            logger.info("V2 Scheduler disabled (default)")
+
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
@@ -251,6 +284,8 @@ class GSABot(commands.Bot):
             pass  # Interaction already expired
 
     async def close(self) -> None:
+        if self.v2_scheduler_runner:
+            await self.v2_scheduler_runner.stop()
         if self.embedder:
             await self.embedder.close()
         if self.ollama:
