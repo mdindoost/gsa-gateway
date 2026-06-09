@@ -65,13 +65,23 @@ async def main() -> None:
         logger.warning("Embedding model unavailable — semantic search disabled")
         embedder = None
 
-    vector_store = VectorStore(db_path=config.chroma_db_path)
-    retriever = None
-    if embedder and not vector_store.is_empty():
-        retriever = Retriever(embedder=embedder, vector_store=vector_store)
-        logger.info("RAG retriever initialized: %d chunks", vector_store.get_chunk_count())
+    # Retriever choice mirrors bot/main.py "Wire A": V2 shim (SQLite hybrid KB)
+    # when the flag is on, else the v1 ChromaDB retriever. Keeps Telegram and
+    # Discord on the SAME knowledge base.
+    import os
+    if os.getenv("V2_RETRIEVER_ENABLED", "false").lower() == "true":
+        from v2.integration.retriever_shim import V2RetrieverShim
+        from v2.core.retrieval.embedder import Embedder as V2Embedder
+        retriever = V2RetrieverShim(db_path="gsa_gateway.db", embedder=V2Embedder())
+        logger.info("V2 Retriever active (Telegram)")
     else:
-        logger.warning("Retriever not initialized — falling back to keyword search")
+        vector_store = VectorStore(db_path=config.chroma_db_path)
+        retriever = None
+        if embedder and not vector_store.is_empty():
+            retriever = Retriever(embedder=embedder, vector_store=vector_store)
+            logger.info("V1 Retriever active (Telegram): %d chunks", vector_store.get_chunk_count())
+        else:
+            logger.warning("Retriever not initialized — falling back to keyword search")
 
     ollama = None
     if config.ollama_enabled:
