@@ -224,6 +224,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", CONTENT_TYPES.get(fp.suffix, "text/plain"))
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")  # always serve the latest dashboard files
         self._cors()
         self.end_headers()
         self.wfile.write(data)

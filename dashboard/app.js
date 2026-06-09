@@ -1127,11 +1127,13 @@ function kbForm() {
   const it = editing ? one("SELECT * FROM knowledge_items WHERE id=?", [KB.selectedId]) : null;
   let meta = {}; if (it) { try { meta = JSON.parse(it.metadata || "{}"); } catch (e) {} }
   const type = it ? it.type : "faq";
+  // type list comes from the deployment's vocab (inherited from root), fallback hardcoded
+  const kTypes = PL.getSettingJSON(db, KB.orgId, "vocab.knowledge_types", KB_TYPES);
   document.getElementById("kb-detail").innerHTML = `
    <div class="form">
     <h2>${editing ? "Edit Content" : "Add Content"}</h2>
     <div class="field"><label>Organization</label><input type="text" value="${esc(orgPath(KB.orgId))}" readonly></div>
-    <div class="field"><label>Type</label><select id="k-type">${KB_TYPES.map((t) => `<option value="${t}" ${t === type ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+    <div class="field"><label>Type</label><select id="k-type">${kTypes.map((t) => `<option value="${t}" ${t === type ? "selected" : ""}>${t}</option>`).join("")}</select></div>
     <div class="field"><label>Title</label><input type="text" id="k-title" value="${esc(it ? it.title || "" : "")}"></div>
     <div class="field"><label>Content</label><textarea id="k-content" rows="8" placeholder="Write in plain text. No markdown needed.">${esc(it ? it.content : "")}</textarea></div>
     <div id="k-meta-fields"></div>
@@ -1145,6 +1147,11 @@ function kbForm() {
     const t = val("k-type");
     const host = document.getElementById("k-meta-fields");
     if (t === "contact") {
+      const roles = PL.getSettingJSON(db, KB.orgId, "vocab.contact_roles",
+        ["officer", "professor", "staff", "custom"]);
+      const cur = meta.role || "";
+      const isStd = !!cur && roles.includes(cur);
+      const sel = isStd ? cur : (cur ? "custom" : roles[0]);
       host.innerHTML = `<div class="section-label">Contact fields → metadata</div>
         <div class="inline">
           <div class="field" style="flex:1"><label>Email</label><input type="text" id="m-email" value="${esc(meta.email || "")}"></div>
@@ -1152,8 +1159,13 @@ function kbForm() {
         </div>
         <div class="inline">
           <div class="field" style="flex:1"><label>Office</label><input type="text" id="m-office" value="${esc(meta.office || "")}"></div>
-          <div class="field" style="flex:1"><label>Role</label><input type="text" id="m-role" value="${esc(meta.role || "")}"></div>
+          <div class="field" style="flex:1"><label>Role</label>
+            <select id="m-role">${roles.map((r) => `<option value="${r}" ${r === sel ? "selected" : ""}>${r}</option>`).join("")}</select>
+            <input type="text" id="m-role-custom" placeholder="custom role" value="${esc(isStd ? "" : cur)}" ${sel === "custom" ? "" : "hidden"} style="margin-top:6px">
+          </div>
         </div>`;
+      const roleSel = document.getElementById("m-role");
+      roleSel.onchange = () => { document.getElementById("m-role-custom").hidden = roleSel.value !== "custom"; };
     } else if (t === "resource") {
       host.innerHTML = `<div class="section-label">Resource fields → metadata</div>
         <div class="field"><label>URL</label><input type="text" id="m-url" value="${esc(meta.url || "")}"></div>
@@ -1172,7 +1184,10 @@ function kbForm() {
 function collectMeta() {
   const t = val("k-type");
   if (t === "contact") {
-    const m = {}; ["email", "phone", "office", "role"].forEach((k) => { const v = val("m-" + k); if (v) m[k] = v; });
+    const m = {}; ["email", "phone", "office"].forEach((k) => { const v = val("m-" + k); if (v) m[k] = v; });
+    let role = val("m-role");
+    if (role === "custom") role = val("m-role-custom").trim();
+    if (role && role !== "custom") m.role = role;
     return m;
   }
   if (t === "resource") {
@@ -1205,7 +1220,8 @@ function openAddOrgModal() {
   const orgs = query(
     "WITH RECURSIVE t(id,name,parent_id,depth) AS (SELECT id,name,parent_id,0 FROM organizations WHERE parent_id IS NULL " +
     "UNION ALL SELECT o.id,o.name,o.parent_id,t.depth+1 FROM organizations o JOIN t ON o.parent_id=t.id) SELECT id,name,depth FROM t ORDER BY depth,name");
-  const types = ["university", "gsa", "council", "college", "department", "lab", "club", "event_series", "person", "office", "custom"];
+  const types = PL.getSettingJSON(db, KB.orgId || 1, "vocab.org_types",
+    ["university", "gsa", "college", "department", "club", "custom"]);
   document.getElementById("modal-body").innerHTML = `
     <h2>Add Organization</h2>
     <div class="field"><label>Parent</label><select id="o-parent">${orgs.map((o) => `<option value="${o.id}" ${o.id === KB.orgId ? "selected" : ""}>${"   ".repeat(o.depth)}${esc(o.name)}</option>`).join("")}</select></div>
