@@ -1,145 +1,192 @@
+<div align="center">
+
 # GSA Gateway
 
-**Discord bot + Telegram bot + static website for NJIT's Graduate Student Association.**
+**A Discord + Telegram assistant and admin platform for NJIT's Graduate Student Association.**
 
-GSA Gateway is a full RAG (Retrieval-Augmented Generation) conversational AI assistant that makes GSA information, events, funding, and resources accessible to all NJIT graduate students through free-form chat on Discord and Telegram.
+GSA Gateway answers graduate students' questions about events, funding, policies, and
+campus resources through free-form chat — grounded in a curated knowledge base via a
+local Retrieval-Augmented Generation (RAG) pipeline, so it never makes things up.
 
-**Live website:** https://mdindoost.github.io/gsa-gateway/
-**GitHub repo:** https://github.com/mdindoost/gsa-gateway
-**Discord:** https://discord.gg/a4mvbEmSAq
-**Telegram:** https://t.me/njit_gsa_bot
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![discord.py](https://img.shields.io/badge/discord.py-2.x-5865F2.svg)](https://discordpy.readthedocs.io/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#testing)
 
-> For how to run, maintain, and extend this project — see **[MANUAL.md](MANUAL.md)**.
+[**🌐 Website**](https://mdindoost.github.io/gsa-gateway/) ·
+[**💬 Discord**](https://discord.gg/a4mvbEmSAq) ·
+[**✈️ Telegram**](https://t.me/njit_gsa_bot) ·
+[**📖 Docs**](docs/)
+
+</div>
 
 ---
 
-## Student Commands
+## What it does
+
+- **Conversational Q&A** on Discord (`#ask-gsa` and DMs) and Telegram — ask anything about
+  the GSA in plain language and get answers grounded in the official knowledge base.
+- **Slash commands** for events, funding, resources, contacts, feedback, and more.
+- **Scheduled & broadcast posts** to both platforms from one place (announcements, events,
+  reminders, a live World Cup match tracker).
+- **A local admin dashboard** to manage the knowledge base, posts, organizations, and
+  settings — no SQL required.
+- **Privacy-first:** user IDs are hashed before storage; feedback is anonymous by default.
+
+## Student commands
 
 ### Discord
 
 | Command | What it does |
 |---|---|
-| `/ask` | AI-powered Q&A from the GSA knowledge base (llama3.1:8b via Ollama RAG). Supports follow-up questions with conversation memory. |
-| `/events` | List all upcoming GSA events, sorted by date |
-| `/event [name]` | Full details for a specific event |
-| `/initiative` | Submit a student initiative or idea (anonymous by default) |
-| `/feedback` | Send a private anonymous message to GSA officers |
-| `/resources [category]` | Browse 8 categories of curated student resources |
-| `/contact [role]` | Look up GSA officers and key NJIT campus offices |
+| `/ask` | AI-powered Q&A from the GSA knowledge base (RAG, with conversation memory) |
+| `/events` · `/event [name]` | List upcoming events, or full detail for one |
+| `/resources [category]` | Browse curated student resources |
+| `/contact [role]` | Look up GSA officers and key NJIT offices |
+| `/initiative` | Submit a student idea or initiative (anonymous by default) |
+| `/feedback` | Send a private, anonymous note to GSA officers |
+| `/worldcup` | World Cup 2026 schedule and info |
+| `/qrcode` | Generate a QR code (e.g. for event sign-ups) |
 | `/help` | Full command reference |
 
-### Telegram (@njit_gsa_bot)
+Plus **free-form chat** in `#ask-gsa` and direct messages.
 
-| Command | What it does |
-|---|---|
-| `/events` | Upcoming GSA events with date, time, and location |
-| `/contact [role]` | GSA officers and their contact info |
-| `/resources [category]` | Curated campus resources by category |
-| `/help` | How to use the bot |
-| _(free text)_ | Ask any question — same RAG pipeline as Discord |
+### Telegram
+The same knowledge-base Q&A is available by chatting with [**@njit_gsa_bot**](https://t.me/njit_gsa_bot).
+
+### Admin (officers only, ephemeral)
+`/admin_stats` · `/admin_summary` · `/admin_export` · `/admin_announce` · `/admin_add_event` · `/admin_rebuild_index`
 
 ---
 
-## Officer Commands (Discord only)
+## Architecture
 
-| Command | What it does |
-|---|---|
-| `/admin_add_event` | Add an event via a form — auto-posts announcement & schedules reminders. Events with `food` tag post a "🍕 FREE FOOD ALERT!" to `#gsa-food`. |
-| `/admin_announce` | Post an announcement embed to any channel |
-| `/admin_summary` | AI-generated weekly summary of student submissions |
-| `/admin_export` | Download CSV of initiatives, feedback, or questions |
-| `/admin_stats` | Engagement stats, RAG chunk count, active conversation sessions |
-| `/admin_rebuild_index` | Rebuild the ChromaDB vector index after editing KB files |
+GSA Gateway runs as a single bot process with a layered design:
 
----
+- **The bot (`bot/`)** — the running Discord + Telegram application: commands, free-form
+  chat, intent routing, reminders, daily digest, and the World Cup tracker.
+- **The retrieval pipeline** — documents are chunked, embedded (`nomic-embed-text` via
+  Ollama), and stored in a vector index. Each question is embedded, matched against the
+  index, reranked, and answered by a local LLM (`llama3.1:8b`) **grounded only in the
+  retrieved context**. If the LLM is unavailable, it degrades gracefully to fuzzy search.
+- **The v2 platform (`v2/`)** — a database-first core that everything is converging on:
+  a single SQLite database (with `sqlite-vec` + FTS5 hybrid retrieval), an organization
+  hierarchy, versioned knowledge items, a universal *posts* model, and a **connector
+  pattern** that fans one message out to every platform in parallel. Feature-flagged so it
+  can be toggled on per capability with instant rollback.
+- **The dashboard (`dashboard/`)** — a dependency-free admin UI (see below).
+- **The website (`website/`)** — a static, GitHub Pages–ready info site.
 
-## How the Announcement System Works
+> A deeper write-up lives in [`docs/architecture.md`](docs/architecture.md).
 
-When an officer runs `/admin_add_event`, the bot automatically:
-1. Posts a green "NEW EVENT" embed to the matching category channel and `#gsa-announcements`
-2. Schedules a **7-day reminder** (blue embed), **1-day reminder** (orange), and **1-hour reminder** (red)
-3. Saves the event to SQLite and `events.yml`
-4. Updates `website/data/events.json` for the public website
+## Tech stack
 
-A **daily digest** posts to `#gsa-announcements` every morning at 9 AM if events are coming up that week.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Discord bot | Python 3.11+, discord.py 2.x, SQLite, rapidfuzz |
-| Telegram bot | python-telegram-bot 20.x |
-| RAG | ChromaDB (vector store), nomic-embed-text (embeddings), llama3.1:8b (generation) |
-| AI | Ollama (local — no API costs, no data leaves the machine) |
-| Website | Pure HTML/CSS/JS, GitHub Pages |
-| Tests | pytest, 212+ tests |
-| Process management | systemd |
-
-### Free-form Chat
-Both Discord and Telegram support natural language questions through the same RAG pipeline:
-- Just type your question — no slash commands needed
-- Follow-up questions work naturally (conversation memory, 60-min sessions)
-- Type "clear" to reset your conversation
-- **Discord:** use `#ask-gsa`, DM the bot, or @mention it in any channel
-- **Telegram:** DM @njit_gsa_bot directly
+Python 3.11+ · [discord.py](https://discordpy.readthedocs.io/) 2.x ·
+[python-telegram-bot](https://python-telegram-bot.org/) · SQLite ·
+[sqlite-vec](https://github.com/asg017/sqlite-vec) + FTS5 ·
+[Ollama](https://ollama.com/) (local LLM + embeddings) ·
+[rapidfuzz](https://github.com/rapidfuzz/RapidFuzz) · pytest.
+The dashboard is pure HTML/CSS/JS (sql.js, Chart.js via CDN).
 
 ---
 
-## Running the Bots
+## Quick start
+
+**Prerequisites:** Python 3.11+, a Discord bot token, and (optional but recommended)
+[Ollama](https://ollama.com/) running locally for AI answers.
 
 ```bash
-# Both bots together (development)
-bash scripts/run_bot.sh
+git clone https://github.com/mdindoost/gsa-gateway.git
+cd gsa-gateway
 
-# Restart both
-bash scripts/restart.sh
+# one-time setup: venv, dependencies, database, tests
+bash scripts/setup.sh
 
-# Health check
-bash scripts/health_check.sh
-bash scripts/health_check.sh --fix   # auto-restart if down
+# configure secrets
+cp .env.example .env        # then edit: DISCORD_TOKEN, etc.
+
+# pull the local models (if using Ollama)
+ollama pull llama3.1:8b
+ollama pull nomic-embed-text
+
+# build the search index, then start the bot
+python scripts/build_index.py --reset
+bash scripts/restart.sh                 # add --no-llm to run without Ollama
 ```
 
-For production (systemd):
-```bash
-sudo systemctl start gsa-gateway gsa-telegram
-sudo systemctl restart gsa-gateway gsa-telegram
-```
+Watch it come up with `tail -f gsa_gateway.log`.
+
+## Admin dashboard
+
+A local, serverless admin UI for managing posts, the knowledge base, organizations, and
+settings. Two ways to use it:
+
+- **Server mode (recommended):** run `python v2/local_server.py` on the host, open an SSH
+  tunnel (`ssh -L 5555:localhost:5555 user@host`), and visit **`http://localhost:5555/`** —
+  it hosts the dashboard and reads/writes the live database directly.
+- **File mode:** open `dashboard/index.html` and load a database copy; changes are exported
+  as SQL patches you apply manually.
+
+Full guide: [`docs/LOCAL_SERVER.md`](docs/LOCAL_SERVER.md) and [`docs/DASHBOARD.md`](docs/DASHBOARD.md).
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 gsa-gateway/
-├── bot/
-│   ├── commands/        One file per slash command (ask, events, admin, etc.)
-│   ├── connectors/      Platform connectors: base.py, telegram_connector.py
-│   ├── core/            Platform-agnostic brain: message_handler.py
-│   ├── services/        Database, search, KB, Ollama, scheduler, channels, announcements
-│   └── data/            Edit these YAML/Markdown files to update content
-├── run_telegram.py      Telegram bot entry point (runs independently)
-├── website/             Static site — deploy with one command
-├── scripts/
-│   ├── health_check.sh         Check all services + auto-restart (--fix flag)
-│   ├── restart.sh              Restart both bots
-│   ├── build_index.py          Rebuild ChromaDB vector index after KB edits
-│   ├── export_events_json.py   Sync events.yml → website/data/events.json
-│   ├── gsa-gateway.service     systemd unit — Discord bot
-│   └── gsa-telegram.service    systemd unit — Telegram bot
-└── docs/                Architecture, deployment, admin guide, privacy policy
+├── bot/            Discord + Telegram bot — commands, services (RAG, search, DB), data
+├── v2/             Database-first platform — schema, retrieval, publishing, connectors,
+│                   integration shims, local admin server, tests
+├── dashboard/      Serverless admin UI (HTML/CSS/JS)
+├── website/        Static GitHub Pages site
+├── scripts/        setup.sh, restart.sh, build_index.py, exports, migrations
+└── docs/           Architecture, deployment, admin & student guides, privacy policy
 ```
 
+## Configuration
+
+All configuration is via `.env` (see `.env.example`). Key settings:
+
+| Variable | Purpose |
+|---|---|
+| `DISCORD_TOKEN`, `TELEGRAM_BOT_TOKEN` | Platform credentials |
+| `ADMIN_ROLE_NAME` | Discord role allowed to run admin commands |
+| `ALLOWED_CHANNELS` | Comma-separated channel names the bot listens in |
+| `OLLAMA_ENABLED`, `OLLAMA_MODEL` | Local LLM for AI answers |
+| `V2_RETRIEVER_ENABLED`, `V2_SCHEDULER_ENABLED`, `V2_WORLDCUP_ENABLED` | Feature flags for the v2 platform (instant rollback) |
+
+## Testing
+
+```bash
+pytest                  # full suite
+pytest v2/tests/ -v     # v2 platform
+```
+
+## Documentation
+
+| Doc | For |
+|---|---|
+| [`docs/MANUAL.md`](docs/MANUAL.md) | Running, maintaining, and extending the project |
+| [`docs/architecture.md`](docs/architecture.md) | System design |
+| [`docs/admin_guide.md`](docs/admin_guide.md) | Officer / admin operations |
+| [`docs/student_usage_guide.md`](docs/student_usage_guide.md) | Student-facing how-to |
+| [`docs/deployment.md`](docs/deployment.md) | Deployment & server migration |
+| [`docs/DASHBOARD.md`](docs/DASHBOARD.md) · [`docs/LOCAL_SERVER.md`](docs/LOCAL_SERVER.md) | Admin dashboard |
+| [`docs/privacy_policy.md`](docs/privacy_policy.md) | Data & privacy |
+
 ---
 
-## Privacy
+## Contributing
 
-User IDs are SHA-256 hashed before any database write. Raw Discord and Telegram IDs are never stored. See [docs/privacy_policy.md](docs/privacy_policy.md).
+Issues and pull requests are welcome. Please run `pytest` before submitting, and keep new
+code consistent with the surrounding style. For larger changes, open an issue first to
+discuss the approach.
 
----
+## Maintainer
+
+Built and maintained by **Mohammad Dindoost** (VP Academic Affairs, NJIT GSA).
 
 ## License
 
-MIT © 2026 NJIT Graduate Student Association.
-Built by Mohammad Dindoost, VP Academic Affairs.
+[MIT](LICENSE) © 2026 NJIT Graduate Student Association
