@@ -701,6 +701,11 @@ function renderNewPostForm() {
       <div id="pv-telegram" class="preview-telegram" hidden></div>
     </div>
 
+    <div id="grp-addkb" class="checkrow" style="margin-top:12px">
+      <label><input type="checkbox" id="f-addkb"> 📚 Also add to Knowledge Base
+        <span class="muted">— lets the bot answer questions about this (run rebuild_index.py after)</span></label>
+    </div>
+
     <div class="form-buttons">
       <button class="btn btn-ghost" id="f-cancel">Cancel</button>
       <button class="btn btn-primary" id="f-submit">Schedule Post</button>
@@ -793,6 +798,7 @@ function setMode(m) {
   document.getElementById("grp-onetime").hidden = m !== "one_time";
   document.getElementById("grp-recurring").hidden = m !== "recurring";
   document.getElementById("grp-event").hidden = m !== "event";
+  document.getElementById("grp-addkb").hidden = m === "event";  // events already file a KB item
   // default discord channel by type
   const key = m === "event" ? "default.channel.event" : "default.channel.broadcast";
   const ch = PL.getSetting(db, FormState.orgId, key, null);
@@ -890,6 +896,8 @@ function submitForm() {
   const discordChannel = platforms.includes("discord") ? val("f-dchan") : null;
   const signature = FormState.sigOverride;
   const tz = PL.orgTimezone(db);
+  // events already file their own KB item; the checkbox only applies to posts.
+  const addToKb = FormState.type !== "event" && document.getElementById("f-addkb").checked;
   let patch, server = null, title = "Post ready to apply";
 
   if (FormState.type === "one_time") {
@@ -899,17 +907,17 @@ function submitForm() {
     if (!now && !date) { toast("Pick a date or check Send immediately", false); return; }
     const scheduledForUTC = now ? null : PL.localToUTC(`${date} ${time}`, tz);
     patch = PL.buildPostPatch({ orgId, content, platforms, discordChannel, signature,
-      scheduledForUTC: scheduledForUTC || PL.nowUTC(), type: "one_time", sourceType: "manual" }, tz);
+      scheduledForUTC: scheduledForUTC || PL.nowUTC(), type: "one_time", sourceType: "manual", addToKb }, tz);
     server = { path: "/posts", body: { org_id: orgId, type: "one_time", content,
       channels: platforms, discord_channel: discordChannel, scheduled_for: scheduledForUTC,
-      signature, source_type: "manual" } };
+      signature, source_type: "manual", add_to_kb: addToKb } };
   } else if (FormState.type === "recurring") {
     if (!content) { toast("Content is required", false); return; }
     const rec = collectRecurrence();
     const occ = PL.nextOccurrences(rec, new Date(), 1)[0];
     const nextRunUTC = occ ? PL.localToUTC(PL.fmtDateTime(occ), tz) : null;
     patch = PL.buildRecurringPatch({ orgId, name: preview(content, 40), content, recurrence: rec,
-      platforms, discordChannel, signature, nextRunUTC, postType: "recurring_instance" }, tz);
+      platforms, discordChannel, signature, nextRunUTC, postType: "recurring_instance", addToKb }, tz);
     title = "Recurring post ready to apply";
   } else {
     const name = val("f-evname").trim(), date = val("f-evdate"), time = val("f-evtime") || "18:00", loc = val("f-evloc").trim();
@@ -930,7 +938,7 @@ function submitForm() {
       reminders: FormState.reminders.filter((r) => r.enabled).map((r) => ({ offset: r.offset, unit: r.unit, channels: r.platforms })) } };
     title = "Event ready to apply";
   }
-  applyCreate(server, patch, title, {}, () => { PS.view = "none"; renderPostsList(); renderRightPane(); });
+  applyCreate(server, patch, title, { rebuild: addToKb }, () => { PS.view = "none"; renderPostsList(); renderRightPane(); });
 }
 
 // ═════════════════════════ Tab 3: Knowledge Base ═════════════════════════

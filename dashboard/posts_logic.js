@@ -329,6 +329,14 @@
   }
 
   // d datetimes are already UTC. Returns a BEGIN…COMMIT patch string.
+  // optional KB item built from a post's content (when "Also add to KB" is ticked)
+  function _kbFromPost(d) {
+    return "INSERT INTO knowledge_items" + _row(
+      ["org_id", "type", "title", "content", "metadata", "created_by"],
+      [d.orgId, "announcement", (d.title || d.content || "").slice(0, 80), d.content,
+       JSON.stringify({ source: "post" }), "dashboard"]) + ";\n";
+  }
+
   function buildPostPatch(d, tz) {
     const summary = [
       `Creating: ${JSON.stringify((d.title || d.content || "").slice(0, 60))}`,
@@ -341,8 +349,9 @@
       JSON.stringify(d.platforms || []), d.discordChannel || null, d.scheduledForUTC || null,
       "scheduled", d.sourceType || "manual", d.signature == null ? null : d.signature,
       "dashboard", nowUTC()];
-    return _header("post (one-time)", summary, tz) +
-      `BEGIN TRANSACTION;\nINSERT INTO posts${_row(cols, vals)};\nCOMMIT;\n`;
+    let body = `BEGIN TRANSACTION;\nINSERT INTO posts${_row(cols, vals)};\n`;
+    if (d.addToKb) { summary.push("📚 Also files a Knowledge Base item — run rebuild_index.py"); body += _kbFromPost(d); }
+    return _header("post (one-time)", summary, tz) + body + "COMMIT;\n";
   }
 
   function buildRecurringPatch(d, tz) {
@@ -351,8 +360,10 @@
     const vals = [d.orgId, d.name || "Recurring post", d.content, d.postType || "recurring_instance",
       JSON.stringify(d.recurrence), JSON.stringify(d.platforms || []), d.discordChannel || null,
       d.signature == null ? null : d.signature, 1, d.nextRunUTC || null, "dashboard", nowUTC()];
-    return _header("recurring template", [`Repeat: ${JSON.stringify(d.recurrence)}`], tz) +
-      `BEGIN TRANSACTION;\nINSERT INTO post_templates${_row(cols, vals)};\nCOMMIT;\n`;
+    const summary = [`Repeat: ${JSON.stringify(d.recurrence)}`];
+    let body = `BEGIN TRANSACTION;\nINSERT INTO post_templates${_row(cols, vals)};\n`;
+    if (d.addToKb) { summary.push("📚 Also files a Knowledge Base item — run rebuild_index.py"); body += _kbFromPost(d); }
+    return _header("recurring template", summary, tz) + body + "COMMIT;\n";
   }
 
   function buildEventPatch(d, tz) {

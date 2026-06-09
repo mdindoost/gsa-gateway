@@ -66,6 +66,18 @@ def test_create_post(server):
     c.close()
 
 
+def test_create_post_with_add_to_kb(server):
+    status, d = _req(server["url"] + "/posts", "POST",
+                     {"org_id": server["gsa"], "type": "one_time", "content": "GSA tracks the World Cup",
+                      "channels": ["discord"], "add_to_kb": True})
+    assert status == 200 and d["success"] and d["needs_reindex"] is True
+    c = sqlite3.connect(str(server["db"]))
+    n = c.execute("SELECT COUNT(*) FROM knowledge_items WHERE type='announcement' "
+                  "AND content='GSA tracks the World Cup'").fetchone()[0]
+    c.close()
+    assert n == 1
+
+
 def test_create_event_creates_reminders(server):
     status, d = _req(server["url"] + "/posts", "POST", {
         "org_id": server["gsa"], "type": "event", "name": "Mixer", "date": "2026-07-01",

@@ -263,8 +263,17 @@ class GatewayHandler(BaseHTTPRequestHandler):
              json.dumps(b.get("channels", [])), b.get("discord_channel"), scheduled,
              b.get("status", "scheduled"), b.get("source_type", "manual"),
              b.get("signature"), b.get("created_by", "dashboard"), utc_now()))
+        needs_reindex = False
+        if b.get("add_to_kb"):  # also file the post's content as a KB item
+            conn.execute(
+                "INSERT INTO knowledge_items(org_id,type,title,content,metadata,created_by) "
+                "VALUES (?,?,?,?,?,?)",
+                (b["org_id"], "announcement", b["content"][:80], b["content"],
+                 json.dumps({"source": "post"}), "dashboard"))
+            needs_reindex = True
         conn.commit()
-        return {"success": True, "post_id": cur.lastrowid, "message": "Post scheduled"}
+        return {"success": True, "post_id": cur.lastrowid, "message": "Post scheduled",
+                "needs_reindex": needs_reindex}
 
     def _create_event(self, conn, b):
         if not b.get("name") or not b.get("date"):
