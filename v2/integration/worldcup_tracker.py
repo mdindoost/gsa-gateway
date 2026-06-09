@@ -1,0 +1,288 @@
+"""v2 World Cup tracker — detection ported from v1, with the fetch bug fixed.
+
+Polls football-data.org, diffs match state to detect new events (kickoff, goal,
+halftime, second-half, full-time), and emits them as unified rich-text messages
+for the connector registry (one message → Discord + Telegram).
+
+The v1 client reused one long-lived aiohttp.ClientSession, whose pooled
+connection went stale between polls (100% failures). Here every request uses a
+fresh session with retries — the API is itself flaky (~1/6 disconnects), so
+retries + the 60s poll cadence make coverage effectively complete.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import dataclasses
+import datetime
+import json
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+
+import aiohttp
+
+logger = logging.getLogger(__name__)
+
+BASE_URL = "https://api.football-data.org/v4"
+STATE_FILE = Path(__file__).resolve().parent.parent / "data" / "worldcup_state.json"
+
+MATCH_STATUS = {
+    "SCHEDULED": "scheduled", "TIMED": "scheduled", "IN_PLAY": "live",
+    "PAUSED": "halftime", "FINISHED": "finished",
+    "POSTPONED": "postponed", "CANCELLED": "cancelled",
+}
+
+FLAG_MAP = {
+    "Brazil": "🇧🇷", "Argentina": "🇦🇷", "France": "🇫🇷", "Germany": "🇩🇪",
+    "Spain": "🇪🇸", "England": "🏴\U000e0067\U000e0062\U000e0065\U000e006e\U000e0067\U000e007f",
+    "Portugal": "🇵🇹", "Netherlands": "🇳🇱", "USA": "🇺🇸", "Mexico": "🇲🇽",
+    "Japan": "🇯🇵", "South Korea": "🇰🇷", "Morocco": "🇲🇦", "Senegal": "🇸🇳",
+    "Iran": "🇮🇷", "Saudi Arabia": "🇸🇦", "Australia": "🇦🇺", "Canada": "🇨🇦",
+    "Croatia": "🇭🇷", "Serbia": "🇷🇸", "Switzerland": "🇨🇭", "Belgium": "🇧🇪",
+    "Uruguay": "🇺🇾", "Colombia": "🇨🇴", "Ecuador": "🇪🇨", "Peru": "🇵🇪",
+    "Chile": "🇨🇱", "Nigeria": "🇳🇬", "Ghana": "🇬🇭", "Cameroon": "🇨🇲",
+    "Italy": "🇮🇹", "Poland": "🇵🇱", "Denmark": "🇩🇰", "Austria": "🇦🇹",
+    "Turkey": "🇹🇷", "Ukraine": "🇺🇦", "Qatar": "🇶🇦", "Costa Rica": "🇨🇷",
+    "Panama": "🇵🇦", "Honduras": "🇭🇳", "Jamaica": "🇯🇲", "Venezuela": "🇻🇪",
+    "Bolivia": "🇧🇴", "Paraguay": "🇵🇾", "Algeria": "🇩🇿", "Tunisia": "🇹🇳",
+    "Egypt": "🇪🇬", "Mali": "🇲🇱", "Ivory Coast": "🇨🇮", "South Africa": "🇿🇦",
+    "Indonesia": "🇮🇩", "Thailand": "🇹🇭", "Vietnam": "🇻🇳", "Iraq": "🇮🇶",
+    "United Arab Emirates": "🇦🇪", "New Zealand": "🇳🇿", "El Salvador": "🇸🇻",
+    "Cuba": "🇨🇺", "Trinidad and Tobago": "🇹🇹", "Bahrain": "🇧🇭",
+    "Jordan": "🇯🇴", "Palestine": "🇵🇸", "Uzbekistan": "🇺🇿",
+    "New Caledonia": "🇳🇨", "Czechia": "🇨🇿", "Bosnia-Herzegovina": "🇧🇦",
+    "Slovakia": "🇸🇰", "Slovenia": "🇸🇮", "Albania": "🇦🇱", "Georgia": "🇬🇪",
+    "Scotland": "🏴\U000e0067\U000e0062\U000e0073\U000e0063\U000e0074\U000e007f",
+    "Wales": "🏴\U000e0067\U000e0062\U000e0077\U000e006c\U000e0073\U000e007f",
+    "Romania": "🇷🇴", "Hungary": "🇭🇺", "Czech Republic": "🇨🇿",
+    "North Macedonia": "🇲🇰", "Iceland": "🇮🇸", "Finland": "🇫🇮",
+    "Norway": "🇳🇴", "Sweden": "🇸🇪", "Greece": "🇬🇷", "Cape Verde": "🇨🇻",
+    "Angola": "🇦🇴", "Tanzania": "🇹🇿", "Zambia": "🇿🇲", "Guinea": "🇬🇳",
+    "Mozambique": "🇲🇿",
+}
+
+
+@dataclass
+class MatchState:
+    match_id: int
+    home_team: str
+    away_team: str
+    home_score: int
+    away_score: int
+    status: str
+    minute: int
+    goals_announced: list
+    kickoff_announced: bool
+    halftime_announced: bool
+    second_half_announced: bool
+    fulltime_announced: bool
+    stage: str
+    group: str
+    utc_date: str
+
+
+def flag(name: str) -> str:
+    return FLAG_MAP.get(name, "⚽")
+
+
+def team_label(team: dict) -> str:
+    name = team.get("name", "") or team.get("shortName", "")
+    return f"{flag(name)} {name}"
+
+
+class WorldCupTracker:
+    """Fetches match data and diffs it into events. No platform knowledge."""
+
+    def __init__(self, api_key: str):
+        self.headers = {"X-Auth-Token": api_key}
+        self.states: dict[int, MatchState] = {}
+        self.load_state()
+
+    # ── HTTP (fresh session per call + retries — the fix) ─────────────────────
+    async def _get(self, endpoint: str, extra_headers: dict | None = None, retries: int = 3) -> dict:
+        url = BASE_URL + endpoint
+        headers = {**self.headers, **(extra_headers or {})}
+        last = None
+        for attempt in range(retries):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, headers=headers,
+                                           timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        if resp.status == 429:
+                            logger.warning("WC API rate-limited; backing off")
+                            await asyncio.sleep(5)
+                            continue
+                        if resp.status != 200:
+                            logger.warning("WC API HTTP %d for %s", resp.status, endpoint)
+                            return {}
+                        return await resp.json()
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                last = exc
+                await asyncio.sleep(0.5 * (attempt + 1))
+        logger.warning("WC API unreachable after %d tries (%s): %s", retries, endpoint, last)
+        return {}
+
+    async def get_todays_matches(self) -> list:
+        data = await self._get("/competitions/WC/matches")
+        today = datetime.date.today().isoformat()
+        return [m for m in data.get("matches", []) if m.get("utcDate", "")[:10] == today]
+
+    async def get_match(self, match_id: int) -> dict:
+        return await self._get(f"/matches/{match_id}", {"X-Unfold-Goals": "true"})
+
+    async def health_check(self) -> bool:
+        data = await self._get("/competitions/WC/matches")
+        return bool(data.get("matches") is not None)
+
+    # ── state persistence ─────────────────────────────────────────────────────
+    def load_state(self) -> None:
+        if not STATE_FILE.exists():
+            return
+        try:
+            raw = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            for mid_str, f in raw.items():
+                mid = int(mid_str)
+                self.states[mid] = MatchState(
+                    match_id=f.get("match_id", mid), home_team=f.get("home_team", ""),
+                    away_team=f.get("away_team", ""), home_score=f.get("home_score", 0),
+                    away_score=f.get("away_score", 0), status=f.get("status", "scheduled"),
+                    minute=f.get("minute", 0), goals_announced=f.get("goals_announced", []),
+                    kickoff_announced=f.get("kickoff_announced", False),
+                    halftime_announced=f.get("halftime_announced", False),
+                    second_half_announced=f.get("second_half_announced", False),
+                    fulltime_announced=f.get("fulltime_announced", False),
+                    stage=f.get("stage", ""), group=f.get("group", ""), utc_date=f.get("utc_date", ""))
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            logger.warning("Could not load worldcup state: %s", exc)
+            self.states = {}
+
+    def save_state(self) -> None:
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        data = {str(mid): dataclasses.asdict(s) for mid, s in self.states.items()}
+        STATE_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    # ── detection (ported from v1 verbatim) ───────────────────────────────────
+    async def check_matches(self) -> list[dict]:
+        matches = await self.get_todays_matches()
+        events: list[dict] = []
+        for match in matches:
+            match_id = match["id"]
+            raw_status = match.get("status", "")
+            status = MATCH_STATUS.get(raw_status, raw_status.lower())
+            home_score = match["score"]["fullTime"]["home"] or 0
+            away_score = match["score"]["fullTime"]["away"] or 0
+            minute = match.get("minute") or 0
+            prev = self.states.get(match_id)
+
+            # KICKOFF
+            if raw_status == "IN_PLAY" and (prev is None or prev.status == "scheduled") \
+                    and (prev is None or not prev.kickoff_announced):
+                events.append({"type": "kickoff", "match": match})
+                kickoff_announced = True
+            else:
+                kickoff_announced = prev.kickoff_announced if prev else False
+
+            # GOAL via score diff
+            prev_home = prev.home_score if prev else 0
+            prev_away = prev.away_score if prev else 0
+            if home_score > prev_home or away_score > prev_away:
+                full_match = await self.get_match(match_id)
+                all_goals = (full_match or {}).get("goals", [])
+                announced_goals = list(prev.goals_announced) if prev else []
+                if all_goals:
+                    for goal in all_goals:
+                        goal_key = {"minute": goal.get("minute"),
+                                    "scorer": goal.get("scorer", {}).get("name", ""),
+                                    "team": goal.get("team", {}).get("name", "")}
+                        if goal_key not in announced_goals:
+                            events.append({"type": "goal", "match": match,
+                                           "scorer": goal.get("scorer", {}).get("name", ""),
+                                           "team": goal.get("team", {}).get("name", ""),
+                                           "minute": goal.get("minute")})
+                            announced_goals.append(goal_key)
+                else:
+                    home_delta = home_score - prev_home
+                    away_delta = away_score - prev_away
+                    new_score_key = {"score": f"{home_score}-{away_score}"}
+                    if new_score_key not in announced_goals:
+                        for _ in range(home_delta):
+                            events.append({"type": "goal", "match": match, "scoring_team": match["homeTeam"]})
+                        for _ in range(away_delta):
+                            events.append({"type": "goal", "match": match, "scoring_team": match["awayTeam"]})
+                        announced_goals.append(new_score_key)
+            else:
+                announced_goals = list(prev.goals_announced) if prev else []
+
+            # HALFTIME
+            if raw_status == "PAUSED" and prev and prev.status == "live" and not prev.halftime_announced:
+                events.append({"type": "halftime", "match": match})
+                halftime_announced = True
+            else:
+                halftime_announced = prev.halftime_announced if prev else False
+
+            # SECOND HALF
+            if raw_status == "IN_PLAY" and prev and prev.status == "halftime" \
+                    and not prev.second_half_announced:
+                events.append({"type": "second_half", "match": match})
+                second_half_announced = True
+            else:
+                second_half_announced = prev.second_half_announced if prev else False
+
+            # FULLTIME
+            if raw_status == "FINISHED" and prev and prev.status in ("live", "halftime") \
+                    and not prev.fulltime_announced:
+                events.append({"type": "fulltime", "match": match})
+                fulltime_announced = True
+            else:
+                fulltime_announced = prev.fulltime_announced if prev else False
+
+            self.states[match_id] = MatchState(
+                match_id=match_id, home_team=match["homeTeam"]["name"],
+                away_team=match["awayTeam"]["name"], home_score=home_score, away_score=away_score,
+                status=status, minute=minute, goals_announced=announced_goals,
+                kickoff_announced=kickoff_announced, halftime_announced=halftime_announced,
+                second_half_announced=second_half_announced, fulltime_announced=fulltime_announced,
+                stage=match.get("stage", ""), group=match.get("group", "") or "",
+                utc_date=match.get("utcDate", ""))
+
+        self.save_state()
+        return events
+
+
+# ── unified rich-text formatting (one message, both platforms) ───────────────
+def _score_line(match: dict) -> str:
+    ft = match.get("score", {}).get("fullTime", {})
+    hs, as_ = ft.get("home") or 0, ft.get("away") or 0
+    return f"{team_label(match['homeTeam'])}  {hs}–{as_}  {team_label(match['awayTeam'])}"
+
+
+def _context(match: dict) -> str:
+    bits = []
+    if match.get("stage"):
+        bits.append(match["stage"].replace("_", " ").title())
+    if match.get("group"):
+        bits.append(match["group"].replace("_", " ").title())
+    return " · ".join(bits)
+
+
+def format_event(ev: dict) -> str:
+    match = ev["match"]
+    etype = ev["type"]
+    if etype == "kickoff":
+        ctx = _context(match)
+        head = f"⚽ **KICK-OFF!**\n{team_label(match['homeTeam'])} vs {team_label(match['awayTeam'])}"
+        return f"{head}\nThe match is underway! 🌍" + (f"\n_{ctx}_" if ctx else "")
+    if etype == "goal":
+        if ev.get("scorer"):
+            minute = f" {ev['minute']}'" if ev.get("minute") else ""
+            return f"🥅 **GOAL!** {flag(ev.get('team',''))} {ev['scorer']}{minute}\n{_score_line(match)}"
+        scorer_team = ev.get("scoring_team", {})
+        return f"🥅 **GOAL!** {team_label(scorer_team)}\n{_score_line(match)}"
+    if etype == "halftime":
+        return f"⏸️ **HALF-TIME**\n{_score_line(match)}"
+    if etype == "second_half":
+        return f"▶️ **Second half underway**\n{_score_line(match)}"
+    if etype == "fulltime":
+        return f"🏁 **FULL-TIME**\n{_score_line(match)}"
+    return f"{team_label(match['homeTeam'])} vs {team_label(match['awayTeam'])}"

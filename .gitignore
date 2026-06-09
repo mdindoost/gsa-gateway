@@ -62,3 +62,6 @@ node_modules/
 *.dryrun_*
 gsa_gateway_v2dev.db
 v2_test.db
+
+# Live tracker state (rewritten every poll)
+worldcup_state.json
