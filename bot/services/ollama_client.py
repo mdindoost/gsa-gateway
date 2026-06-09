@@ -141,7 +141,11 @@ class OllamaClient:
             friendly_name = SOURCE_FRIENDLY_NAMES.get(chunk.source_file, chunk.source_file)
             lines.append(f"\n[Document {i}: {friendly_name}]")
             lines.append(f"Section: {chunk.section_title}")
-            lines.append(chunk.text)
+            # Cap each document so one bloated card (e.g. a faculty member with a
+            # huge publication list) can't flood the context and bury short,
+            # directly-relevant docs. 1500 chars keeps title + role + research +
+            # a few items — plenty for grounding.
+            lines.append(chunk.text[:1500])
             lines.append(f"[Relevance: {chunk.relevance_score:.0%}]")
         lines.append("\n=== END OF DOCUMENTS ===")
         return "\n".join(lines)
@@ -161,8 +165,13 @@ class OllamaClient:
                 system_prompt += f"{prefix}: {turn['content'][:400]}\n"
             system_prompt += (
                 "=== END OF CONVERSATION HISTORY ===\n"
-                "Use the conversation history above to understand follow-up questions and "
-                "resolve references like 'step 2', 'that amount', 'the officer you mentioned'."
+                "Use the conversation history above ONLY to resolve references in follow-up "
+                "questions (like 'step 2', 'that amount', 'the officer you mentioned'). "
+                "The documents provided below are the CURRENT, AUTHORITATIVE source: always "
+                "answer from them, even if earlier in this conversation you said you could "
+                "not find something. Re-check the documents now and use them if they contain "
+                "the answer — never repeat a previous 'I couldn't find it' when the answer is "
+                "present in the documents below."
             )
 
         context_block = self._build_context_block(chunks)

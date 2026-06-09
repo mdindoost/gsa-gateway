@@ -98,88 +98,19 @@ class GSABot(commands.Bot):
         self.search_svc = SearchService(self.kb)
         self.rate_limiter = RateLimiter(max_calls=5, period_seconds=60)
 
-        if config.ollama_enabled:
-            from bot.services.ollama_client import OllamaClient
-            self.ollama = OllamaClient(
-                base_url=config.ollama_url,
-                model=config.ollama_model,
-                timeout=config.ollama_timeout,
-                embedding_model=config.embedding_model,
-            )
-            logger.info("Ollama client initialised (model=%s)", config.ollama_model)
-            await self.ollama.check_connection()
-
-        # ── Conversation manager ─────────────────────────────────────────────
-        from bot.services.conversation import ConversationManager
-        self.conversation_manager = ConversationManager(
-            timeout_minutes=config.conversation_timeout_minutes,
-            max_turns=config.conversation_max_turns,
-        )
-        logger.info("Conversation manager initialized")
-
-        # ── Embedding service ────────────────────────────────────────────────
-        from bot.services.embedder import EmbeddingService
-        self.embedder = EmbeddingService(
-            base_url=config.ollama_url,
-            model=config.embedding_model,
-        )
-        embed_ok = await self.embedder.check_connection()
-        if not embed_ok:
-            logger.warning(
-                "Embedding model not available — semantic search disabled. "
-                "Run: ollama pull nomic-embed-text"
-            )
-            self.embedder = None
-
-        # ── Vector store ─────────────────────────────────────────────────────
-        from bot.services.vector_store import VectorStore
-        self.vector_store = VectorStore(db_path=config.chroma_db_path)
-
-        if self.vector_store.is_empty():
-            logger.warning(
-                "Vector store is empty! "
-                "Run: python scripts/build_index.py before starting the bot for full RAG support."
-            )
-        else:
-            chunk_count = self.vector_store.get_chunk_count()
-            logger.info("Vector store loaded: %d chunks", chunk_count)
-
-        # ── Retriever ────────────────────────────────────────────────────────
-        # WIRE A: V2 retriever is a drop-in shim with v1's exact interface, so
-        # message_handler.py and ask.py are untouched. Flag-gated; default = v1.
-        if os.getenv("V2_RETRIEVER_ENABLED", "false").lower() == "true":
-            from v2.integration.retriever_shim import V2RetrieverShim
-            from v2.core.retrieval.embedder import Embedder
-            self.retriever = V2RetrieverShim(db_path="gsa_gateway.db", embedder=Embedder())
-            logger.info("V2 Retriever active")
-        elif self.embedder and self.vector_store:
-            from bot.services.retriever import Retriever
-            self.retriever = Retriever(
-                embedder=self.embedder,
-                vector_store=self.vector_store,
-            )
-            logger.info("V1 Retriever active (default)")
-        else:
-            logger.warning("Retriever not initialized — falling back to keyword search")
-
-        # ── Intent detector ──────────────────────────────────────────────────
-        from bot.services.intent_detector import IntentDetector
-        self.intent_detector = IntentDetector()
-        logger.info("Intent detector initialized")
-
-        # ── Message handler ──────────────────────────────────────────────────
-        from bot.core.message_handler import MessageHandler
-        self.message_handler = MessageHandler(
-            retriever=self.retriever,
-            ollama=self.ollama,
-            conversation_manager=self.conversation_manager,
-            intent_detector=self.intent_detector,
-            db=self.db,
-            rate_limiter=self.rate_limiter,
-            kb=self.kb,
-            config=config,
-        )
-        logger.info("Message handler initialized")
+        # ── Assistant brain (shared with the Telegram process via build_assistant) ──
+        # One definition of retriever + LLM + conversation + handler, so the two
+        # platforms can never drift. See docs/designs/2026-06-09-unified-assistant.md
+        from bot.core.assistant import build_assistant
+        asst = await build_assistant(config, self.db, self.kb, self.rate_limiter)
+        self.ollama = asst.ollama
+        self.embedder = asst.embedder
+        self.vector_store = asst.vector_store
+        self.conversation_manager = asst.conversation_manager
+        self.intent_detector = asst.intent_detector
+        self.retriever = asst.retriever
+        self.message_handler = asst.message_handler
+        logger.info("Assistant wired (Discord)")
 
         # ── MathCafe service ─────────────────────────────────────────────────
         from bot.services.mathcafe import MathCafeService

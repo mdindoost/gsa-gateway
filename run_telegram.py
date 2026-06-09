@@ -9,15 +9,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from bot.config import config
 from bot.connectors.telegram_connector import TelegramConnector
-from bot.core.message_handler import MessageHandler
-from bot.services.conversation import ConversationManager
 from bot.services.database import Database
-from bot.services.embedder import EmbeddingService
-from bot.services.intent_detector import IntentDetector
 from bot.services.knowledge_base import KnowledgeBase
 from bot.services.moderation import RateLimiter
-from bot.services.retriever import Retriever
-from bot.services.vector_store import VectorStore
 
 
 def _configure_logging() -> None:
@@ -53,58 +47,14 @@ async def main() -> None:
     kb.load()
 
     rate_limiter = RateLimiter(max_calls=5, period_seconds=60)
-    conversation_manager = ConversationManager(
-        timeout_minutes=config.conversation_timeout_minutes,
-        max_turns=config.conversation_max_turns,
-    )
-    intent_detector = IntentDetector()
 
-    embedder = EmbeddingService(base_url=config.ollama_url, model=config.embedding_model)
-    embed_ok = await embedder.check_connection()
-    if not embed_ok:
-        logger.warning("Embedding model unavailable — semantic search disabled")
-        embedder = None
-
-    # Retriever choice mirrors bot/main.py "Wire A": V2 shim (SQLite hybrid KB)
-    # when the flag is on, else the v1 ChromaDB retriever. Keeps Telegram and
-    # Discord on the SAME knowledge base.
-    import os
-    if os.getenv("V2_RETRIEVER_ENABLED", "false").lower() == "true":
-        from v2.integration.retriever_shim import V2RetrieverShim
-        from v2.core.retrieval.embedder import Embedder as V2Embedder
-        retriever = V2RetrieverShim(db_path="gsa_gateway.db", embedder=V2Embedder())
-        logger.info("V2 Retriever active (Telegram)")
-    else:
-        vector_store = VectorStore(db_path=config.chroma_db_path)
-        retriever = None
-        if embedder and not vector_store.is_empty():
-            retriever = Retriever(embedder=embedder, vector_store=vector_store)
-            logger.info("V1 Retriever active (Telegram): %d chunks", vector_store.get_chunk_count())
-        else:
-            logger.warning("Retriever not initialized — falling back to keyword search")
-
-    ollama = None
-    if config.ollama_enabled:
-        from bot.services.ollama_client import OllamaClient
-        ollama = OllamaClient(
-            base_url=config.ollama_url,
-            model=config.ollama_model,
-            timeout=config.ollama_timeout,
-            embedding_model=config.embedding_model,
-        )
-        await ollama.check_connection()
-        logger.info("Ollama client initialized (model=%s)", config.ollama_model)
-
-    handler = MessageHandler(
-        retriever=retriever,
-        ollama=ollama,
-        conversation_manager=conversation_manager,
-        intent_detector=intent_detector,
-        db=db,
-        rate_limiter=rate_limiter,
-        kb=kb,
-        config=config,
-    )
+    # Shared brain — identical wiring to the Discord process (retriever, LLM,
+    # conversation, handler). One source of truth; see
+    # docs/designs/2026-06-09-unified-assistant.md
+    from bot.core.assistant import build_assistant
+    asst = await build_assistant(config, db, kb, rate_limiter)
+    handler = asst.message_handler
+    logger.info("Assistant wired (Telegram)")
 
     connector = TelegramConnector(
         token=config.telegram_token, handler=handler, kb=kb
@@ -117,10 +67,10 @@ async def main() -> None:
         pass
     finally:
         await connector.stop()
-        if embedder:
-            await embedder.close()
-        if ollama:
-            await ollama.close()
+        if asst.embedder:
+            await asst.embedder.close()
+        if asst.ollama:
+            await asst.ollama.close()
         db.close()
         logger.info("Telegram bot shut down cleanly")
 

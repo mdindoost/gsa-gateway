@@ -40,7 +40,7 @@ class V1Chunk:
 
 
 class V2RetrieverShim:
-    def __init__(self, db_path: str, embedder, org_id: int | None = None, max_concurrency: int = 1):
+    def __init__(self, db_path: str, embedder, org_id: int | None = None, max_concurrency: int = 4):
         self.db_path = db_path
         self.embedder = embedder
         self.org_id = org_id  # None = search the whole org tree
