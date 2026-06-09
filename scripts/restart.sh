@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 # restart.sh — Stop and restart the GSA Gateway bot + Ollama LLM
-# Usage: bash scripts/restart.sh
+# Usage: bash scripts/restart.sh [--no-llm]
+#   --no-llm   stop Ollama and start the bot with generation disabled.
+#              Saves resources; semantic search degrades to fuzzy/keyword,
+#              and /ask answers come without AI-written summaries.
 
 set -euo pipefail
+
+# ── flags ─────────────────────────────────────────────────────────────────────
+NO_LLM=false
+case " $* " in *" --no-llm "*) NO_LLM=true ;; esac
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -22,23 +29,34 @@ echo "════════════════════════�
 echo "  GSA Gateway Restart — $(date '+%Y-%m-%d %H:%M:%S')"
 echo "══════════════════════════════════════════════"
 
-# ── 1. Restart Ollama ─────────────────────────────────────────────────────────
+# ── 1. Ollama LLM ─────────────────────────────────────────────────────────────
 echo ""
 echo "[ Ollama LLM ]"
-info "Restarting ollama..."
-if sudo systemctl restart ollama 2>/dev/null; then
-    sleep 3
-    if curl -sf --max-time 5 http://localhost:11434/api/tags > /dev/null 2>&1; then
-        ok "Ollama is up and responding on :11434"
+if [ "$NO_LLM" = true ]; then
+    warn "--no-llm: starting WITHOUT the LLM."
+    warn "          Generation off; semantic search falls back to fuzzy/keyword."
+    export OLLAMA_ENABLED=false                 # bot skips the generation client
+    if sudo systemctl stop ollama 2>/dev/null; then
+        ok "Ollama stopped (resources freed)"
     else
-        fail "Ollama restarted but API not responding — check: sudo journalctl -u ollama -n 20"
+        warn "Could not stop Ollama via systemctl (it may already be stopped)"
     fi
 else
-    warn "Could not restart ollama via systemctl — trying direct check..."
-    if curl -sf --max-time 5 http://localhost:11434/api/tags > /dev/null 2>&1; then
-        ok "Ollama API already responding on :11434"
+    info "Restarting ollama..."
+    if sudo systemctl restart ollama 2>/dev/null; then
+        sleep 3
+        if curl -sf --max-time 5 http://localhost:11434/api/tags > /dev/null 2>&1; then
+            ok "Ollama is up and responding on :11434"
+        else
+            fail "Ollama restarted but API not responding — check: sudo journalctl -u ollama -n 20"
+        fi
     else
-        fail "Ollama is not reachable. Start it manually: ollama serve"
+        warn "Could not restart ollama via systemctl — trying direct check..."
+        if curl -sf --max-time 5 http://localhost:11434/api/tags > /dev/null 2>&1; then
+            ok "Ollama API already responding on :11434"
+        else
+            fail "Ollama is not reachable. Start it manually: ollama serve"
+        fi
     fi
 fi
 
@@ -107,6 +125,11 @@ fi
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════"
+if [ "$NO_LLM" = true ]; then
+    echo -e "  ${YELLOW}LLM: OFF${NC}  (started with --no-llm — search uses fuzzy/keyword)"
+else
+    echo -e "  ${GREEN}LLM: ON${NC}"
+fi
 echo -e "  ${GREEN}Done.${NC} To watch live logs:"
 echo "  tail -f gsa_gateway.log        (Discord)"
 echo "  tail -f telegram_bot.log       (Telegram)"
