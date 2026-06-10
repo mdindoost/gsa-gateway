@@ -12,6 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from v2.core.database.schema import create_all
+
 import v2.integration.worldcup_tracker as wt
 
 
@@ -86,3 +88,36 @@ def test_format_kickoff_and_goal():
     assert "KICK-OFF" in ko and "Mexico" in ko and "🇲🇽" in ko
     goal = wt.format_event({"type": "goal", "match": mk(hs=1), "scorer": "Messi", "team": "Mexico", "minute": 23})
     assert "GOAL" in goal and "Messi" in goal and "23'" in goal
+
+
+def test_worldcup_runner_enqueues_a_post(monkeypatch, tmp_path):
+    import asyncio
+    # isolate the tracker's on-disk state file (matches the existing tracker tests)
+    monkeypatch.setattr("v2.integration.worldcup_tracker.STATE_FILE", tmp_path / "wc.json")
+    from v2.integration.worldcup_runner import WorldCupRunner
+
+    conn = create_all(":memory:")
+    conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(2,'GSA','gsa','gsa')")
+    conn.commit()
+
+    runner = WorldCupRunner(registry=None, api_key="k", channel="world-cup-2026",
+                            db_path=":memory:", org_slug="gsa")
+    runner._conn = conn            # inject the test connection (start() would open its own)
+    runner.org_id = 2
+    runner.allowed = {"discord", "telegram"}
+
+    async def fake_check():
+        return [{"type": "goal", "match": {"id": 42}, "minute": 23,
+                 "scoring_team": {"name": "Brazil"}}]
+    runner.tracker.check_matches = fake_check
+    # format_event is imported into the runner module's namespace; patch it there
+    monkeypatch.setattr("v2.integration.worldcup_runner.format_event",
+                        lambda ev: "GOOOOOAL Brazil 1-0")
+
+    asyncio.new_event_loop().run_until_complete(runner._loop_once())
+
+    row = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchone()
+    assert row is not None
+    assert "GOOOOOAL" in row["content"]
+    assert row["status"] == "scheduled"
+    assert row["discord_channel"] == "world-cup-2026"
