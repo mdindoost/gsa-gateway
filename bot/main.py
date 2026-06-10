@@ -189,7 +189,9 @@ class GSABot(commands.Bot):
                     from v2.integration.worldcup_runner import WorldCupRunner
                     chan = os.getenv("FOOTBALL_CHANNEL", "world-cup-2026")
                     interval = int(os.getenv("FOOTBALL_POLL_INTERVAL", "60"))
-                    self.v2_worldcup_runner = WorldCupRunner(registry, key, chan, interval)
+                    org_slug = os.getenv("FOOTBALL_ORG_SLUG", "gsa")
+                    self.v2_worldcup_runner = WorldCupRunner(
+                        registry, key, chan, "gsa_gateway.db", org_slug, interval)
                     await self.v2_worldcup_runner.start()
                     logger.info("V2 World Cup active (channel #%s)", chan)
                 else:
