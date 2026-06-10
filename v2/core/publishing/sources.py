@@ -34,6 +34,7 @@ ALLOWED_TYPES = {
     "mathcafe", "worldcup", "broadcast", "digest", "generator",
 }
 DEFAULT_CHANNELS = {"discord", "telegram"}
+MAX_PER_TICK = 20   # flood cap: most rows one source may enqueue per tick
 
 
 @dataclass
@@ -154,3 +155,62 @@ class PostSource(ABC):
     @abstractmethod
     async def poll(self) -> list["PostDraft"]:
         ...
+
+
+class SourceRunner:
+    """Owns the loop + failure isolation for one PostSource. Per tick it polls
+    the source, enqueues up to MAX_PER_TICK drafts, and swallows source errors
+    and per-draft validation errors so one bad source never kills the loop or
+    the bots.
+
+    Connection ownership: the runner BORROWS a caller-owned ``conn`` (opened via
+    ``get_connection`` on the loop thread) and never closes it — the caller owns
+    its lifecycle. (WorldCupRunner, by contrast, opens and owns its own
+    connection because it predates this and manages its own start/stop.)"""
+
+    def __init__(self, conn, source: "PostSource", *, interval: int = 60,
+                 allowed_channels=None):
+        self.conn = conn
+        self.source = source
+        self.interval = interval
+        self.allowed_channels = allowed_channels
+        self._task = None
+        self._running = False
+
+    async def run_once(self) -> int:
+        """One tick. Returns how many posts were enqueued."""
+        try:
+            drafts = await self.source.poll()
+        except Exception:  # noqa: BLE001 - a bad source must not kill the tick
+            logger.exception("source %s.poll() failed", getattr(self.source, "name", "?"))
+            return 0
+        if len(drafts) > MAX_PER_TICK:
+            logger.warning("source %s produced %d drafts; capping at %d",
+                           self.source.name, len(drafts), MAX_PER_TICK)
+            drafts = drafts[:MAX_PER_TICK]
+        enqueued = 0
+        for d in drafts:
+            try:
+                enqueue_post(self.conn, d, allowed_channels=self.allowed_channels)
+                enqueued += 1
+            except EnqueueError as exc:
+                logger.warning("source %s: dropped invalid draft: %s", self.source.name, exc)
+        return enqueued
+
+    async def _loop(self):
+        while self._running:
+            await self.run_once()
+            await asyncio.sleep(self.interval)
+
+    async def start(self):
+        self._running = True
+        self._task = asyncio.create_task(self._loop())
+
+    async def stop(self):
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass

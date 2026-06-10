@@ -101,3 +101,57 @@ def test_rejects_oversized_title(conn):
     with pytest.raises(EnqueueError, match="title exceeds"):
         enqueue_post(conn, PostDraft(org_id=2, content="x", type="broadcast",
                                      title="t" * 300))
+
+
+import asyncio
+from v2.core.publishing.sources import SourceRunner, MAX_PER_TICK
+
+
+class _FakeSource:
+    name = "fake"
+    def __init__(self, drafts):
+        self._drafts = drafts
+        self.calls = 0
+    async def poll(self):
+        self.calls += 1
+        if isinstance(self._drafts, Exception):
+            raise self._drafts
+        return self._drafts
+
+
+def _run(coro):
+    return asyncio.new_event_loop().run_until_complete(coro)
+
+
+def test_runner_enqueues_polled_drafts(conn):
+    src = _FakeSource([PostDraft(org_id=2, content="from source", type="broadcast",
+                                 source_type="fake")])
+    runner = SourceRunner(conn, src)
+    n = _run(runner.run_once())
+    assert n == 1
+    assert conn.execute("SELECT COUNT(*) FROM posts WHERE source_type='fake'").fetchone()[0] == 1
+
+
+def test_runner_isolates_a_throwing_source(conn):
+    runner = SourceRunner(conn, _FakeSource(RuntimeError("boom")))
+    # must not raise — a bad source cannot kill the tick
+    n = _run(runner.run_once())
+    assert n == 0
+
+
+def test_runner_skips_invalid_drafts_but_keeps_good_ones(conn):
+    drafts = [
+        PostDraft(org_id=2, content="ok", type="broadcast", source_type="fake"),
+        PostDraft(org_id=2, content="", type="broadcast", source_type="fake"),  # invalid
+    ]
+    runner = SourceRunner(conn, _FakeSource(drafts))
+    n = _run(runner.run_once())
+    assert n == 1
+
+
+def test_runner_enforces_flood_cap(conn):
+    many = [PostDraft(org_id=2, content=f"msg {i}", type="broadcast", source_type="flood")
+            for i in range(MAX_PER_TICK + 10)]
+    runner = SourceRunner(conn, _FakeSource(many))
+    n = _run(runner.run_once())
+    assert n == MAX_PER_TICK
