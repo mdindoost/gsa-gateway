@@ -22,6 +22,34 @@ fail() { echo -e "  ${RED}✗${NC}  $1"; }
 info() { echo -e "  ${BLUE}→${NC}  $1"; }
 warn() { echo -e "  ${YELLOW}⚠${NC}  $1"; }
 
+# stop_all PATTERN NAME — kill EVERY process matching PATTERN before we start a
+# new one, so we can never end up with two copies of a bot answering the same
+# chat. SIGTERM first, wait up to 10s for a graceful exit, then SIGKILL any
+# straggler and confirm none survive.
+stop_all() {
+    local pattern="$1" name="$2" i
+    if pgrep -f "$pattern" > /dev/null 2>&1; then
+        info "Stopping existing $name (PIDs: $(pgrep -f "$pattern" | tr '\n' ' '))..."
+        pkill -TERM -f "$pattern" 2>/dev/null || true
+        for i in $(seq 1 10); do
+            pgrep -f "$pattern" > /dev/null 2>&1 || break
+            sleep 1
+        done
+        if pgrep -f "$pattern" > /dev/null 2>&1; then
+            warn "$name did not stop gracefully — forcing SIGKILL"
+            pkill -KILL -f "$pattern" 2>/dev/null || true
+            sleep 1
+        fi
+        if pgrep -f "$pattern" > /dev/null 2>&1; then
+            fail "$name STILL running after SIGKILL: $(pgrep -f "$pattern" | tr '\n' ' ')"
+        else
+            ok "$name stopped (all instances)"
+        fi
+    else
+        info "$name was not running"
+    fi
+}
+
 cd "$(dirname "$0")/.."
 
 echo ""
@@ -42,20 +70,21 @@ if [ "$NO_LLM" = true ]; then
         warn "Could not stop Ollama via systemctl (it may already be stopped)"
     fi
 else
-    info "Restarting ollama..."
-    if sudo systemctl restart ollama 2>/dev/null; then
-        sleep 3
-        if curl -sf --max-time 5 http://localhost:11434/api/tags > /dev/null 2>&1; then
-            ok "Ollama is up and responding on :11434"
-        else
-            fail "Ollama restarted but API not responding — check: sudo journalctl -u ollama -n 20"
-        fi
+    # Health-check first: a working Ollama is left alone (no needless bounce, no
+    # sudo prompt). Only start it if it is actually down.
+    if curl -sf --max-time 5 http://localhost:11434/api/tags > /dev/null 2>&1; then
+        ok "Ollama already up and responding on :11434"
     else
-        warn "Could not restart ollama via systemctl — trying direct check..."
-        if curl -sf --max-time 5 http://localhost:11434/api/tags > /dev/null 2>&1; then
-            ok "Ollama API already responding on :11434"
+        info "Ollama not responding — starting it..."
+        if sudo systemctl start ollama 2>/dev/null; then
+            sleep 3
+            if curl -sf --max-time 5 http://localhost:11434/api/tags > /dev/null 2>&1; then
+                ok "Ollama is up and responding on :11434"
+            else
+                fail "Ollama started but API not responding — check: sudo journalctl -u ollama -n 20"
+            fi
         else
-            fail "Ollama is not reachable. Start it manually: ollama serve"
+            fail "Ollama is down and could not be started via systemctl. Start it manually: ollama serve"
         fi
     fi
 fi
@@ -63,14 +92,7 @@ fi
 # ── 2. Stop existing Discord bot ─────────────────────────────────────────────
 echo ""
 echo "[ Discord Bot ]"
-if pgrep -f "python.*bot.main" > /dev/null 2>&1; then
-    info "Stopping existing Discord bot..."
-    pkill -f "python.*bot.main" || true
-    sleep 2
-    ok "Discord bot stopped"
-else
-    info "Discord bot was not running"
-fi
+stop_all "python.*bot\.main" "Discord bot"
 
 info "Starting Discord bot..."
 nohup .venv/bin/python -m bot.main > /dev/null 2>&1 &
@@ -95,14 +117,7 @@ fi
 # ── 3. Stop existing Telegram bot ────────────────────────────────────────────
 echo ""
 echo "[ Telegram Bot ]"
-if pgrep -f "python.*run_telegram" > /dev/null 2>&1; then
-    info "Stopping existing Telegram bot..."
-    pkill -f "python.*run_telegram" || true
-    sleep 2
-    ok "Telegram bot stopped"
-else
-    info "Telegram bot was not running"
-fi
+stop_all "python.*run_telegram" "Telegram bot"
 
 info "Starting Telegram bot..."
 nohup .venv/bin/python run_telegram.py > /dev/null 2>&1 &
