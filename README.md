@@ -73,7 +73,10 @@ GSA Gateway runs as a single bot process with a layered design:
   a single SQLite database (with `sqlite-vec` + FTS5 hybrid retrieval), an organization
   hierarchy, versioned knowledge items, a universal *posts* model, and a **connector
   pattern** that fans one message out to every platform in parallel. Feature-flagged so it
-  can be toggled on per capability with instant rollback.
+  can be toggled on per capability with instant rollback. The World Cup tracker
+  (`v2/integration/worldcup_runner.py`) is the reference *content generator*: it polls
+  live match data and enqueues posts through the standard `enqueue_post` contract, which
+  the scheduler then delivers.
 - **The dashboard (`dashboard/`)** — a dependency-free admin UI (see below).
 - **The website (`website/`)** — a static, GitHub Pages–ready info site.
 

@@ -1,10 +1,9 @@
-# ⚠️ Post-World-Cup cleanup — DO THIS AFTER THE TOURNAMENT (not before)
+# Post-World-Cup cleanup notes
 
-The World Cup 2026 starts **June 11** and runs to **~July 19, 2026**. The live
-World Cup tracker is **v1** code. Until the tournament is over (and ideally until
-a v2-native tracker has been built and validated), the items below are
-**deferred**. Tier 1 cleanup (dev `.db` artifacts, `node_modules/`, `.gitignore`,
-`MANUAL.md → docs/`) was already done on 2026-06-08.
+> **Update 2026-06-10:** The World Cup tracker is v2 (`v2/integration/worldcup_runner.py`)
+> and now publishes through the standard generator contract (`enqueue_post`). The
+> tournament-specific deferral below is obsolete; the rollback/cleanup notes that
+> follow are retained because they are not World-Cup-specific.
 
 ## 🚫 Do NOT delete these — they are load-bearing, not junk
 - **`chroma_db/`** — the v1 retriever's vector store. It is your **rollback**:
@@ -33,24 +32,6 @@ down for a tested change:
 - [ ] Archive (then remove) the `*.backup_*` files.
 - [ ] Retire `chroma_db/` **only after** the v1 retriever is gone.
 - [ ] Review/relocate `TEMP CONTENT/` (old website HTML — `2025/2026` event pages).
-
-## The v1 → v2 tracker migration (the real "move everything to v2")
-"Retiring v1" means first **building a v2 bot runtime** that reimplements what
-only exists in v1 today: the `on_message` chat/intent pipeline, all 11 slash
-commands, **MathCafe**, and the **World Cup tracker**. That is a multi-week
-project, not a folder reshuffle.
-
-For the World Cup tracker specifically (see `LOCAL_SERVER.md`/connector pattern):
-- v2 already owns the **output** (`ConnectorRegistry` → Discord+Telegram, logged,
-  dashboard-visible). The only event-specific part is **detection** (poll the
-  API, decide "a goal happened").
-- Build `v2/integration/live_tracker.py` — a poll loop that calls
-  `registry.publish(Post(...))` per detected event. Use v1's
-  `football_client.py` / `worldcup_tracker.py` as the blueprint.
-- **Validate it in shadow mode** against real matches (read the feed, post to a
-  private test channel / just log) BEFORE promoting it. Then retire v1's tracker.
-- 👉 **During the 2026 tournament, capture `gsa_gateway.log` match-day output** —
-  that real data is what you'll test the v2 tracker against later.
 
 ## Rollback (always available)
 `V2_RETRIEVER_ENABLED=false` + `V2_SCHEDULER_ENABLED=false` in `.env`, then
