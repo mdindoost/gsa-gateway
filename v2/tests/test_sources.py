@@ -1,6 +1,7 @@
 """Tests for the generator post-sources contract (PostDraft + enqueue_post)."""
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -103,7 +104,6 @@ def test_rejects_oversized_title(conn):
                                      title="t" * 300))
 
 
-import asyncio
 from v2.core.publishing.sources import SourceRunner, MAX_PER_TICK
 
 
@@ -120,7 +120,7 @@ class _FakeSource:
 
 
 def _run(coro):
-    return asyncio.new_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def test_runner_enqueues_polled_drafts(conn):
@@ -130,6 +130,7 @@ def test_runner_enqueues_polled_drafts(conn):
     n = _run(runner.run_once())
     assert n == 1
     assert conn.execute("SELECT COUNT(*) FROM posts WHERE source_type='fake'").fetchone()[0] == 1
+    assert src.calls == 1
 
 
 def test_runner_isolates_a_throwing_source(conn):
@@ -155,3 +156,16 @@ def test_runner_enforces_flood_cap(conn):
     runner = SourceRunner(conn, _FakeSource(many))
     n = _run(runner.run_once())
     assert n == MAX_PER_TICK
+
+
+def test_runner_start_polls_then_stops_cleanly(conn):
+    src = _FakeSource([])
+    runner = SourceRunner(conn, src, interval=0)
+
+    async def drive():
+        await runner.start()
+        await asyncio.sleep(0.05)
+        await runner.stop()
+
+    _run(drive())
+    assert src.calls >= 1

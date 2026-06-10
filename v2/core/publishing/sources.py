@@ -199,7 +199,11 @@ class SourceRunner:
 
     async def _loop(self):
         while self._running:
-            await self.run_once()
+            try:
+                await self.run_once()
+            except Exception:  # noqa: BLE001 - a bad tick must not kill the loop
+                logger.exception("SourceRunner tick for %s failed unexpectedly",
+                                 getattr(self.source, "name", "?"))
             await asyncio.sleep(self.interval)
 
     async def start(self):
