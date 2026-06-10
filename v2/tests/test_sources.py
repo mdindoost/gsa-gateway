@@ -85,3 +85,19 @@ def test_dedup_returns_existing_id(conn):
     assert first == second
     n = conn.execute("SELECT COUNT(*) FROM posts WHERE source_type='dup'").fetchone()[0]
     assert n == 1
+
+
+def test_dedup_on_source_id(conn):
+    d1 = PostDraft(org_id=2, content="v1", type="broadcast",
+                   source_type="event", source_id=7)
+    d2 = PostDraft(org_id=2, content="v2 different content", type="broadcast",
+                   source_type="event", source_id=7)
+    first = enqueue_post(conn, d1)
+    second = enqueue_post(conn, d2)   # same source_id -> dedup hit despite different content
+    assert first == second
+
+
+def test_rejects_oversized_title(conn):
+    with pytest.raises(EnqueueError, match="title exceeds"):
+        enqueue_post(conn, PostDraft(org_id=2, content="x", type="broadcast",
+                                     title="t" * 300))

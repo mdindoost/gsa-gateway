@@ -14,7 +14,7 @@ downstream into Discord/Telegram.
 """
 from __future__ import annotations
 
-import asyncio
+import asyncio  # used by SourceRunner (Task 2)
 import hashlib
 import json
 import logging
