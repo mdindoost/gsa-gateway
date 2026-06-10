@@ -38,16 +38,21 @@ class WorldCupRunner:
 
     async def start(self):
         self._conn = get_connection(self.db_path)   # own connection, on the loop thread
-        row = self._conn.execute(
-            "SELECT id FROM organizations WHERE slug=?", (self.org_slug,)
-        ).fetchone()
-        if row is None:
-            raise RuntimeError(f"World Cup: org slug '{self.org_slug}' not found")
-        self.org_id = row["id"]
-        if self.registry is not None:
-            names = {c.name for c in self.registry.get_enabled()}
-            if names:
-                self.allowed = names
+        try:
+            row = self._conn.execute(
+                "SELECT id FROM organizations WHERE slug=?", (self.org_slug,)
+            ).fetchone()
+            if row is None:
+                raise RuntimeError(f"World Cup: org slug '{self.org_slug}' not found")
+            self.org_id = row["id"]
+            if self.registry is not None:
+                names = {c.name for c in self.registry.get_enabled()}
+                if names:
+                    self.allowed = names
+        except Exception:
+            self._conn.close()
+            self._conn = None
+            raise
         self._running = True
         ok = await self.tracker.health_check()
         logger.info("V2 World Cup tracker started (feed reachable: %s, channel #%s, org=%s, %ds)",
@@ -58,13 +63,18 @@ class WorldCupRunner:
         """One poll → enqueue cycle. Returns how many posts were enqueued."""
         events = await self.tracker.check_matches()
         enqueued = 0
+        seen_keys: dict[str, int] = {}
         for ev in events:
             # Explicit, semantic dedup key (per match + event), so dedup is not a
             # content coincidence. Field names verified against worldcup_tracker.py:
             # ev["match"]["id"] exists on all event types; ev.get("minute") exists
             # on goal events and is absent on kickoff/halftime/etc (defaults to "").
             match_id = (ev.get("match") or {}).get("id")
-            dedup_key = f"{match_id}:{ev.get('type')}:{ev.get('minute', '')}"
+            base_key = f"{match_id}:{ev.get('type')}:{ev.get('minute', '')}"
+            seen_keys[base_key] = seen_keys.get(base_key, 0) + 1
+            # disambiguate multiple same-key events in one tick (e.g. free-tier
+            # multi-goal jumps with no minute) so none are dedup-dropped
+            dedup_key = base_key if seen_keys[base_key] == 1 else f"{base_key}#{seen_keys[base_key]}"
             draft = PostDraft(
                 org_id=self.org_id,
                 content=format_event(ev),

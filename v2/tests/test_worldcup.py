@@ -114,7 +114,7 @@ def test_worldcup_runner_enqueues_a_post(monkeypatch, tmp_path):
     monkeypatch.setattr("v2.integration.worldcup_runner.format_event",
                         lambda ev: "GOOOOOAL Brazil 1-0")
 
-    asyncio.new_event_loop().run_until_complete(runner._loop_once())
+    asyncio.run(runner._loop_once())
 
     row = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchone()
     assert row is not None
