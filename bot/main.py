@@ -30,17 +30,16 @@ def _configure_logging() -> None:
 _configure_logging()
 logger = logging.getLogger(__name__)
 
+# v2 platform cut (2026-06-10): the dashboard/DB + v2 scheduler is the sole
+# originator of outbound messages. v1 keeps only the minimal built-in commands;
+# the RAG `#ask-gsa` chat handler is loaded separately below. Removed:
+#   ask        -> replaced by #ask-gsa RAG
+#   admin      -> control moves to the v2 dashboard
+#   scheduler  -> v2 scheduler (Wire B) owns all autonomous posting
+#   events/initiative/feedback/resources/qrcode -> dashboard/website (later phases)
 EXTENSIONS = [
-    "bot.commands.ask",
-    "bot.commands.events",
-    "bot.commands.initiative",
-    "bot.commands.feedback",
-    "bot.commands.resources",
     "bot.commands.contact",
     "bot.commands.help_cmd",
-    "bot.commands.admin",
-    "bot.commands.qrcode_cmd",
-    "bot.services.scheduler",
 ]
 
 
@@ -70,8 +69,6 @@ class GSABot(commands.Bot):
         self.retriever = None
         self.conversation_manager: Optional[object] = None
         self.intent_detector: Optional[object] = None
-        # MathCafe
-        self.mathcafe = None
         self.telegram_connector = None
         # Message handler
         self.message_handler = None
@@ -111,11 +108,6 @@ class GSABot(commands.Bot):
         self.retriever = asst.retriever
         self.message_handler = asst.message_handler
         logger.info("Assistant wired (Discord)")
-
-        # ── MathCafe service ─────────────────────────────────────────────────
-        from bot.services.mathcafe import MathCafeService
-        self.mathcafe = MathCafeService(self)
-        logger.info("MathCafe loaded: %d facts in queue", len(self.mathcafe.facts))
 
         # ── Telegram broadcaster (send-only, for channel announcements) ──────────
         self.telegram_connector = None

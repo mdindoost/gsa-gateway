@@ -261,35 +261,10 @@ def test_no_crash_when_get_match_returns_empty():
 
 # ── Telegram broadcasting ─────────────────────────────────────────────────────
 
-def test_telegram_broadcast_goal():
-    """Goal event triggers a Telegram broadcast containing GOOOOOAL."""
-    from bot.services import scheduler as sched_module
-
-    goal_event = {
-        "type": "goal",
-        "match": _make_match(home_score=1, away_score=0),
-        "scorer": "Vinicius Jr.",
-        "team": "Brazil",
-        "minute": 23,
-    }
-
-    tg = MagicMock()
-    tg.broadcast = AsyncMock(return_value=True)
-
-    bot = MagicMock()
-    bot.telegram_connector = tg
-
-    client = _make_client()
-    tracker = _make_tracker(client)
-
-    asyncio.get_event_loop().run_until_complete(
-        sched_module._broadcast_wc_event(bot, goal_event, tracker)
-    )
-
-    tg.broadcast.assert_called_once()
-    call_text = tg.broadcast.call_args[0][0]
-    assert "GOOOOOAL" in call_text
-    assert "Brazil" in call_text
+# NOTE: test_telegram_broadcast_goal was removed in the 2026-06-10 v1→v2 cut —
+# it exercised bot/services/scheduler.py::_broadcast_wc_event, which was deleted
+# along with SchedulerCog (v2 now owns all autonomous outbound). The World Cup
+# tracker/client tests above remain valid.
 
 
 def test_telegram_broadcast_skipped_no_config():
