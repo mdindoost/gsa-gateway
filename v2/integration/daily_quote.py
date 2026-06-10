@@ -71,8 +71,9 @@ def build_quote_draft(org_id: int, day: datetime.date,
         channels=channels if channels is not None else ["discord", "telegram"],
         discord_channel=discord_channel,
         source_type="daily_quote",
-        # one post per day: re-polling the same day dedups to a no-op
-        dedup_key=f"daily_quote:{day.isoformat()}",
+        # one post per day: re-polling the same day dedups to a no-op.
+        # enqueue_post prepends source_type, so the stored key is "daily_quote:<date>".
+        dedup_key=day.isoformat(),
         metadata={"author": q["author"], "date": day.isoformat()},
     )
 
@@ -92,7 +93,7 @@ class DailyQuoteSource(PostSource):
         self.discord_channel = discord_channel
 
     async def poll(self) -> list[PostDraft]:
-        today = datetime.date.today()
+        today = datetime.date.today()  # server-local; UTC acceptable for a non-critical daily post
         return [build_quote_draft(self.org_id, today,
                                   channels=self.channels,
                                   discord_channel=self.discord_channel)]

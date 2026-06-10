@@ -34,7 +34,7 @@ def test_quote_for_is_deterministic_and_in_range():
     assert q1 == q2
     assert q1 in QUOTES
     # rotates across days
-    assert quote_for(day) != quote_for(day + datetime.timedelta(days=1)) or len(QUOTES) == 1
+    assert quote_for(day) != quote_for(day + datetime.timedelta(days=1))
 
 
 def test_build_quote_draft_fields():
@@ -45,10 +45,16 @@ def test_build_quote_draft_fields():
     assert draft.type == "broadcast"
     assert draft.source_type == "daily_quote"
     assert draft.channels == ["discord"]
-    assert draft.dedup_key == f"daily_quote:{day.isoformat()}"
+    assert draft.dedup_key == day.isoformat()
     assert q["text"] in draft.content
     assert q["author"] in draft.content
     assert draft.metadata["author"] == q["author"]
+    assert draft.metadata["date"] == day.isoformat()
+
+
+def test_build_quote_draft_default_channels():
+    draft = build_quote_draft(org_id=2, day=datetime.date(2026, 6, 10))
+    assert draft.channels == ["discord", "telegram"]
 
 
 def test_source_poll_returns_one_draft():
