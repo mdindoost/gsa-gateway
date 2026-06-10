@@ -79,17 +79,65 @@ def enqueue_post(conn, draft: "PostDraft", *, allowed_channels=None) -> int:
     """
     valid_channels = DEFAULT_CHANNELS if allowed_channels is None else set(allowed_channels)
 
-    # 1) insert (validation added in Step 7)
-    meta = dict(draft.metadata or {})
+    # 1) validate
+    if not isinstance(draft.org_id, int):
+        raise EnqueueError("org_id must be an int")
+    org = conn.execute(
+        "SELECT is_active FROM organizations WHERE id=?", (draft.org_id,)
+    ).fetchone()
+    if org is None:
+        raise EnqueueError(f"org_id {draft.org_id} does not exist")
+    if not org["is_active"]:
+        raise EnqueueError(f"org_id {draft.org_id} is not active")
+
+    content = (draft.content or "").strip()
+    if not content:
+        raise EnqueueError("content is empty")
+    if len(content) > MAX_CONTENT:
+        raise EnqueueError(f"content exceeds {MAX_CONTENT} chars ({len(content)})")
+    if draft.title and len(draft.title) > MAX_TITLE:
+        raise EnqueueError(f"title exceeds {MAX_TITLE} chars")
+    if draft.type not in ALLOWED_TYPES:
+        raise EnqueueError(f"type '{draft.type}' not in allowed set {sorted(ALLOWED_TYPES)}")
+    bad = [c for c in (draft.channels or []) if c not in valid_channels]
+    if bad:
+        raise EnqueueError(f"unknown channels: {bad}")
+    if draft.scheduled_for is not None:
+        try:
+            datetime.strptime(draft.scheduled_for, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            raise EnqueueError("scheduled_for must be 'YYYY-MM-DD HH:MM:SS' UTC or None")
+    try:
+        json.dumps(draft.metadata or {})
+    except (TypeError, ValueError) as exc:
+        raise EnqueueError(f"metadata not JSON-serializable: {exc}")
+
+    # 2) dedup (by stable key stored in metadata._dedup_key, scoped to org+source_type)
     key = _dedup_key(draft)
+    existing = conn.execute(
+        "SELECT id FROM posts WHERE org_id=? AND source_type=? "
+        "AND json_extract(metadata, '$._dedup_key')=?",
+        (draft.org_id, draft.source_type, key),
+    ).fetchone()
+    if existing is not None:
+        logger.debug("enqueue_post: dedup hit key=%s -> id=%s", key, existing["id"])
+        return existing["id"]
+
+    # 3) metadata size cap (after we know we're inserting)
+    meta = dict(draft.metadata or {})
     meta["_dedup_key"] = key
+    meta_json = json.dumps(meta)
+    if len(meta_json.encode()) > MAX_META_BYTES:
+        raise EnqueueError(f"metadata exceeds {MAX_META_BYTES} bytes")
+
+    # 4) insert
     cur = conn.execute(
         "INSERT INTO posts(org_id, type, title, content, channels, discord_channel, "
         "scheduled_for, status, source_type, source_id, metadata, created_by) "
         "VALUES (?,?,?,?,?,?,?,'scheduled',?,?,?,?)",
-        (draft.org_id, draft.type, draft.title, draft.content.strip(),
+        (draft.org_id, draft.type, draft.title, content,
          json.dumps(draft.channels or []), draft.discord_channel, draft.scheduled_for,
-         draft.source_type, draft.source_id, json.dumps(meta), draft.created_by),
+         draft.source_type, draft.source_id, meta_json, draft.created_by),
     )
     conn.commit()
     logger.info("enqueue_post: queued post id=%s type=%s org=%s key=%s",

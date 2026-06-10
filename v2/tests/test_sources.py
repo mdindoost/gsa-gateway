@@ -31,3 +31,57 @@ def test_enqueue_inserts_scheduled_row(conn):
     assert row["content"] == "Hello world"
     assert row["org_id"] == 2
     assert row["source_type"] == "test"
+
+
+def test_rejects_unknown_org(conn):
+    with pytest.raises(EnqueueError, match="does not exist"):
+        enqueue_post(conn, PostDraft(org_id=999, content="x", type="broadcast"))
+
+
+def test_rejects_inactive_org(conn):
+    conn.execute("INSERT INTO organizations(id,name,slug,type,is_active) "
+                 "VALUES(3,'Dead','dead','club',0)")
+    with pytest.raises(EnqueueError, match="not active"):
+        enqueue_post(conn, PostDraft(org_id=3, content="x", type="broadcast"))
+
+
+def test_rejects_empty_content(conn):
+    with pytest.raises(EnqueueError, match="content is empty"):
+        enqueue_post(conn, PostDraft(org_id=2, content="   ", type="broadcast"))
+
+
+def test_rejects_oversized_content(conn):
+    with pytest.raises(EnqueueError, match="exceeds"):
+        enqueue_post(conn, PostDraft(org_id=2, content="a" * 5000, type="broadcast"))
+
+
+def test_rejects_unknown_type(conn):
+    with pytest.raises(EnqueueError, match="not in allowed"):
+        enqueue_post(conn, PostDraft(org_id=2, content="x", type="haxx"))
+
+
+def test_rejects_unknown_channel(conn):
+    with pytest.raises(EnqueueError, match="unknown channels"):
+        enqueue_post(conn, PostDraft(org_id=2, content="x", type="broadcast",
+                                     channels=["myspace"]))
+
+
+def test_rejects_bad_scheduled_for(conn):
+    with pytest.raises(EnqueueError, match="scheduled_for"):
+        enqueue_post(conn, PostDraft(org_id=2, content="x", type="broadcast",
+                                     scheduled_for="next tuesday"))
+
+
+def test_rejects_unserializable_metadata(conn):
+    with pytest.raises(EnqueueError, match="JSON"):
+        enqueue_post(conn, PostDraft(org_id=2, content="x", type="broadcast",
+                                     metadata={"bad": {1, 2, 3}}))
+
+
+def test_dedup_returns_existing_id(conn):
+    d = PostDraft(org_id=2, content="same content", type="broadcast", source_type="dup")
+    first = enqueue_post(conn, d)
+    second = enqueue_post(conn, d)
+    assert first == second
+    n = conn.execute("SELECT COUNT(*) FROM posts WHERE source_type='dup'").fetchone()[0]
+    assert n == 1
