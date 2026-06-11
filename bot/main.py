@@ -75,6 +75,8 @@ class GSABot(commands.Bot):
         # V2 publishing (Wire B) — started in on_ready when enabled
         self.v2_scheduler_runner = None
         self.v2_worldcup_runner = None
+        self.v2_fixtures_runner = None
+        self._fixtures_conn = None
 
     async def setup_hook(self) -> None:
         """Initialise services and load extensions before on_ready fires."""
@@ -164,7 +166,8 @@ class GSABot(commands.Bot):
         # Independent of v1's scheduler cog — only sends posts from the posts table.
         v2_sched = os.getenv("V2_SCHEDULER_ENABLED", "false").lower() == "true"
         v2_wc = os.getenv("V2_WORLDCUP_ENABLED", "false").lower() == "true"
-        if v2_sched or v2_wc:
+        wc_fixtures = os.getenv("WC_FIXTURES_ENABLED", "false").lower() == "true"
+        if v2_sched or v2_wc or wc_fixtures:
             from v2.core.connectors.registry import ConnectorRegistry
             from v2.core.connectors.discord_connector import DiscordConnector
             from v2.core.connectors.telegram_connector import TelegramConnector
@@ -196,6 +199,40 @@ class GSABot(commands.Bot):
                     logger.info("V2 World Cup active (channel #%s)", chan)
                 else:
                     logger.warning("V2_WORLDCUP_ENABLED set but FOOTBALL_API_KEY missing — skipping")
+
+            # Daily World Cup fixtures digest (a buffered-lane generator). It
+            # enqueues posts that the v2 scheduler delivers, so it needs v2_sched.
+            if wc_fixtures and self.v2_fixtures_runner is None:
+                key = os.getenv("FOOTBALL_API_KEY", "")
+                if not key:
+                    logger.warning("WC_FIXTURES_ENABLED set but FOOTBALL_API_KEY missing — skipping")
+                elif not v2_sched:
+                    logger.warning("WC_FIXTURES_ENABLED set but V2_SCHEDULER_ENABLED is off — "
+                                   "fixture digests would queue but never deliver; skipping")
+                else:
+                    from v2.core.database.schema import get_connection
+                    from v2.core.publishing.sources import SourceRunner
+                    from v2.integration.daily_fixtures import DailyFixturesSource
+                    chan = os.getenv("FOOTBALL_CHANNEL", "world-cup-2026")
+                    org_slug = os.getenv("FOOTBALL_ORG_SLUG", "gsa")
+                    hour = int(os.getenv("WC_FIXTURES_HOUR_ET", "9"))
+                    self._fixtures_conn = get_connection("gsa_gateway.db")
+                    row = self._fixtures_conn.execute(
+                        "SELECT id FROM organizations WHERE slug=?", (org_slug,)).fetchone()
+                    if row is None:
+                        logger.warning("WC fixtures: org slug '%s' not found — skipping", org_slug)
+                        self._fixtures_conn.close()
+                        self._fixtures_conn = None
+                    else:
+                        source = DailyFixturesSource(
+                            api_key=key, org_id=row["id"],
+                            channels=["discord", "telegram"], discord_channel=chan,
+                            post_hour_et=hour)
+                        self.v2_fixtures_runner = SourceRunner(
+                            self._fixtures_conn, source, interval=3600)
+                        await self.v2_fixtures_runner.start()
+                        logger.info("V2 WC fixtures digest active (channel #%s, %02d:00 ET, hourly)",
+                                    chan, hour)
         else:
             logger.info("V2 Scheduler disabled (default)")
 
@@ -225,6 +262,10 @@ class GSABot(commands.Bot):
             pass  # Interaction already expired
 
     async def close(self) -> None:
+        if self.v2_fixtures_runner:
+            await self.v2_fixtures_runner.stop()
+        if self._fixtures_conn:
+            self._fixtures_conn.close()
         if self.v2_worldcup_runner:
             await self.v2_worldcup_runner.stop()
         if self.v2_scheduler_runner:

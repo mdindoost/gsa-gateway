@@ -18,7 +18,7 @@ from v2.core.database.schema import create_all
 from v2.core.publishing.sources import enqueue_post
 from v2.integration.daily_fixtures import (
     DailyFixturesSource, build_fixtures_draft, fetch_fixtures, format_fixtures,
-    _fixture_line, _kickoff_et,
+    morning_utc, _fixture_line, _kickoff_et,
 )
 
 DAY = datetime.date(2026, 6, 11)
@@ -112,6 +112,20 @@ def test_build_draft_default_channels():
 
 def test_build_draft_no_matches_returns_none():
     assert build_fixtures_draft(org_id=2, day=DAY, matches=[]) is None
+
+
+def test_morning_utc_converts_et_hour():
+    # 9:00 AM ET (EDT, UTC-4) on Jun 11 -> 13:00 UTC
+    assert morning_utc(DAY, 9) == "2026-06-11 13:00:00"
+
+
+def test_poll_schedules_for_morning(monkeypatch):
+    async def fake_fetch(api_key, day):
+        return [M_MEX]
+    monkeypatch.setattr("v2.integration.daily_fixtures.fetch_fixtures", fake_fetch)
+    drafts = asyncio.run(DailyFixturesSource("k", org_id=2, post_hour_et=9).poll())
+    today = datetime.date.today()
+    assert drafts[0].scheduled_for == morning_utc(today, 9)
 
 
 def test_source_poll_with_matches(monkeypatch):

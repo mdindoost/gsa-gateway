@@ -59,6 +59,15 @@ async def fetch_fixtures(api_key: str, day: datetime.date) -> list[dict]:
         return []
 
 
+def morning_utc(day: datetime.date, hour_et: int) -> str:
+    """UTC timestamp string for ``hour_et`` o'clock ET on ``day`` — used as a
+    post's scheduled_for so the digest goes out in the morning, not whenever the
+    bot first polls. If that moment has already passed, the scheduler sends it on
+    its next tick (so a late bot start still posts the digest)."""
+    dt = datetime.datetime(day.year, day.month, day.day, hour_et, tzinfo=ET)
+    return dt.astimezone(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _kickoff_et(utc_iso: str) -> str:
     """'2026-06-11T19:00:00Z' -> '3:00 PM ET' (US Eastern, DST-aware)."""
     try:
@@ -127,9 +136,11 @@ def format_fixtures(day: datetime.date, matches: list[dict]) -> str:
 
 def build_fixtures_draft(org_id: int, day: datetime.date, matches: list[dict],
                          channels: list[str] | None = None,
-                         discord_channel: str | None = "world-cup-2026") -> PostDraft | None:
+                         discord_channel: str | None = "world-cup-2026",
+                         scheduled_for: str | None = None) -> PostDraft | None:
     """Build the schedule PostDraft for ``day``. Returns None when there are no
-    fixtures that day (so the caller posts nothing)."""
+    fixtures that day (so the caller posts nothing). ``scheduled_for`` is a UTC
+    timestamp; None means send on the next scheduler tick."""
     if not matches:
         return None
     _audit_fixtures(matches)  # log any API↔FIFA discrepancy before we post
@@ -139,6 +150,7 @@ def build_fixtures_draft(org_id: int, day: datetime.date, matches: list[dict],
         type="broadcast",
         channels=channels if channels is not None else ["discord", "telegram"],
         discord_channel=discord_channel,
+        scheduled_for=scheduled_for,
         source_type="wc_fixtures",
         dedup_key=day.isoformat(),  # one schedule digest per day
         metadata={"date": day.isoformat(), "match_count": len(matches)},
@@ -157,17 +169,20 @@ class DailyFixturesSource(PostSource):
     name = "wc_fixtures"
 
     def __init__(self, api_key: str, org_id: int, channels: list[str] | None = None,
-                 discord_channel: str | None = "world-cup-2026", day_offset: int = 0):
+                 discord_channel: str | None = "world-cup-2026", day_offset: int = 0,
+                 post_hour_et: int = 9):
         self.api_key = api_key
         self.org_id = org_id
         self.channels = channels
         self.discord_channel = discord_channel
         self.day_offset = day_offset
+        self.post_hour_et = post_hour_et  # ET hour the digest is delivered
 
     async def poll(self) -> list[PostDraft]:
         day = datetime.date.today() + datetime.timedelta(days=self.day_offset)
         matches = await fetch_fixtures(self.api_key, day)
         draft = build_fixtures_draft(self.org_id, day, matches,
                                      channels=self.channels,
-                                     discord_channel=self.discord_channel)
+                                     discord_channel=self.discord_channel,
+                                     scheduled_for=morning_utc(day, self.post_hour_et))
         return [draft] if draft else []
