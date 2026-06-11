@@ -103,7 +103,11 @@ def _fixture_line(match: dict) -> str:
 def _audit_fixtures(matches: list[dict]) -> None:
     """Cross-check API group-stage fixtures against the authoritative FIFA
     schedule; log any discrepancy (unknown team name, >1-day reschedule) so we
-    can investigate. The API stays the live source; FIFA is the auditor."""
+    can investigate. The API stays the live source; FIFA is the auditor.
+
+    Note: this runs on every poll (before dedup), so a *persistent* discrepancy
+    re-logs each tick — intentional: a real schedule drift should keep nagging
+    until we fix the data. The volume is tiny (≤6 group-stage matches/day)."""
     for m in matches:
         if (m.get("stage") or "") != "GROUP_STAGE":
             continue

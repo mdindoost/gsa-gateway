@@ -171,8 +171,9 @@ VENUE_CITY = {
 _TEAM_ALIASES = {
     "korea republic": "south korea", "republic of korea": "south korea",
     "ir iran": "iran", "turkiye": "turkey", "cote d'ivoire": "ivory coast",
-    "congo dr": "dr congo", "dr congo": "dr congo",
-    "democratic republic of congo": "dr congo", "congo": "dr congo",
+    # only explicit DR-Congo variants — NOT bare "congo" (Congo-Brazzaville is a
+    # distinct nation; safe to collapse only because it isn't in WC 2026)
+    "congo dr": "dr congo", "democratic republic of congo": "dr congo",
     "cabo verde": "cape verde", "czech republic": "czechia",
     "bosnia-herzegovina": "bosnia and herzegovina",
     "bosnia & herzegovina": "bosnia and herzegovina",
@@ -223,6 +224,11 @@ def reconcile(when: str, home: str, away: str) -> tuple[str | None, list[str]]:
       - pairing not found                           -> (None, [NO FIFA MATCH ...])
     A ≤1-day gap is expected and benign: FIFA dates by local venue day, the API
     by UTC, so late US-evening / west-coast kickoffs legitimately differ a day.
+
+    KNOWN LIMITATION: because the gap tolerance is 1 day, a *genuine* one-day
+    fixture reschedule is intentionally not flagged (indistinguishable from the
+    TZ artifact). The venue is keyed by pairing, not date, so it stays correct
+    regardless; only a multi-day move is surfaced.
     """
     rec = _TEAM_INDEX.get(frozenset((normalize_team(home), normalize_team(away))))
     if rec is None:
