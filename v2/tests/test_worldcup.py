@@ -60,6 +60,26 @@ def test_multi_key_round_robin(tmp_path, monkeypatch):
     assert seen == ["k1", "k2", "k3", "k1", "k2", "k3", "k1"]
 
 
+def test_debug_log_writes_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setattr(wt, "STATE_FILE", tmp_path / "s.json")
+    monkeypatch.setattr(wt, "DEBUG_FILE", tmp_path / "dbg.log")
+    monkeypatch.setenv("FOOTBALL_DEBUG_LOG", "true")
+    t = wt.WorldCupTracker("k1,k2")       # reads the flag at construction
+    t._next_headers()                      # sets _last_key
+    t._debug(104, [mk(status="IN_PLAY", hs=1)])
+    text = (tmp_path / "dbg.log").read_text()
+    assert "status=IN_PLAY" in text and "score=1-0" in text and "key=" in text
+
+
+def test_debug_log_off_by_default(tmp_path, monkeypatch):
+    monkeypatch.setattr(wt, "STATE_FILE", tmp_path / "s.json")
+    monkeypatch.setattr(wt, "DEBUG_FILE", tmp_path / "dbg.log")
+    monkeypatch.delenv("FOOTBALL_DEBUG_LOG", raising=False)
+    t = wt.WorldCupTracker("k")
+    t._debug(104, [mk(status="IN_PLAY")])
+    assert not (tmp_path / "dbg.log").exists()
+
+
 def test_kickoff(tracker):
     assert types(drive(tracker, [mk(status="IN_PLAY")])) == ["kickoff"]
 

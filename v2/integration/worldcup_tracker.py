@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.football-data.org/v4"
 STATE_FILE = Path(__file__).resolve().parent.parent / "data" / "worldcup_state.json"
+# Optional raw-response debug log (set FOOTBALL_DEBUG_LOG=true): one line per poll
+# showing what the API actually returned — status/score/minute/lastUpdated + which
+# key — so the cache flapping (fresh vs stale responses) is visible.
+DEBUG_FILE = Path(__file__).resolve().parents[2] / "logs" / "wc_api_debug.log"
 
 MATCH_STATUS = {
     "SCHEDULED": "scheduled", "TIMED": "scheduled", "IN_PLAY": "live",
@@ -104,6 +108,8 @@ class WorldCupTracker:
         # key just retries on the next. Add a key, poll faster.
         self.keys = [k.strip() for k in (api_key or "").split(",") if k.strip()] or [api_key]
         self._key_idx = 0
+        self._last_key = ""
+        self.debug_log = os.getenv("FOOTBALL_DEBUG_LOG", "false").lower() == "true"
         self.states: dict[int, MatchState] = {}
         # The per-goal scorer/minute feed (X-Unfold-Goals) is a PAID feature; the
         # free tier returns no goals array, so calling it on every score change
@@ -115,6 +121,7 @@ class WorldCupTracker:
         """Round-robin the next API key into the request headers."""
         key = self.keys[self._key_idx % len(self.keys)]
         self._key_idx += 1
+        self._last_key = key
         return {"X-Auth-Token": key, **(extra or {})}
 
     # ── HTTP (fresh session per call + retries — the fix) ─────────────────────
@@ -147,7 +154,30 @@ class WorldCupTracker:
     async def get_todays_matches(self) -> list:
         data = await self._get("/competitions/WC/matches")
         today = datetime.date.today().isoformat()
-        return [m for m in data.get("matches", []) if m.get("utcDate", "")[:10] == today]
+        todays = [m for m in data.get("matches", []) if m.get("utcDate", "")[:10] == today]
+        self._debug(len(data.get("matches", [])), todays)
+        return todays
+
+    def _debug(self, total: int, matches: list) -> None:
+        """Append one line per poll showing exactly what the API returned (fresh
+        vs stale), keyed by which API key served it. Never raises."""
+        if not self.debug_log:
+            return
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        key = self._last_key[-4:] if self._last_key else "----"
+        try:
+            DEBUG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(DEBUG_FILE, "a", encoding="utf-8") as f:
+                if not matches:
+                    f.write(f"{ts} key=…{key} total={total} today=0\n")
+                for m in matches:
+                    ft = (m.get("score") or {}).get("fullTime") or {}
+                    f.write(f"{ts} key=…{key} {(m.get('homeTeam') or {}).get('name')} v "
+                            f"{(m.get('awayTeam') or {}).get('name')} status={m.get('status')} "
+                            f"score={ft.get('home')}-{ft.get('away')} min={m.get('minute')} "
+                            f"lastUpdated={m.get('lastUpdated')}\n")
+        except Exception:
+            pass  # debug logging must never break the tracker
 
     async def get_match(self, match_id: int) -> dict:
         return await self._get(f"/matches/{match_id}", {"X-Unfold-Goals": "true"})
