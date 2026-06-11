@@ -37,6 +37,7 @@ class V1Chunk:
     similarity: float
     relevance_score: float
     metadata: dict = field(default_factory=dict)
+    item_id: int | None = None       # knowledge_items.id — for traceable "doc_id N" labels
 
 
 class V2RetrieverShim:
@@ -88,4 +89,5 @@ class V2RetrieverShim:
             similarity=c.similarity or 0.0,
             relevance_score=rel,
             metadata={"org_path": c.org_path, "source": c.source},
+            item_id=getattr(c, "item_id", None),
         )

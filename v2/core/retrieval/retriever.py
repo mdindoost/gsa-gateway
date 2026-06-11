@@ -21,13 +21,20 @@ thread executor so the Ollama embed call never blocks the discord event loop.
 
 from __future__ import annotations
 
+import datetime
 import logging
+import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 import sqlite_vec
 
 logger = logging.getLogger(__name__)
+
+# Optional per-query retrieval trace (set RETRIEVAL_DEBUG_LOG=true): what was
+# fetched, the fused top-N, and their scores/legs/ids — to debug LLM answers.
+RETRIEVAL_DEBUG_FILE = Path(__file__).resolve().parents[3] / "logs" / "retrieval_debug.log"
 
 RRF_K = 60
 DEFAULT_CONTACT_BOOST = 1.5
@@ -81,6 +88,7 @@ class V2Retriever:
         self.conn = conn
         self.embedder = embedder
         self._org_path_cache: dict[int, str] = {}
+        self.debug_log = os.getenv("RETRIEVAL_DEBUG_LOG", "false").lower() == "true"
         # Type boosts correct for content-length asymmetry: short structured
         # records (contacts, events) lose to long FAQ/policy text on semantic
         # distance alone. Admin-tunable via the settings table.
@@ -251,4 +259,24 @@ class V2Retriever:
             "retrieve(%r) → %d results | org_scope: %s | vec: %d | bm25: %d | rrf+boost: %d",
             query[:50], len(chunks), org_id or "all", len(sem), len(kw), len(chunks),
         )
+        if self.debug_log:
+            self._write_trace(query, org_id, len(sem), len(kw), chunks)
         return chunks
+
+    def _write_trace(self, query, org_id, n_sem, n_kw, chunks) -> None:
+        """Append a per-query retrieval trace to logs/retrieval_debug.log so an LLM
+        answer can be debugged: what was fetched and which items won (with ids,
+        legs, scores). Never raises."""
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        try:
+            RETRIEVAL_DEBUG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(RETRIEVAL_DEBUG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"\n[{ts}] QUERY: {query!r}  org_scope={org_id or 'all'}  "
+                        f"pool: vec={n_sem} bm25={n_kw} -> {len(chunks)} fused\n")
+                for i, c in enumerate(chunks, 1):
+                    sim = f"{c.similarity:.0%}" if c.similarity is not None else "—"
+                    src = (c.org_path or "").split(" > ")[-1] or "—"
+                    f.write(f"  {i}. doc_id={c.item_id} [{c.type}] {c.title!r}  "
+                            f"src={src}  leg={c.source}  rrf+boost={c.rrf_score:.4f}  sim={sim}\n")
+        except Exception:
+            pass  # tracing must never break retrieval

@@ -40,8 +40,9 @@ BASE_SYSTEM_PROMPT = (
     "2. If the context does not contain enough information to answer the question, say so "
     "clearly and direct the student to contact a GSA officer at gsa-pres@njit.edu or visit "
     "Campus Center 110A on weekdays 11AM-5PM.\n"
-    "3. Always cite which document your answer comes from. Use natural language: "
-    "'According to the Travel Award Guide...' or 'The Club Financial Bylaws state that...'\n"
+    "3. Always cite which document your answer comes from. Use natural language AND, when a "
+    "document is labeled with a doc_id, include it: 'According to doc_id 170 (Computer "
+    "Science)...' or 'The Club Financial Bylaws (doc_id 92) state that...'\n"
     "4. When a student asks a follow-up question that refers to something from earlier in "
     "the conversation (like 'what about step 2?' or 'how much is that?'), use the "
     "conversation history to understand what they are referring to and answer in context. "
@@ -139,7 +140,9 @@ class OllamaClient:
         lines = ["=== OFFICIAL GSA DOCUMENTS ==="]
         for i, chunk in enumerate(chunks, 1):
             friendly_name = SOURCE_FRIENDLY_NAMES.get(chunk.source_file, chunk.source_file)
-            lines.append(f"\n[Document {i}: {friendly_name}]")
+            doc_id = getattr(chunk, "item_id", None)
+            label = f"doc_id {doc_id}" if doc_id else f"Document {i}"
+            lines.append(f"\n[{label}: {friendly_name}]")
             lines.append(f"Section: {chunk.section_title}")
             # Cap each document so one bloated card (e.g. a faculty member with a
             # huge publication list) can't flood the context and bury short,
