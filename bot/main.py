@@ -224,15 +224,21 @@ class GSABot(commands.Bot):
                         self._fixtures_conn.close()
                         self._fixtures_conn = None
                     else:
-                        source = DailyFixturesSource(
-                            api_key=key, org_id=row["id"],
-                            channels=["discord", "telegram"], discord_channel=chan,
-                            post_hour_et=hour)
-                        self.v2_fixtures_runner = SourceRunner(
-                            self._fixtures_conn, source, interval=3600)
-                        await self.v2_fixtures_runner.start()
-                        logger.info("V2 WC fixtures digest active (channel #%s, %02d:00 ET, hourly)",
-                                    chan, hour)
+                        try:
+                            source = DailyFixturesSource(
+                                api_key=key, org_id=row["id"],
+                                channels=["discord", "telegram"], discord_channel=chan,
+                                post_hour_et=hour)
+                            self.v2_fixtures_runner = SourceRunner(
+                                self._fixtures_conn, source, interval=3600)
+                            await self.v2_fixtures_runner.start()
+                            logger.info("V2 WC fixtures digest active (channel #%s, %02d:00 ET, hourly)",
+                                        chan, hour)
+                        except Exception:  # noqa: BLE001 - never let wiring crash startup
+                            logger.exception("WC fixtures runner failed to start")
+                            self._fixtures_conn.close()
+                            self._fixtures_conn = None
+                            self.v2_fixtures_runner = None
         else:
             logger.info("V2 Scheduler disabled (default)")
 
