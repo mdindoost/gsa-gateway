@@ -75,7 +75,7 @@ def test_goal_premium_tier(tracker, monkeypatch):
     assert ev[0]["scorer"] == "Messi" and ev[0]["minute"] == 23
 
 
-def test_free_tier_skips_get_match(tracker):
+def test_free_tier_skips_get_match(tracker, monkeypatch):
     # default (free tier, unfold_goals=False) must NOT call the paid goal-detail
     # endpoint, yet must still announce the goal via the score-diff path
     assert tracker.unfold_goals is False
@@ -83,7 +83,7 @@ def test_free_tier_skips_get_match(tracker):
     async def boom(mid):
         called.append(mid)
         return {}
-    tracker.get_match = boom
+    monkeypatch.setattr(tracker, "get_match", boom)
     drive(tracker, [mk(status="IN_PLAY")])              # kickoff
     ev = drive(tracker, [mk(status="IN_PLAY", hs=1)])   # goal via score-diff
     assert types(ev) == ["goal"]
