@@ -99,7 +99,11 @@ class WorldCupTracker:
     """Fetches match data and diffs it into events. No platform knowledge."""
 
     def __init__(self, api_key: str):
-        self.headers = {"X-Auth-Token": api_key}
+        # One or more comma-separated keys. Requests round-robin across them, so
+        # the effective budget is N × the per-key 10/min limit — and a 429 on one
+        # key just retries on the next. Add a key, poll faster.
+        self.keys = [k.strip() for k in (api_key or "").split(",") if k.strip()] or [api_key]
+        self._key_idx = 0
         self.states: dict[int, MatchState] = {}
         # The per-goal scorer/minute feed (X-Unfold-Goals) is a PAID feature; the
         # free tier returns no goals array, so calling it on every score change
@@ -107,19 +111,28 @@ class WorldCupTracker:
         self.unfold_goals = os.getenv("FOOTBALL_UNFOLD_GOALS", "false").lower() == "true"
         self.load_state()
 
+    def _next_headers(self, extra: dict | None = None) -> dict:
+        """Round-robin the next API key into the request headers."""
+        key = self.keys[self._key_idx % len(self.keys)]
+        self._key_idx += 1
+        return {"X-Auth-Token": key, **(extra or {})}
+
     # ── HTTP (fresh session per call + retries — the fix) ─────────────────────
     async def _get(self, endpoint: str, extra_headers: dict | None = None, retries: int = 3) -> dict:
         url = BASE_URL + endpoint
-        headers = {**self.headers, **(extra_headers or {})}
         last = None
         for attempt in range(retries):
+            headers = self._next_headers(extra_headers)  # round-robin key per attempt
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, headers=headers,
                                            timeout=aiohttp.ClientTimeout(total=10)) as resp:
                         if resp.status == 429:
-                            logger.warning("WC API rate-limited; backing off")
-                            await asyncio.sleep(5)
+                            # this key is throttled — the next attempt uses the next
+                            # key; only hard-back-off when there's a single key.
+                            logger.warning("WC API rate-limited on a key; rotating to next")
+                            if len(self.keys) == 1:
+                                await asyncio.sleep(5)
                             continue
                         if resp.status != 200:
                             logger.warning("WC API HTTP %d for %s", resp.status, endpoint)

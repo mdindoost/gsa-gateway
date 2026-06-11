@@ -45,6 +45,21 @@ def types(events):
     return [e["type"] for e in events]
 
 
+def test_single_key(tmp_path, monkeypatch):
+    monkeypatch.setattr(wt, "STATE_FILE", tmp_path / "s.json")
+    t = wt.WorldCupTracker("solo")
+    assert t.keys == ["solo"]
+    assert t._next_headers({"X-Extra": "1"}) == {"X-Auth-Token": "solo", "X-Extra": "1"}
+
+
+def test_multi_key_round_robin(tmp_path, monkeypatch):
+    monkeypatch.setattr(wt, "STATE_FILE", tmp_path / "s.json")
+    t = wt.WorldCupTracker("k1, k2 , k3")     # whitespace tolerated
+    assert t.keys == ["k1", "k2", "k3"]
+    seen = [t._next_headers()["X-Auth-Token"] for _ in range(7)]
+    assert seen == ["k1", "k2", "k3", "k1", "k2", "k3", "k1"]
+
+
 def test_kickoff(tracker):
     assert types(drive(tracker, [mk(status="IN_PLAY")])) == ["kickoff"]
 

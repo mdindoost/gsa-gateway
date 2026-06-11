@@ -41,6 +41,7 @@ async def fetch_fixtures(api_key: str, day: datetime.date) -> list[dict]:
     The API dates by UTC, so a late US-evening kickoff rolls into the next UTC
     day. We query a 2-day UTC window and keep only matches whose ET date == day,
     so the digest is the day's fixtures as a US audience (and FIFA) sees them."""
+    api_key = (api_key or "").split(",")[0].strip()  # one key is plenty (hourly)
     iso = day.isoformat()
     nxt = (day + datetime.timedelta(days=1)).isoformat()
     url = f"{BASE_URL}/competitions/WC/matches?dateFrom={iso}&dateTo={nxt}"
