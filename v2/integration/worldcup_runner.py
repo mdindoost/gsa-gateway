@@ -65,15 +65,23 @@ class WorldCupRunner:
         enqueued = 0
         seen_keys: dict[str, int] = {}
         for ev in events:
-            # Explicit, semantic dedup key (per match + event), so dedup is not a
-            # content coincidence. Field names verified against worldcup_tracker.py:
-            # ev["match"]["id"] exists on all event types; ev.get("minute") exists
-            # on goal events and is absent on kickoff/halftime/etc (defaults to "").
-            match_id = (ev.get("match") or {}).get("id")
-            base_key = f"{match_id}:{ev.get('type')}:{ev.get('minute', '')}"
+            # Explicit, semantic dedup key (per match + event). Goals carry NO
+            # minute on the free tier, so a plain "id:goal:" key makes every goal
+            # collide — the 2nd goal would dedup against the 1st across ticks and
+            # never post. Use the scoreline (monotonic, unique per goal) as the
+            # discriminator for goals; the real minute when present (paid tier).
+            match = ev.get("match") or {}
+            match_id = match.get("id")
+            ev_type = ev.get("type")
+            if ev_type == "goal":
+                ft = match.get("score", {}).get("fullTime", {})
+                disc = ev.get("minute") or f"{ft.get('home') or 0}-{ft.get('away') or 0}"
+            else:
+                disc = ev.get("minute", "")
+            base_key = f"{match_id}:{ev_type}:{disc}"
             seen_keys[base_key] = seen_keys.get(base_key, 0) + 1
-            # disambiguate multiple same-key events in one tick (e.g. free-tier
-            # multi-goal jumps with no minute) so none are dedup-dropped
+            # disambiguate same-key events within one tick (e.g. two goals that
+            # land on the same scoreline in a single poll) so none are dropped
             dedup_key = base_key if seen_keys[base_key] == 1 else f"{base_key}#{seen_keys[base_key]}"
             draft = PostDraft(
                 org_id=self.org_id,

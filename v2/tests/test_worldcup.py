@@ -152,3 +152,32 @@ def test_worldcup_runner_enqueues_a_post(monkeypatch, tmp_path):
     assert "GOOOOOAL" in row["content"]
     assert row["status"] == "scheduled"
     assert row["discord_channel"] == "world-cup-2026"
+
+
+def test_runner_posts_consecutive_free_tier_goals(monkeypatch, tmp_path):
+    # free-tier goals have NO minute; the 1st (1-0) and 2nd (2-0) goal must BOTH
+    # post — they used to collide on "id:goal:" and the 2nd was dropped.
+    import asyncio
+    monkeypatch.setattr("v2.integration.worldcup_tracker.STATE_FILE", tmp_path / "wc2.json")
+    from v2.integration.worldcup_runner import WorldCupRunner
+    conn = create_all(":memory:")
+    conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(2,'GSA','gsa','gsa')")
+    conn.commit()
+    runner = WorldCupRunner(registry=None, api_key="k", channel="world-cup-2026",
+                            db_path=":memory:", org_slug="gsa")
+    runner._conn = conn; runner.org_id = 2; runner.allowed = {"discord", "telegram"}
+    monkeypatch.setattr("v2.integration.worldcup_runner.format_event", lambda ev: "GOAL")
+
+    def goal(h):  # free-tier goal event: no minute, scoreline differs
+        return {"type": "goal", "scoring_team": {"name": "Mexico"},
+                "match": {"id": 42, "score": {"fullTime": {"home": h, "away": 0}}}}
+
+    async def c1(): return [goal(1)]
+    async def c2(): return [goal(2)]
+    runner.tracker.check_matches = c1
+    asyncio.run(runner._loop_once())
+    runner.tracker.check_matches = c2
+    asyncio.run(runner._loop_once())
+
+    n = conn.execute("SELECT COUNT(*) FROM posts WHERE type='worldcup'").fetchone()[0]
+    assert n == 2  # both goals posted (was 1 before the scoreline-keyed fix)
