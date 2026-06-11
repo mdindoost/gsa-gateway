@@ -17,6 +17,7 @@ import dataclasses
 import datetime
 import json
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -100,6 +101,10 @@ class WorldCupTracker:
     def __init__(self, api_key: str):
         self.headers = {"X-Auth-Token": api_key}
         self.states: dict[int, MatchState] = {}
+        # The per-goal scorer/minute feed (X-Unfold-Goals) is a PAID feature; the
+        # free tier returns no goals array, so calling it on every score change
+        # just burns the rate-limit budget. Off by default — flip on if upgraded.
+        self.unfold_goals = os.getenv("FOOTBALL_UNFOLD_GOALS", "false").lower() == "true"
         self.load_state()
 
     # ── HTTP (fresh session per call + retries — the fix) ─────────────────────
@@ -190,8 +195,10 @@ class WorldCupTracker:
             prev_home = prev.home_score if prev else 0
             prev_away = prev.away_score if prev else 0
             if home_score > prev_home or away_score > prev_away:
-                full_match = await self.get_match(match_id)
-                all_goals = (full_match or {}).get("goals", [])
+                all_goals = []
+                if self.unfold_goals:  # paid tier only; skip the wasted call on free tier
+                    full_match = await self.get_match(match_id)
+                    all_goals = (full_match or {}).get("goals", [])
                 announced_goals = list(prev.goals_announced) if prev else []
                 if all_goals:
                     for goal in all_goals:

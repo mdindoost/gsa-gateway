@@ -65,6 +65,7 @@ def test_full_lifecycle_and_dedup(tracker):
 
 
 def test_goal_premium_tier(tracker, monkeypatch):
+    tracker.unfold_goals = True  # paid tier: the scorer/minute feed is used
     drive(tracker, [mk(status="IN_PLAY")])
     async def goals(mid):
         return {"goals": [{"minute": 23, "scorer": {"name": "Messi"}, "team": {"name": "Mexico"}}]}
@@ -72,6 +73,21 @@ def test_goal_premium_tier(tracker, monkeypatch):
     ev = drive(tracker, [mk(status="IN_PLAY", hs=1)])
     assert types(ev) == ["goal"]
     assert ev[0]["scorer"] == "Messi" and ev[0]["minute"] == 23
+
+
+def test_free_tier_skips_get_match(tracker):
+    # default (free tier, unfold_goals=False) must NOT call the paid goal-detail
+    # endpoint, yet must still announce the goal via the score-diff path
+    assert tracker.unfold_goals is False
+    called = []
+    async def boom(mid):
+        called.append(mid)
+        return {}
+    tracker.get_match = boom
+    drive(tracker, [mk(status="IN_PLAY")])              # kickoff
+    ev = drive(tracker, [mk(status="IN_PLAY", hs=1)])   # goal via score-diff
+    assert types(ev) == ["goal"]
+    assert called == []  # get_match never hit on the free tier
 
 
 def test_state_survives_reload(tracker, tmp_path, monkeypatch):
