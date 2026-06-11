@@ -189,14 +189,16 @@ class GSABot(commands.Bot):
             if v2_wc and self.v2_worldcup_runner is None:
                 key = os.getenv("FOOTBALL_API_KEY", "")
                 if key:
-                    from v2.integration.worldcup_runner import WorldCupRunner
+                    # MatchWatcher: schedule-driven burst-and-rest poller (replaces
+                    # the constant WorldCupRunner). Enqueues start/score/full-time
+                    # posts; the v2 scheduler delivers them. Idle between games.
+                    from v2.integration.match_watcher import MatchWatcher
                     chan = os.getenv("FOOTBALL_CHANNEL", "world-cup-2026")
-                    interval = int(os.getenv("FOOTBALL_POLL_INTERVAL", "60"))
                     org_slug = os.getenv("FOOTBALL_ORG_SLUG", "gsa")
-                    self.v2_worldcup_runner = WorldCupRunner(
-                        registry, key, chan, "gsa_gateway.db", org_slug, interval)
+                    self.v2_worldcup_runner = MatchWatcher(
+                        key, "gsa_gateway.db", org_slug, chan)
                     await self.v2_worldcup_runner.start()
-                    logger.info("V2 World Cup active (channel #%s)", chan)
+                    logger.info("V2 World Cup MatchWatcher active (channel #%s)", chan)
                 else:
                     logger.warning("V2_WORLDCUP_ENABLED set but FOOTBALL_API_KEY missing — skipping")
 
