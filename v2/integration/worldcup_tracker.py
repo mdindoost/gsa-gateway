@@ -60,6 +60,9 @@ FLAG_MAP = {
     "Norway": "🇳🇴", "Sweden": "🇸🇪", "Greece": "🇬🇷", "Cape Verde": "🇨🇻",
     "Angola": "🇦🇴", "Tanzania": "🇹🇿", "Zambia": "🇿🇲", "Guinea": "🇬🇳",
     "Mozambique": "🇲🇿",
+    # football-data.org API spellings that differ from the common names above
+    "United States": "🇺🇸", "Cape Verde Islands": "🇨🇻", "Congo DR": "🇨🇩",
+    "Curaçao": "🇨🇼", "Haiti": "🇭🇹",
 }
 
 

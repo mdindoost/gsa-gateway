@@ -86,6 +86,22 @@ def test_fixture_line_includes_venue():
     assert "📍 Mexico City" in _fixture_line(M_MEX)
 
 
+def test_api_team_names_have_flags():
+    # API spellings that previously fell back to ⚽
+    from v2.integration.worldcup_tracker import flag
+    for name in ("United States", "Cape Verde Islands", "Congo DR", "Curaçao", "Haiti"):
+        assert flag(name) != "⚽", name
+
+
+def test_fixture_line_is_three_line_block():
+    # teams / time·group / venue on separate lines (Telegram-friendly)
+    block = _fixture_line(M_MEX).split("\n")
+    assert len(block) == 3
+    assert "Mexico" in block[0] and "South Africa" in block[0] and "—" not in block[0]
+    assert block[1] == "3:00 PM ET · Group A"
+    assert block[2] == "📍 Mexico City"
+
+
 def test_audit_logs_discrepancy_for_unknown_fixture(caplog):
     bogus = {"homeTeam": {"name": "Spain"}, "awayTeam": {"name": "Brazil"},  # never meet in groups
              "utcDate": "2026-06-11T19:00:00Z", "group": "GROUP_B", "stage": "GROUP_STAGE"}

@@ -94,19 +94,25 @@ def _team(team: dict | None) -> str:
 
 
 def _fixture_line(match: dict) -> str:
+    """One match as a 3-line block — teams / time·group / venue — so it reads
+    cleanly on Telegram (no long wrapping line) and Discord alike:
+
+        🇲🇽 Mexico vs 🇿🇦 South Africa
+        3:00 PM ET · Group A
+        📍 Mexico City
+    """
     home = _team(match.get("homeTeam"))
     away = _team(match.get("awayTeam"))
+    lines = [f"{home} vs {away}"]                              # line 1: the matchup
     kickoff = _kickoff_et(match.get("utcDate", ""))
-    parts = [f"{home} vs {away} — {kickoff}"]
     ctx = _context(match)
-    if ctx:
-        parts.append(ctx)
-    # venue comes from the FIFA schedule (the API has none); group stage only
+    lines.append(" · ".join(p for p in (kickoff, ctx) if p))  # line 2: time · group/stage
+    # line 3: venue from the FIFA schedule (the API has none); group stage only
     city = venue_for((match.get("homeTeam") or {}).get("name") or "",
                      (match.get("awayTeam") or {}).get("name") or "")
     if city:
-        parts.append(f"📍 {city}")
-    return " · ".join(parts)
+        lines.append(f"📍 {city}")
+    return "\n".join(lines)
 
 
 def _audit_fixtures(matches: list[dict]) -> None:
@@ -130,8 +136,9 @@ def _audit_fixtures(matches: list[dict]) -> None:
 def format_fixtures(day: datetime.date, matches: list[dict]) -> str:
     """Render the day's fixtures as one digest, ordered by kickoff time."""
     header = f"📅 **World Cup fixtures — {day.strftime('%A, %B')} {day.day}**"
-    lines = [_fixture_line(m) for m in sorted(matches, key=lambda m: m.get("utcDate", ""))]
-    return header + "\n\n" + "\n".join(lines)
+    # each match is a 3-line block; a blank line between blocks keeps it readable
+    blocks = [_fixture_line(m) for m in sorted(matches, key=lambda m: m.get("utcDate", ""))]
+    return header + "\n\n" + "\n\n".join(blocks)
 
 
 def build_fixtures_draft(org_id: int, day: datetime.date, matches: list[dict],
