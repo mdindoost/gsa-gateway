@@ -278,5 +278,5 @@ class V2Retriever:
                     src = (c.org_path or "").split(" > ")[-1] or "—"
                     f.write(f"  {i}. doc_id={c.item_id} [{c.type}] {c.title!r}  "
                             f"src={src}  leg={c.source}  rrf+boost={c.rrf_score:.4f}  sim={sim}\n")
-        except Exception:
-            pass  # tracing must never break retrieval
+        except Exception as exc:  # tracing must never break retrieval — but be visible
+            logger.warning("retrieval trace write failed: %s", exc)

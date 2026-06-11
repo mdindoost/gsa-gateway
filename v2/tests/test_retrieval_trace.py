@@ -41,3 +41,34 @@ def test_retrieval_trace_off_by_default(monkeypatch):
     monkeypatch.delenv("RETRIEVAL_DEBUG_LOG", raising=False)
     r = rt.V2Retriever(create_all(":memory:"), embedder=None)
     assert r.debug_log is False
+
+
+def _seeded_conn():
+    conn = create_all(":memory:")
+    conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'GSA','gsa','gsa')")
+    conn.execute("INSERT INTO knowledge_items(id,org_id,type,title,content,is_active) "
+                 "VALUES(1,1,'faq','T','body',1)")
+    conn.commit()
+    return conn
+
+
+class _FakeEmb:
+    def embed_query(self, q):
+        return None       # forces keyword-only leg (no Ollama)
+
+
+def _gate(monkeypatch, conn):
+    """Run retrieve() with a canned keyword hit; return how many times the trace fired."""
+    r = rt.V2Retriever(conn, _FakeEmb())
+    monkeypatch.setattr(r, "_keyword", lambda *a, **k: [(1, -1.0)])
+    calls = []
+    monkeypatch.setattr(r, "_write_trace", lambda *a, **k: calls.append(1))
+    r.retrieve("q")
+    return calls
+
+
+def test_retrieve_calls_trace_only_when_flag_on(monkeypatch):
+    monkeypatch.setenv("RETRIEVAL_DEBUG_LOG", "true")
+    assert _gate(monkeypatch, _seeded_conn()) == [1]      # fired
+    monkeypatch.setenv("RETRIEVAL_DEBUG_LOG", "false")
+    assert _gate(monkeypatch, _seeded_conn()) == []       # not fired

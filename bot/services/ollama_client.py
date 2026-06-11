@@ -40,9 +40,9 @@ BASE_SYSTEM_PROMPT = (
     "2. If the context does not contain enough information to answer the question, say so "
     "clearly and direct the student to contact a GSA officer at gsa-pres@njit.edu or visit "
     "Campus Center 110A on weekdays 11AM-5PM.\n"
-    "3. Always cite which document your answer comes from. Use natural language AND, when a "
-    "document is labeled with a doc_id, include it: 'According to doc_id 170 (Computer "
-    "Science)...' or 'The Club Financial Bylaws (doc_id 92) state that...'\n"
+    "3. Always cite which document your answer comes from, including its doc_id label, "
+    "e.g. 'According to doc_id <N> (<source>)...'. Use ONLY a doc_id that actually appears "
+    "on a document in the context above — never invent or guess a number.\n"
     "4. When a student asks a follow-up question that refers to something from earlier in "
     "the conversation (like 'what about step 2?' or 'how much is that?'), use the "
     "conversation history to understand what they are referring to and answer in context. "
@@ -141,7 +141,7 @@ class OllamaClient:
         for i, chunk in enumerate(chunks, 1):
             friendly_name = SOURCE_FRIENDLY_NAMES.get(chunk.source_file, chunk.source_file)
             doc_id = getattr(chunk, "item_id", None)
-            label = f"doc_id {doc_id}" if doc_id else f"Document {i}"
+            label = f"doc_id {doc_id}" if doc_id is not None else f"Document {i}"
             lines.append(f"\n[{label}: {friendly_name}]")
             lines.append(f"Section: {chunk.section_title}")
             # Cap each document so one bloated card (e.g. a faculty member with a

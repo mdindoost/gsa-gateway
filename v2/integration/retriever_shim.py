@@ -89,5 +89,5 @@ class V2RetrieverShim:
             similarity=c.similarity or 0.0,
             relevance_score=rel,
             metadata={"org_path": c.org_path, "source": c.source},
-            item_id=getattr(c, "item_id", None),
+            item_id=c.item_id,        # v2 RetrievedChunk always has it
         )
