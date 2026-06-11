@@ -50,11 +50,21 @@ def test_score_increase_emits_goal_for_right_team():
     assert st["score"] == (1, 0)
 
 
-def test_two_goal_jump_emits_two():
+def test_two_goal_jump_emits_two_with_distinct_keys():
     st = {"started": True, "score": (1, 0), "finished": False}
-    evs = w()._process(mk("IN_PLAY", 2, 1), st)   # +1 home, +1 away
+    evs = w()._process(mk("IN_PLAY", 2, 1), st)   # +1 home, +1 away in one read
     assert [e["type"] for e in evs] == ["goal", "goal"]
+    keys = [MatchWatcher._dedup_key(42, e) for e in evs]
+    assert keys == ["42:goal:2-0", "42:goal:2-1"]   # distinct → neither is dropped
     assert st["score"] == (2, 1)
+
+
+def test_two_home_goals_one_read_walk_scoreline():
+    st = {"started": True, "score": (0, 0), "finished": False}
+    evs = w()._process(mk("IN_PLAY", 2, 0), st)   # 0-0 -> 2-0 in one read
+    keys = [MatchWatcher._dedup_key(42, e) for e in evs]
+    assert keys == ["42:goal:1-0", "42:goal:2-0"]  # running scoreline, distinct keys
+    assert st["score"] == (2, 0)
 
 
 def test_score_is_monotonic_stale_read_cannot_lower_it():

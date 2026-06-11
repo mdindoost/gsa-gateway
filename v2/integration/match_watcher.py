@@ -135,12 +135,19 @@ class MatchWatcher:
             ph, pa = state["score"]
             nh, na = max(h, ph), max(a, pa)          # monotonic — never go down
             if (nh, na) != (ph, pa):
+                # Walk the score up one goal at a time so each goal post shows its
+                # own running scoreline AND gets a distinct dedup key (a single
+                # read jumping 0-0→2-0 must produce "1-0" then "2-0", not two "2-0"
+                # that would collide and drop the 2nd goal).
+                cur_h, cur_a = ph, pa
                 for _ in range(nh - ph):
+                    cur_h += 1
                     events.append({"type": "goal", "scoring_team": match["homeTeam"],
-                                   "match": self._with_score(match, (nh, na))})
+                                   "match": self._with_score(match, (cur_h, cur_a))})
                 for _ in range(na - pa):
+                    cur_a += 1
                     events.append({"type": "goal", "scoring_team": match["awayTeam"],
-                                   "match": self._with_score(match, (nh, na))})
+                                   "match": self._with_score(match, (cur_h, cur_a))})
                 state["score"] = (nh, na)
         return events
 
@@ -164,7 +171,11 @@ class MatchWatcher:
 
     # ── catch one live/finished read ──────────────────────────────────────────
     async def _catch(self, match_id: int, et_day: str) -> dict | None:
-        """Primary key every 10s (~1 min); if none, burst across all keys."""
+        """Primary key every 10s (~1 min); if none, burst across all keys.
+
+        Budget: a full catch+burst spreads ~12 reads on the primary key over ~84s
+        (~8.6/min) — under the 10/min/key cap. A stray 429 just yields a stale read
+        and the loop continues, so brief overage is harmless."""
         for _ in range(PRIMARY_TRIES):
             if not self._running:
                 return None
@@ -215,6 +226,8 @@ class MatchWatcher:
                 ko = datetime.datetime.fromisoformat(ud.replace("Z", "+00:00")).replace(tzinfo=None)
             except (ValueError, AttributeError):
                 continue
+            # same MATCH_MAX as _watch's deadline, so a dead match drops out of the
+            # candidate window exactly when _watch gives up — never re-watched.
             if ko + MATCH_MAX > now:                    # window not past
                 cand.append((m.get("id"), et_date(ud), ko))
         cand.sort(key=lambda x: x[2])
