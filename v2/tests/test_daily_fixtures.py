@@ -6,6 +6,7 @@ import datetime
 import sys
 from pathlib import Path
 
+import aiohttp
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -15,7 +16,8 @@ if str(REPO_ROOT) not in sys.path:
 from v2.core.database.schema import create_all
 from v2.core.publishing.sources import enqueue_post
 from v2.integration.daily_fixtures import (
-    DailyFixturesSource, build_fixtures_draft, format_fixtures, _kickoff_et,
+    DailyFixturesSource, build_fixtures_draft, fetch_fixtures, format_fixtures,
+    _fixture_line, _kickoff_et,
 )
 
 DAY = datetime.date(2026, 6, 11)
@@ -40,6 +42,31 @@ def test_kickoff_et_converts_utc_to_eastern():
 
 def test_kickoff_et_bad_input():
     assert _kickoff_et("not-a-date") == "TBD"
+    assert _kickoff_et("") == "TBD"
+    assert _kickoff_et(None) == "TBD"
+
+
+def test_fixture_line_tbd_teams():
+    # knockout slot before teams qualify: API sends name=None / placeholder
+    m = {"homeTeam": None, "awayTeam": {"name": ""},
+         "utcDate": "2026-07-10T20:00:00Z", "group": None, "stage": "QUARTER_FINALS"}
+    line = _fixture_line(m)
+    assert "TBD vs" in line and "vs ⚽ TBD" in line
+    assert "Quarter-finals" in line  # clean stage label, not "Quarter Finals"
+
+
+def test_fetch_fixtures_degrades_to_empty_on_error(monkeypatch):
+    class _RaisingSession:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        def get(self, *a, **k):
+            raise aiohttp.ClientError("boom")
+    monkeypatch.setattr("v2.integration.daily_fixtures.aiohttp.ClientSession",
+                        lambda *a, **k: _RaisingSession())
+    out = asyncio.run(fetch_fixtures("k", DAY))
+    assert out == []
 
 
 def test_format_orders_by_kickoff_and_labels():

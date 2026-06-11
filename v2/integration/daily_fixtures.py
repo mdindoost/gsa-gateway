@@ -25,6 +25,13 @@ logger = logging.getLogger(__name__)
 
 ET = ZoneInfo("America/New_York")  # NJIT / GSA audience is US Eastern
 
+# Clean labels for the knockout stages (football-data.org stage codes).
+STAGE_LABELS = {
+    "GROUP_STAGE": "Group Stage", "LAST_16": "Round of 16", "ROUND_OF_16": "Round of 16",
+    "QUARTER_FINALS": "Quarter-finals", "SEMI_FINALS": "Semi-finals",
+    "THIRD_PLACE": "Third-place Play-off", "FINAL": "Final",
+}
+
 
 async def fetch_fixtures(api_key: str, day: datetime.date) -> list[dict]:
     """Fetch the World Cup matches scheduled on ``day``. Returns [] on any API
@@ -59,13 +66,20 @@ def _context(match: dict) -> str:
     grp = match.get("group")
     if grp:
         return grp.replace("GROUP_", "Group ")
-    stage = (match.get("stage") or "").replace("_", " ").title()
-    return stage
+    stage = match.get("stage") or ""
+    return STAGE_LABELS.get(stage, stage.replace("_", " ").title())
+
+
+def _team(team: dict | None) -> str:
+    """Flagged team label, falling back to 'TBD' for unseeded knockout slots
+    (the API sends name=None / '' before teams qualify)."""
+    label = team_label(team or {}).strip()
+    return label if label and label != "⚽" else "⚽ TBD"
 
 
 def _fixture_line(match: dict) -> str:
-    home = team_label(match.get("homeTeam") or {})
-    away = team_label(match.get("awayTeam") or {})
+    home = _team(match.get("homeTeam"))
+    away = _team(match.get("awayTeam"))
     kickoff = _kickoff_et(match.get("utcDate", ""))
     ctx = _context(match)
     tail = f" · {ctx}" if ctx else ""
@@ -100,7 +114,12 @@ def build_fixtures_draft(org_id: int, day: datetime.date, matches: list[dict],
 
 class DailyFixturesSource(PostSource):
     """Poll-style generator: each tick offers the target day's fixtures digest
-    (deduped per day). ``day_offset`` selects today (0) or e.g. tomorrow (1)."""
+    (deduped per day). ``day_offset`` selects today (0) or e.g. tomorrow (1).
+
+    Recommended SourceRunner interval: HOURLY (3600s) or longer. The per-day
+    dedup makes re-runs no-ops, so each tick also makes an API call — frequent
+    polling only burns football-data.org's free-tier quota (~10 req/min) for no
+    benefit. Once a day actually posts; an hourly check is plenty of slack."""
 
     name = "wc_fixtures"
 
