@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import logging
 import sys
 from pathlib import Path
 
@@ -21,10 +22,11 @@ from v2.integration.daily_fixtures import (
 )
 
 DAY = datetime.date(2026, 6, 11)
+# real Jun 11 fixtures (so venues resolve and the FIFA audit stays clean)
 M_MEX = {"homeTeam": {"name": "Mexico"}, "awayTeam": {"name": "South Africa"},
          "utcDate": "2026-06-11T19:00:00Z", "group": "GROUP_A", "stage": "GROUP_STAGE"}
-M_EARLY = {"homeTeam": {"name": "Spain"}, "awayTeam": {"name": "Brazil"},
-           "utcDate": "2026-06-11T16:00:00Z", "group": "GROUP_B", "stage": "GROUP_STAGE"}
+M_KOR = {"homeTeam": {"name": "South Korea"}, "awayTeam": {"name": "Czechia"},
+         "utcDate": "2026-06-12T02:00:00Z", "group": "GROUP_A", "stage": "GROUP_STAGE"}
 
 
 @pytest.fixture()
@@ -70,13 +72,26 @@ def test_fetch_fixtures_degrades_to_empty_on_error(monkeypatch):
 
 
 def test_format_orders_by_kickoff_and_labels():
-    text = format_fixtures(DAY, [M_MEX, M_EARLY])  # given out of order
+    text = format_fixtures(DAY, [M_KOR, M_MEX])  # given out of kickoff order
     assert "World Cup fixtures" in text
     assert "June" in text and "11" in text
     assert "Mexico" in text and "Group A" in text
     assert "3:00 PM ET" in text
-    # earlier kickoff (Spain 16:00) must come before later (Mexico 19:00)
-    assert text.index("Spain") < text.index("Mexico")
+    # earlier kickoff (Mexico 19:00Z) must come before later (Korea 02:00Z next day)
+    assert text.index("Mexico") < text.index("South Korea")
+
+
+def test_fixture_line_includes_venue():
+    # venue comes from the FIFA schedule, not the API
+    assert "📍 Mexico City" in _fixture_line(M_MEX)
+
+
+def test_audit_logs_discrepancy_for_unknown_fixture(caplog):
+    bogus = {"homeTeam": {"name": "Spain"}, "awayTeam": {"name": "Brazil"},  # never meet in groups
+             "utcDate": "2026-06-11T19:00:00Z", "group": "GROUP_B", "stage": "GROUP_STAGE"}
+    with caplog.at_level(logging.WARNING, logger="v2.integration.daily_fixtures"):
+        build_fixtures_draft(org_id=2, day=DAY, matches=[bogus])
+    assert any("WC schedule audit" in r.message for r in caplog.records)
 
 
 def test_build_draft_fields():
@@ -101,7 +116,7 @@ def test_build_draft_no_matches_returns_none():
 
 def test_source_poll_with_matches(monkeypatch):
     async def fake_fetch(api_key, day):
-        return [M_MEX, M_EARLY]
+        return [M_MEX, M_KOR]
     monkeypatch.setattr("v2.integration.daily_fixtures.fetch_fixtures", fake_fetch)
     drafts = asyncio.run(DailyFixturesSource("k", org_id=2).poll())
     assert len(drafts) == 1

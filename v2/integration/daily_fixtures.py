@@ -20,6 +20,7 @@ import aiohttp
 
 from v2.core.publishing.sources import PostDraft, PostSource
 from v2.integration.worldcup_tracker import BASE_URL, team_label
+from v2.integration.wc_schedule import et_date, reconcile, venue_for
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,15 @@ STAGE_LABELS = {
 
 
 async def fetch_fixtures(api_key: str, day: datetime.date) -> list[dict]:
-    """Fetch the World Cup matches scheduled on ``day``. Returns [] on any API
-    error (so a bad fetch degrades to "no post", never a crash)."""
+    """Fetch the World Cup matches on the ET-local ``day``. Returns [] on any API
+    error (so a bad fetch degrades to "no post", never a crash).
+
+    The API dates by UTC, so a late US-evening kickoff rolls into the next UTC
+    day. We query a 2-day UTC window and keep only matches whose ET date == day,
+    so the digest is the day's fixtures as a US audience (and FIFA) sees them."""
     iso = day.isoformat()
-    url = f"{BASE_URL}/competitions/WC/matches?dateFrom={iso}&dateTo={iso}"
+    nxt = (day + datetime.timedelta(days=1)).isoformat()
+    url = f"{BASE_URL}/competitions/WC/matches?dateFrom={iso}&dateTo={nxt}"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers={"X-Auth-Token": api_key},
@@ -46,7 +52,8 @@ async def fetch_fixtures(api_key: str, day: datetime.date) -> list[dict]:
                     logger.warning("WC fixtures API HTTP %d for %s", resp.status, iso)
                     return []
                 data = await resp.json()
-                return data.get("matches", [])
+                return [m for m in data.get("matches", [])
+                        if et_date(m.get("utcDate", "")) == iso]
     except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
         logger.warning("WC fixtures API unreachable for %s: %s", iso, exc)
         return []
@@ -81,9 +88,30 @@ def _fixture_line(match: dict) -> str:
     home = _team(match.get("homeTeam"))
     away = _team(match.get("awayTeam"))
     kickoff = _kickoff_et(match.get("utcDate", ""))
+    parts = [f"{home} vs {away} — {kickoff}"]
     ctx = _context(match)
-    tail = f" · {ctx}" if ctx else ""
-    return f"{home} vs {away} — {kickoff}{tail}"
+    if ctx:
+        parts.append(ctx)
+    # venue comes from the FIFA schedule (the API has none); group stage only
+    city = venue_for((match.get("homeTeam") or {}).get("name") or "",
+                     (match.get("awayTeam") or {}).get("name") or "")
+    if city:
+        parts.append(f"📍 {city}")
+    return " · ".join(parts)
+
+
+def _audit_fixtures(matches: list[dict]) -> None:
+    """Cross-check API group-stage fixtures against the authoritative FIFA
+    schedule; log any discrepancy (unknown team name, >1-day reschedule) so we
+    can investigate. The API stays the live source; FIFA is the auditor."""
+    for m in matches:
+        if (m.get("stage") or "") != "GROUP_STAGE":
+            continue
+        _, discrepancies = reconcile(m.get("utcDate", ""),
+                                     (m.get("homeTeam") or {}).get("name") or "",
+                                     (m.get("awayTeam") or {}).get("name") or "")
+        for d in discrepancies:
+            logger.warning("WC schedule audit — %s", d)
 
 
 def format_fixtures(day: datetime.date, matches: list[dict]) -> str:
@@ -100,6 +128,7 @@ def build_fixtures_draft(org_id: int, day: datetime.date, matches: list[dict],
     fixtures that day (so the caller posts nothing)."""
     if not matches:
         return None
+    _audit_fixtures(matches)  # log any API↔FIFA discrepancy before we post
     return PostDraft(
         org_id=org_id,
         content=format_fixtures(day, matches),
