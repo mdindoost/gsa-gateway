@@ -73,55 +73,57 @@ def reconcile_entity(conn, org_id: int, entity_id: str, items: list[KItem],
     Caller is responsible for embedding ``result.to_embed`` and dropping vectors
     for ``result.vectors_to_drop`` afterwards.
     """
-    rows = conn.execute(
-        "SELECT id, title, content, metadata, root_id, version "
-        "FROM knowledge_items "
-        "WHERE org_id=? AND is_active=1 AND json_extract(metadata,'$.entity_id')=?",
-        (org_id, entity_id),
-    ).fetchall()
-
-    existing: dict[str, tuple] = {}
-    for r in rows:
-        meta = json.loads(r["metadata"]) if r["metadata"] else {}
-        nk = meta.get("natural_key")
-        if nk:
-            existing[nk] = (r, meta)
-
     result = ReconcileResult()
-    seen: set[str] = set()
+    # One transaction for the whole entity: a mid-loop failure rolls back so we
+    # never leave an entity half-deactivated / half-inserted. `with conn` commits
+    # on success and rolls back on any exception (it does not close the conn).
+    with conn:
+        rows = conn.execute(
+            "SELECT id, title, content, metadata, root_id, version "
+            "FROM knowledge_items "
+            "WHERE org_id=? AND is_active=1 AND json_extract(metadata,'$.entity_id')=?",
+            (org_id, entity_id),
+        ).fetchall()
 
-    for item in items:
-        nk = item.natural_key
-        seen.add(nk)
-        new_meta = _store_meta(item)
+        existing: dict[str, tuple] = {}
+        for r in rows:
+            meta = json.loads(r["metadata"]) if r["metadata"] else {}
+            nk = meta.get("natural_key")
+            if nk:
+                existing[nk] = (r, meta)
 
-        if nk not in existing:
-            result.inserted_ids.append(
-                _insert(conn, org_id, item, new_meta, created_by))
-            continue
+        seen: set[str] = set()
+        for item in items:
+            nk = item.natural_key
+            seen.add(nk)
+            new_meta = _store_meta(item)
 
-        row, old_meta = existing[nk]
-        if (row["title"] == item.title and row["content"] == item.content
-                and old_meta == new_meta):
-            result.unchanged_ids.append(row["id"])
-            continue
+            if nk not in existing:
+                result.inserted_ids.append(
+                    _insert(conn, org_id, item, new_meta, created_by))
+                continue
 
-        # body changed -> version-bump
-        conn.execute(
-            "UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') WHERE id=?",
-            (row["id"],))
-        new_id = _insert(conn, org_id, item, new_meta, created_by,
-                         version=row["version"] + 1, root_id=row["root_id"],
-                         parent_id=row["id"])
-        result.superseded.append((row["id"], new_id))
+            row, old_meta = existing[nk]
+            if (row["title"] == item.title and row["content"] == item.content
+                    and old_meta == new_meta):
+                result.unchanged_ids.append(row["id"])
+                continue
 
-    # anything present before but absent now -> deactivate
-    for nk, (row, _meta) in existing.items():
-        if nk not in seen:
+            # body changed -> version-bump
             conn.execute(
                 "UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') WHERE id=?",
                 (row["id"],))
-            result.deactivated_ids.append(row["id"])
+            new_id = _insert(conn, org_id, item, new_meta, created_by,
+                             version=row["version"] + 1, root_id=row["root_id"],
+                             parent_id=row["id"])
+            result.superseded.append((row["id"], new_id))
 
-    conn.commit()
+        # anything present before but absent now -> deactivate
+        for nk, (row, _meta) in existing.items():
+            if nk not in seen:
+                conn.execute(
+                    "UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') WHERE id=?",
+                    (row["id"],))
+                result.deactivated_ids.append(row["id"])
+
     return result

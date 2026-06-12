@@ -123,11 +123,19 @@ class OllamaClient:
         model: str = "llama3.1:8b",
         timeout: int = 60,
         embedding_model: str = "nomic-embed-text",
+        num_ctx: int = 8192,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
         self.embedding_model = embedding_model
+        # Explicit context window. Ollama defaults to 2048 and silently truncates
+        # the FRONT of the prompt (dropping the system prompt / earliest docs) when
+        # the assembled context overflows. We size the window to comfortably hold
+        # the system prompt + the retrieved items (decomposed, so each is small,
+        # but legacy non-decomposed FAQ/policy rows can still be sizeable) +
+        # conversation history + the 512-token answer. llama3.1 supports far more.
+        self.num_ctx = num_ctx
         self.generate_url = f"{self.base_url}/api/generate"
         self.embed_url = f"{self.base_url}/api/embed"
         self._session: Optional[aiohttp.ClientSession] = None
@@ -217,6 +225,7 @@ class OllamaClient:
             "options": {
                 "temperature": temperature,
                 "top_p": 0.9,
+                "num_ctx": self.num_ctx,
                 "num_predict": 512,
                 "stop": ["Student:", "===", "Human:"],
             },

@@ -266,7 +266,7 @@ class V2Retriever:
 
         ranked = sorted(scores.items(), key=lambda kv: -kv[1])
         if group_by_entity:
-            final = self._diversify_and_expand(ranked, rows, limit)
+            final = self._diversify_and_expand(ranked, rows, limit, item_types)
         else:
             final = [(iid, s, False) for iid, s in ranked[:limit]]
 
@@ -299,7 +299,7 @@ class V2Retriever:
     def _entity_key(row) -> str | None:
         return _meta_entity_id(row["metadata"])
 
-    def _diversify_and_expand(self, ranked, rows, limit):
+    def _diversify_and_expand(self, ranked, rows, limit, item_types=None):
         """Decomposition makes one entity many items, so a naive top-`limit` can be
         five publications by one professor. Diversify by entity (round-robin across
         entities, best item first), then expand each chosen entity with its profile
@@ -307,8 +307,14 @@ class V2Retriever:
 
         Returns ``[(item_id, score, is_expanded)]`` in reading order. With no
         ``entity_id`` metadata every item is its own bucket, so this is a no-op
-        slice to `limit`.
+        slice to `limit`. The result can exceed `limit` by up to the number of
+        distinct entities (each may pull in one extra profile item).
+
+        Parent expansion is scoped to the entity's own ``org_id`` (never crosses
+        tenants on a shared slug) and is skipped entirely when the caller restricted
+        ``item_types`` — injecting a ``profile`` would violate that filter.
         """
+        expand = not item_types  # an explicit type filter forbids adding profiles
         buckets: dict[str, list[tuple[int, float]]] = {}
         order: list[str] = []  # bucket keys in best-first order
         for iid, score in ranked:
@@ -334,8 +340,10 @@ class V2Retriever:
                 break
 
         selected = {iid for iid, _ in primaries}
-        # which real entities are in the result, and do they already have a profile?
+        # which real entities are in the result, their org, and do they already
+        # have a profile among the primaries?
         entity_order: list[str] = []
+        entity_org: dict[str, int] = {}
         has_profile: set[str] = set()
         for iid, _ in primaries:
             ek = self._entity_key(rows[iid])
@@ -343,20 +351,23 @@ class V2Retriever:
                 continue
             if ek not in entity_order:
                 entity_order.append(ek)
+                entity_org[ek] = rows[iid]["org_id"]
             if rows[iid]["type"] == "profile":
                 has_profile.add(ek)
 
         expansion: dict[str, int] = {}
-        for ek in entity_order:
-            if ek in has_profile:
-                continue
-            prow = self.conn.execute(
-                "SELECT id,title,type,content,org_id,metadata,source_url "
-                "FROM knowledge_items WHERE is_active=1 AND type='profile' "
-                "AND json_extract(metadata,'$.entity_id')=? LIMIT 1", (ek,)).fetchone()
-            if prow and prow["id"] not in selected:
-                rows[prow["id"]] = prow
-                expansion[ek] = prow["id"]
+        if expand:
+            for ek in entity_order:
+                if ek in has_profile:
+                    continue
+                prow = self.conn.execute(
+                    "SELECT id,title,type,content,org_id,metadata,source_url "
+                    "FROM knowledge_items WHERE is_active=1 AND type='profile' "
+                    "AND org_id=? AND json_extract(metadata,'$.entity_id')=? LIMIT 1",
+                    (entity_org[ek], ek)).fetchone()
+                if prow and prow["id"] not in selected:
+                    rows[prow["id"]] = prow
+                    expansion[ek] = prow["id"]
 
         # assemble: each entity's profile sits just before that entity's first item
         final: list[tuple[int, float, bool]] = []

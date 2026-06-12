@@ -112,6 +112,39 @@ def test_source_url_and_verified_carried(retriever):
     assert all(c.verified is True for c in chunks)
 
 
+def test_item_type_filter_suppresses_profile_expansion(retriever):
+    # caller restricted to publications -> a profile must NOT be injected
+    chunks = retriever.retrieve("graph algorithms", org_id=1,
+                                item_types=["publication"], limit=3)
+    assert chunks  # still finds publications
+    assert all(c.type == "publication" for c in chunks)
+    assert not any(c.source == "expanded" for c in chunks)
+
+
+def test_expansion_does_not_cross_orgs_on_shared_entity_id():
+    # two orgs ingest the SAME entity_id; expansion must stay within the queried org
+    conn = create_all(":memory:")
+    conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'A','a','custom')")
+    conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(2,'B','b','custom')")
+    stub = StubEmbedder()
+    rec = faculty("koutis", "Koutis", "graph algorithms", ["Fast graph algorithms"])
+    for org in (1, 2):
+        res = reconcile_entity(conn, org, rec.entity_id, decompose(rec))
+        for iid in res.to_embed:
+            content = conn.execute("SELECT content FROM knowledge_items WHERE id=?",
+                                   (iid,)).fetchone()["content"]
+            conn.execute("INSERT INTO knowledge_vectors(item_id,embedding) VALUES(?,?)",
+                         (iid, sqlite_vec.serialize_float32(stub.embed_document(content))))
+    conn.commit()
+    r = V2Retriever(conn, stub)
+    chunks = r.retrieve("graph algorithms", org_id=1, limit=3)
+    org1_ids = {row["id"] for row in conn.execute(
+        "SELECT id FROM knowledge_items WHERE org_id=1")}
+    assert chunks
+    assert all(c.item_id in org1_ids for c in chunks)  # nothing leaked from org 2
+    conn.close()
+
+
 def test_group_by_entity_can_be_disabled(retriever):
     grouped = retriever.retrieve("graph algorithms", org_id=1, limit=3, group_by_entity=True)
     flat = retriever.retrieve("graph algorithms", org_id=1, limit=3, group_by_entity=False)
