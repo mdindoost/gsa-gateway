@@ -22,6 +22,7 @@ thread executor so the Ollama embed call never blocks the discord event loop.
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import os
 import re
@@ -65,8 +66,27 @@ class RetrievedChunk:
     content: str
     org_path: str          # e.g. "New Jersey Institute of Technology > GSA"
     similarity: float | None  # cosine-equiv (0..1); None if keyword-only hit
-    source: str            # 'semantic' | 'keyword' | 'hybrid'
+    source: str            # 'semantic' | 'keyword' | 'hybrid' | 'expanded'
     rrf_score: float
+    source_url: str | None = None  # provenance carried to the prompt (R4)
+    verified: bool = True          # False = first-layer LLM draft, not authoritative
+
+
+def _meta(metadata) -> dict:
+    if not metadata:
+        return {}
+    try:
+        return json.loads(metadata)
+    except (TypeError, ValueError):
+        return {}
+
+
+def _meta_entity_id(metadata) -> str | None:
+    return _meta(metadata).get("entity_id")
+
+
+def _meta_verified(metadata) -> bool:
+    return bool(_meta(metadata).get("verified", True))
 
 
 def _fts_match_expr(query: str) -> str | None:
@@ -196,6 +216,7 @@ class V2Retriever:
         org_subtree: bool = True,
         item_types: list[str] | None = None,
         limit: int = 5,
+        group_by_entity: bool = True,
     ) -> list[RetrievedChunk]:
         allowed = self._allowed_ids(org_id, org_subtree, item_types)
         total_active = self.conn.execute(
@@ -235,24 +256,34 @@ class V2Retriever:
         rows = {
             r["id"]: r
             for r in self.conn.execute(
-                f"SELECT id,title,type,content,org_id FROM knowledge_items "
-                f"WHERE id IN ({','.join('?' * len(cand_ids))})",
+                f"SELECT id,title,type,content,org_id,metadata,source_url "
+                f"FROM knowledge_items WHERE id IN ({','.join('?' * len(cand_ids))})",
                 cand_ids,
             )
         }
         for iid in cand_ids:
             scores[iid] *= self._boost_for(rows[iid]["type"])
 
-        ranked = sorted(scores.items(), key=lambda kv: -kv[1])[:limit]
+        ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+        if group_by_entity:
+            final = self._diversify_and_expand(ranked, rows, limit)
+        else:
+            final = [(iid, s, False) for iid, s in ranked[:limit]]
+
         chunks = []
-        for iid, boosted in ranked:
+        for iid, boosted, expanded in final:
             r = rows[iid]
-            src = sources[iid]
-            source = "hybrid" if len(src) == 2 else next(iter(src))
+            if expanded:
+                source = "expanded"
+            else:
+                src = sources[iid]
+                source = "hybrid" if len(src) == 2 else next(iter(src))
             chunks.append(RetrievedChunk(
                 item_id=iid, title=r["title"], type=r["type"], content=r["content"],
-                org_path=self.org_path(r["org_id"]), similarity=sim.get(iid),
+                org_path=self.org_path(r["org_id"]),
+                similarity=None if expanded else sim.get(iid),
                 source=source, rrf_score=boosted,
+                source_url=r["source_url"], verified=_meta_verified(r["metadata"]),
             ))
 
         logger.debug(
@@ -262,6 +293,81 @@ class V2Retriever:
         if self.debug_log:
             self._write_trace(query, org_id, len(sem), len(kw), chunks)
         return chunks
+
+    # ── entity grouping + parent expansion (R3) ───────────────────────────────
+    @staticmethod
+    def _entity_key(row) -> str | None:
+        return _meta_entity_id(row["metadata"])
+
+    def _diversify_and_expand(self, ranked, rows, limit):
+        """Decomposition makes one entity many items, so a naive top-`limit` can be
+        five publications by one professor. Diversify by entity (round-robin across
+        entities, best item first), then expand each chosen entity with its profile
+        item so the LLM always has the person's name/title context (small-to-big).
+
+        Returns ``[(item_id, score, is_expanded)]`` in reading order. With no
+        ``entity_id`` metadata every item is its own bucket, so this is a no-op
+        slice to `limit`.
+        """
+        buckets: dict[str, list[tuple[int, float]]] = {}
+        order: list[str] = []  # bucket keys in best-first order
+        for iid, score in ranked:
+            ekey = self._entity_key(rows[iid]) or f"__item_{iid}"
+            if ekey not in buckets:
+                buckets[ekey] = []
+                order.append(ekey)
+            buckets[ekey].append((iid, score))
+
+        # round-robin: best of each entity, then second-best, … up to `limit`
+        primaries: list[tuple[int, float]] = []
+        idx = {k: 0 for k in order}
+        while len(primaries) < limit:
+            progressed = False
+            for k in order:
+                if idx[k] < len(buckets[k]):
+                    primaries.append(buckets[k][idx[k]])
+                    idx[k] += 1
+                    progressed = True
+                    if len(primaries) >= limit:
+                        break
+            if not progressed:
+                break
+
+        selected = {iid for iid, _ in primaries}
+        # which real entities are in the result, and do they already have a profile?
+        entity_order: list[str] = []
+        has_profile: set[str] = set()
+        for iid, _ in primaries:
+            ek = self._entity_key(rows[iid])
+            if not ek:
+                continue
+            if ek not in entity_order:
+                entity_order.append(ek)
+            if rows[iid]["type"] == "profile":
+                has_profile.add(ek)
+
+        expansion: dict[str, int] = {}
+        for ek in entity_order:
+            if ek in has_profile:
+                continue
+            prow = self.conn.execute(
+                "SELECT id,title,type,content,org_id,metadata,source_url "
+                "FROM knowledge_items WHERE is_active=1 AND type='profile' "
+                "AND json_extract(metadata,'$.entity_id')=? LIMIT 1", (ek,)).fetchone()
+            if prow and prow["id"] not in selected:
+                rows[prow["id"]] = prow
+                expansion[ek] = prow["id"]
+
+        # assemble: each entity's profile sits just before that entity's first item
+        final: list[tuple[int, float, bool]] = []
+        emitted: set[str] = set()
+        for iid, score in primaries:
+            ek = self._entity_key(rows[iid])
+            if ek and ek in expansion and ek not in emitted:
+                final.append((expansion[ek], 0.0, True))
+                emitted.add(ek)
+            final.append((iid, score, False))
+        return final
 
     def _write_trace(self, query, org_id, n_sem, n_kw, chunks) -> None:
         """Append a per-query retrieval trace to logs/retrieval_debug.log so an LLM
