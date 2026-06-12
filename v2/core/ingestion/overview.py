@@ -58,6 +58,10 @@ def build_context(rec: EntityRecord) -> str:
         lines.append(f"Research areas: {'; '.join(rec.research_areas)}")
     if rec.bio.strip():
         lines.append(f"About: {rec.bio.strip()}")
+    if rec.awards:
+        lines.append(f"Awards & honors: {'; '.join(rec.awards)}")
+    if rec.experience:
+        lines.append(f"Experience: {'; '.join(rec.experience)}")
     if rec.teaching:
         lines.append(f"Teaches: {'; '.join(rec.teaching)}")
     if rec.education:

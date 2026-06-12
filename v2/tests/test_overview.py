@@ -26,12 +26,17 @@ def koutis(n_pubs=3):
 
 
 def test_context_includes_grounding_facts():
-    ctx = build_context(koutis())
+    r = koutis()
+    r.awards = ["2012 NSF CAREER award"]
+    r.experience = ["Associate Professor, 2018 -"]
+    ctx = build_context(r)
     assert "Ioannis Koutis" in ctx
     assert "Spectral graph theory" in ctx
     assert "fast Laplacian solvers" in ctx
     assert "Machine Learning" in ctx
     assert "Graph paper 0" in ctx                 # publication TITLE extracted from citation
+    assert "NSF CAREER" in ctx                    # awards fed to the summarizer
+    assert "Associate Professor, 2018" in ctx     # experience fed in
 
 
 def test_context_samples_publication_titles_not_all():
