@@ -42,7 +42,10 @@ BASE_SYSTEM_PROMPT = (
     "Campus Center 110A on weekdays 11AM-5PM.\n"
     "3. Always cite which document your answer comes from, including its doc_id label, "
     "e.g. 'According to doc_id <N> (<source>)...'. Use ONLY a doc_id that actually appears "
-    "on a document in the context above — never invent or guess a number.\n"
+    "on a document in the context above — never invent or guess a number. When a document "
+    "lists a 'Source:' URL, you may share that link so the student can verify. If a document "
+    "is tagged UNVERIFIED DRAFT, do not present its claims as confirmed fact — either omit it "
+    "or say it is unconfirmed and point the student to the official source.\n"
     "4. When a student asks a follow-up question that refers to something from earlier in "
     "the conversation (like 'what about step 2?' or 'how much is that?'), use the "
     "conversation history to understand what they are referring to and answer in context. "
@@ -142,13 +145,18 @@ class OllamaClient:
             friendly_name = SOURCE_FRIENDLY_NAMES.get(chunk.source_file, chunk.source_file)
             doc_id = getattr(chunk, "item_id", None)
             label = f"doc_id {doc_id}" if doc_id is not None else f"Document {i}"
-            lines.append(f"\n[{label}: {friendly_name}]")
+            # Each chunk is now a single focused item (one publication, one research
+            # statement, one contact) — the ingestion pipeline decomposes entities
+            # instead of packing everything into one card, so there is no bloated
+            # document to truncate here. Provenance is carried per item (R4).
+            verified = getattr(chunk, "verified", True)
+            tag = "" if verified else " — UNVERIFIED DRAFT (corroborate before relying on it)"
+            lines.append(f"\n[{label}: {friendly_name}{tag}]")
             lines.append(f"Section: {chunk.section_title}")
-            # Cap each document so one bloated card (e.g. a faculty member with a
-            # huge publication list) can't flood the context and bury short,
-            # directly-relevant docs. 1500 chars keeps title + role + research +
-            # a few items — plenty for grounding.
-            lines.append(chunk.text[:1500])
+            source_url = getattr(chunk, "source_url", None)
+            if source_url:
+                lines.append(f"Source: {source_url}")
+            lines.append(chunk.text)
             lines.append(f"[Relevance: {chunk.relevance_score:.0%}]")
         lines.append("\n=== END OF DOCUMENTS ===")
         return "\n".join(lines)
