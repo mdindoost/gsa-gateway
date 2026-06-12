@@ -54,6 +54,11 @@ def decompose(rec: EntityRecord) -> list[KItem]:
         profile += f". Website: {rec.links['website']}"
     items.append(mk("profile", rec.name, profile, "main"))
 
+    # ── overview (LLM-written narrative, grounded in the verified facts) ────────
+    if rec.overview.strip():
+        items.append(mk("overview", f"{rec.name} — Overview",
+                        f"Overview of {subj}: {rec.overview.strip()}", "main"))
+
     # ── biography (the "About" prose) ──────────────────────────────────────────
     if rec.bio.strip():
         items.append(mk("about", f"{rec.name} — About",

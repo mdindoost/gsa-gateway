@@ -33,6 +33,7 @@ class EntityRecord:
     titles: list[str] = field(default_factory=list)
     role: str = ""
     bio: str = ""                                    # free-text "About" / biography
+    overview: str = ""                               # LLM-written narrative, grounded in the facts below
     research_statement: str = ""
     research_areas: list[str] = field(default_factory=list)
     publications: list[Publication] = field(default_factory=list)

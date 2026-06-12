@@ -37,6 +37,29 @@ FACULTY_LIST = "https://cs.njit.edu/faculty"
 C_HEAD = "\033[1;36m"; C_KEY = "\033[0;33m"; C_DIM = "\033[0;90m"; C_OK = "\033[0;32m"; C_OFF = "\033[0m"
 
 
+def _llm_call(system: str, user: str) -> str:
+    """Synchronous Ollama /api/generate call for overview generation. Grounded,
+    low-temperature; returns '' on any failure (overview is optional, never fatal)."""
+    import json
+    import os
+    import urllib.request
+
+    base = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+    model = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+    payload = json.dumps({
+        "model": model, "system": system, "prompt": user, "stream": False,
+        "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 300},
+    }).encode("utf-8")
+    req = urllib.request.Request(f"{base}/api/generate", data=payload,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return json.loads(r.read()).get("response", "")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  {C_OFF}! overview LLM call failed: {exc}")
+        return ""
+
+
 def discover(limit: int) -> list[str]:
     html = fetch(FACULTY_LIST)
     seen, out = set(), []
@@ -195,6 +218,8 @@ def main() -> None:
     ap.add_argument("--org-id", type=int, help="force this org_id for all profiles")
     ap.add_argument("--changes-log", default=str(REPO / "logs" / "ingest_changes.log"),
                     help="append a per-entity diff here on --commit (re-crawl audit trail)")
+    ap.add_argument("--overview", action="store_true",
+                    help="generate a grounded narrative overview per profile (local LLM)")
     args = ap.parse_args()
 
     urls = args.url if args.url else discover(args.limit)
@@ -208,6 +233,9 @@ def main() -> None:
         except Exception as exc:  # noqa: BLE001 - one bad profile shouldn't abort the run
             print(f"\n  ! {url}: fetch/parse failed: {exc}")
             continue
+        if args.overview:
+            from v2.core.ingestion.overview import generate as gen_overview
+            rec.overview = gen_overview(rec, _llm_call)
         items = decompose(rec)
         total_items += len(items)
         parsed.append((rec, items))
