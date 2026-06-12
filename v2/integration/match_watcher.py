@@ -37,7 +37,8 @@ DONE = {"FINISHED"}               # end-of-game signal (no score!)
 CATCHABLE = LIVE | DONE
 
 PRE_KICKOFF_LEAD = datetime.timedelta(minutes=5)
-REST_SECONDS = 5 * 60             # rest after a successful catch
+REST_SECONDS = 1 * 60             # rest after a successful catch — matches the API's ~1-min
+                                  # score-refresh cadence; ≤1 min lag, ~1 read/min (10% of cap)
 PRIMARY_TRIES = 6                 # primary-key reads (~1 min at 10s) before bursting
 PRIMARY_INTERVAL = 10
 BURST_TRIES = 12                  # rapid reads across all keys
@@ -208,7 +209,7 @@ class MatchWatcher:
                     self._post(match_id, ev)
                 if state["finished"]:
                     break
-                await asyncio.sleep(REST_SECONDS)      # caught one → rest 5 min
+                await asyncio.sleep(REST_SECONDS)      # caught one → rest, then re-read
         logger.info("MatchWatcher: match %s done (finished=%s score=%s)",
                     match_id, state["finished"], state["score"])
 
