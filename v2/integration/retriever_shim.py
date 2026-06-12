@@ -38,6 +38,8 @@ class V1Chunk:
     relevance_score: float
     metadata: dict = field(default_factory=dict)
     item_id: int | None = None       # knowledge_items.id — for traceable "doc_id N" labels
+    source_url: str | None = None    # provenance shown in the prompt (R4)
+    verified: bool = True            # False = first-layer LLM draft, not authoritative
 
 
 class V2RetrieverShim:
@@ -90,4 +92,6 @@ class V2RetrieverShim:
             relevance_score=rel,
             metadata={"org_path": c.org_path, "source": c.source},
             item_id=c.item_id,        # v2 RetrievedChunk always has it
+            source_url=getattr(c, "source_url", None),
+            verified=getattr(c, "verified", True),
         )
