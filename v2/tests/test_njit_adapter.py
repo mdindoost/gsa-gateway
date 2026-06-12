@@ -66,6 +66,36 @@ def test_entity_id_from_url():
         "people.njit.edu/profile/jdoe"
 
 
+def test_entity_id_is_case_insensitive():
+    # a differently-cased URL must reconcile to the SAME entity, not a duplicate
+    assert entity_id_from_url("https://people.njit.edu/profile/IKoutis") == \
+        entity_id_from_url("https://people.njit.edu/profile/ikoutis")
+
+
+def test_newline_separated_citations_still_split():
+    # defensive: a leaf-div whose citations are newline-separated (no <br>) must
+    # NOT collapse into one blob
+    html = """<html><body><div class="tabbed-content">
+        <a class="tab-control" data-target="publications">Pubs</a>
+        <div class="tab-content"><div>
+          Alice Smith, Bob Lee. 2020. "Scalable graph clustering at web scale."
+          Proceedings of the Web Conference, vol. 11, pp. 100-120.
+          Carol Jones, Dan Park. 2019. "Fast approximate nearest neighbors in
+          high dimensions." Journal of Machine Learning Research, vol. 20.
+        </div></div></div></body></html>"""
+    pubs = parse_entity("https://people.njit.edu/profile/x", html).publications
+    assert len(pubs) == 2
+    assert {p.year for p in pubs} == {"2020", "2019"}
+    assert "graph clustering" in pubs[0].title and "nearest neighbors" in pubs[1].title
+
+
+def test_no_tabbed_content_degrades_gracefully():
+    html = "<html><head><title>Jane Doe | NJIT</title></head><body>stub</body></html>"
+    r = parse_entity("https://people.njit.edu/profile/jdoe", html)
+    assert r.name == "Jane Doe"
+    assert r.publications == [] and r.teaching == [] and r.service == []
+
+
 def test_basic_identity_and_titles():
     r = rec()
     assert r.name == "Ioannis Koutis"

@@ -34,6 +34,25 @@ _DEPTS = ["Computer Science", "Data Science", "Informatics", "Ying Wu College of
 _NOISE = {"show more", "show less"}
 _MIN_PUB_LEN = 40   # a real citation is longer than a "Journal Article" type label
 _MIN_LINE_LEN = 5   # skip empty/decorative leaf-div lines in list panes
+# A citation "core": the `<Year>. "` that every citation has exactly one of. Used
+# to detect when one <br> fragment actually holds several citations (template drift
+# to newline-separation), so we can split it instead of silently re-creating the
+# multi-paper blob the parser exists to prevent.
+_CITE_CORE = re.compile(r"(?:19|20)\d{2}\.\s+\"")
+# Boundary to split a multi-citation blob at: whitespace before the next citation's
+# author list. Only applied to fragments with >=2 cores, so a single real citation
+# (which has author initials like "D. Spielman, I. Koutis.") is never split.
+_CITE_START = re.compile(
+    r"(?<=[.)\]])\s+(?=(?:[A-Z][A-Za-z.'\-]+,?\s+){1,12}(?:19|20)\d{2}\.\s+\")")
+
+
+def _split_citations(raw: str) -> list[str]:
+    """One <br> fragment -> its citation(s). Whole if it has <=1 core (the normal
+    case — never splits a single citation); split only on a genuine multi-citation
+    blob."""
+    if len(_CITE_CORE.findall(raw)) < 2:
+        return [raw]
+    return _CITE_START.split(raw)
 
 
 def fetch(url: str, timeout: int = 25) -> str:
@@ -43,9 +62,13 @@ def fetch(url: str, timeout: int = 25) -> str:
 
 
 def entity_id_from_url(url: str) -> str:
-    """Stable per-entity key from the profile slug (e.g. .../profile/ikoutis)."""
+    """Stable per-entity key from the profile slug (e.g. .../profile/ikoutis).
+
+    Lower-cased so a differently-cased URL for the same person reconciles to the
+    same entity instead of forking a duplicate.
+    """
     m = re.search(r"people\.njit\.edu/profile/([A-Za-z0-9_-]+)", url)
-    slug = m.group(1) if m else url.rstrip("/").rsplit("/", 1)[-1]
+    slug = (m.group(1) if m else url.rstrip("/").rsplit("/", 1)[-1]).lower()
     return f"people.njit.edu/profile/{slug}"
 
 
@@ -138,17 +161,18 @@ def parse_entity(url: str, html: str, org_default: str = "") -> EntityRecord:
     if pane("publications"):
         for d in _leaf_divs(pane("publications")):
             for frag in re.split(r"(?i)<br\s*/?>", d.decode_contents()):
-                t = re.sub(r"\s+", " ",
-                           BeautifulSoup(frag, "html.parser").get_text(" ", strip=True)).strip()
-                t = _PUB_TYPE.sub("", t).strip()
-                if len(t) < _MIN_PUB_LEN or not _YEAR.search(t):
-                    continue
-                key = t[:120].lower()
-                if key in seen:
-                    continue
-                seen.add(key)
-                yr = _YEAR.search(t)
-                pubs.append(Publication(title=t, year=yr.group(0) if yr else ""))
+                raw = re.sub(r"\s+", " ",
+                             BeautifulSoup(frag, "html.parser").get_text(" ", strip=True)).strip()
+                for piece in _split_citations(raw):  # whole unless a real blob
+                    t = _PUB_TYPE.sub("", piece).strip()
+                    if len(t) < _MIN_PUB_LEN or not _YEAR.search(t):
+                        continue
+                    key = t[:120].lower()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    yr = _YEAR.search(t)
+                    pubs.append(Publication(title=t, year=yr.group(0) if yr else ""))
 
     # links (scholar/orcid/github/website) from the about pane
     links: dict = {}

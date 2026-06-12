@@ -70,7 +70,12 @@ def commit(items_by_entity, db_path, org_id_override) -> None:
     from v2.core.ingestion.reconcile import reconcile_entity
     from v2.scripts.embed_all import _store_vector, embed_document, normalize
 
+    def _embed_one(text):
+        vec = embed_document(text) or embed_document(text)  # retry once (Ollama flaps)
+        return normalize(vec) if vec else None
+
     conn = get_connection(db_path)
+    any_embed_fail = False
     try:
         for rec, items in items_by_entity:
             org_id = org_id_override or _resolve_org_id(conn, rec.org)
@@ -79,29 +84,56 @@ def commit(items_by_entity, db_path, org_id_override) -> None:
                       f"{rec.org!r} (pass --org-id)")
                 continue
             res = reconcile_entity(conn, org_id, rec.entity_id, items)
-            print(f"  {C_OK}✓ {rec.name}{C_OFF}: {res.summary()}  (org_id={org_id})")
-            # embed the new/changed items; drop vectors for the superseded/removed
+            # drop vectors for superseded/removed; (re)embed the new/changed ones,
+            # tracking failures — an active row with no vector is invisible to
+            # semantic search, so the operator must know to backfill it.
             for iid in res.vectors_to_drop:
                 conn.execute("DELETE FROM knowledge_vectors WHERE item_id=?", (iid,))
+            embedded = failed = 0
             for iid in res.to_embed:
                 row = conn.execute(
                     "SELECT search_text FROM knowledge_items WHERE id=?", (iid,)).fetchone()
-                vec = normalize(embed_document(row["search_text"]))
+                vec = _embed_one(row["search_text"])
                 if vec:
                     _store_vector(conn, iid, vec)
+                    embedded += 1
+                else:
+                    failed += 1
             conn.commit()
+            note = "" if not failed else f"  {C_OFF}⚠ {failed} EMBED FAILED"
+            any_embed_fail = any_embed_fail or bool(failed)
+            print(f"  {C_OK}✓ {rec.name}{C_OFF}: {res.summary()}  "
+                  f"(org_id={org_id}, embedded {embedded}/{len(res.to_embed)}){note}")
     finally:
         conn.close()
+    if any_embed_fail:
+        print(f"\n  {C_OFF}⚠ Some items were committed WITHOUT an embedding (Ollama). "
+              f"They are keyword-searchable but not semantic. Backfill with:\n"
+              f"      python v2/scripts/embed_all.py        # resumable: embeds only the missing")
+
+
+# Adapter org labels -> the org slug in the organizations table.
+_ORG_ALIASES = {"ying wu college of computing": "ywcc"}
 
 
 def _resolve_org_id(conn, org_label: str):
-    if not org_label:
+    """Resolve a page's department label to an org id: exact slug, then exact name,
+    then a type-constrained LIKE (shortest = most specific). Exact-first avoids the
+    OR/LIMIT pitfall where 'Computer Science' could bind to 'Computer Science & Eng'."""
+    if not org_label or not org_label.strip():
         return None
-    row = conn.execute(
-        "SELECT id FROM organizations WHERE lower(name)=lower(?) "
-        "OR lower(name) LIKE lower(?) LIMIT 1",
-        (org_label, f"%{org_label}%")).fetchone()
-    return row["id"] if row else None
+    low = org_label.strip().lower()
+    slug = _ORG_ALIASES.get(low, low.replace(" ", "-"))
+    for sql, param in (
+        ("SELECT id FROM organizations WHERE lower(slug)=? LIMIT 1", slug),
+        ("SELECT id FROM organizations WHERE lower(name)=? LIMIT 1", low),
+        ("SELECT id FROM organizations WHERE type IN ('department','college') "
+         "AND lower(name) LIKE ? ORDER BY length(name) LIMIT 1", f"%{low}%"),
+    ):
+        row = conn.execute(sql, (param,)).fetchone()
+        if row:
+            return row["id"]
+    return None
 
 
 def main() -> None:
