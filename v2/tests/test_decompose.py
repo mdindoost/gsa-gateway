@@ -81,6 +81,18 @@ def test_empty_sections_are_omitted():
     assert [i.type for i in items] == ["profile"]    # only the anchor
 
 
+def test_bio_and_education_become_their_own_items():
+    rec = EntityRecord(
+        entity_id="e1", name="Jane Doe", org="CS", source_url="u",
+        bio="Jane joined NJIT in 2015 after a postdoc at MIT.",
+        education=["PhD, MIT, 2014", "BS, Caltech, 2009"],
+    )
+    t = _by_type(decompose(rec))
+    assert set(t) == {"profile", "about", "education"}
+    assert t["about"][0].content.startswith("About Jane Doe (CS):")
+    assert "MIT" in t["education"][0].content and "Caltech" in t["education"][0].content
+
+
 def test_blank_title_publication_skipped():
     rec = EntityRecord(entity_id="e1", name="Jane", org="CS", source_url="u",
                        publications=[Publication("   "), Publication("Real Paper")])

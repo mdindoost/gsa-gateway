@@ -54,6 +54,11 @@ def decompose(rec: EntityRecord) -> list[KItem]:
         profile += f". Website: {rec.links['website']}"
     items.append(mk("profile", rec.name, profile, "main"))
 
+    # ── biography (the "About" prose) ──────────────────────────────────────────
+    if rec.bio.strip():
+        items.append(mk("about", f"{rec.name} — About",
+                        f"About {subj}: {rec.bio.strip()}", "main"))
+
     # ── research statement + areas (the topical signal) ────────────────────────
     if rec.research_statement.strip():
         items.append(mk("research_statement", f"{rec.name} — Research",
@@ -89,5 +94,9 @@ def decompose(rec: EntityRecord) -> list[KItem]:
         svc = "; ".join(s.strip() for s in rec.service if s.strip())
         items.append(mk("service", f"{rec.name} — Service",
                         f"Service by {subj}: {svc}", "main"))
+    if any(e.strip() for e in rec.education):
+        edu = "; ".join(e.strip() for e in rec.education if e.strip())
+        items.append(mk("education", f"{rec.name} — Education",
+                        f"Education of {subj}: {edu}", "main"))
 
     return items

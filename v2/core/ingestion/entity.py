@@ -32,6 +32,7 @@ class EntityRecord:
     verified: bool = True                            # True for the authoritative precise crawl
     titles: list[str] = field(default_factory=list)
     role: str = ""
+    bio: str = ""                                    # free-text "About" / biography
     research_statement: str = ""
     research_areas: list[str] = field(default_factory=list)
     publications: list[Publication] = field(default_factory=list)
