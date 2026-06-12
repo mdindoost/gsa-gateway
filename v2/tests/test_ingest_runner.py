@@ -53,3 +53,27 @@ def test_blank_label_returns_none(conn):
 
 def test_unknown_label_returns_none(conn):
     assert ingest._resolve_org_id(conn, "Department of Basket Weaving") is None
+
+
+def test_retire_legacy_deactivates_only_the_old_card():
+    import json
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    c.execute("CREATE TABLE knowledge_items(id INTEGER PRIMARY KEY, source_url TEXT, "
+              "metadata TEXT, is_active INTEGER DEFAULT 1, updated_at TEXT)")
+    URL = "https://people.njit.edu/profile/ikoutis"
+    EID = "people.njit.edu/profile/ikoutis"
+    # an old monolithic card (no entity_id) + two new decomposed items (entity_id set)
+    old = c.execute("INSERT INTO knowledge_items(source_url,metadata) VALUES(?,?)",
+                    (URL, json.dumps({}))).lastrowid
+    new1 = c.execute("INSERT INTO knowledge_items(source_url,metadata) VALUES(?,?)",
+                     (URL, json.dumps({"entity_id": EID}))).lastrowid
+    other = c.execute("INSERT INTO knowledge_items(source_url,metadata) VALUES(?,?)",
+                      ("https://people.njit.edu/profile/other", json.dumps({}))).lastrowid
+    c.commit()
+
+    retired = ingest._retire_legacy(c, URL, EID)
+    assert retired == [old]                                  # only the legacy card
+    active = {r["id"] for r in c.execute("SELECT id FROM knowledge_items WHERE is_active=1")}
+    assert active == {new1, other}                           # new item + unrelated row untouched
+    c.close()
