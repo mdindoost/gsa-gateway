@@ -153,14 +153,17 @@ def parse_entity(url: str, html: str, org_default: str = "") -> EntityRecord:
             chunk = edu_m.group(1).strip()
             education = [e.strip() for e in re.split(r"(?<=\d{4})\s+(?=[A-Z])", chunk) if e.strip()]
 
-    # publications — NJIT groups citations by type into category divs, separated
-    # WITHIN each div by <br><br>. Split on <br> so each citation becomes its own
-    # Publication (one item per paper). No count cap; a citation must carry a year.
+    # publications — NJIT groups citations by type into category divs. Citations
+    # are separated by a DOUBLE <br>; a SINGLE <br> is an internal line break
+    # (e.g. title line / venue+date line of the same paper). So split on runs of
+    # 2+ <br> only — splitting on every <br> shatters multi-line citations into a
+    # titleless venue fragment. One Publication per paper; no count cap; must carry
+    # a year. (Single <br> left inside a fragment becomes whitespace via get_text.)
     pubs: list[Publication] = []
     seen: set[str] = set()
     if pane("publications"):
         for d in _leaf_divs(pane("publications")):
-            for frag in re.split(r"(?i)<br\s*/?>", d.decode_contents()):
+            for frag in re.split(r"(?i)(?:<br\s*/?>\s*){2,}", d.decode_contents()):
                 raw = re.sub(r"\s+", " ",
                              BeautifulSoup(frag, "html.parser").get_text(" ", strip=True)).strip()
                 for piece in _split_citations(raw):  # whole unless a real blob

@@ -89,6 +89,25 @@ def test_newline_separated_citations_still_split():
     assert "graph clustering" in pubs[0].title and "nearest neighbors" in pubs[1].title
 
 
+def test_multiline_citation_title_and_venue_stay_one_paper():
+    # NJIT separates papers by DOUBLE <br>; a SINGLE <br> is an internal line break
+    # (title line / venue+date line). Splitting on every <br> would drop the title
+    # (no year) and keep a titleless venue fragment. Must yield ONE complete paper.
+    html = """<html><body><div class="tabbed-content">
+        <a class="tab-control" data-target="publications">Pubs</a>
+        <div class="tab-content"><div>
+          "UCS: Ultimate Course Search"<br/>
+          14th International Workshop on Content-Based Multimedia Indexing, June, 2016.<br/><br/>
+          "Flexible Aggregate Similarity Search"<br/>
+          International Conference on Similarity Search, October, 2015.<br/><br/>
+        </div></div></div></body></html>"""
+    pubs = parse_entity("https://people.njit.edu/profile/x", html).publications
+    assert len(pubs) == 2                                   # two papers, not four fragments
+    assert all('"' in p.title for p in pubs)                # title retained, no orphan venue
+    assert "Ultimate Course Search" in pubs[0].title and "2016" in pubs[0].title
+    assert {p.year for p in pubs} == {"2016", "2015"}
+
+
 def test_no_tabbed_content_degrades_gracefully():
     html = "<html><head><title>Jane Doe | NJIT</title></head><body>stub</body></html>"
     r = parse_entity("https://people.njit.edu/profile/jdoe", html)
