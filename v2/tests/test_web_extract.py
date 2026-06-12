@@ -79,6 +79,32 @@ def test_chunking_covers_whole_page_no_truncation():
     assert chunks[0][0] == "A" and chunks[-1][-1] == "A"
 
 
+def test_refine_drops_generic_area_and_unsupported_and_short_bio():
+    page = ("She works on spectral graph sparsification. She is a Professor. "
+            "She co-authored a paper on streaming algorithms with John Doe.")
+    facts = [
+        {"field": "research_area", "value": "Computer Science",      # generic -> drop
+         "evidence": "She is a Professor"},
+        {"field": "research_area", "value": "spectral graph sparsification",  # supported -> keep
+         "evidence": "She works on spectral graph sparsification"},
+        {"field": "research_area", "value": "quantum cryptography",   # unsupported by its quote -> drop
+         "evidence": "She co-authored a paper on streaming algorithms"},
+        {"field": "bio", "value": "Prof.",                            # too short -> drop
+         "evidence": "She is a Professor"},
+    ]
+    out = extract_page(page, "Jane", "http://x/", llm_returning(facts))
+    vals = {f.value for f in out}
+    assert vals == {"spectral graph sparsification"}
+
+
+def test_refine_relabels_committee_to_service():
+    page = "She served on the SODA Program Committee in 2022."
+    facts = [{"field": "group", "value": "SODA Program Committee, 2022",
+              "evidence": "served on the SODA Program Committee in 2022"}]
+    out = extract_page(page, "Jane", "http://x/", llm_returning(facts))
+    assert len(out) == 1 and out[0].field == "service"
+
+
 def test_dedup_across_windows():
     # same fact emitted twice -> stored once
     facts = [{"field": "software", "value": "GraphTool",

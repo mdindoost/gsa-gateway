@@ -22,8 +22,54 @@ from dataclasses import dataclass
 # Closed set of fields we accept (maps later to knowledge_items types). Anything
 # else the model emits is dropped.
 ALLOWED_FIELDS = {
-    "bio", "research_area", "award", "experience", "publication", "software", "group",
+    "bio", "research_area", "award", "experience", "publication",
+    "software", "project", "group", "service",
 }
+# Department-agnostic cleanup (works for CS, DS, any dept):
+# research areas that are just a department / generic label carry no signal.
+_GENERIC_AREA = {
+    "computer science", "data science", "informatics", "computing", "research",
+    "science", "engineering", "technology", "mathematics", "statistics",
+}
+# committee/admin language -> this is service, whatever the model labelled it.
+_SERVICE_RE = re.compile(
+    r"\b(committee|senate|coordinator|editorial|editor|program chair|reviewer|"
+    r"organizing|review panel|advisory board)\b", re.I)
+_STOP = {"the", "and", "for", "with", "from", "that", "this", "their", "his", "her",
+         "are", "was", "were", "has", "have", "department", "university", "njit"}
+MIN_BIO_CHARS = 40
+
+
+def _content_words(s: str) -> list[str]:
+    return [w for w in re.findall(r"[a-z0-9]+", s.lower()) if len(w) >= 4 and w not in _STOP]
+
+
+def _value_supported(value: str, evidence: str) -> bool:
+    """The value's significant words should mostly appear in its evidence quote — so
+    a value can't be an LLM inference loosely attached to a tangential quote (e.g. a
+    'research_area' justified by an unrelated publication citation)."""
+    words = _content_words(value)
+    if not words:
+        return True
+    ev = _norm(evidence)
+    hits = sum(1 for w in words if w in ev)
+    return hits / len(words) >= 0.6
+
+
+def _refine(f: "Fact") -> "Fact | None":
+    """Department-agnostic quality pass over a grounded fact. Returns the (possibly
+    relabelled) fact, or None to drop it."""
+    field, value = f.field, f.value.strip()
+    if len(value) < 4 or not _value_supported(value, f.evidence):
+        return None
+    if _SERVICE_RE.search(value) or _SERVICE_RE.search(f.evidence):
+        if field in ("group", "experience"):
+            field = "service"
+    if field == "research_area" and _norm(value) in _GENERIC_AREA:
+        return None
+    if field == "bio" and len(value) < MIN_BIO_CHARS:
+        return None
+    return Fact(field=field, value=value, evidence=f.evidence, source_url=f.source_url)
 WINDOW = 10_000   # chars per extraction window
 OVERLAP = 500     # window overlap so a fact split across a boundary still appears whole
 MIN_EVIDENCE = 12  # an evidence quote shorter than this can't meaningfully ground a fact
@@ -137,10 +183,13 @@ def extract_page(page_text: str, name: str, source_url: str, call_llm) -> list[F
                 continue
             if not is_grounded(evidence, page_text):   # the anti-hallucination gate
                 continue
-            key = (field, _norm(value))
+            fact = _refine(Fact(field=field, value=value, evidence=evidence,
+                                source_url=source_url))
+            if fact is None:                            # quality pass dropped it
+                continue
+            key = (fact.field, _norm(fact.value))
             if key in seen:
                 continue
             seen.add(key)
-            kept.append(Fact(field=field, value=value, evidence=evidence,
-                             source_url=source_url))
+            kept.append(fact)
     return kept
