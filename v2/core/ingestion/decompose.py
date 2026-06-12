@@ -103,5 +103,9 @@ def decompose(rec: EntityRecord) -> list[KItem]:
         edu = "; ".join(e.strip() for e in rec.education if e.strip())
         items.append(mk("education", f"{rec.name} — Education",
                         f"Education of {subj}: {edu}", "main"))
+    if any(e.strip() for e in rec.experience):
+        exp = "; ".join(e.strip() for e in rec.experience if e.strip())
+        items.append(mk("experience", f"{rec.name} — Experience",
+                        f"Career history of {subj}: {exp}", "main"))
 
     return items

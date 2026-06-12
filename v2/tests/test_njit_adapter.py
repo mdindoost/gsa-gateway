@@ -27,14 +27,22 @@ HTML = """
     <a class="tab-control" data-target="research">Research</a>
     <a class="tab-control" data-target="publications">Publications</a>
     <a class="tab-control" data-target="service">Service</a>
-    <div class="tab-content"><div>About Me Koutis works on spectral graph theory.
-        Education Ph.D. Carnegie Mellon University 2007 B.S. University of Crete 2002</div>
-        <a href="https://scholar.google.com/citations?user=abc">Scholar</a>
-        <a href="https://koutis.example.edu">Website</a></div>
+    <div class="tab-content">
+        <div>About Me</div>
+        <div>Koutis works on spectral graph theory.</div>
+        <div>Education</div>
+        <div>Ph.D.; Carnegie Mellon University; 2007 B.S.; University of Crete; 2002</div>
+        <div>Awards &amp; Honors</div>
+        <div>2012 NSF CAREER award, National Science Foundation 2017 ICALP Best Paper Award, EATCS</div>
+        <div>Experience</div>
+        <div>Associate Professor, June 2018 -</div>
+        <div>Website</div>
+        <div>https://koutis.example.edu</div>
+        <a href="https://scholar.google.com/citations?user=abc">Scholar</a></div>
     <div class="tab-content"><div>CS 610 Data Structures and Algorithms</div>
         <div>CS 786 Advanced Algorithms</div></div>
-    <div class="tab-content"><div>Spectral graph theory and fast Laplacian solvers
-        for large-scale graph problems.</div></div>
+    <div class="tab-content"><div>Research Interests Spectral graph theory; Fast Laplacian solvers;
+        Graph sparsification.</div></div>
     <div class="tab-content">
       <div class="container">
         <div>SHOW MORE</div>
@@ -147,11 +155,30 @@ def test_research_teaching_service_education_bio():
     assert "Laplacian" in r.research_statement
     assert any("Data Structures" in t for t in r.teaching)
     assert any("Program Committee" in s for s in r.service)
-    assert "spectral graph theory" in r.bio.lower()
+    assert r.bio == "Koutis works on spectral graph theory."   # only About Me, not the rest
     assert any("Carnegie Mellon" in e for e in r.education)
+    # education no longer absorbs Awards/Website (they are their own sections)
+    assert not any("NSF" in e or "http" in e for e in r.education)
+
+
+def test_about_sections_split_awards_experience_website():
+    r = rec()
+    # Awards & Honors -> one item per award (was lumped into education)
+    assert any("NSF CAREER" in a for a in r.awards)
+    assert any("ICALP Best Paper" in a for a in r.awards)
+    assert len(r.awards) == 2
+    # Experience section captured (the rank/date line)
+    assert any("Associate Professor, June 2018" in e for e in r.experience)
+
+
+def test_research_interests_become_areas():
+    r = rec()
+    assert "Spectral graph theory" in r.research_areas
+    assert "Graph sparsification." in r.research_areas
+    assert len(r.research_areas) == 3
 
 
 def test_links_extracted():
     links = rec().links
     assert "scholar.google.com" in links.get("scholar", "")
-    assert links.get("website") == "https://koutis.example.edu"
+    assert links.get("website") == "https://koutis.example.edu"   # from the Website section

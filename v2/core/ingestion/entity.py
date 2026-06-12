@@ -41,6 +41,7 @@ class EntityRecord:
     teaching: list[str] = field(default_factory=list)
     service: list[str] = field(default_factory=list)
     education: list[str] = field(default_factory=list)
+    experience: list[str] = field(default_factory=list)  # career history (rank/dates, prior posts)
     links: dict = field(default_factory=dict)        # website, scholar, ...
     contact: dict = field(default_factory=dict)      # email, office, phone
 

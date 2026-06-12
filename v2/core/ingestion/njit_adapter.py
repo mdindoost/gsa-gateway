@@ -82,6 +82,41 @@ def _leaf_divs(pane):
     return [d for d in pane.find_all("div") if not d.find("div")]
 
 
+# About-pane section labels -> canonical key. Anything not a label is content for
+# the current section; unknown labels are kept under their own slug (nothing dropped).
+_ABOUT_LABELS = {
+    "about me": "bio", "bio": "bio", "biography": "bio",
+    "education": "education",
+    "awards & honors": "awards", "awards and honors": "awards",
+    "awards & honours": "awards", "awards": "awards", "honors": "awards", "honours": "awards",
+    "website": "website", "web page": "website", "webpage": "website", "homepage": "website",
+    "websites": "website",
+    "experience": "experience", "professional experience": "experience",
+}
+
+
+def _about_sections(pane) -> dict[str, list[str]]:
+    """Walk the about pane's ordered leaf-divs, splitting only at KNOWN section-label
+    divs. Returns {canonical_key: [content lines]}. Splitting on known labels (not a
+    fuzzy header guess) avoids mistaking real content like 'Professor, June 2019 -'
+    for a header; an unrecognized new label just merges into the prior section
+    (mislabelled, never dropped)."""
+    sections: dict[str, list[str]] = {}
+    cur = None
+    for d in _leaf_divs(pane):
+        t = _clean(d)
+        if not t:
+            continue
+        key = _ABOUT_LABELS.get(t.lower())
+        if key is not None:
+            cur = key
+            sections.setdefault(cur, [])
+            continue
+        if cur is not None:
+            sections[cur].append(t)
+    return sections
+
+
 def _list_lines(pane) -> list[str]:
     out, seen = [], set()
     for d in _leaf_divs(pane):
@@ -137,21 +172,35 @@ def parse_entity(url: str, html: str, org_default: str = "") -> EntityRecord:
     def pane(k):
         return panes.get(k)
 
+    # research pane: full statement + the "Research Interests" list as areas
     research = _clean(pane("research"))
+    research_areas: list[str] = []
+    ri = re.match(r"(?i)\s*research interests\s+(.*)", research)
+    if ri:
+        research_areas = [a.strip() for a in re.split(r"\s*;\s*", ri.group(1)) if a.strip()]
     teaching = _list_lines(pane("teaching")) if pane("teaching") else []
     service = _list_lines(pane("service")) if pane("service") else []
 
-    # about -> bio + education
-    bio, education = "", []
+    # about pane is a sequence of labelled sections (About Me / Education /
+    # Awards & Honors / Website / Experience) — walk them so each lands in the
+    # right field instead of everything-after-Education getting dumped together.
+    bio, education, awards, experience = "", [], [], []
+    website = ""
     if pane("about"):
-        about_txt = _clean(pane("about"))
-        bm = re.search(r"About Me\s+(.*?)(?:\s+Education\b|$)", about_txt)
-        bio = bm.group(1).strip() if bm else ""
-        edu_m = re.search(r"\bEducation\b\s+(.*)$", about_txt)
-        if edu_m:
-            # split entries on "<year> <Capital>" boundaries; fall back to one blob
-            chunk = edu_m.group(1).strip()
-            education = [e.strip() for e in re.split(r"(?<=\d{4})\s+(?=[A-Z])", chunk) if e.strip()]
+        sec = _about_sections(pane("about"))
+        bio = " ".join(sec.get("bio", [])).strip()
+        if sec.get("education"):
+            edu = " ".join(sec["education"])
+            education = [e.strip() for e in re.split(r"(?<=\d{4})\s+(?=[A-Z])", edu) if e.strip()]
+        if sec.get("awards"):
+            aw = " ".join(sec["awards"])
+            awards = [a.strip() for a in re.split(r"(?<=\S)\s+(?=(?:19|20)\d{2}\s+\S)", aw) if a.strip()]
+        experience = [e.strip() for e in sec.get("experience", []) if e.strip()]
+        for v in sec.get("website", []):
+            mu = re.search(r"https?://\S+", v)
+            if mu:
+                website = mu.group(0)
+                break
 
     # publications — NJIT groups citations by type into category divs. Citations
     # are separated by a DOUBLE <br>; a SINGLE <br> is an internal line break
@@ -177,22 +226,21 @@ def parse_entity(url: str, html: str, org_default: str = "") -> EntityRecord:
                     yr = _YEAR.search(t)
                     pubs.append(Publication(title=t, year=yr.group(0) if yr else ""))
 
-    # links (scholar/orcid/github/website) from the about pane
+    # links: the Website section (above), plus scholar/orcid/github anywhere in about
     links: dict = {}
+    if website:
+        links["website"] = website
     about_html = str(pane("about")) if pane("about") else html
     for label, pat in (("scholar", "scholar.google"), ("orcid", "orcid.org"),
                        ("github", "github.com")):
         lm = re.search(r"https?://[^\"' ]*" + pat + r"[^\"' ]*", about_html)
         if lm:
             links[label] = lm.group(0)
-    wm = re.search(r'href="(https?://[^"]+)"[^>]*>\s*(?:Website|Web ?[Pp]age|Homepage)', about_html)
-    if wm:
-        links["website"] = wm.group(1)
 
     return EntityRecord(
         entity_id=entity_id_from_url(url), name=name, org=org, source_url=url,
         verified=True, titles=titles, role="", bio=bio,
-        research_statement=research, research_areas=[],
+        research_statement=research, research_areas=research_areas,
         publications=pubs, teaching=teaching, service=service, education=education,
-        links=links, contact=contact,
+        experience=experience, awards=awards, links=links, contact=contact,
     )
