@@ -81,10 +81,21 @@ def build_prompt(rec: EntityRecord) -> tuple[str, str]:
     return SYSTEM, user
 
 
+def has_grounding(rec: EntityRecord) -> bool:
+    """Is there enough verified content to summarize WITHOUT the model inventing?
+    A bare profile (just a name/title) makes the LLM fall back on its own training
+    (e.g. 'his research focuses on databases') — a grounding violation. Require at
+    least one substantive fact."""
+    return bool(rec.research_statement.strip() or rec.bio.strip() or rec.research_areas
+                or rec.publications or rec.education or rec.teaching
+                or rec.awards or rec.experience)
+
+
 def generate(rec: EntityRecord, call_llm) -> str:
     """Produce the overview text. ``call_llm(system, user) -> str`` is injected so
-    the LLM backend (Ollama) and tests are decoupled. Returns '' on empty output."""
-    if not rec.name:
+    the LLM backend (Ollama) and tests are decoupled. Returns '' when there is no
+    name or too little grounding to summarize safely."""
+    if not rec.name or not has_grounding(rec):
         return ""
     system, user = build_prompt(rec)
     text = (call_llm(system, user) or "").strip()

@@ -48,7 +48,10 @@ def _llm_call(system: str, user: str) -> str:
     model = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
     payload = json.dumps({
         "model": model, "system": system, "prompt": user, "stream": False,
-        "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 300},
+        # deterministic: same facts -> same overview, so an unchanged page does not
+        # churn a new version/embedding on every refresh.
+        "options": {"temperature": 0, "seed": 42, "top_p": 1,
+                    "num_ctx": 8192, "num_predict": 300},
     }).encode("utf-8")
     req = urllib.request.Request(f"{base}/api/generate", data=payload,
                                  headers={"Content-Type": "application/json"})
@@ -88,10 +91,39 @@ def show(rec, items) -> None:
         print(f"          {it.content}")
 
 
-def commit(items_by_entity, db_path, org_id_override, changes_log) -> None:
+def _auto_backup(db_path: str, keep: int = 10) -> None:
+    """Mandatory, un-skippable backup before any write: an integrity-checked
+    snapshot via the SQLite online-backup API (safe with the live bot's WAL open).
+    Rotates: keeps the last ``keep`` auto-backups. Aborts the run if it fails —
+    we never write without a good backup."""
+    import sqlite3
+    bdir = REPO / ".backups"
+    bdir.mkdir(exist_ok=True)
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    dst = bdir / f"gsa_gateway.{ts}.auto.db"
+    src = sqlite3.connect(db_path)
+    d = sqlite3.connect(str(dst))
+    try:
+        with d:
+            src.backup(d)
+        if d.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise RuntimeError("integrity_check failed on the backup")
+    finally:
+        d.close()
+        src.close()
+    autos = sorted(bdir.glob("gsa_gateway.*.auto.db"))
+    for old in autos[:-keep]:
+        old.unlink(missing_ok=True)
+    print(f"  {C_OK}✓ backup{C_OFF} {dst.name} ({dst.stat().st_size:,} bytes, integrity ok)")
+
+
+def commit(items_by_entity, db_path, org_id_override, changes_log,
+           default_org_id=None) -> None:
     from v2.core.database.schema import get_connection
     from v2.core.ingestion.reconcile import reconcile_entity
     from v2.scripts.embed_all import _store_vector, embed_document, normalize
+
+    _auto_backup(db_path)   # un-skippable — no write without a verified backup
 
     def _embed_one(text):
         vec = embed_document(text) or embed_document(text)  # retry once (Ollama flaps)
@@ -101,10 +133,10 @@ def commit(items_by_entity, db_path, org_id_override, changes_log) -> None:
     any_embed_fail = False
     try:
         for rec, items in items_by_entity:
-            org_id = org_id_override or _resolve_org_id(conn, rec.org)
+            org_id = org_id_override or _resolve_org_id(conn, rec.org) or default_org_id
             if not org_id:
                 print(f"  {C_OFF}! skip {rec.name}: could not resolve org_id for "
-                      f"{rec.org!r} (pass --org-id)")
+                      f"{rec.org!r} (pass --org-id / --default-org-id)")
                 continue
             res = reconcile_entity(conn, org_id, rec.entity_id, items)
             # retire any legacy row for this same profile that the new pipeline did
@@ -216,6 +248,8 @@ def main() -> None:
                     help="WRITE to the database (default: dry run, no writes)")
     ap.add_argument("--db", default=str(REPO / "gsa_gateway.db"), help="database path")
     ap.add_argument("--org-id", type=int, help="force this org_id for all profiles")
+    ap.add_argument("--default-org-id", type=int,
+                    help="fallback org_id used only when a page's dept can't be resolved")
     ap.add_argument("--changes-log", default=str(REPO / "logs" / "ingest_changes.log"),
                     help="append a per-entity diff here on --commit (re-crawl audit trail)")
     ap.add_argument("--overview", action="store_true",
@@ -247,7 +281,7 @@ def main() -> None:
     print(f"Parsed {len(parsed)} profile(s) → {total_items} items total.")
     if args.commit:
         print("Committing…")
-        commit(parsed, args.db, args.org_id, args.changes_log)
+        commit(parsed, args.db, args.org_id, args.changes_log, args.default_org_id)
     else:
         print(f"{C_DIM}Dry run — nothing written. Re-run with --commit to persist.{C_OFF}")
 

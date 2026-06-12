@@ -66,6 +66,15 @@ def test_generate_empty_when_no_name():
     assert generate(EntityRecord(entity_id="x", name=""), lambda s, u: "x") == ""
 
 
+def test_generate_skips_bare_profile_no_hallucination():
+    # only a name/title -> no grounding -> do NOT invent a research story
+    bare = EntityRecord(entity_id="x", name="Marek R", org="CS",
+                        titles=["Emeritus, Faculty"])
+    called = []
+    out = generate(bare, lambda s, u: called.append(1) or "invented databases overview")
+    assert out == "" and called == []        # LLM not even called
+
+
 def test_overview_decomposes_into_its_own_item():
     rec = koutis()
     rec.overview = "Ioannis Koutis studies spectral graph theory and fast solvers."
