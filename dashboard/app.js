@@ -391,6 +391,7 @@ function startRefreshAll() {
       toast("Refresh started ✅");
       pollJob(body.job_id);
       refreshJobsList();
+      refreshJobsHealth();   // re-disable the button now that a job is running
     })
     .catch((e) => toast("Server error: " + e.message, false));
 }

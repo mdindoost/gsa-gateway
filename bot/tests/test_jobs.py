@@ -295,6 +295,39 @@ def test_estimate_none_when_no_prior_run(tmp_path):
     assert mgr.estimate_refresh_all(web=False) is None
 
 
+def _insert_job_with_log(tmp_path, job_id, log_text, type="refresh_all"):
+    log = tmp_path / "logs" / "jobs" / f"{job_id}.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(log_text)
+    conn = sqlite3.connect(str(tmp_path / "test.db"))
+    conn.execute(
+        "INSERT INTO jobs(id,type,args,status,started_at,log_path) "
+        "VALUES(?,?,'{}','running','2026-06-13 00:00:00',?)",
+        (job_id, type, str(log)))
+    conn.commit()
+    conn.close()
+
+
+def test_summarize_prefers_completion_line_and_strips_ansi(tmp_path):
+    mgr = _make_manager(tmp_path)
+    _insert_job_with_log(tmp_path, 99,
+        "\x1b[0;32m✓ Alice: +0 new, ~1 updated, -0 removed, =3 unchanged\x1b[0m\n"
+        "\x1b[0;32m✓ Bob: +0 new, ~1 updated, -0 removed, =3 unchanged\x1b[0m\n"
+        "\nRefresh NJIT KB complete (ok) — Computer Science: 58 profiles\n")
+    s = mgr._summarize(99)
+    assert s == "Refresh NJIT KB complete (ok) — Computer Science: 58 profiles"
+    assert "\x1b" not in s
+
+
+def test_summarize_falls_back_to_change_line_stripped(tmp_path):
+    mgr = _make_manager(tmp_path)
+    _insert_job_with_log(tmp_path, 98,
+        "\x1b[0;32m✓ Alice: +1 new, ~0 updated, -0 removed\x1b[0m\n", type="refresh")
+    s = mgr._summarize(98)
+    assert "Alice: +1 new" in s
+    assert "\x1b" not in s
+
+
 def test_estimate_excludes_non_done_runs(tmp_path):
     mgr = _make_manager(tmp_path)
     _insert_job(tmp_path, type="refresh_all", status="failed",

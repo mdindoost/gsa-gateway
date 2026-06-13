@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import signal
 import sqlite3
 import subprocess
@@ -29,6 +30,11 @@ from pathlib import Path
 logger = logging.getLogger("jobs")
 
 TAIL_BYTES = 16 * 1024
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")  # color codes in the ingest output
+
+
+def _strip_ansi(s: str) -> str:
+    return _ANSI.sub("", s)
 
 
 class JobBusyError(Exception):
@@ -232,7 +238,10 @@ class JobManager:
             try:
                 proc = subprocess.Popen(
                     cmd, cwd=self.repo_root, stdout=logf,
-                    stderr=subprocess.STDOUT, start_new_session=True)
+                    stderr=subprocess.STDOUT, start_new_session=True,
+                    # unbuffered child stdout so the dashboard log tail streams
+                    # live instead of appearing to pause between buffer flushes.
+                    env={**os.environ, "PYTHONUNBUFFERED": "1"})
             except Exception:
                 logf.close()
                 self._update(job_id, status="failed", finished_at=_utc_now(),
@@ -345,7 +354,12 @@ class JobManager:
         finally:
             conn.close()
         tail = self._tail(r["log_path"] if r else None)
-        lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
+        lines = [_strip_ansi(ln).strip() for ln in tail.splitlines() if ln.strip()]
+        # Prefer the explicit completion line the --all run prints.
+        for ln in reversed(lines):
+            if "refresh njit kb complete" in ln.lower():
+                return ln[:300]
+        # Otherwise the most recent change-count line (single-department run).
         for ln in reversed(lines):
             low = ln.lower()
             if ("new" in low and "updated" in low) or "changed" in low:
