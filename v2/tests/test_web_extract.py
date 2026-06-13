@@ -128,6 +128,15 @@ def test_refine_relabels_committee_to_service():
     assert len(out) == 1 and out[0].field == "service"
 
 
+def test_refine_relabels_editorial_award_to_service():
+    # an editorial role the model mislabeled 'award' is service, not an award
+    page = "Founding Editor-in-Chief, Journal of Graph Algorithms, since 2019."
+    facts = [{"field": "award", "value": "Founding Editor-in-Chief, Journal of Graph Algorithms",
+              "evidence": "Founding Editor-in-Chief, Journal of Graph Algorithms, since 2019"}]
+    out = extract_page(page, "X", "http://x/", llm_returning(facts))
+    assert len(out) == 1 and out[0].field == "service"
+
+
 def test_dedup_across_windows():
     # same fact emitted twice -> stored once
     facts = [{"field": "software", "value": "GraphTool",

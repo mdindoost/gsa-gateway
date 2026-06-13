@@ -80,7 +80,7 @@ def _refine(f: "Fact") -> "Fact | None":
     if len(value) < 4 or not _value_supported(value, f.evidence):
         return None
     if _SERVICE_RE.search(value) or _SERVICE_RE.search(f.evidence):
-        if field in ("group", "experience"):
+        if field in ("group", "experience", "award"):   # editorial/committee roles are service
             field = "service"
     if field == "research_area" and _norm(value) in _GENERIC_AREA:
         return None
