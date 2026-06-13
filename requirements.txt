@@ -12,7 +12,3 @@ rank-bm25>=0.2.2
 python-telegram-bot>=20.0
 beautifulsoup4>=4.12.0
 
-# Optional — only for JS-rendered faculty lists (e.g. Data Science headless
-# discovery). Not required for CS or the rest of the system. To enable DS:
-#   pip install playwright && playwright install chromium
-# playwright>=1.40

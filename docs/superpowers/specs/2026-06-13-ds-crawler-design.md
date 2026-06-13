@@ -1,3 +1,11 @@
+> **SUPERSEDED (2026-06-13):** the premise was wrong. `ds.njit.edu/people` is a
+> 2-card hub page, not the faculty list. The real faculty list,
+> `ds.njit.edu/administration-and-faculty`, is **plain static HTML** with the
+> `people.njit.edu/profile` links directly — DS never needed a headless browser.
+> The headless crawler built from this spec was reverted; DS now uses the existing
+> static `discover()` with the corrected registry URL. Kept for the record; the
+> verification-gate idea (§5) lives on as the planned golden-eval harness.
+
 # DS Faculty Crawler (headless discovery) — Design Spec
 
 **Goal:** Add Data Science (DS) faculty to the KB. DS's faculty list

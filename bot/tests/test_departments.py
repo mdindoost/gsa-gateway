@@ -23,8 +23,8 @@ def test_supported_includes_a_verified_js_department(monkeypatch):
     assert {d.key for d in dm.supported()} == {"cs", "js1"}
 
 
-def test_supported_is_cs_only_today():
+def test_supported_is_cs_and_ds_today():
     keys = {d.key for d in supported()}
-    assert "cs" in keys                 # verified by a real crawl
-    assert "ds" not in keys             # verified=False — not yet validated
+    assert "cs" in keys                 # verified
+    assert "ds" in keys                 # verified 2026-06-13 (static /administration-and-faculty)
     assert "informatics" not in keys    # verified=False — never crawled

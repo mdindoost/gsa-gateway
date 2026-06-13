@@ -199,9 +199,9 @@ def test_health_reports_departments_from_registry(server):
     assert status == 200
     sup = {d["key"] for d in body["departments"]["supported"]}
     unsup = {d["key"] for d in body["departments"]["unsupported"]}
-    assert "cs" in sup
+    assert "cs" in sup and "ds" in sup     # both verified
     assert "informatics" not in sup        # static but unverified → not refreshed yet
-    assert "ds" in unsup and "informatics" in unsup
+    assert "informatics" in unsup and "ds" not in unsup
 
 
 def test_health_last_refresh_all_is_null_initially(server):
