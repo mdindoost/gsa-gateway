@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Optional
@@ -88,6 +89,15 @@ class MessageHandler:
         clean_text = req.text.strip()
         if not clean_text:
             return MessageResponse(text="")
+
+        # ── Structured retrieval (enumerate/filter/traverse/count) ────────────
+        # Tried BEFORE intent detection on purpose: phrasings like "list all CS
+        # faculty" or "who works on social network analysis" otherwise mis-classify
+        # as statement/food/social. Returns None for anything not clearly structured,
+        # so descriptive questions fall straight through to the unchanged RAG path.
+        structured = await self._try_structured(clean_text)
+        if structured is not None:
+            return MessageResponse(text=structured)
 
         # Detect intent
         if self.intent_detector:
@@ -207,6 +217,50 @@ class MessageHandler:
 
         # ── RAG pipeline ──────────────────────────────────────────────────────
         return await self._rag_pipeline(req, clean_text, intent)
+
+    async def _try_structured(self, text: str) -> Optional[str]:
+        """Answer enumerate/filter/traverse/count questions from structured DB queries
+        (complete + deterministic), or return None to fall through to semantic RAG.
+
+        The skill queries run on a fresh connection in a worker thread (no event-loop
+        blocking). The deterministic facts text is the answer; the LLM only rephrases
+        it, and we fall back to the facts verbatim if the LLM is down."""
+        db_path = getattr(self.db, "db_path", None) if self.db else None
+        if not db_path:
+            return None
+        # cheap pre-gate: only structured-looking questions open a connection
+        low = text.lower()
+        if not any(c in low for c in (
+                "who ", "which ", "list ", " all ", "how many", "department",
+                "faculty", "professor", "works on", "work on", "working on",
+                "research", "studies", "studying", "specializ", "expert")):
+            return None
+
+        def _run() -> Optional[str]:
+            import sqlite3
+            from v2.core.retrieval import router as srouter, structured_answer
+            conn = sqlite3.connect(db_path, timeout=5)  # FTS+plain SQL only, no vec
+            try:
+                conn.execute("PRAGMA busy_timeout=5000")
+                rt = srouter.route(conn, text)
+                if rt is None:
+                    return None
+                return structured_answer.format_answer(structured_answer.run(conn, rt))
+            finally:
+                conn.close()
+
+        try:
+            facts = await asyncio.to_thread(_run)
+        except Exception as exc:  # noqa: BLE001 - never break the message path; fall to RAG
+            logger.warning("Structured retrieval errored, falling back to RAG: %s", exc)
+            return None
+        if not facts:
+            return None
+        if self.ollama:
+            composed = await self.ollama.compose_from_rows(text, facts)
+            if composed:
+                return composed
+        return facts
 
     async def retry_question(self, req: MessageRequest) -> MessageResponse:
         """Re-run RAG at temperature=0.7 for the 🔄 retry button.

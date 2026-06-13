@@ -256,6 +256,48 @@ class OllamaClient:
             logger.error("Ollama unexpected error: %s", exc, exc_info=True)
             return None
 
+    async def compose_from_rows(self, question: str, facts: str) -> Optional[str]:
+        """Rephrase an already-complete, correct structured result into a friendly
+        reply. The facts ARE the answer — the model must use ONLY them and include
+        every item; it must not add, drop, or invent. Returns None on failure so the
+        caller can fall back to the deterministic facts text. Higher num_predict so a
+        long roster isn't truncated."""
+        system_prompt = (
+            "You are the GSA Gateway assistant. You are given the COMPLETE, correct "
+            "answer to the user's question as structured facts. Rephrase it into a "
+            "friendly, natural reply. Use ONLY these facts — never add, drop, or invent "
+            "names or numbers, and include EVERY item in any list. If the facts say "
+            "nothing was found, say that plainly."
+        )
+        user_prompt = f"Question: {question}\n\nFacts (the complete answer):\n{facts}\n\nReply:"
+        payload = {
+            "model": self.model,
+            "system": system_prompt,
+            "prompt": user_prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.2,
+                "top_p": 0.9,
+                "num_ctx": self.num_ctx,
+                "num_predict": 900,
+                "stop": ["Student:", "===", "Human:"],
+            },
+        }
+        try:
+            session = await self._get_session()
+            async with session.post(
+                self.generate_url, json=payload,
+                timeout=aiohttp.ClientTimeout(total=self.timeout),
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning("Ollama compose returned HTTP %d", resp.status)
+                    return None
+                data = await resp.json()
+                return (data.get("response", "").strip()) or None
+        except Exception as exc:  # noqa: BLE001 - fall back to deterministic facts
+            logger.warning("Ollama compose failed: %s", exc)
+            return None
+
     async def expand_query(self, query: str) -> str:
         """Rewrite a short/vague query into a full question for better retrieval.
         Always returns a string — falls back to the original query on any failure.
