@@ -35,7 +35,7 @@ if ! curl -sf --max-time 5 http://localhost:11434/api/tags >/dev/null 2>&1; then
 fi
 
 .venv/bin/python scripts/ingest_faculty.py \
-    --department "$DEPT" --limit "$N" --overview --commit
+    --department "$DEPT" --limit "$N" --overview --web --commit
 
 echo
 echo "  Done. What changed → logs/ingest_changes.log"
