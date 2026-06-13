@@ -97,6 +97,29 @@ def test_refine_drops_generic_area_and_unsupported_and_short_bio():
     assert vals == {"spectral graph sparsification"}
 
 
+def test_refine_drops_mislabeled_software_and_group():
+    page = ("SpecPart is a software library for hypergraph partitioning. "
+            "PhD Thesis, CMU-CS-07-131. Spectral Hypergraph Partitioning Revisited.")
+    facts = [
+        # real software: evidence says 'software library' -> keep
+        {"field": "software", "value": "SpecPart",
+         "evidence": "SpecPart is a software library for hypergraph partitioning"},
+        # a thesis number mislabeled 'group' -> no group word in evidence -> drop
+        {"field": "group", "value": "CMU-CS-07-131", "evidence": "PhD Thesis, CMU-CS-07-131"},
+        # a paper title mislabeled 'group' -> drop
+        {"field": "group", "value": "Spectral Hypergraph Partitioning Revisited",
+         "evidence": "Spectral Hypergraph Partitioning Revisited"},
+    ]
+    out = extract_page(page, "X", "http://x/", llm_returning(facts))
+    assert {(f.field, f.value) for f in out} == {("software", "SpecPart")}
+
+
+def test_refine_drops_generic_award():
+    page = "won a Best Paper Award."
+    facts = [{"field": "award", "value": "Best Paper Award", "evidence": "won a Best Paper Award"}]
+    assert extract_page(page, "X", "http://x/", llm_returning(facts)) == []
+
+
 def test_refine_relabels_committee_to_service():
     page = "She served on the SODA Program Committee in 2022."
     facts = [{"field": "group", "value": "SODA Program Committee, 2022",

@@ -38,6 +38,18 @@ _SERVICE_RE = re.compile(
 _STOP = {"the", "and", "for", "with", "from", "that", "this", "their", "his", "her",
          "are", "was", "were", "has", "have", "department", "university", "njit"}
 MIN_BIO_CHARS = 40
+# Speculative fields the model loves to mislabel (a thesis number tagged "group",
+# a paper title tagged "software"). Require the evidence to actually mention the
+# concept — a department-agnostic guard against mislabelling.
+_FIELD_KEYWORDS = {
+    "software": ("software", "tool", "library", "package", "framework", "toolkit",
+                 "code", "system", "implementation", "benchmark", "dataset"),
+    "group": ("group", "lab", "laboratory", "team", "center", "centre", "consortium"),
+    "project": ("project", "grant", "funded", "funding", "award no", "nsf"),
+}
+# award values too generic to be useful on their own.
+_GENERIC_AWARD = {"best paper award", "best paper", "award", "paper award",
+                  "best paper award (back end)"}
 
 
 def _content_words(s: str) -> list[str]:
@@ -67,8 +79,14 @@ def _refine(f: "Fact") -> "Fact | None":
             field = "service"
     if field == "research_area" and _norm(value) in _GENERIC_AREA:
         return None
+    if field == "award" and _norm(value) in _GENERIC_AWARD:
+        return None
     if field == "bio" and len(value) < MIN_BIO_CHARS:
         return None
+    if field in _FIELD_KEYWORDS:
+        hay = f"{value} {f.evidence}".lower()
+        if not any(k in hay for k in _FIELD_KEYWORDS[field]):   # field not lexically supported
+            return None
     return Fact(field=field, value=value, evidence=f.evidence, source_url=f.source_url)
 WINDOW = 10_000   # chars per extraction window
 OVERLAP = 500     # window overlap so a fact split across a boundary still appears whole

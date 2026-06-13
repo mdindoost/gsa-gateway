@@ -63,6 +63,51 @@ def _llm_call(system: str, user: str) -> str:
         return ""
 
 
+def _llm_json(system: str, user: str) -> str:
+    """Ollama call constrained to JSON output, for grounded web fact extraction."""
+    import json
+    import os
+    import urllib.request
+
+    base = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+    model = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+    payload = json.dumps({
+        "model": model, "system": system, "prompt": user, "stream": False,
+        "format": "json",
+        "options": {"temperature": 0, "seed": 42, "num_ctx": 8192, "num_predict": 1800},
+    }).encode("utf-8")
+    req = urllib.request.Request(f"{base}/api/generate", data=payload,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            return json.loads(r.read()).get("response", "")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  {C_OFF}! extract LLM call failed: {exc}")
+        return ""
+
+
+def _web_enrich(rec, items):
+    """Crawl the professor's own site (if any), extract grounded facts, merge them
+    into ``items`` by natural_key. Returns (merged_items, summary_str)."""
+    from v2.core.ingestion.web_crawler import crawl_site, make_fetcher
+    from v2.core.ingestion.web_extract import extract_page
+    from v2.core.ingestion.web_merge import facts_to_items, merge
+
+    site = rec.links.get("website")
+    if not site:
+        return items, "no personal site"
+    res = crawl_site(site, make_fetcher(), max_depth=2, budget=12, delay=0.5)
+    facts = []
+    for p in res.pages:
+        facts += extract_page(p.text, rec.name, p.url, _llm_json)
+    subject = f"{rec.name} ({rec.org})" if rec.org else rec.name
+    web_items = facts_to_items(facts, rec.entity_id, subject)
+    merged = merge(items, web_items)
+    added = len(merged) - len(items)
+    return merged, (f"{len(res.pages)} pages, {len(facts)} grounded facts → +{added} new items"
+                    f", {len(res.recorded_files)} PDFs recorded")
+
+
 def discover(limit: int, faculty_list: str = FACULTY_LIST) -> list[str]:
     html = fetch(faculty_list)
     seen, out = set(), []
@@ -257,6 +302,8 @@ def main() -> None:
                     help="append a per-entity diff here on --commit (re-crawl audit trail)")
     ap.add_argument("--overview", action="store_true",
                     help="generate a grounded narrative overview per profile (local LLM)")
+    ap.add_argument("--web", action="store_true",
+                    help="also crawl each professor's own site and merge grounded facts")
     args = ap.parse_args()
 
     from v2.core.ingestion.departments import get as get_dept
@@ -288,6 +335,9 @@ def main() -> None:
             from v2.core.ingestion.overview import generate as gen_overview
             rec.overview = gen_overview(rec, _llm_call)
         items = decompose(rec)
+        if args.web:
+            items, web_summary = _web_enrich(rec, items)
+            print(f"   {C_DIM}web: {web_summary}{C_OFF}")
         total_items += len(items)
         parsed.append((rec, items))
         show(rec, items)
