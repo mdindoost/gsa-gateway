@@ -86,9 +86,13 @@ def _llm_json(system: str, user: str) -> str:
         return ""
 
 
+WEB_TIME_BUDGET = 240  # wall-clock seconds per professor for crawl+extract
+
+
 def _web_enrich(rec, items):
     """Crawl the professor's own site (if any), extract grounded facts, merge them
-    into ``items`` by natural_key. Returns (merged_items, summary_str)."""
+    into ``items`` by natural_key. Returns (merged_items, summary_str). Bounded by a
+    per-professor wall-clock budget so one large/slow site can't stall the batch."""
     from v2.core.ingestion.web_crawler import crawl_site, make_fetcher
     from v2.core.ingestion.web_extract import extract_page
     from v2.core.ingestion.web_merge import facts_to_items, merge
@@ -96,16 +100,20 @@ def _web_enrich(rec, items):
     site = rec.links.get("website")
     if not site:
         return items, "no personal site"
+    start = time.monotonic()
     res = crawl_site(site, make_fetcher(), max_depth=2, budget=12, delay=0.5)
-    facts = []
+    facts, stopped = [], ""
     for p in res.pages:
+        if time.monotonic() - start > WEB_TIME_BUDGET:
+            stopped = f" (time budget {WEB_TIME_BUDGET}s hit — partial)"
+            break
         facts += extract_page(p.text, rec.name, p.url, _llm_json)
     subject = f"{rec.name} ({rec.org})" if rec.org else rec.name
     web_items = facts_to_items(facts, rec.entity_id, subject)
     merged = merge(items, web_items)
     added = len(merged) - len(items)
     return merged, (f"{len(res.pages)} pages, {len(facts)} grounded facts → +{added} new items"
-                    f", {len(res.recorded_files)} PDFs recorded")
+                    f", {len(res.recorded_files)} PDFs recorded{stopped}")
 
 
 def discover(limit: int, faculty_list: str = FACULTY_LIST) -> list[str]:
@@ -336,8 +344,11 @@ def main() -> None:
             rec.overview = gen_overview(rec, _llm_call)
         items = decompose(rec)
         if args.web:
-            items, web_summary = _web_enrich(rec, items)
-            print(f"   {C_DIM}web: {web_summary}{C_OFF}")
+            try:
+                items, web_summary = _web_enrich(rec, items)
+                print(f"   {C_DIM}web: {web_summary}{C_OFF}")
+            except Exception as exc:  # noqa: BLE001 - web is best-effort; never abort the batch
+                print(f"   {C_OFF}! web enrich failed for {rec.name}: {exc} (NJIT items kept)")
         total_items += len(items)
         parsed.append((rec, items))
         show(rec, items)

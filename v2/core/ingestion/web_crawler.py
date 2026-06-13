@@ -17,12 +17,16 @@ offline. See docs/superpowers/specs/2026-06-11-hybrid-knowledge-ingestion.md (Ph
 """
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 import time
+import urllib.error
+import urllib.request
 import urllib.robotparser
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse, urlunparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from bs4 import BeautifulSoup
 
@@ -31,6 +35,40 @@ DEFAULT_DEPTH = 2
 DEFAULT_BUDGET = 15
 TIMEOUT = 20
 DELAY = 1.0  # seconds between fetches (politeness)
+MAX_FETCH_BYTES = 5_000_000  # cap the raw body read (defense vs huge/streamed responses)
+
+
+def is_safe_url(url: str) -> bool:
+    """SSRF guard. The seed comes from the professor's NJIT 'Website' field — i.e.
+    attacker-influenceable — so before ANY fetch (seed, link, or redirect hop) we
+    reject non-http(s) and any host that resolves to a private / loopback / link-local
+    / reserved address (e.g. 169.254.169.254 cloud metadata, 127.*, 10.*). Only
+    globally-routable public hosts are allowed."""
+    p = urlparse(url)
+    if p.scheme not in ("http", "https") or not p.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(p.hostname, None)
+    except (socket.gaierror, UnicodeError, OSError):
+        return False
+    for *_, sockaddr in infos:
+        try:
+            ip = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            return False
+        if not ip.is_global or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            return False
+    return bool(infos)
+
+
+class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+    """Re-validate every redirect target — an in-scope seed must not be able to 302
+    into an internal address."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not is_safe_url(newurl):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 # A link is worth following only if one of these appears in its anchor text or URL.
 # Deliberately excludes teaching/courses (huge low-signal syllabi) and generic
@@ -187,7 +225,9 @@ def crawl_site(seed_url: str, fetch, max_depth: int = DEFAULT_DEPTH,
 
 
 def make_fetcher(timeout: int = TIMEOUT):
-    """A real fetcher: project UA, robots.txt-aware, HTML-only, returns html|None."""
+    """A real fetcher: SSRF-guarded, project UA, robots.txt-aware, redirect-revalidated,
+    HTML-only, size-capped. Returns html|None."""
+    opener = urllib.request.build_opener(_SafeRedirect())
     robots_cache: dict[str, urllib.robotparser.RobotFileParser | None] = {}
 
     def _allowed(url: str) -> bool:
@@ -204,15 +244,17 @@ def make_fetcher(timeout: int = TIMEOUT):
         return rp is None or rp.can_fetch(UA, url)
 
     def fetch(url: str) -> str | None:
+        if not is_safe_url(url):           # SSRF guard BEFORE any network call (incl. robots)
+            return None
         if not _allowed(url):
             return None
         try:
             req = Request(url, headers={"User-Agent": UA})
-            with urlopen(req, timeout=timeout) as r:
+            with opener.open(req, timeout=timeout) as r:
                 ctype = r.headers.get("Content-Type", "")
                 if "html" not in ctype.lower():
                     return None
-                return r.read().decode("utf-8", "ignore")
+                return r.read(MAX_FETCH_BYTES).decode("utf-8", "ignore")
         except Exception:  # noqa: BLE001 - one dead page shouldn't break the crawl
             return None
 

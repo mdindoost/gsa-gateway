@@ -46,6 +46,16 @@ class ReconcileResult:
                 f"={len(self.unchanged_ids)} unchanged")
 
 
+# Metadata keys that are provenance/audit, not semantic identity — changing them
+# alone must NOT version-bump an item (e.g. a web fact's verbatim evidence quote can
+# differ between non-deterministic extraction runs while the fact is unchanged).
+_VOLATILE_META = {"evidence"}
+
+
+def _semantic_meta(meta: dict) -> dict:
+    return {k: v for k, v in meta.items() if k not in _VOLATILE_META}
+
+
 def _store_meta(item: KItem) -> dict:
     """The metadata as persisted: the item's own metadata plus its natural_key
     (so a later reconcile can match this row back to a freshly-decomposed item)."""
@@ -105,7 +115,7 @@ def reconcile_entity(conn, org_id: int, entity_id: str, items: list[KItem],
 
             row, old_meta = existing[nk]
             if (row["title"] == item.title and row["content"] == item.content
-                    and old_meta == new_meta):
+                    and _semantic_meta(old_meta) == _semantic_meta(new_meta)):
                 result.unchanged_ids.append(row["id"])
                 continue
 

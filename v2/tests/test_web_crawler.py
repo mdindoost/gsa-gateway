@@ -9,8 +9,19 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from v2.core.ingestion.web_crawler import (crawl_site, is_non_html, is_relevant,
-                                           normalize_url, same_scope, same_site,
-                                           scope_prefix, select_links)
+                                           is_safe_url, normalize_url, same_scope,
+                                           same_site, scope_prefix, select_links)
+
+
+def test_ssrf_guard_blocks_internal_and_nonhttp():
+    # public hosts ok; internal/loopback/link-local/metadata + non-http rejected
+    assert is_safe_url("https://example.com/")
+    assert not is_safe_url("http://169.254.169.254/latest/meta-data/")  # cloud metadata
+    assert not is_safe_url("http://127.0.0.1:8080/")
+    assert not is_safe_url("http://localhost/")
+    assert not is_safe_url("http://10.0.0.5/")
+    assert not is_safe_url("file:///etc/passwd")
+    assert not is_safe_url("ftp://example.com/")
 
 
 def test_same_site_ignores_www_and_blocks_offsite():

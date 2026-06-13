@@ -37,21 +37,13 @@ def test_bio_and_research_area_are_not_taken_from_web():
     assert {i.type for i in items} == {"software"}     # bio/research_area dropped
 
 
-def test_merge_dedups_publication_already_in_njit():
-    # an NJIT publication item with the SAME title the web also lists
-    same_title = "Spectral sparsification of graphs"
-    import hashlib
-    h = hashlib.sha1(same_title.lower().encode()).hexdigest()[:12]
-    njit = [KItem(type="publication", title=same_title, content="...",
-                  natural_key=f"{EID}:publication:{h}",
-                  metadata={"entity_id": EID, "verified": True}, source_url="njit")]
-    web = facts_to_items([Fact("publication", same_title, same_title, "web"),
-                          Fact("software", "GraphTool", "GraphTool", "web")], EID, "X")
-    out = merge(njit, web)
-    # the duplicate publication is NOT added again; the new software item is
-    pubs = [i for i in out if i.type == "publication"]
-    assert len(pubs) == 1 and pubs[0].source_url == "njit"   # NJIT item kept
-    assert any(i.type == "software" for i in out)
+def test_web_publications_are_not_taken():
+    # publications come from NJIT only — a web pub natural_key can't be deduped vs
+    # NJIT's (different string), so we don't ingest web pubs at all.
+    web = facts_to_items([Fact("publication", "Some Paper Title", "Some Paper Title", "web"),
+                          Fact("software", "GraphTool library", "GraphTool, a library", "web")],
+                         EID, "X")
+    assert {i.type for i in web} == {"software"}
 
 
 def test_merge_adds_new_web_items():

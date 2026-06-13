@@ -50,6 +50,11 @@ _FIELD_KEYWORDS = {
 # award values too generic to be useful on their own.
 _GENERIC_AWARD = {"best paper award", "best paper", "award", "paper award",
                   "best paper award (back end)"}
+# a real award names a year or an award word — guards against a non-award phrase that
+# merely appears on the page being tagged 'award' (e.g. 'Department of Computer Science').
+_AWARD_TOKEN = re.compile(
+    r"\b(19|20)\d{2}\b|\b(award|prize|fellow|fellowship|medal|honou?r|laureate|"
+    r"scholarship|grant|recognition|distinguished)\b", re.I)
 
 
 def _content_words(s: str) -> list[str]:
@@ -79,7 +84,8 @@ def _refine(f: "Fact") -> "Fact | None":
             field = "service"
     if field == "research_area" and _norm(value) in _GENERIC_AREA:
         return None
-    if field == "award" and _norm(value) in _GENERIC_AWARD:
+    if field == "award" and (_norm(value) in _GENERIC_AWARD
+                             or not _AWARD_TOKEN.search(f"{value} {f.evidence}")):
         return None
     if field == "bio" and len(value) < MIN_BIO_CHARS:
         return None
@@ -137,14 +143,23 @@ def chunk_text(text: str, window: int = WINDOW, overlap: int = OVERLAP) -> list[
 
 
 def _loads_any(raw: str):
-    """Parse a JSON value from a possibly-noisy LLM response (whole thing, or the
-    first array/object embedded in prose/code-fences)."""
+    """Parse a JSON value from a possibly-noisy LLM response. Tries the whole string,
+    then decodes the first valid JSON value at each '['/'{' via raw_decode — which
+    stops at the end of that value and ignores trailing prose (so a trailing bracket
+    in following text can't break the parse, unlike a greedy regex)."""
     raw = raw.strip()
-    for candidate in (raw, *(m.group(0) for m in re.finditer(r"(\[.*\]|\{.*\})", raw, re.DOTALL))):
-        try:
-            return json.loads(candidate)
-        except (ValueError, TypeError):
-            continue
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        pass
+    dec = json.JSONDecoder()
+    for i, ch in enumerate(raw):
+        if ch in "[{":
+            try:
+                obj, _ = dec.raw_decode(raw[i:])
+                return obj
+            except ValueError:
+                continue
     return None
 
 

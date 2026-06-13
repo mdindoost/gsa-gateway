@@ -13,25 +13,32 @@ from NJIT isn't duplicated — the NJIT (institutional) item wins.
 from __future__ import annotations
 
 import hashlib
+import re
 
 from v2.core.ingestion.entity import KItem
 from v2.core.ingestion.web_extract import Fact
 
-# web field -> knowledge_items type. bio/research_area are intentionally absent:
-# NJIT is authoritative for those.
+# web field -> knowledge_items type. bio/research_area are intentionally absent
+# (NJIT is authoritative). 'publication' is also absent: NJIT already holds the
+# publication list, and a web pub's natural_key (sha1 of the model's bare title)
+# would never match NJIT's (sha1 of the full citation), so it can't be deduped and
+# would just duplicate papers. The web's value is awards/experience/service/software.
 _FIELD_TYPE = {
-    "publication": "publication", "award": "award", "experience": "experience",
+    "award": "award", "experience": "experience",
     "software": "software", "project": "project", "group": "group", "service": "service",
 }
 _PREFIX = {
-    "publication": "Publication by", "award": "Award received by",
-    "experience": "Career history of", "software": "Software by",
-    "project": "Project by", "group": "Group affiliation of", "service": "Service by",
+    "award": "Award received by", "experience": "Career history of",
+    "software": "Software by", "project": "Project by",
+    "group": "Group affiliation of", "service": "Service by",
 }
 
 
 def _key(s: str) -> str:
-    return hashlib.sha1(s.strip().lower().encode("utf-8")).hexdigest()[:12]
+    # normalize (collapse whitespace, strip trailing punctuation) before hashing so a
+    # trivial wording drift between refreshes doesn't fork a "new" item.
+    norm = re.sub(r"\s+", " ", s).strip().lower().rstrip(".,;:")
+    return hashlib.sha1(norm.encode("utf-8")).hexdigest()[:12]
 
 
 def facts_to_items(facts: list[Fact], entity_id: str, subject: str) -> list[KItem]:
