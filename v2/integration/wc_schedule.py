@@ -214,6 +214,18 @@ def venue_for(home: str, away: str) -> str | None:
     return rec["city"] if rec else None
 
 
+def fifa_date(home: str, away: str) -> str | None:
+    """The authoritative FIFA date (YYYY-MM-DD) for a group-stage pairing, or None.
+
+    FIFA dates matches by the **venue-local** day, so this is the day a US (and
+    FIFA) audience sees the match on — unlike the API's UTC date, which rolls a
+    late west-coast kickoff (9 PM PT = midnight ET) into the next day. The digest
+    groups by this so such games land on the right day. None for pairings not in
+    the group-stage index (e.g. knockouts) — callers fall back to the ET date."""
+    rec = _TEAM_INDEX.get(frozenset((normalize_team(home), normalize_team(away))))
+    return rec["date"] if rec else None
+
+
 def reconcile(when: str, home: str, away: str) -> tuple[str | None, list[str]]:
     """Audit one API group-stage fixture against the FIFA schedule.
 

@@ -20,7 +20,7 @@ import aiohttp
 
 from v2.core.publishing.sources import PostDraft, PostSource
 from v2.integration.worldcup_tracker import BASE_URL, team_label
-from v2.integration.wc_schedule import et_date, reconcile, venue_for
+from v2.integration.wc_schedule import et_date, fifa_date, reconcile, venue_for
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +34,31 @@ STAGE_LABELS = {
 }
 
 
-async def fetch_fixtures(api_key: str, day: datetime.date) -> list[dict]:
-    """Fetch the World Cup matches on the ET-local ``day``. Returns [] on any API
-    error (so a bad fetch degrades to "no post", never a crash).
+def _grouping_date(match: dict) -> str:
+    """The day a US/FIFA audience files a match under: the authoritative FIFA
+    (venue-local) date when the pairing is known, else the ET date of the kickoff.
 
-    The API dates by UTC, so a late US-evening kickoff rolls into the next UTC
-    day. We query a 2-day UTC window and keep only matches whose ET date == day,
-    so the digest is the day's fixtures as a US audience (and FIFA) sees them."""
+    FIFA dates by venue-local day, so a 9 PM Pacific kickoff (= midnight ET) stays
+    on its venue day instead of rolling to the next ET day."""
+    home = match.get("homeTeam", {}).get("name", "")
+    away = match.get("awayTeam", {}).get("name", "")
+    return fifa_date(home, away) or et_date(match.get("utcDate", ""))
+
+
+def matches_for_day(matches: list[dict], day: datetime.date) -> list[dict]:
+    """Keep only the matches that belong to ``day`` by venue-local/FIFA date."""
+    iso = day.isoformat()
+    return [m for m in matches if _grouping_date(m) == iso]
+
+
+async def fetch_fixtures(api_key: str, day: datetime.date) -> list[dict]:
+    """Fetch the World Cup matches for ``day`` (venue-local/FIFA day). Returns []
+    on any API error (so a bad fetch degrades to "no post", never a crash).
+
+    The API dates by UTC, so a late US-evening or west-coast kickoff rolls into the
+    next UTC day. We query a 2-day UTC window and keep only matches whose
+    venue-local/FIFA date == day (see ``matches_for_day``), so the digest matches
+    the day a US audience (and FIFA) sees."""
     api_key = (api_key or "").split(",")[0].strip()  # one key is plenty (hourly)
     iso = day.isoformat()
     nxt = (day + datetime.timedelta(days=1)).isoformat()
@@ -53,8 +71,7 @@ async def fetch_fixtures(api_key: str, day: datetime.date) -> list[dict]:
                     logger.warning("WC fixtures API HTTP %d for %s", resp.status, iso)
                     return []
                 data = await resp.json()
-                return [m for m in data.get("matches", [])
-                        if et_date(m.get("utcDate", "")) == iso]
+                return matches_for_day(data.get("matches", []), day)
     except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
         logger.warning("WC fixtures API unreachable for %s: %s", iso, exc)
         return []
