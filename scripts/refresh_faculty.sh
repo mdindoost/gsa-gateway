@@ -14,15 +14,17 @@
 # to see exactly what changed. The live bot picks up the new data immediately
 # (it reads the DB per query); no restart needed.
 #
-# Usage:  bash scripts/refresh_faculty.sh [N]      # N = how many profiles (default 80 = all)
+# Usage:  bash scripts/refresh_faculty.sh [DEPARTMENT] [N]
+#   DEPARTMENT = registry key (cs, ds, informatics; default cs)
+#   N          = how many profiles (default 80 = all)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-N="${1:-80}"                       # default covers the whole CS faculty list
-DEFAULT_ORG=5                      # CS — fallback only for pages with no dept label
+DEPT="${1:-cs}"                    # which department (registry key)
+N="${2:-80}"                      # default covers the whole faculty list
 
 echo "════════════════════════════════════════════════════"
-echo "  Faculty KB refresh — $(date '+%Y-%m-%d %H:%M:%S')"
+echo "  Faculty KB refresh — dept=$DEPT — $(date '+%Y-%m-%d %H:%M:%S')"
 echo "  (backup → crawl → extract → overview → embed)"
 echo "════════════════════════════════════════════════════"
 
@@ -33,7 +35,7 @@ if ! curl -sf --max-time 5 http://localhost:11434/api/tags >/dev/null 2>&1; then
 fi
 
 .venv/bin/python scripts/ingest_faculty.py \
-    --limit "$N" --overview --commit --default-org-id "$DEFAULT_ORG"
+    --department "$DEPT" --limit "$N" --overview --commit
 
 echo
 echo "  Done. What changed → logs/ingest_changes.log"

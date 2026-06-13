@@ -63,8 +63,8 @@ def _llm_call(system: str, user: str) -> str:
         return ""
 
 
-def discover(limit: int) -> list[str]:
-    html = fetch(FACULTY_LIST)
+def discover(limit: int, faculty_list: str = FACULTY_LIST) -> list[str]:
+    html = fetch(faculty_list)
     seen, out = set(), []
     for m in re.findall(r"(?:https:)?//people\.njit\.edu/profile/[A-Za-z0-9_-]+", html):
         u = "https:" + m if m.startswith("//") else m
@@ -243,7 +243,10 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--url", action="append", help="profile URL (repeatable)")
-    src.add_argument("--limit", type=int, help="crawl first N from the CS faculty list")
+    src.add_argument("--limit", type=int, help="crawl first N from the department faculty list")
+    ap.add_argument("--department", default="cs",
+                    help="department key from the registry (cs, ds, informatics). "
+                         "Sets the faculty list + fallback org. Default: cs")
     ap.add_argument("--commit", action="store_true",
                     help="WRITE to the database (default: dry run, no writes)")
     ap.add_argument("--db", default=str(REPO / "gsa_gateway.db"), help="database path")
@@ -256,8 +259,22 @@ def main() -> None:
                     help="generate a grounded narrative overview per profile (local LLM)")
     args = ap.parse_args()
 
-    urls = args.url if args.url else discover(args.limit)
-    print(f"{C_DIM}Mode: {'COMMIT (writes to DB)' if args.commit else 'DRY RUN (no writes)'}"
+    from v2.core.ingestion.departments import get as get_dept
+    dept = get_dept(args.department)
+    # registry supplies the fallback org unless the user forced one
+    if args.default_org_id is None:
+        args.default_org_id = dept.default_org_id
+
+    if args.url:
+        urls = args.url
+    else:
+        if dept.discovery != "static":
+            raise SystemExit(
+                f"{dept.name} faculty list ({dept.faculty_list}) is '{dept.discovery}'-"
+                f"rendered — static discovery won't find profiles. {dept.note}")
+        urls = discover(args.limit, dept.faculty_list)
+    print(f"{C_DIM}Dept: {dept.name} (org {dept.default_org_id})  |  "
+          f"Mode: {'COMMIT (writes to DB)' if args.commit else 'DRY RUN (no writes)'}"
           f"  |  {len(urls)} profile(s){C_OFF}")
 
     parsed, total_items = [], 0
