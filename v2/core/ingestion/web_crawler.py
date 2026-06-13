@@ -43,7 +43,11 @@ def is_safe_url(url: str) -> bool:
     attacker-influenceable — so before ANY fetch (seed, link, or redirect hop) we
     reject non-http(s) and any host that resolves to a private / loopback / link-local
     / reserved address (e.g. 169.254.169.254 cloud metadata, 127.*, 10.*). Only
-    globally-routable public hosts are allowed."""
+    globally-routable public hosts are allowed.
+
+    Residual (accepted): this resolves the host, then urllib resolves it again on
+    connect — a DNS-rebinding host could pass the check and connect to a private IP.
+    Acceptable for an internal admin tool seeded from NJIT faculty Website fields."""
     p = urlparse(url)
     if p.scheme not in ("http", "https") or not p.hostname:
         return False
