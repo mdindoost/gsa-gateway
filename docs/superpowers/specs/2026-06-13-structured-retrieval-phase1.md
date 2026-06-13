@@ -35,17 +35,35 @@ only supplies validated slots. Each returns structured rows (never prose).
 
 | Skill | Signature | Query (over existing tables) |
 |---|---|---|
-| resolve_org | `resolve_org(name) -> org_id\|None` | alias map ("YWCC"/"Ying Wu College"→4, "CS"/"computer science"→5, …) + `organizations.name/slug` match |
-| org_descendants | `org_descendants(org_id) -> set[int]` | recursive walk of `organizations.parent_id` (shallow tree) |
+| resolve_org | `resolve_org(name) -> org_id\|None` | alias map ("YWCC"/"Ying Wu College"→4, "CS"/"computer science"→5, …) seeded from `organizations.name/slug` + hand aliases, case-insensitive |
+| org_descendants | `org_descendants(org_id) -> set[int]` | recursive walk of `organizations.parent_id`, **including the root** (so "in YWCC" = `{4,5,6,7}` and catches people attached directly to node 4, e.g. the Dean) |
 | org_departments | `org_departments(org_id) -> list[str]` | `SELECT name FROM organizations WHERE parent_id=? AND is_active=1` |
 | faculty_in_department | `faculty_in_department(org_id) -> list[(name,entity_id)]` | distinct `entity_id` in `org_id`, name from the profile item |
-| people_by_research_area | `people_by_research_area(area, org_id=None) -> list[(name,entity_id)]` | distinct `entity_id` whose `research_areas/research_statement/overview` content matches `area` (case-insensitive), scoped to `org_descendants(org_id)` if given |
-| count_people_by_research_area | `count_people_by_research_area(area, org_id=None) -> int` | `COUNT(DISTINCT entity_id)` of the above |
+| people_by_research_area | `people_by_research_area(area, org_id=None) -> list[(name,entity_id)]` | **FTS5 word-boundary match**, not substring (see below), scoped to `org_descendants(org_id)` |
+| count_people_by_research_area | `count_people_by_research_area(area, org_id=None) -> int` | `COUNT(DISTINCT entity_id)` over the **same** FTS query as `people_by_research_area` (shared helper — list and count can never disagree) |
 
-Person enumeration helper: `_people(org_ids, where_clause, params)` returns
-`(entity_id → display_name)` so all skills share one correct "who is a faculty member +
-their name" definition. Results are **complete and stable** (no top-K, no model
-variance).
+**Research-area matching MUST use FTS5 `MATCH`, not substring (B1 — verified).** A naive
+`LIKE '%graph%'` returns **12** people for "graph" in YWCC, half wrong (graphics,
+cryptography, geographic). The existing `knowledge_fts` virtual table (unicode61
+tokenizer, `v2/core/database/schema.py`) with `search_text MATCH 'graph'` returns
+**exactly 6** — the real graph researchers, zero false positives. The skill query:
+```sql
+SELECT DISTINCT json_extract(k.metadata,'$.entity_id')
+FROM knowledge_fts f JOIN knowledge_items k ON k.id = f.rowid
+WHERE f.search_text MATCH ?                 -- area term; phrases double-quoted
+  AND k.is_active = 1                        -- B2: FTS indexes 334 INACTIVE versions too
+  AND k.org_id IN (<descendants>)
+  AND k.type IN ('research_areas','research_statement','overview');
+```
+Sanitize the area for FTS5 operators (`- * : " OR NEAR`) — wrap the term in double
+quotes and escape embedded quotes — or a stray char throws a syntax error.
+
+**`is_active=1` is non-optional (B2 — verified).** `knowledge_fts` is external-content
+over ALL `knowledge_items` incl. 334 inactive prior versions; without the filter the
+graph count is 7, not 6. The shared `_people(org_ids, where, params)` helper **always**
+adds `k.is_active=1` so no skill can omit it; it returns `(entity_id → display_name)`
+(name from the `profile` title; 100% coverage on live data, fallback chain kept as cheap
+defense). Results are **complete and stable** — no top-K, no model variance.
 
 ## 3. Router (Tier-1 deterministic) — `v2/core/retrieval/router.py`
 
@@ -69,36 +87,52 @@ we never route a "describe X" question to a skill).
 
 - **org/department slot:** resolved **deterministically** — scan the question for any
   org alias/name and `resolve_org`. No LLM needed; robust.
-- **`area` slot (free text, e.g. "graph", "machine learning"):** a single
-  **JSON-schema-constrained** LLM call (Ollama `format=json` / GBNF) returning
-  `{"area": "..."}` extracted+normalized from the question. Validated: non-empty, sane
-  length. (Fallback heuristic: the noun phrase after "work(s) on"/"research(es) in"/
-  "on".) `llama3.1:8b` first; switch *only this step* to `qwen3:8b` if eval shows it's
-  unreliable.
-- **Validation gate:** if a required slot doesn't resolve (org not found, area empty)
-  → return `None` → semantic RAG. A mis-extraction degrades to RAG, never a wrong query.
+- **`area` slot (free text):** **deterministic heuristic is the PRIMARY path (S3)** —
+  the noun phrase after "work(s) on" / "research(es) (in)" / "on" / "in"; areas on this
+  data are short noun phrases, so this handles the vast majority with zero model risk.
+  Only if the heuristic yields nothing, fall back to **one JSON-schema-constrained LLM
+  call** (Ollama `format=json`; this method doesn't exist on `OllamaClient` yet — add a
+  thin one) returning `{"area":"..."}`. `llama3.1:8b` first; `qwen3:8b` for this step
+  only if eval demands.
+- **Validation gate:** if a required slot doesn't resolve (org not found, area empty/
+  over-long) → return `None` → semantic RAG. A mis-extraction degrades to RAG, never a
+  wrong query.
 
 ## 5. Composition
 
 On a matched route: run the skill → get rows → the LLM **composes a natural-language
-answer from those rows only** (its strength: prose; not correctness/recall). Reuse the
-existing generation path but feed the structured rows as the grounded context (with a
-prompt: "answer using ONLY these results; this is the complete list"). Empty result →
-a truthful "no faculty match / unknown department" answer, not a hallucinated guess.
+answer from those rows only**. **Add a dedicated `compose_from_rows(question, rows)`
+(S1) — do NOT reuse `generate_answer`:** its prompt hard-codes RAG framing ("answer
+using ONLY the documents… cite which document") and `num_predict=512`, which would
+truncate a 57-name roster mid-list (re-creating the incompleteness we're fixing). The
+new method uses a roster prompt ("Here is the complete list of N faculty… present all
+of them; if the list is empty, say none were found") and a larger `num_predict`. Empty
+result → a truthful "no faculty match / unknown department," never a guess.
 
-## 6. Integration
+## 6. Integration — hook BEFORE intent detection (B3.2 — verified)
 
-In the assistant/answer flow (`bot/core/message_handler.py` / `build_assistant`): for a
-`question` intent, **try `route()` first**; if it returns a `Route`, run skill +
-compose; else fall through to the **unchanged** semantic RAG pipeline. No change to
-greetings/thanks/etc. or to the RAG path itself — purely additive.
+The router hooks at the **top of `bot/core/message_handler.py` `handle()`, before
+intent detection** — NOT gated on `INTENT_QUESTION`. Verified: structured questions are
+mis-classified by the current intent layer — "list all CS faculty" → `statement`, and
+"who works on **social network** analysis" → `social` (FOOD/SOCIAL keyword substring
+trap) — so a question-gated hook would miss them. Flow: `route(clean_text)` → if a
+`Route`, run skill + `compose_from_rows` + return; else fall through to the **exact
+existing** intent→RAG code, untouched. Non-routed messages take the identical path they
+do today, so greetings/food/RAG are 100% unchanged.
+
+**DB access (S2):** skills need a connection. Follow `v2/integration/retriever_shim.py`
+— open a fresh `get_connection(db_path)` per call inside `asyncio.to_thread` (WAL +
+`busy_timeout`; FTS+plain SQL only, no sqlite-vec needed). `build_assistant`
+(`assistant.py`) already knows the db path — pass it to the router/skills.
 
 ## 7. Eval (built now, not last)
 
 A seed labeled set (~30–50 Qs) in `bot/tests/data/` covering the failures + variants:
 - routing labels (structured-skill-X vs semantic) → measure **router precision/recall**;
-- for skill questions, the expected entity set / count / department list → measure
-  **template correctness** (deterministic, exact).
+- for skill questions, the **corrected** expected set/count/list (S4): "graph in YWCC"
+  → exactly the **6** FTS researchers, and **negative labels** — graphics/cryptography/
+  geographic faculty must **NOT** appear (these catch a regression back to substring);
+  encode the **YWCC-root** count decision (`{4,5,6,7}`) explicitly.
 A small runner reports per-skill + routing accuracy. This is the Phase-1 slice of the
 golden-eval harness and the regression gate for every later phase.
 
@@ -126,9 +160,11 @@ qwen3 swap unless eval forces it.
 
 ## 10. Risks
 
-- **Substring area matching misses synonyms** ("graph" won't catch "network analysis").
-  Acceptable for P1 (still vastly better than 2-of-27 and fully consistent); embedding
-  synonyms are a later, measured enhancement.
+- **FTS is token-exact, so it misses synonyms/morphology** ("graph" won't catch
+  "network analysis" or "spectral methods"). This is the right P1 tradeoff — exact +
+  complete + zero false-positives beats 2-of-27 — and embedding-based synonym expansion
+  is a later, measured enhancement (not free-form substring, which we rejected for its
+  false positives).
 - **Router false-positives** (descriptive Q → skill) are the dangerous failure →
   conservative rules + "ambiguous = semantic RAG"; the eval set measures this directly.
 - **Slot extraction on 8B** → constrained JSON + validation gate (mis-extract → RAG),
