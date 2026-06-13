@@ -54,3 +54,30 @@ one timezone schedule correctly for a server in another.
 - **Analytics** — questions, feedback, posts, KB stats with charts.
 - **Settings** — organization info, signature (+ live preview), channels,
   notification defaults, retriever tuning, features, platform config.
+- **Jobs** — trigger and monitor long-running jobs (faculty KB refresh).
+  *Server mode only* (see below).
+
+## Jobs — refreshing the faculty knowledge base
+
+The **Jobs** tab lets you refresh the faculty knowledge base **from the browser,
+no terminal**. It only works in **server mode** (connected to `local_server.py`
+over the tunnel) — a database loaded as a file has no backend to run the job, so
+the tab shows a note to connect instead.
+
+1. Connect in server mode and open the **🛠️ Jobs** tab.
+2. Check the header: **Ollama ● up** (overviews/embeddings need it). If it's
+   down, **Refresh CS** is disabled until you start Ollama.
+3. Optionally tick **include personal websites** (more complete, much slower).
+4. Click **Refresh CS**. (**Refresh DS** is greyed — those profiles are
+   JS-rendered and not yet supported.)
+5. A job card shows the live log (polled every ~3s) and a **Cancel** button while
+   running; on completion it shows a one-line summary. The **Recent jobs** list
+   below keeps history — click a row to re-open its log.
+
+Behind the scenes the job auto-backs-up the database, crawls, extracts, writes
+grounded overviews, embeds, and logs the exact diff to `logs/ingest_changes.log`.
+Only one job runs at a time. Full details + the API: see `LOCAL_SERVER.md`.
+
+> **Always-on:** with `DASHBOARD_SERVER_ENABLED=true` the bot runs the backend
+> for you, so the Jobs tab is available whenever the bot is up. See
+> `LOCAL_SERVER.md` → *Always-on via the bot*.
