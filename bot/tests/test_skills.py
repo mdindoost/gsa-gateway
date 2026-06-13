@@ -1,0 +1,109 @@
+"""Tests for the structured-retrieval skills (v2/core/retrieval/skills.py).
+
+Built on a real-schema fixture (create_all → FTS triggers fire on insert), so the
+word-boundary FTS matching and is_active filtering are exercised for real — including
+the "graph must not match graphics" precision case the senior review flagged.
+"""
+
+import json
+
+import pytest
+
+from v2.core.database.schema import create_all
+from v2.core.retrieval.skills import (
+    count_people_by_research_area,
+    faculty_in_department,
+    org_departments,
+    org_descendants,
+    people_by_research_area,
+    resolve_org,
+)
+
+
+@pytest.fixture
+def conn(tmp_path):
+    c = create_all(str(tmp_path / "t.db"))
+    for oid, parent, name, slug, typ in [
+        (1, None, "New Jersey Institute of Technology", "njit", "university"),
+        (4, 1, "Ying Wu College of Computing", "ywcc", "college"),
+        (5, 4, "Computer Science", "computer-science", "department"),
+        (6, 4, "Data Science", "data-science", "department"),
+    ]:
+        c.execute("INSERT INTO organizations(id,parent_id,name,slug,type) VALUES(?,?,?,?,?)",
+                  (oid, parent, name, slug, typ))
+
+    def add(org, eid, name, typ, content, active=1):
+        title = name if typ == "profile" else f"{name} — {typ}"
+        c.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,is_active) "
+                  "VALUES(?,?,?,?,?,?)",
+                  (org, typ, title, content, json.dumps({"entity_id": eid}), active))
+
+    # CS: Koutis does graph; Shih does graphics (must NOT match 'graph')
+    add(5, "p/koutis", "Ioannis Koutis", "profile", "Profile: Ioannis Koutis — Professor")
+    add(5, "p/koutis", "Ioannis Koutis", "research_areas", "Research areas: graph algorithms, spectral methods")
+    add(5, "p/shih", "Frank Shih", "profile", "Profile: Frank Shih")
+    add(5, "p/shih", "Frank Shih", "research_areas", "Research areas: computer graphics and image processing")
+    # DS: Bader does graph; Oria does multimedia
+    add(6, "p/bader", "David Bader", "profile", "Profile: David Bader")
+    add(6, "p/bader", "David Bader", "research_statement", "high performance graph analytics on Arkouda")
+    add(6, "p/oria", "Vincent Oria", "profile", "Profile: Vincent Oria")
+    add(6, "p/oria", "Vincent Oria", "research_areas", "Research areas: multimedia databases")
+    # an INACTIVE stale graph row — must be excluded by is_active
+    add(5, "p/ghost", "Ghost Prof", "research_areas", "graph theory ghost", active=0)
+    c.commit()
+    yield c
+    c.close()
+
+
+def _names(rows):
+    return {n for n, _ in rows}
+
+
+# ── org resolution / structure ────────────────────────────────────────────────
+
+def test_resolve_org_by_name_slug_and_alias(conn):
+    assert resolve_org(conn, "Ying Wu College of Computing") == 4
+    assert resolve_org(conn, "ywcc") == 4
+    assert resolve_org(conn, "YWCC") == 4
+    assert resolve_org(conn, "Computer Science") == 5
+    assert resolve_org(conn, "CS") == 5
+    assert resolve_org(conn, "data-science") == 6
+    assert resolve_org(conn, "Astrophysics") is None
+
+
+def test_org_descendants_includes_root(conn):
+    assert org_descendants(conn, 4) == {4, 5, 6}
+    assert org_descendants(conn, 5) == {5}
+
+
+def test_org_departments_lists_children(conn):
+    assert org_departments(conn, 4) == ["Computer Science", "Data Science"]
+
+
+# ── faculty / research ────────────────────────────────────────────────────────
+
+def test_faculty_in_department(conn):
+    assert _names(faculty_in_department(conn, 5)) == {"Ioannis Koutis", "Frank Shih"}
+    assert _names(faculty_in_department(conn, 6)) == {"David Bader", "Vincent Oria"}
+
+
+def test_people_by_research_area_is_word_boundary_not_substring(conn):
+    # 'graph' must match Koutis + Bader, NOT Shih's 'graphics', NOT the inactive ghost.
+    names = _names(people_by_research_area(conn, "graph", org_id=4))
+    assert names == {"Ioannis Koutis", "David Bader"}
+    assert "Frank Shih" not in names
+    assert "Ghost Prof" not in names
+
+
+def test_count_matches_list(conn):
+    assert count_people_by_research_area(conn, "graph", org_id=4) == 2
+
+
+def test_research_area_scoped_to_department(conn):
+    # scope to DS only → just Bader
+    assert _names(people_by_research_area(conn, "graph", org_id=6)) == {"David Bader"}
+
+
+def test_unknown_area_returns_empty(conn):
+    assert people_by_research_area(conn, "quantum", org_id=4) == []
+    assert count_people_by_research_area(conn, "quantum", org_id=4) == 0
