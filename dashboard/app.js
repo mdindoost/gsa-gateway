@@ -396,13 +396,26 @@ function startRefreshAll() {
     .catch((e) => toast("Server error: " + e.message, false));
 }
 
+// Reload the in-browser DB copy from the server WITHOUT re-rendering (so the
+// Jobs view isn't disrupted) — used when a job finishes so KB/Overview reflect
+// the freshly-ingested data on next view.
+function reloadDbQuietly() {
+  if (!isServerMode()) return Promise.resolve();
+  return fetch(SERVER_URL + "/db").then((r) => r.arrayBuffer()).then((buf) => {
+    db = new SQL.Database(new Uint8Array(buf));
+    PL.prepareForDashboard(db);
+  }).catch(() => {});
+}
+
 function pollJob(id) {
   if (JOBS_POLL) clearInterval(JOBS_POLL);
   const tick = () => jobsApi("/api/jobs/" + id).then(({ body }) => {
     renderActiveJob(body);
     if (body && JOB_DONE.includes(body.status)) {
       clearInterval(JOBS_POLL); JOBS_POLL = null;
-      refreshJobsHealth(); refreshJobsList();
+      // job wrote to the DB — pull a fresh snapshot so other tabs are current
+      reloadDbQuietly().then(() => { refreshJobsHealth(); refreshJobsList(); });
+      return;
     }
   }).catch(() => {});
   tick();
