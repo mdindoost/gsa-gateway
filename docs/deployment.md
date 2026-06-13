@@ -39,6 +39,17 @@ WantedBy=multi-user.target
 ```
 Then: `sudo systemctl enable --now gsa-gateway`
 
+#### Dashboard control plane (no extra unit needed)
+To let admins trigger the faculty refresh from the dashboard, set in `.env`:
+```
+DASHBOARD_SERVER_ENABLED=true     # bot supervises v2/local_server.py as a child
+DASHBOARD_SERVER_PORT=5555
+```
+The bot launches the dashboard backend on startup and stops it on shutdown, so it
+rides this same `gsa-gateway` service — **no second systemd unit**. Don't also run
+`local_server.py` by hand when this is on (port clash). See
+`docs/LOCAL_SERVER.md` for the API, security model, and a verification runbook.
+
 ---
 
 ## GitHub Pages (Website)

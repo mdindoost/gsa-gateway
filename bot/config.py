@@ -60,6 +60,10 @@ class Config:
     telegram_channel_id: str
     telegram_chat_id: str
     telegram_broadcast_target: str  # chat_id preferred, channel_id as fallback
+    # Dashboard control plane — bot supervises v2/local_server.py as a child so the
+    # localhost dashboard backend (and its /api/* job runner) is always-on for free.
+    dashboard_server_enabled: bool
+    dashboard_server_port: int
 
 
 def load_config() -> Config:
@@ -110,6 +114,8 @@ def load_config() -> Config:
         telegram_channel_id=os.getenv("TELEGRAM_CHANNEL_ID", ""),
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
         telegram_broadcast_target=os.getenv("TELEGRAM_CHAT_ID", "") or os.getenv("TELEGRAM_CHANNEL_ID", ""),
+        dashboard_server_enabled=os.getenv("DASHBOARD_SERVER_ENABLED", "false").lower() == "true",
+        dashboard_server_port=int(os.getenv("DASHBOARD_SERVER_PORT", "5555")),
     )
 
 

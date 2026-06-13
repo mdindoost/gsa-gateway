@@ -23,6 +23,10 @@ class Department:
     discovery: str       # "static" = profile links are in the served HTML;
                          # "js" = the list is JavaScript-rendered (needs a headless
                          #        fetch — static discovery returns nothing)
+    verified: bool = False  # has a real crawl been run & confirmed to produce good
+                            # data? Only verified departments are refreshed by the
+                            # "Refresh NJIT KB" button — so an aspirational registry
+                            # entry never writes unverified data into the live KB.
     note: str = ""
 
 
@@ -30,17 +34,22 @@ DEPARTMENTS: dict[str, Department] = {
     "cs": Department(
         key="cs", name="Computer Science",
         faculty_list="https://cs.njit.edu/faculty", default_org_id=5,
-        discovery="static"),
+        discovery="static", verified=True),
     "ds": Department(
         key="ds", name="Data Science",
-        faculty_list="https://ds.njit.edu/people", default_org_id=6,
-        discovery="js",
-        note="ds.njit.edu/people is JS-rendered; static discovery yields 0 links. "
-             "Needs a headless fetch (or a static source) before it can be ingested."),
+        faculty_list="https://ds.njit.edu/administration-and-faculty",
+        default_org_id=6, discovery="static", verified=True,
+        note="Faculty list is the static /administration-and-faculty page (the "
+             "/people page is just a hub). Joint-appointment faculty on that page "
+             "resolve to their home department by title (honor-title policy), so "
+             "DS contains only real DS faculty. Verified 2026-06-13 (32 profiles)."),
     "informatics": Department(
         key="informatics", name="Informatics",
         faculty_list="https://informatics.njit.edu/faculty", default_org_id=7,
-        discovery="static"),
+        discovery="static", verified=False,
+        note="Aspirational registry entry — org node exists but has NEVER been "
+             "crawled (0 KB items). Static discovery should work (same NJIT "
+             "template), but set verified=True only after a confirmed test run."),
 }
 
 
@@ -50,3 +59,15 @@ def get(key: str) -> Department:
     except KeyError:
         raise SystemExit(
             f"unknown department {key!r}; known: {', '.join(sorted(DEPARTMENTS))}")
+
+
+def supported() -> list[Department]:
+    """Departments the 'Refresh NJIT KB' button actually refreshes — the ones
+    verified by a real crawl.
+
+    The single source of truth. ``verified`` is the gate: an unverified aspirational
+    entry (e.g. informatics, or ds until its first confirmed run) is excluded, so
+    the button never writes unverified data into the live KB. Enabling a department
+    = validate it with a dry run, then set verified=True; this follows automatically.
+    """
+    return [d for d in DEPARTMENTS.values() if d.verified]

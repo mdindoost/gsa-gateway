@@ -77,6 +77,8 @@ class GSABot(commands.Bot):
         self.v2_worldcup_runner = None
         self.v2_fixtures_runner = None
         self._fixtures_conn = None
+        # Dashboard control plane — supervised child process (always-on backend)
+        self.dashboard_proc = None
 
     async def setup_hook(self) -> None:
         """Initialise services and load extensions before on_ready fires."""
@@ -118,6 +120,13 @@ class GSABot(commands.Bot):
             self.telegram_connector = TelegramBroadcaster(token=config.telegram_token)
             logger.info("Telegram broadcaster initialized (target: %s)", config.telegram_broadcast_target)
 
+        # ── Dashboard control plane ───────────────────────────────────────────
+        # Launch v2/local_server.py as a supervised child so the localhost
+        # dashboard backend + its /api/* job runner is always-on with the bot —
+        # no separate systemd unit for a clean install to authorize.
+        if config.dashboard_server_enabled:
+            await self._start_dashboard_server()
+
         # ── Load all extensions ──────────────────────────────────────────────
         for ext in EXTENSIONS:
             await self.load_extension(ext)
@@ -142,6 +151,19 @@ class GSABot(commands.Bot):
         else:
             await self.tree.sync()
             logger.info("Slash commands synced globally (may take up to 1 hour)")
+
+    async def _start_dashboard_server(self) -> None:
+        """Spawn v2/local_server.py as a supervised child process."""
+        script = Path(__file__).resolve().parent.parent / "v2" / "local_server.py"
+        env = dict(os.environ, GSA_SERVER_PORT=str(config.dashboard_server_port))
+        try:
+            self.dashboard_proc = await asyncio.create_subprocess_exec(
+                sys.executable, str(script), env=env)
+            logger.info("Dashboard control server launched (pid %s, port %d)",
+                        self.dashboard_proc.pid, config.dashboard_server_port)
+        except Exception:  # noqa: BLE001 - never let this crash startup
+            logger.exception("Failed to launch dashboard control server")
+            self.dashboard_proc = None
 
     async def on_ready(self) -> None:
         assert self.user is not None
@@ -270,6 +292,13 @@ class GSABot(commands.Bot):
             pass  # Interaction already expired
 
     async def close(self) -> None:
+        if self.dashboard_proc and self.dashboard_proc.returncode is None:
+            self.dashboard_proc.terminate()
+            try:
+                await asyncio.wait_for(self.dashboard_proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                self.dashboard_proc.kill()
+            logger.info("Dashboard control server stopped")
         if self.v2_fixtures_runner:
             await self.v2_fixtures_runner.stop()
         if self._fixtures_conn:

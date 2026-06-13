@@ -46,6 +46,27 @@ To bulk-edit or fix events, edit `bot/data/events.yml` and restart the bot.
 
 ---
 
+## Refreshing the Faculty Knowledge Base (Jobs tab)
+
+When faculty pages may have changed (≈once a semester), refresh the KB **from the
+dashboard — no terminal**:
+
+1. Open the dashboard in **server mode** (connected over the SSH tunnel; see
+   `docs/LOCAL_SERVER.md`).
+2. Go to the **🛠️ Jobs** tab → confirm **Ollama ● up** → click **Refresh CS**.
+   Tick *include personal websites* for a more complete (but much slower) run.
+3. Watch the live log; on completion it shows what changed. Only one refresh runs
+   at a time; you can **Cancel** a running one.
+
+The job auto-backs-up the database first (`.backups/`) and logs the exact diff to
+`logs/ingest_changes.log`. The live bot picks up the new data immediately (it
+reads the DB per query — no restart). Full details, the API, and a verification
+runbook are in **`docs/LOCAL_SERVER.md`**.
+
+> Prefer the terminal? `bash scripts/refresh_faculty.sh cs` does the same pipeline.
+
+---
+
 ## Setting Up Announcement Channels
 
 ### What Discord channels to create

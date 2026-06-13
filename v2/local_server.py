@@ -21,6 +21,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,10 +29,24 @@ from urllib.parse import urlparse, parse_qs
 
 # The live db lives at the repo root (this file is v2/local_server.py).
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))  # so `bot.services.jobs` imports when run directly
 DB_PATH = REPO_ROOT / "gsa_gateway.db"
 DASHBOARD_DIR = REPO_ROOT / "dashboard"          # served so one URL = whole app
 HOST = "127.0.0.1"   # localhost ONLY — reachable only via SSH tunnel
 PORT = int(os.environ.get("GSA_SERVER_PORT", "5555"))  # override for testing/alt ports
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+
+from bot.services.jobs import JobBusyError, JobManager, JobNotFoundError  # noqa: E402
+from v2.core.ingestion.departments import DEPARTMENTS as DEPT_REGISTRY  # noqa: E402
+from v2.core.ingestion.departments import supported as supported_depts  # noqa: E402
+
+# Control-plane job runner (faculty refresh, …). Same DB the bot/dashboard use.
+JOBS = JobManager(db_path=DB_PATH, repo_root=REPO_ROOT, python_bin=sys.executable)
+
+# Host-header allowlist (defeats DNS-rebinding) — only these Hosts are served.
+ALLOWED_HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}", "localhost", "127.0.0.1"}
+# Origins a browser may legitimately use to POST control calls (file:// == "null").
+ALLOWED_ORIGINS = {f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}", "null"}
 
 # Static dashboard files served from the same origin (no CORS, one tunnel).
 STATIC = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js",
@@ -44,6 +59,15 @@ logger = logging.getLogger("local_server")
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _ollama_up() -> bool:
+    # Overviews + embeddings need Ollama; surface its status so the UI can warn.
+    try:
+        with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=3) as r:
+            return r.status == 200
+    except Exception:  # noqa: BLE001
+        return False
 
 
 class GatewayHandler(BaseHTTPRequestHandler):
@@ -85,6 +109,19 @@ class GatewayHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         logger.info("%s - %s", self.address_string(), fmt % args)
 
+    # ── security guards ────────────────────────────────────────────────────---
+    def _host_ok(self) -> bool:
+        # Defeats DNS-rebinding: a rebound hostname yields a Host we don't allow.
+        return (self.headers.get("Host") or "") in ALLOWED_HOSTS
+
+    def _csrf_ok(self) -> bool:
+        # State-changing /api/* calls require our custom header (a cross-site page
+        # can't set it without a CORS preflight we never grant) + an allowed Origin.
+        if self.headers.get("X-GSA-Dashboard") != "1":
+            return False
+        origin = self.headers.get("Origin")
+        return origin is None or origin in ALLOWED_ORIGINS
+
     # ── CORS preflight ────────────────────────────────────────────────────────
     def do_OPTIONS(self):
         self.send_response(204)
@@ -93,11 +130,19 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
     # ── GET ────────────────────────────────────────────────────────────────---
     def do_GET(self):
+        if not self._host_ok():
+            return self._error("forbidden host", 403)
         u = urlparse(self.path)
         path, qs = u.path, parse_qs(u.query)
         try:
             if path in STATIC:
                 return self._send_static(STATIC[path])
+            if path == "/api/health":
+                return self._api_health()
+            if path == "/api/jobs":
+                return self._json({"jobs": JOBS.list_jobs(20)})
+            if path.startswith("/api/jobs/"):
+                return self._api_get_job(path[len("/api/jobs/"):])
             if path == "/health":
                 return self._json({
                     "status": "ok", "db": str(DB_PATH), "db_exists": DB_PATH.exists(),
@@ -126,7 +171,21 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
     # ── POST ───────────────────────────────────────────────────────────────---
     def do_POST(self):
+        if not self._host_ok():
+            return self._error("forbidden host", 403)
         path = urlparse(self.path).path
+        if path.startswith("/api/"):
+            if not self._csrf_ok():
+                return self._error("forbidden", 403)
+            try:
+                if path == "/api/jobs/refresh":
+                    return self._api_refresh()
+                if path.startswith("/api/jobs/") and path.endswith("/cancel"):
+                    return self._api_cancel(path[len("/api/jobs/"):-len("/cancel")])
+                return self._error("Not found", 404)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("POST %s failed", path)
+                return self._error(str(exc), 500)
         try:
             body = self._body()
             conn = self._conn()
@@ -150,6 +209,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
     # ── DELETE ─────────────────────────────────────────────────────────────---
     def do_DELETE(self):
+        if not self._host_ok():
+            return self._error("forbidden host", 403)
         path = urlparse(self.path).path
         parts = path.strip("/").split("/")
         try:
@@ -164,6 +225,79 @@ class GatewayHandler(BaseHTTPRequestHandler):
             self._error("Not found", 404)
         except Exception as exc:  # noqa: BLE001
             self._error(str(exc), 500)
+
+    # ── control-plane (jobs) handlers ───────────────────────────────────────--
+    def _api_health(self):
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT id,type,args,status,started_at FROM jobs "
+                "WHERE status='running' ORDER BY id DESC LIMIT 1").fetchone()
+        except sqlite3.OperationalError:
+            row = None  # jobs table not created yet
+        finally:
+            conn.close()
+        try:
+            last_refresh_all = JOBS.estimate_refresh_all(web=False)
+        except sqlite3.OperationalError:
+            last_refresh_all = None
+        sup = supported_depts()
+        sup_keys = {d.key for d in sup}
+        departments = {
+            "supported": [{"key": d.key, "name": d.name} for d in sup],
+            "unsupported": [{"key": d.key, "name": d.name}
+                            for d in DEPT_REGISTRY.values() if d.key not in sup_keys],
+        }
+        self._json({
+            "status": "ok", "db": str(DB_PATH), "db_exists": DB_PATH.exists(),
+            "ollama": _ollama_up(), "running_job": dict(row) if row else None,
+            "departments": departments, "last_refresh_all": last_refresh_all,
+            "timestamp": utc_now(),
+        })
+
+    def _api_get_job(self, raw_id):
+        try:
+            jid = int(raw_id)
+        except (TypeError, ValueError):
+            return self._error("bad job id", 400)
+        job = JOBS.get_job(jid)
+        if job is None:
+            return self._error("not found", 404)
+        return self._json(job)
+
+    def _api_refresh(self):
+        body = self._body()
+        # scope=="all" (the "Refresh NJIT KB" button) wins over any department.
+        if body.get("scope") == "all":
+            try:
+                res = JOBS.start_refresh_all(web=bool(body.get("web", False)))
+            except JobBusyError:
+                return self._error("a job is already running", 409)
+            return self._json(res, 201)
+        # single-department path (retained for the future)
+        dept = str(body.get("department", "cs"))
+        if dept not in DEPT_REGISTRY:
+            return self._error(f"unknown department: {dept}", 400)
+        try:
+            limit = int(body.get("limit", 80))
+        except (TypeError, ValueError):
+            return self._error("limit must be an integer", 400)
+        web = bool(body.get("web", False))
+        try:
+            res = JOBS.start_refresh(department=dept, limit=limit, web=web)
+        except JobBusyError:
+            return self._error("a job is already running", 409)
+        return self._json(res, 201)
+
+    def _api_cancel(self, raw_id):
+        try:
+            jid = int(raw_id)
+        except (TypeError, ValueError):
+            return self._error("bad job id", 400)
+        try:
+            return self._json(JOBS.cancel(jid))
+        except JobNotFoundError:
+            return self._error("not found", 404)
 
     # ── GET handlers ──────────────────────────────────────────────────────────
     def _get_posts(self, conn, qs):
@@ -347,6 +481,8 @@ def main():
     if not DB_PATH.exists():
         logger.error("Database not found: %s", DB_PATH)
         sys.exit(1)
+    JOBS.ensure_schema()       # create the jobs table if missing (backend owns it)
+    JOBS.reconcile_startup()   # any 'running' row from a prior process → interrupted
     server = ThreadingHTTPServer((HOST, PORT), GatewayHandler)
     logger.info("GSA Gateway local server")
     logger.info("Listening on http://%s:%d  (localhost only)", HOST, PORT)
