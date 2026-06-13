@@ -132,6 +132,13 @@ class MatchWatcher:
         if status in LIVE:
             if not state["started"]:
                 state["started"] = True
+                if (h, a) != (0, 0):
+                    # Joined a match already in progress (e.g. after a restart) —
+                    # adopt the current score as a SILENT baseline. Don't re-fire
+                    # kickoff or back-announce missed goals (which would also
+                    # reconstruct a wrong order, e.g. a phantom 1-0 for a 0-1,1-1 game).
+                    state["score"] = (h, a)
+                    return events
                 events.append({"type": "kickoff", "match": match})
             ph, pa = state["score"]
             nh, na = max(h, ph), max(a, pa)          # monotonic — never go down
