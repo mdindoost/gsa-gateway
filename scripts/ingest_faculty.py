@@ -116,6 +116,20 @@ def _web_enrich(rec, items):
                     f", {len(res.recorded_files)} PDFs recorded{stopped}")
 
 
+def discover_for(dept, limit):
+    """Discover a department's faculty profile URLs by the right method:
+    static HTML scrape (CS-style) or headless render for JS-rendered lists (DS).
+
+    For js departments the limit is a post-hoc slice of the fully-rendered list
+    (it does not bound render time). Uses only the DOM-scraped set for production;
+    the intercepted data is for the verification gate, not ingest."""
+    if dept.discovery == "js":
+        from v2.core.ingestion.js_discovery import discover_js
+        urls = discover_js(dept.faculty_list).urls
+        return urls[:limit] if limit else urls
+    return discover(limit, dept.faculty_list)
+
+
 def discover(limit: int | None, faculty_list: str = FACULTY_LIST) -> list[str]:
     html = fetch(faculty_list)
     seen, out = set(), []
@@ -339,7 +353,7 @@ def _run_all(args) -> int:
     for dept in depts:
         print(f"\n{C_HEAD}══════ {dept.name} (org {dept.default_org_id}) ══════{C_OFF}")
         try:
-            urls = discover(None, dept.faculty_list)   # full list — no cap
+            urls = discover_for(dept, None)   # full list — no cap (static or js)
         except Exception as exc:  # noqa: BLE001
             print(f"  {C_OFF}! {dept.name}: discovery failed: {exc}")
             any_failed = True
@@ -407,11 +421,7 @@ def main() -> None:
     if args.url:
         urls = args.url
     else:
-        if dept.discovery != "static":
-            raise SystemExit(
-                f"{dept.name} faculty list ({dept.faculty_list}) is '{dept.discovery}'-"
-                f"rendered — static discovery won't find profiles. {dept.note}")
-        urls = discover(args.limit, dept.faculty_list)
+        urls = discover_for(dept, args.limit)   # static scrape or headless (js)
     print(f"{C_DIM}Dept: {dept.name} (org {dept.default_org_id})  |  "
           f"Mode: {'COMMIT (writes to DB)' if args.commit else 'DRY RUN (no writes)'}"
           f"  |  {len(urls)} profile(s){C_OFF}")

@@ -89,6 +89,34 @@ def test_run_all_zero_profiles_is_a_failure(monkeypatch):
     assert commits == []      # nothing committed
 
 
+def test_discover_for_uses_static_path_for_static_dept(monkeypatch):
+    mod = _load_ingest()
+    from v2.core.ingestion.departments import Department
+    dept = Department(key="cs", name="CS", faculty_list="https://cs.njit.edu/faculty",
+                      default_org_id=5, discovery="static", verified=True)
+    seen = {}
+
+    def fake_discover(limit, fl):
+        seen["call"] = (limit, fl)
+        return ["u1"]
+
+    monkeypatch.setattr(mod, "discover", fake_discover)
+    assert mod.discover_for(dept, 5) == ["u1"]
+    assert seen["call"] == (5, "https://cs.njit.edu/faculty")
+
+
+def test_discover_for_uses_headless_for_js_dept(monkeypatch):
+    mod = _load_ingest()
+    from v2.core.ingestion.departments import Department
+    from v2.core.ingestion import js_discovery
+    dept = Department(key="ds", name="DS", faculty_list="https://ds.njit.edu/people",
+                      default_org_id=6, discovery="js", verified=True)
+    monkeypatch.setattr(js_discovery, "discover_js",
+                        lambda url: js_discovery.DiscoveryResult(urls=["a", "b", "c"]))
+    assert mod.discover_for(dept, 2) == ["a", "b"]          # post-hoc limit slice
+    assert mod.discover_for(dept, None) == ["a", "b", "c"]  # no limit = full list
+
+
 def test_run_all_continues_past_a_failing_department(monkeypatch):
     mod = _load_ingest()
     committed_orgs = []

@@ -60,12 +60,14 @@ def get(key: str) -> Department:
 
 
 def supported() -> list[Department]:
-    """Departments the 'Refresh NJIT KB' button actually refreshes — statically
-    discoverable AND verified by a real crawl.
+    """Departments the 'Refresh NJIT KB' button actually refreshes — the ones
+    verified by a real crawl.
 
-    The single source of truth. A 'js'-discovery department (e.g. ds) or an
-    unverified aspirational entry (e.g. informatics, until tested) is excluded, so
-    the button never writes unverified data into the live KB. Enabling a department
-    = set verified=True after a confirmed test run; this follows automatically.
+    The single source of truth. ``verified`` is the gate: an unverified aspirational
+    entry (e.g. informatics) or a not-yet-validated js department (e.g. ds) is
+    excluded, so the button never writes unverified data into the live KB. The
+    discovery method (static vs js/headless) is a dispatch detail handled at crawl
+    time — see ``ingest_faculty.discover_for``. Enabling a department = validate it,
+    then set verified=True; this follows automatically.
     """
-    return [d for d in DEPARTMENTS.values() if d.discovery == "static" and d.verified]
+    return [d for d in DEPARTMENTS.values() if d.verified]
