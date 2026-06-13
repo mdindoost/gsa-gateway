@@ -63,8 +63,61 @@ def _llm_call(system: str, user: str) -> str:
         return ""
 
 
-def discover(limit: int) -> list[str]:
-    html = fetch(FACULTY_LIST)
+def _llm_json(system: str, user: str) -> str:
+    """Ollama call constrained to JSON output, for grounded web fact extraction."""
+    import json
+    import os
+    import urllib.request
+
+    base = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+    model = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+    payload = json.dumps({
+        "model": model, "system": system, "prompt": user, "stream": False,
+        "format": "json",
+        "options": {"temperature": 0, "seed": 42, "num_ctx": 8192, "num_predict": 1800},
+    }).encode("utf-8")
+    req = urllib.request.Request(f"{base}/api/generate", data=payload,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            return json.loads(r.read()).get("response", "")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  {C_OFF}! extract LLM call failed: {exc}")
+        return ""
+
+
+WEB_TIME_BUDGET = 240  # wall-clock seconds per professor for crawl+extract
+
+
+def _web_enrich(rec, items):
+    """Crawl the professor's own site (if any), extract grounded facts, merge them
+    into ``items`` by natural_key. Returns (merged_items, summary_str). Bounded by a
+    per-professor wall-clock budget so one large/slow site can't stall the batch."""
+    from v2.core.ingestion.web_crawler import crawl_site, make_fetcher
+    from v2.core.ingestion.web_extract import extract_page
+    from v2.core.ingestion.web_merge import facts_to_items, merge
+
+    site = rec.links.get("website")
+    if not site:
+        return items, "no personal site"
+    start = time.monotonic()
+    res = crawl_site(site, make_fetcher(), max_depth=2, budget=12, delay=0.5)
+    facts, stopped = [], ""
+    for p in res.pages:
+        if time.monotonic() - start > WEB_TIME_BUDGET:
+            stopped = f" (time budget {WEB_TIME_BUDGET}s hit — partial)"
+            break
+        facts += extract_page(p.text, rec.name, p.url, _llm_json)
+    subject = f"{rec.name} ({rec.org})" if rec.org else rec.name
+    web_items = facts_to_items(facts, rec.entity_id, subject)
+    merged = merge(items, web_items)
+    added = len(merged) - len(items)
+    return merged, (f"{len(res.pages)} pages, {len(facts)} grounded facts → +{added} new items"
+                    f", {len(res.recorded_files)} PDFs recorded{stopped}")
+
+
+def discover(limit: int, faculty_list: str = FACULTY_LIST) -> list[str]:
+    html = fetch(faculty_list)
     seen, out = set(), []
     for m in re.findall(r"(?:https:)?//people\.njit\.edu/profile/[A-Za-z0-9_-]+", html):
         u = "https:" + m if m.startswith("//") else m
@@ -243,7 +296,10 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--url", action="append", help="profile URL (repeatable)")
-    src.add_argument("--limit", type=int, help="crawl first N from the CS faculty list")
+    src.add_argument("--limit", type=int, help="crawl first N from the department faculty list")
+    ap.add_argument("--department", default="cs",
+                    help="department key from the registry (cs, ds, informatics). "
+                         "Sets the faculty list + fallback org. Default: cs")
     ap.add_argument("--commit", action="store_true",
                     help="WRITE to the database (default: dry run, no writes)")
     ap.add_argument("--db", default=str(REPO / "gsa_gateway.db"), help="database path")
@@ -254,10 +310,26 @@ def main() -> None:
                     help="append a per-entity diff here on --commit (re-crawl audit trail)")
     ap.add_argument("--overview", action="store_true",
                     help="generate a grounded narrative overview per profile (local LLM)")
+    ap.add_argument("--web", action="store_true",
+                    help="also crawl each professor's own site and merge grounded facts")
     args = ap.parse_args()
 
-    urls = args.url if args.url else discover(args.limit)
-    print(f"{C_DIM}Mode: {'COMMIT (writes to DB)' if args.commit else 'DRY RUN (no writes)'}"
+    from v2.core.ingestion.departments import get as get_dept
+    dept = get_dept(args.department)
+    # registry supplies the fallback org unless the user forced one
+    if args.default_org_id is None:
+        args.default_org_id = dept.default_org_id
+
+    if args.url:
+        urls = args.url
+    else:
+        if dept.discovery != "static":
+            raise SystemExit(
+                f"{dept.name} faculty list ({dept.faculty_list}) is '{dept.discovery}'-"
+                f"rendered — static discovery won't find profiles. {dept.note}")
+        urls = discover(args.limit, dept.faculty_list)
+    print(f"{C_DIM}Dept: {dept.name} (org {dept.default_org_id})  |  "
+          f"Mode: {'COMMIT (writes to DB)' if args.commit else 'DRY RUN (no writes)'}"
           f"  |  {len(urls)} profile(s){C_OFF}")
 
     parsed, total_items = [], 0
@@ -271,6 +343,12 @@ def main() -> None:
             from v2.core.ingestion.overview import generate as gen_overview
             rec.overview = gen_overview(rec, _llm_call)
         items = decompose(rec)
+        if args.web:
+            try:
+                items, web_summary = _web_enrich(rec, items)
+                print(f"   {C_DIM}web: {web_summary}{C_OFF}")
+            except Exception as exc:  # noqa: BLE001 - web is best-effort; never abort the batch
+                print(f"   {C_OFF}! web enrich failed for {rec.name}: {exc} (NJIT items kept)")
         total_items += len(items)
         parsed.append((rec, items))
         show(rec, items)
