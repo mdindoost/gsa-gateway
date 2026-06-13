@@ -16,25 +16,31 @@ put on a timer later with no rework, but it is out of scope here.
 
 ## 1. Supported departments — one source of truth
 
-Add to `v2/core/ingestion/departments.py`:
+Add a `verified: bool` field to `Department` and a helper to
+`v2/core/ingestion/departments.py`:
 
 ```python
 def supported() -> list[Department]:
-    """Departments whose faculty list is statically discoverable (crawlable today)."""
-    return [d for d in DEPARTMENTS.values() if d.discovery == "static"]
+    """Departments the button refreshes — statically discoverable AND verified."""
+    return [d for d in DEPARTMENTS.values() if d.discovery == "static" and d.verified]
 ```
 
-Today that is **CS** and **Informatics**. **DS** is `discovery="js"` (JavaScript-
-rendered list — static discovery finds nothing), so it is excluded until a headless
-fetch is built. Adding/curating a department = one registry entry; the button,
-"all" run, and UI all follow automatically.
+The button refreshes only **static + verified** departments, so an aspirational
+registry entry can never write unverified data into the live KB. Adding/curating a
+department = one registry entry; the button, "all" run, and UI follow automatically.
 
-**Status to watch (per the user):**
-- **Informatics** is marked `static` but has **not been verified** — v1 only
-  exercised CS. It uses the same people.njit.edu profile template, so it *should*
-  crawl, but the first all-run is the proof. If it yields 0 profiles or bad data,
-  flip it to `js` (greyed) until fixed.
-- **DS** stays greyed (`js`) until JS discovery exists.
+**Status (verified against the repo):**
+- **CS** — `static`, **verified** (real crawls run; the only department with KB
+  data). → the button runs **CS only today.**
+- **Informatics** — `static` but **`verified=False`**: it is an aspirational
+  registry entry from commit `90c0042`; the org node exists but it has **never been
+  crawled (0 KB items)**. It uses the same people.njit.edu template so it *should*
+  work, but it stays out of the button (shown "coming soon") until a confirmed test
+  run flips `verified=True`. This avoids writing unverified data into the live KB.
+- **DS** — `js` (and unverified): greyed until a headless fetch exists.
+
+Enabling a department later = set `verified=True` after a successful manual test run
+(`ingest_faculty.py --department <key> --overview` dry-run, then `--commit`).
 
 ## 2. The all-departments run
 
@@ -49,15 +55,26 @@ Why script-side (not a loop in the runner):
   (vs one backup per department).
 - **One combined change-log** and one job log, read end-to-end.
 
-Behavior:
-- `--all` is mutually exclusive with `--department`/`--url`.
-- Each department prints a clear header into the log; a failure on one department is
-  logged and the run **continues** to the next (one bad department must not abort the
-  others). The script **exits non-zero if any department failed**, else zero — that
-  exit code is what drives the job's `failed`/`done` status in `JobManager` (no
-  separate signalling).
-- The per-entity diff still lands in `logs/ingest_changes.log`; the run ends with a
-  combined summary line per department (e.g. `CS: +3 ~5 -0`, `Informatics: …`).
+Behavior (blocker resolutions from senior review, folded in):
+- **Arg parser:** `--all` joins the existing required mutually-exclusive group
+  (`--url` / `--limit` / `--all` — exactly one). `--department` default becomes
+  `None`; `--all --department X` is rejected. Because `--limit` is in the same
+  group, **`--all` always crawls the full discovered list per department** (no 80
+  cap) — that resolves the "what does --limit mean for all" ambiguity.
+- **One backup, per-department commit:** `_auto_backup` is split out of `commit()`
+  (add a `backup=True` param). `--all` takes **one** verified backup up front, then
+  runs each department's discover → parse → `commit(..., default_org_id=dept.default_org_id, backup=False)`.
+  This gives a single backup **and** each department its own correct org fallback
+  (CS=5, Informatics=7) — no silent mis-filing.
+- **0 profiles = failure:** in `--all`, a supported department whose discovery
+  returns 0 profiles is recorded as **failed** (it is the unverified-Informatics /
+  JS signal), the run continues to the next department, and the process **exits
+  non-zero** so the job becomes `failed`. The exit code is the only signal
+  `JobManager` needs.
+- Each department prints a clear header into the log; per-entity diffs still land in
+  `logs/ingest_changes.log`; the run ends with a **combined final line** (e.g.
+  `Refresh complete — CS: +3 ~5 -0; Informatics: +1 ~0 -0`) phrased so
+  `JobManager._summarize` picks it up.
 
 ## 3. JobManager (bot/services/jobs.py)
 
@@ -79,9 +96,13 @@ Behavior:
   `start_refresh_all`. 409 if a job is already running (unchanged). Same CSRF/Host
   guards.
 - `GET /api/health` gains:
-  - `departments: {supported: ["cs","informatics"], unsupported: ["ds"]}`
-    (keys + display names), and
-  - `last_refresh_all: {duration_seconds, web, finished_at} | null` for the estimate.
+  - `departments: {supported: [...], unsupported: [...]}` (keys + display names),
+    **derived from the registry** (`departments.supported()` / `DEPARTMENTS`), not a
+    hardcoded set — and the `_api_refresh` validation set is derived the same way, so
+    there is exactly one source of truth (the existing literal `DEPARTMENTS` set in
+    `local_server.py` is removed).
+  - `last_refresh_all: {duration_seconds, web, finished_at} | null` for the estimate,
+    guarded so an empty jobs table / no prior `done` run returns `null` (never raises).
 
 ## 5. Dashboard Jobs tab (replaces the per-department buttons)
 

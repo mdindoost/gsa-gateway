@@ -93,6 +93,10 @@ fi
 echo ""
 echo "[ Discord Bot ]"
 stop_all "python.*bot\.main" "Discord bot"
+# Always stop any running dashboard server too (any port) — the bot relaunches it
+# as its child on startup, so this clears stale/manual instances and never leaves
+# an orphan holding the port.
+stop_all "v2/local_server\.py" "Dashboard server"
 
 info "Starting Discord bot..."
 nohup .venv/bin/python -m bot.main > /dev/null 2>&1 &
@@ -112,6 +116,21 @@ if kill -0 "$BOT_PID" 2>/dev/null; then
 else
     fail "Discord bot failed to start — last 10 log lines:"
     tail -10 gsa_gateway.log 2>/dev/null || true
+fi
+
+# Dashboard control plane: the bot launches local_server as its child when
+# DASHBOARD_SERVER_ENABLED=true — confirm it came up on :5555.
+if grep -qi '^DASHBOARD_SERVER_ENABLED=true' .env 2>/dev/null; then
+    info "Waiting for dashboard backend on :5555..."
+    for i in $(seq 1 15); do
+        curl -sf --max-time 3 http://127.0.0.1:5555/api/health > /dev/null 2>&1 && break
+        sleep 1
+    done
+    if curl -sf --max-time 3 http://127.0.0.1:5555/api/health > /dev/null 2>&1; then
+        ok "Dashboard backend up on :5555"
+    else
+        warn "Dashboard backend not up on :5555 yet — check: tail -f gsa_gateway.log"
+    fi
 fi
 
 # ── 3. Stop existing Telegram bot ────────────────────────────────────────────

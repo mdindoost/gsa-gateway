@@ -18,6 +18,7 @@ from bot.services.jobs import (
     JobBusyError,
     JobManager,
     JobNotFoundError,
+    build_refresh_all_command,
     build_refresh_command,
 )
 
@@ -209,3 +210,97 @@ def test_get_job_does_not_read_arbitrary_paths(tmp_path):
     # The id is an int; get_job only ever opens the stored log_path.
     row = mgr.get_job(job["job_id"])
     assert row["log_path"].endswith(f"{job['job_id']}.log")
+
+
+# ── refresh-all (the "Refresh NJIT KB" button) ────────────────────────────────
+
+def test_build_refresh_all_command_runs_every_department():
+    cmd = build_refresh_all_command(
+        python_bin="/venv/python", repo_root="/repo", db_path="/repo/g.db", web=True)
+    assert cmd[:2] == ["/venv/python", "/repo/scripts/ingest_faculty.py"]
+    assert "--all" in cmd
+    assert "--overview" in cmd and "--commit" in cmd
+    assert "--web" in cmd
+    assert "--department" not in cmd and "--limit" not in cmd
+
+
+def test_build_refresh_all_command_omits_web_when_disabled():
+    cmd = build_refresh_all_command(
+        python_bin="/venv/python", repo_root="/repo", db_path="/repo/g.db", web=False)
+    assert "--web" not in cmd
+    assert "--all" in cmd
+
+
+def test_start_refresh_all_runs_to_done(tmp_path):
+    mgr = _make_manager(tmp_path, build_cmd=_fast_ok_builder("all-ran"))
+    job = mgr.start_refresh_all(web=False)
+    assert _wait_until(lambda: mgr.get_job(job["job_id"])["status"] == "done")
+    row = mgr.get_job(job["job_id"])
+    assert row["type"] == "refresh_all"
+    assert "all-ran" in row["log_tail"]
+
+
+# ── duration ──────────────────────────────────────────────────────────────────
+
+def _insert_job(tmp_path, *, type, status, started, finished, args="{}"):
+    conn = sqlite3.connect(str(tmp_path / "test.db"))
+    conn.execute(
+        "INSERT INTO jobs(type,args,status,started_at,finished_at) VALUES(?,?,?,?,?)",
+        (type, args, status, started, finished))
+    conn.commit()
+    jid = conn.execute("SELECT MAX(id) FROM jobs").fetchone()[0]
+    conn.close()
+    return jid
+
+
+def test_duration_seconds_computed_for_finished_job(tmp_path):
+    mgr = _make_manager(tmp_path)
+    jid = _insert_job(tmp_path, type="refresh_all", status="done",
+                      started="2026-06-13 10:00:00", finished="2026-06-13 10:20:00")
+    assert mgr.get_job(jid)["duration_seconds"] == 1200
+
+
+def test_duration_seconds_none_while_running(tmp_path):
+    mgr = _make_manager(tmp_path)
+    jid = _insert_job(tmp_path, type="refresh_all", status="running",
+                      started="2026-06-13 10:00:00", finished=None)
+    assert mgr.get_job(jid)["duration_seconds"] is None
+
+
+# ── estimate ──────────────────────────────────────────────────────────────────
+
+def test_estimate_prefers_matching_web_setting(tmp_path):
+    mgr = _make_manager(tmp_path)
+    _insert_job(tmp_path, type="refresh_all", status="done",
+                started="2026-06-13 10:00:00", finished="2026-06-13 10:10:00",
+                args='{"scope":"all","web":false}')
+    _insert_job(tmp_path, type="refresh_all", status="done",
+                started="2026-06-13 11:00:00", finished="2026-06-13 12:00:00",
+                args='{"scope":"all","web":true}')
+    assert mgr.estimate_refresh_all(web=False)["duration_seconds"] == 600
+    assert mgr.estimate_refresh_all(web=True)["duration_seconds"] == 3600
+
+
+def test_estimate_falls_back_when_no_web_match(tmp_path):
+    mgr = _make_manager(tmp_path)
+    _insert_job(tmp_path, type="refresh_all", status="done",
+                started="2026-06-13 11:00:00", finished="2026-06-13 12:00:00",
+                args='{"scope":"all","web":true}')
+    est = mgr.estimate_refresh_all(web=False)  # no web=false run → fall back
+    assert est["duration_seconds"] == 3600
+
+
+def test_estimate_none_when_no_prior_run(tmp_path):
+    mgr = _make_manager(tmp_path)
+    assert mgr.estimate_refresh_all(web=False) is None
+
+
+def test_estimate_excludes_non_done_runs(tmp_path):
+    mgr = _make_manager(tmp_path)
+    _insert_job(tmp_path, type="refresh_all", status="failed",
+                started="2026-06-13 10:00:00", finished="2026-06-13 10:05:00",
+                args='{"scope":"all","web":false}')
+    _insert_job(tmp_path, type="refresh_all", status="interrupted",
+                started="2026-06-13 11:00:00", finished="2026-06-13 11:01:00",
+                args='{"scope":"all","web":false}')
+    assert mgr.estimate_refresh_all(web=False) is None

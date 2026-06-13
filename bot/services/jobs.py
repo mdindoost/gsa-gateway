@@ -65,6 +65,35 @@ def build_refresh_command(*, python_bin, repo_root, db_path, department, limit,
     return cmd
 
 
+def build_refresh_all_command(*, python_bin, repo_root, db_path, web,
+                              changes_log=None) -> list[str]:
+    """Build the all-departments refresh (the 'Refresh NJIT KB' button).
+
+    Runs every statically-discoverable department in one process (one backup).
+    No --department/--limit — it always crawls the full list per department.
+    """
+    script = str(Path(repo_root) / "scripts" / "ingest_faculty.py")
+    cmd = [python_bin, script, "--all", "--overview", "--commit", "--db", str(db_path)]
+    if changes_log:
+        cmd += ["--changes-log", str(changes_log)]
+    if web:
+        cmd.append("--web")
+    return cmd
+
+
+def _duration_seconds(started_at, finished_at):
+    """Wall-clock seconds between two UTC 'YYYY-MM-DD HH:MM:SS' strings, or None."""
+    if not started_at or not finished_at:
+        return None
+    fmt = "%Y-%m-%d %H:%M:%S"
+    try:
+        start = datetime.strptime(started_at, fmt)
+        finish = datetime.strptime(finished_at, fmt)
+    except (TypeError, ValueError):
+        return None
+    return int((finish - start).total_seconds())
+
+
 class JobManager:
     def __init__(self, db_path, repo_root, python_bin, jobs_log_dir=None,
                  build_cmd=None, changes_log=None):
@@ -81,6 +110,11 @@ class JobManager:
 
     # ── command ──────────────────────────────────────────────────────────────
     def _default_build_cmd(self, job_type, args) -> list[str]:
+        if job_type == "refresh_all":
+            return build_refresh_all_command(
+                python_bin=self.python_bin, repo_root=self.repo_root,
+                db_path=self.db_path, web=args.get("web", False),
+                changes_log=self.changes_log)
         return build_refresh_command(
             python_bin=self.python_bin, repo_root=self.repo_root,
             db_path=self.db_path, department=args.get("department", "cs"),
@@ -140,6 +174,40 @@ class JobManager:
     def start_refresh(self, department="cs", limit=80, web=True) -> dict:
         return self._start("refresh",
                            {"department": department, "limit": limit, "web": web})
+
+    def start_refresh_all(self, web=False) -> dict:
+        return self._start("refresh_all", {"scope": "all", "web": web})
+
+    def estimate_refresh_all(self, web=False) -> dict | None:
+        """Duration estimate for an all-departments run, from the last completed one.
+
+        Prefers the most recent `done` refresh_all whose `web` matches; else the
+        most recent `done` refresh_all regardless; None if there is no prior run.
+        """
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT args,started_at,finished_at FROM jobs "
+                "WHERE type='refresh_all' AND status='done' ORDER BY id DESC").fetchall()
+        finally:
+            conn.close()
+        match = fallback = None
+        for r in rows:
+            dur = _duration_seconds(r["started_at"], r["finished_at"])
+            if dur is None:
+                continue
+            try:
+                row_web = bool(json.loads(r["args"] or "{}").get("web"))
+            except (TypeError, ValueError):
+                row_web = False
+            cand = {"duration_seconds": dur, "web": row_web,
+                    "finished_at": r["finished_at"]}
+            if fallback is None:
+                fallback = cand
+            if row_web == bool(web):
+                match = cand
+                break
+        return match or fallback
 
     def _start(self, job_type, args) -> dict:
         with self._lock:
@@ -232,7 +300,13 @@ class JobManager:
                 "FROM jobs ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
         finally:
             conn.close()
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["duration_seconds"] = _duration_seconds(d.get("started_at"),
+                                                      d.get("finished_at"))
+            out.append(d)
+        return out
 
     def get_job(self, job_id) -> dict | None:
         conn = self._conn()
@@ -245,6 +319,8 @@ class JobManager:
             return None
         d = dict(row)
         d["log_tail"] = self._tail(d.get("log_path"))
+        d["duration_seconds"] = _duration_seconds(d.get("started_at"),
+                                                  d.get("finished_at"))
         return d
 
     # ── logs ─────────────────────────────────────────────────────────────────

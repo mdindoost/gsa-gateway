@@ -37,6 +37,8 @@ PORT = int(os.environ.get("GSA_SERVER_PORT", "5555"))  # override for testing/al
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 
 from bot.services.jobs import JobBusyError, JobManager, JobNotFoundError  # noqa: E402
+from v2.core.ingestion.departments import DEPARTMENTS as DEPT_REGISTRY  # noqa: E402
+from v2.core.ingestion.departments import supported as supported_depts  # noqa: E402
 
 # Control-plane job runner (faculty refresh, …). Same DB the bot/dashboard use.
 JOBS = JobManager(db_path=DB_PATH, repo_root=REPO_ROOT, python_bin=sys.executable)
@@ -45,7 +47,6 @@ JOBS = JobManager(db_path=DB_PATH, repo_root=REPO_ROOT, python_bin=sys.executabl
 ALLOWED_HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}", "localhost", "127.0.0.1"}
 # Origins a browser may legitimately use to POST control calls (file:// == "null").
 ALLOWED_ORIGINS = {f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}", "null"}
-DEPARTMENTS = {"cs", "ds", "informatics"}  # ingest registry keys
 
 # Static dashboard files served from the same origin (no CORS, one tunnel).
 STATIC = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js",
@@ -236,9 +237,21 @@ class GatewayHandler(BaseHTTPRequestHandler):
             row = None  # jobs table not created yet
         finally:
             conn.close()
+        try:
+            last_refresh_all = JOBS.estimate_refresh_all(web=False)
+        except sqlite3.OperationalError:
+            last_refresh_all = None
+        sup = supported_depts()
+        sup_keys = {d.key for d in sup}
+        departments = {
+            "supported": [{"key": d.key, "name": d.name} for d in sup],
+            "unsupported": [{"key": d.key, "name": d.name}
+                            for d in DEPT_REGISTRY.values() if d.key not in sup_keys],
+        }
         self._json({
             "status": "ok", "db": str(DB_PATH), "db_exists": DB_PATH.exists(),
             "ollama": _ollama_up(), "running_job": dict(row) if row else None,
+            "departments": departments, "last_refresh_all": last_refresh_all,
             "timestamp": utc_now(),
         })
 
@@ -254,8 +267,16 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
     def _api_refresh(self):
         body = self._body()
+        # scope=="all" (the "Refresh NJIT KB" button) wins over any department.
+        if body.get("scope") == "all":
+            try:
+                res = JOBS.start_refresh_all(web=bool(body.get("web", False)))
+            except JobBusyError:
+                return self._error("a job is already running", 409)
+            return self._json(res, 201)
+        # single-department path (retained for the future)
         dept = str(body.get("department", "cs"))
-        if dept not in DEPARTMENTS:
+        if dept not in DEPT_REGISTRY:
             return self._error(f"unknown department: {dept}", 400)
         try:
             limit = int(body.get("limit", 80))

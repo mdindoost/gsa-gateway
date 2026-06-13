@@ -182,6 +182,47 @@ def test_second_refresh_while_running_is_409(server, monkeypatch):
         _request(port, "POST", f"/api/jobs/{job_id}/cancel", headers=CSRF)
 
 
+def test_refresh_all_starts_a_refresh_all_job(server):
+    _, _, port = server
+    status, body = _request(port, "POST", "/api/jobs/refresh",
+                            body={"scope": "all", "web": False}, headers=CSRF)
+    assert status == 201
+    job_id = body["job_id"]
+    done = _wait_status(port, job_id, "done")
+    assert done is not None
+    assert done["type"] == "refresh_all"
+
+
+def test_health_reports_departments_from_registry(server):
+    _, _, port = server
+    status, body = _request(port, "GET", "/api/health")
+    assert status == 200
+    sup = {d["key"] for d in body["departments"]["supported"]}
+    unsup = {d["key"] for d in body["departments"]["unsupported"]}
+    assert "cs" in sup
+    assert "informatics" not in sup        # static but unverified → not refreshed yet
+    assert "ds" in unsup and "informatics" in unsup
+
+
+def test_health_last_refresh_all_is_null_initially(server):
+    _, _, port = server
+    _, body = _request(port, "GET", "/api/health")
+    assert body["last_refresh_all"] is None
+
+
+def test_health_last_refresh_all_after_a_completed_run(server, tmp_path):
+    srv_mod, jobs, port = server
+    conn = sqlite3.connect(str(tmp_path / "test.db"))
+    conn.execute(
+        "INSERT INTO jobs(type,args,status,started_at,finished_at) "
+        "VALUES('refresh_all','{\"scope\":\"all\",\"web\":false}','done',"
+        "'2026-06-13 10:00:00','2026-06-13 10:15:00')")
+    conn.commit()
+    conn.close()
+    _, body = _request(port, "GET", "/api/health")
+    assert body["last_refresh_all"]["duration_seconds"] == 900
+
+
 def test_cancel_running_job(server):
     srv_mod, jobs, port = server
     jobs._build_cmd = _slow_builder

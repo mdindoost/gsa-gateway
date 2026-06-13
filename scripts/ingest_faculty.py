@@ -116,7 +116,7 @@ def _web_enrich(rec, items):
                     f", {len(res.recorded_files)} PDFs recorded{stopped}")
 
 
-def discover(limit: int, faculty_list: str = FACULTY_LIST) -> list[str]:
+def discover(limit: int | None, faculty_list: str = FACULTY_LIST) -> list[str]:
     html = fetch(faculty_list)
     seen, out = set(), []
     for m in re.findall(r"(?:https:)?//people\.njit\.edu/profile/[A-Za-z0-9_-]+", html):
@@ -124,7 +124,7 @@ def discover(limit: int, faculty_list: str = FACULTY_LIST) -> list[str]:
         if u not in seen:
             seen.add(u)
             out.append(u)
-    return out[:limit]
+    return out[:limit] if limit else out
 
 
 def show(rec, items) -> None:
@@ -171,12 +171,15 @@ def _auto_backup(db_path: str, keep: int = 10) -> None:
 
 
 def commit(items_by_entity, db_path, org_id_override, changes_log,
-           default_org_id=None) -> None:
+           default_org_id=None, backup=True) -> None:
     from v2.core.database.schema import get_connection
     from v2.core.ingestion.reconcile import reconcile_entity
     from v2.scripts.embed_all import _store_vector, embed_document, normalize
 
-    _auto_backup(db_path)   # un-skippable — no write without a verified backup
+    if backup:
+        _auto_backup(db_path)   # un-skippable — no write without a verified backup
+    # (When backup=False the caller already took ONE backup for a multi-commit
+    #  batch — e.g. the --all run — so we don't re-snapshot per department.)
 
     def _embed_one(text):
         vec = embed_document(text) or embed_document(text)  # retry once (Ollama flaps)
@@ -291,13 +294,88 @@ def _resolve_org_id(conn, org_label: str):
     return None
 
 
+def _parse_profiles(urls, args):
+    """Crawl + parse a list of profile URLs into [(rec, items), …]. Shared by the
+    single-department path and the --all run. One bad profile never aborts the batch."""
+    parsed, total_items = [], 0
+    for i, url in enumerate(urls, 1):
+        try:
+            rec = parse_entity(url, fetch(url))
+        except Exception as exc:  # noqa: BLE001 - one bad profile shouldn't abort the run
+            print(f"\n  ! {url}: fetch/parse failed: {exc}")
+            continue
+        if args.overview:
+            from v2.core.ingestion.overview import generate as gen_overview
+            rec.overview = gen_overview(rec, _llm_call)
+        items = decompose(rec)
+        if args.web:
+            try:
+                items, web_summary = _web_enrich(rec, items)
+                print(f"   {C_DIM}web: {web_summary}{C_OFF}")
+            except Exception as exc:  # noqa: BLE001 - web is best-effort; never abort
+                print(f"   {C_OFF}! web enrich failed for {rec.name}: {exc} (NJIT items kept)")
+        total_items += len(items)
+        parsed.append((rec, items))
+        show(rec, items)
+        if len(urls) > 1:
+            time.sleep(1)  # be polite to the server
+    return parsed, total_items
+
+
+def _run_all(args) -> int:
+    """Refresh every SUPPORTED department in one process (the 'Refresh NJIT KB'
+    button). One verified backup covers the whole batch; each department commits
+    with its OWN org fallback. A supported department that discovers 0 profiles is
+    a failure. Returns an exit code: non-zero if any department failed (that exit
+    code is what marks the job failed/done)."""
+    from v2.core.ingestion.departments import supported
+    depts = supported()
+    print(f"{C_HEAD}Refresh NJIT KB — {len(depts)} supported department(s): "
+          f"{', '.join(d.name for d in depts)}{C_OFF}")
+    if args.commit:
+        _auto_backup(args.db)   # ONE backup for the whole batch
+    any_failed = False
+    summary = []
+    for dept in depts:
+        print(f"\n{C_HEAD}══════ {dept.name} (org {dept.default_org_id}) ══════{C_OFF}")
+        try:
+            urls = discover(None, dept.faculty_list)   # full list — no cap
+        except Exception as exc:  # noqa: BLE001
+            print(f"  {C_OFF}! {dept.name}: discovery failed: {exc}")
+            any_failed = True
+            summary.append(f"{dept.name}: FAILED (discovery)")
+            continue
+        if not urls:
+            print(f"  {C_OFF}! {dept.name}: 0 profiles discovered — FAILED "
+                  f"('{dept.discovery}' discovery found nothing)")
+            any_failed = True
+            summary.append(f"{dept.name}: FAILED (0 profiles)")
+            continue
+        try:
+            parsed, _total = _parse_profiles(urls, args)
+            if args.commit:
+                commit(parsed, args.db, args.org_id, args.changes_log,
+                       dept.default_org_id, backup=False)
+            summary.append(f"{dept.name}: {len(parsed)} profiles")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  {C_OFF}! {dept.name}: run failed: {exc}")
+            any_failed = True
+            summary.append(f"{dept.name}: FAILED")
+    print(f"\nRefresh NJIT KB complete ({'with errors' if any_failed else 'ok'}) — "
+          f"{'; '.join(summary)}")
+    return 1 if any_failed else 0
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--url", action="append", help="profile URL (repeatable)")
     src.add_argument("--limit", type=int, help="crawl first N from the department faculty list")
-    ap.add_argument("--department", default="cs",
+    src.add_argument("--all", action="store_true",
+                     help="refresh ALL supported departments (CS, Informatics, …) — "
+                          "full faculty list each, one backup for the whole batch")
+    ap.add_argument("--department", default=None,
                     help="department key from the registry (cs, ds, informatics). "
                          "Sets the faculty list + fallback org. Default: cs")
     ap.add_argument("--commit", action="store_true",
@@ -314,8 +392,14 @@ def main() -> None:
                     help="also crawl each professor's own site and merge grounded facts")
     args = ap.parse_args()
 
+    if args.all:
+        if args.department is not None:
+            ap.error("--all refreshes every supported department; "
+                     "do not combine with --department")
+        raise SystemExit(_run_all(args))
+
     from v2.core.ingestion.departments import get as get_dept
-    dept = get_dept(args.department)
+    dept = get_dept(args.department or "cs")
     # registry supplies the fallback org unless the user forced one
     if args.default_org_id is None:
         args.default_org_id = dept.default_org_id
@@ -332,28 +416,7 @@ def main() -> None:
           f"Mode: {'COMMIT (writes to DB)' if args.commit else 'DRY RUN (no writes)'}"
           f"  |  {len(urls)} profile(s){C_OFF}")
 
-    parsed, total_items = [], 0
-    for i, url in enumerate(urls, 1):
-        try:
-            rec = parse_entity(url, fetch(url))
-        except Exception as exc:  # noqa: BLE001 - one bad profile shouldn't abort the run
-            print(f"\n  ! {url}: fetch/parse failed: {exc}")
-            continue
-        if args.overview:
-            from v2.core.ingestion.overview import generate as gen_overview
-            rec.overview = gen_overview(rec, _llm_call)
-        items = decompose(rec)
-        if args.web:
-            try:
-                items, web_summary = _web_enrich(rec, items)
-                print(f"   {C_DIM}web: {web_summary}{C_OFF}")
-            except Exception as exc:  # noqa: BLE001 - web is best-effort; never abort the batch
-                print(f"   {C_OFF}! web enrich failed for {rec.name}: {exc} (NJIT items kept)")
-        total_items += len(items)
-        parsed.append((rec, items))
-        show(rec, items)
-        if len(urls) > 1:
-            time.sleep(1)  # be polite to the server
+    parsed, total_items = _parse_profiles(urls, args)
 
     print(f"\n{C_DIM}{'─' * 60}{C_OFF}")
     print(f"Parsed {len(parsed)} profile(s) → {total_items} items total.")

@@ -375,3 +375,6 @@ body {
 .job-row:hover { background: #f1f2f4; }
 .job-when { color: var(--muted); font-size: 12px; }
 .job-sum { color: var(--muted); }
+.jobs-scope { padding: 2px 18px 4px; font-size: 13px; }
+.jobs-eta { padding: 0 18px 12px; font-size: 13px; color: var(--muted); }
+.jobs-scope .muted, .muted { color: var(--muted); }

@@ -315,19 +315,27 @@ function renderJobs() {
     <div class="panel">
       <div id="jobs-health" class="jobs-health">Checking server…</div>
       <div class="jobs-actions">
-        <button class="btn btn-primary" id="job-refresh-cs">↻ Refresh CS faculty</button>
-        <button class="btn" id="job-refresh-ds" disabled
-          title="JS-rendered profiles — not yet supported">Refresh DS</button>
+        <button class="btn btn-primary" id="job-refresh-all">↻ Refresh NJIT KB</button>
         <label class="jobs-web"><input type="checkbox" id="job-web" />
           include personal websites (slower)</label>
       </div>
+      <div id="jobs-scope" class="jobs-scope"></div>
+      <div id="jobs-eta" class="jobs-eta"></div>
       <div id="job-active"></div>
       <h3 style="margin-top:18px">Recent jobs</h3>
       <div id="jobs-recent">Loading…</div>
     </div>`;
-  document.getElementById("job-refresh-cs").addEventListener("click", () => startJob("cs"));
+  document.getElementById("job-refresh-all").addEventListener("click", startRefreshAll);
+  document.getElementById("job-web").addEventListener("change", refreshJobsHealth);
   refreshJobsHealth();
   refreshJobsList();
+}
+
+// Render minutes from seconds, rounded to a friendly value.
+function etaText(seconds) {
+  const m = Math.round(seconds / 60);
+  if (m < 1) return "under a minute";
+  return `~${m} min`;
 }
 
 function refreshJobsHealth() {
@@ -338,15 +346,45 @@ function refreshJobsHealth() {
     h.innerHTML = "Ollama: " + (ok
       ? '<span style="color:#7ee2a8">● up</span>'
       : '<span style="color:#ff8a8a">● down — overviews & embeddings will fail</span>');
-    const btn = document.getElementById("job-refresh-cs");
-    if (btn) btn.disabled = !ok || !!body.running_job;
+
+    // What "Refresh NJIT KB" will run + what's coming.
+    const scope = document.getElementById("jobs-scope");
+    if (scope && body.departments) {
+      const sup = (body.departments.supported || []).map((d) => esc(d.name));
+      const soon = (body.departments.unsupported || []).map((d) => esc(d.name));
+      scope.innerHTML = (sup.length
+        ? `Will refresh: <strong>${sup.join(", ")}</strong>`
+        : '<span style="color:#ff8a8a">No verified departments configured</span>')
+        + (soon.length ? ` &nbsp;·&nbsp; <span class="muted">coming soon: ${soon.join(", ")}</span>` : "");
+    }
+
+    // Expected duration from the last completed all-run.
+    const eta = document.getElementById("jobs-eta");
+    if (eta) {
+      const web = document.getElementById("job-web").checked;
+      const last = body.last_refresh_all;
+      if (!last) eta.textContent = "First run — no time estimate yet.";
+      else {
+        const note = last.web === web ? "" : last.web
+          ? " (last run included websites — this run is faster)"
+          : " (last run skipped websites — this run is slower)";
+        eta.innerHTML = `Expected <strong>${etaText(last.duration_seconds)}</strong>`
+          + ` — based on the last run${note}.`;
+      }
+    }
+
+    const btn = document.getElementById("job-refresh-all");
+    if (btn) {
+      const noDepts = !body.departments || !(body.departments.supported || []).length;
+      btn.disabled = !ok || !!body.running_job || noDepts;
+    }
     if (body.running_job) pollJob(body.running_job.id);
   }).catch(() => {});
 }
 
-function startJob(dept) {
+function startRefreshAll() {
   const web = document.getElementById("job-web").checked;
-  jobsApi("/api/jobs/refresh", { method: "POST", body: { department: dept, limit: 80, web } })
+  jobsApi("/api/jobs/refresh", { method: "POST", body: { scope: "all", web } })
     .then(({ status, body }) => {
       if (status === 409) { toast("A job is already running", false); return; }
       if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
