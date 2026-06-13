@@ -358,3 +358,20 @@ body {
   .health-grid { grid-template-columns: repeat(2, 1fr); }
 }
 .chart-card canvas { max-width: 100%; height: auto; }
+
+/* ───────── Jobs (control plane) ───────── */
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.jobs-health { padding: 12px 18px; font-size: 13px; border-bottom: 1px solid var(--line); }
+.jobs-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 18px; }
+.jobs-web { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.job-card { margin: 0 18px 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.job-head { padding: 10px 14px; font-size: 13px; font-weight: 600; background: #fafbfc; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+.job-badge { font-size: 12px; font-weight: 700; }
+.job-log { margin: 0; padding: 12px 14px; max-height: 320px; overflow-y: auto; font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; background: #0f1115; color: #d6dae0; }
+.job-summary { padding: 10px 14px; font-size: 13px; border-top: 1px solid var(--line); background: #f6fff9; }
+.jobs-actions + #job-active { margin-top: 4px; }
+#jobs-recent { padding: 4px 8px 12px; }
+.job-row { display: grid; grid-template-columns: 1fr auto auto 2fr; gap: 12px; align-items: center; padding: 9px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.job-row:hover { background: #f1f2f4; }
+.job-when { color: var(--muted); font-size: 12px; }
+.job-sum { color: var(--muted); }

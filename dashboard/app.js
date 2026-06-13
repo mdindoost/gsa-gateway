@@ -260,7 +260,7 @@ function onDbLoaded(name) {
 
 // ───────── tab nav ─────────
 const TITLES = { overview: "Overview", posts: "Posts", kb: "Knowledge Base",
-  org: "Organization", analytics: "Analytics", settings: "Settings" };
+  org: "Organization", analytics: "Analytics", settings: "Settings", jobs: "Jobs" };
 
 document.querySelectorAll(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => switchTab(btn.dataset.tab));
@@ -273,11 +273,138 @@ function switchTab(tab) {
   document.querySelectorAll(".tab").forEach((t) => (t.hidden = true));
   document.getElementById("tab-" + tab).hidden = false;
   document.getElementById("page-title").textContent = TITLES[tab];
+  if (tab !== "jobs" && JOBS_POLL) { clearInterval(JOBS_POLL); JOBS_POLL = null; }
   if (tab === "overview") renderOverview();
   if (tab === "posts") renderPosts();
   if (tab === "kb") renderKB();
   if (tab === "analytics") renderAnalytics();
   if (tab === "settings") renderSettings();
+  if (tab === "jobs") renderJobs();
+}
+
+// ───────── Tab: Jobs (control plane) ─────────
+// Talks to the localhost backend's /api/* endpoints. State-changing calls send
+// the X-GSA-Dashboard CSRF header. Only available in server mode (a loaded file
+// has no backend to run jobs).
+let JOBS_POLL = null;
+const JOB_DONE = ["done", "failed", "cancelled", "interrupted"];
+
+function jobsApi(path, opts = {}) {
+  const post = opts.method === "POST";
+  return fetch(SERVER_URL + path, {
+    method: opts.method || "GET",
+    headers: post ? { "Content-Type": "application/json", "X-GSA-Dashboard": "1" } : {},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  }).then((r) => r.json().catch(() => ({})).then((j) => ({ status: r.status, body: j })));
+}
+
+function jobBadge(status) {
+  const c = { running: "#f0c674", done: "#7ee2a8", failed: "#ff8a8a",
+    cancelled: "#bbb", interrupted: "#d08a4a" };
+  return `<span class="job-badge" style="color:${c[status] || "#bbb"}">${esc(status)}</span>`;
+}
+
+function renderJobs() {
+  const el = document.getElementById("tab-jobs");
+  if (!isServerMode()) {
+    el.innerHTML = emptyMsg("Jobs run on the live server. Connect via the server URL "
+      + "(not a loaded file) to trigger a faculty refresh.");
+    return;
+  }
+  el.innerHTML = `
+    <div class="panel">
+      <div id="jobs-health" class="jobs-health">Checking server…</div>
+      <div class="jobs-actions">
+        <button class="btn btn-primary" id="job-refresh-cs">↻ Refresh CS faculty</button>
+        <button class="btn" id="job-refresh-ds" disabled
+          title="JS-rendered profiles — not yet supported">Refresh DS</button>
+        <label class="jobs-web"><input type="checkbox" id="job-web" />
+          include personal websites (slower)</label>
+      </div>
+      <div id="job-active"></div>
+      <h3 style="margin-top:18px">Recent jobs</h3>
+      <div id="jobs-recent">Loading…</div>
+    </div>`;
+  document.getElementById("job-refresh-cs").addEventListener("click", () => startJob("cs"));
+  refreshJobsHealth();
+  refreshJobsList();
+}
+
+function refreshJobsHealth() {
+  jobsApi("/api/health").then(({ body }) => {
+    const h = document.getElementById("jobs-health");
+    if (!h) return;
+    const ok = !!body.ollama;
+    h.innerHTML = "Ollama: " + (ok
+      ? '<span style="color:#7ee2a8">● up</span>'
+      : '<span style="color:#ff8a8a">● down — overviews & embeddings will fail</span>');
+    const btn = document.getElementById("job-refresh-cs");
+    if (btn) btn.disabled = !ok || !!body.running_job;
+    if (body.running_job) pollJob(body.running_job.id);
+  }).catch(() => {});
+}
+
+function startJob(dept) {
+  const web = document.getElementById("job-web").checked;
+  jobsApi("/api/jobs/refresh", { method: "POST", body: { department: dept, limit: 80, web } })
+    .then(({ status, body }) => {
+      if (status === 409) { toast("A job is already running", false); return; }
+      if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
+      toast("Refresh started ✅");
+      pollJob(body.job_id);
+      refreshJobsList();
+    })
+    .catch((e) => toast("Server error: " + e.message, false));
+}
+
+function pollJob(id) {
+  if (JOBS_POLL) clearInterval(JOBS_POLL);
+  const tick = () => jobsApi("/api/jobs/" + id).then(({ body }) => {
+    renderActiveJob(body);
+    if (body && JOB_DONE.includes(body.status)) {
+      clearInterval(JOBS_POLL); JOBS_POLL = null;
+      refreshJobsHealth(); refreshJobsList();
+    }
+  }).catch(() => {});
+  tick();
+  JOBS_POLL = setInterval(tick, 3000);
+}
+
+function renderActiveJob(job) {
+  const el = document.getElementById("job-active");
+  if (!el || !job || !job.id) return;
+  const cancel = job.status === "running"
+    ? '<button class="btn" id="job-cancel">Cancel</button>' : "";
+  el.innerHTML = `
+    <div class="job-card">
+      <div class="job-head">Job #${job.id} · ${esc(job.type)} ${jobBadge(job.status)} ${cancel}</div>
+      <pre class="job-log">${esc(job.log_tail || "")}</pre>
+      ${job.summary ? `<div class="job-summary">${esc(job.summary)}</div>` : ""}
+    </div>`;
+  const cb = document.getElementById("job-cancel");
+  if (cb) cb.addEventListener("click", () =>
+    jobsApi("/api/jobs/" + job.id + "/cancel", { method: "POST" })
+      .then(() => toast("Cancelling…")).catch(() => {}));
+  const log = el.querySelector(".job-log");
+  if (log) log.scrollTop = log.scrollHeight;
+}
+
+function refreshJobsList() {
+  jobsApi("/api/jobs").then(({ body }) => {
+    const el = document.getElementById("jobs-recent");
+    if (!el) return;
+    const jobs = (body && body.jobs) || [];
+    if (!jobs.length) { el.innerHTML = emptyMsg("No jobs yet."); return; }
+    el.innerHTML = jobs.map((j) => `
+      <div class="job-row" data-id="${j.id}">
+        <span class="job-id">#${j.id} ${esc(j.type)}</span>
+        ${jobBadge(j.status)}
+        <span class="job-when">${relTime(j.started_at)}</span>
+        <span class="job-sum">${esc(preview(j.summary || "", 60))}</span>
+      </div>`).join("");
+    el.querySelectorAll(".job-row").forEach((r) =>
+      r.addEventListener("click", () => pollJob(Number(r.dataset.id))));
+  }).catch(() => {});
 }
 
 // ───────── Tab 1: Overview ─────────
