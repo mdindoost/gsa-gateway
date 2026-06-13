@@ -128,6 +128,24 @@ def _list_lines(pane) -> list[str]:
     return out
 
 
+def _resolve_org(titles: list[str], html: str, default: str) -> str:
+    """Resolve the display department for a profile.
+
+    The department named in the **title/position lines** is authoritative (e.g.
+    "Professor, Data Science"), so check those first. Only fall back to the page
+    body if the title names no known department — otherwise a Data Science
+    professor whose bio mentions "Computer Science" (common: CS background / joint
+    history) would be mis-filed under CS. Within each pass, the specific department
+    is preferred over the umbrella college by list order (_DEPTS)."""
+    title_hay = " ".join(titles).lower()
+    full_hay = title_hay + " " + (html or "").lower()
+    for hay in (title_hay, full_hay):
+        for kw in _DEPTS:
+            if kw.lower() in hay:
+                return kw
+    return default
+
+
 def parse_entity(url: str, html: str, org_default: str = "") -> EntityRecord:
     soup = BeautifulSoup(html, "html.parser")
 
@@ -143,12 +161,7 @@ def parse_entity(url: str, html: str, org_default: str = "") -> EntityRecord:
             if t and t not in titles:
                 titles.append(t)
 
-    org = org_default
-    hay = (" ".join(titles) + " " + html).lower()
-    for kw in _DEPTS:
-        if kw.lower() in hay:
-            org = kw
-            break
+    org = _resolve_org(titles, html, org_default)
 
     contact: dict = {}
     em = re.search(r"[A-Za-z0-9._%+-]+@njit\.edu", html)
