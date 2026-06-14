@@ -266,6 +266,29 @@ CREATE TABLE IF NOT EXISTS edges (
 ) STRICT;
 """
 
+# Phase 1b — the explore() engine: per-node pending next-steps (the frontier) and the
+# many-to-many link from a raw page to the node(s) it informs.
+FRONTIER = """
+CREATE TABLE IF NOT EXISTS frontier (
+    id               INTEGER PRIMARY KEY,
+    from_node_id     INTEGER REFERENCES nodes(id),   -- NULL for a root entry point
+    url              TEXT NOT NULL,
+    aspect           TEXT NOT NULL DEFAULT 'people',
+    status           TEXT NOT NULL DEFAULT 'pending',
+    depth_discovered INTEGER NOT NULL DEFAULT 0,
+    discovered_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (status IN ('pending','fetched','error'))
+) STRICT;
+"""
+
+PAGE_NODES = """
+CREATE TABLE IF NOT EXISTS page_nodes (
+    raw_url   TEXT NOT NULL REFERENCES raw_pages(url),
+    node_id   INTEGER NOT NULL REFERENCES nodes(id),
+    PRIMARY KEY (raw_url, node_id)
+) STRICT;
+"""
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Indexes
 # ─────────────────────────────────────────────────────────────────────────────
@@ -297,6 +320,9 @@ INDEXES = [
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_edges_triple ON edges(src_id, type, dst_id);",
     "CREATE INDEX        IF NOT EXISTS idx_edges_src   ON edges(src_id, is_active);",
     "CREATE INDEX        IF NOT EXISTS idx_edges_dst   ON edges(dst_id, type, is_active);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_frontier_uniq ON frontier(from_node_id, url);",
+    "CREATE INDEX        IF NOT EXISTS idx_frontier_status ON frontier(status);",
+    "CREATE INDEX        IF NOT EXISTS idx_page_nodes_node ON page_nodes(node_id);",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -360,6 +386,8 @@ _TABLE_DDL = [
     RAW_PAGES,
     NODES,
     EDGES,
+    FRONTIER,
+    PAGE_NODES,
 ]
 
 _TRIGGER_DDL = [
