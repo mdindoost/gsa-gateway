@@ -11,6 +11,8 @@ import pytest
 
 from v2.core.database.schema import create_all
 from v2.core.retrieval.skills import (
+    area_counts,
+    areas_in_org,
     count_people_by_research_area,
     expand_area,
     faculty_in_department,
@@ -160,3 +162,39 @@ def test_unmapped_tight_term_unchanged_by_expansion(conn):
 def test_count_matches_list_for_expanded_area(conn):
     n = count_people_by_research_area(conn, "llm", org_id=4)
     assert n == len(people_by_research_area(conn, "llm", org_id=4))
+
+
+# ── areas_in_org / area_counts facet skills ───────────────────────────────────
+
+def _add_areas(conn, org, eid, name, areas):
+    """Insert a research_areas item carrying metadata.areas (the P2.5 facet)."""
+    import json as _json
+    conn.execute(
+        "INSERT INTO knowledge_items(org_id,type,title,content,metadata,is_active) "
+        "VALUES(?,?,?,?,?,1)",
+        (org, "research_areas", f"{name} — Research areas",
+         f"Research areas of {name}: " + "; ".join(areas),
+         _json.dumps({"entity_id": eid, "areas": areas})))
+    # a matching profile so _display_name resolves the person's name
+    conn.execute(
+        "INSERT INTO knowledge_items(org_id,type,title,content,metadata,is_active) "
+        "VALUES(?,?,?,?,?,1)",
+        (org, "profile", name, f"Profile: {name}", _json.dumps({"entity_id": eid})))
+    conn.commit()
+
+
+def test_areas_in_org_is_distinct_casefolded_and_org_scoped(conn):
+    _add_areas(conn, 5, "p/a", "Prof A", ["Machine Learning", "Graph Theory"])
+    _add_areas(conn, 5, "p/b", "Prof B", ["machine learning", "Databases"])
+    _add_areas(conn, 6, "p/c", "Prof C", ["Robotics"])  # DS, excluded when scope=CS
+    assert areas_in_org(conn, 5) == ["Databases", "Graph Theory", "Machine Learning"]
+    assert "Robotics" in areas_in_org(conn, 4)
+
+
+def test_area_counts_counts_distinct_entities_sorted_desc(conn):
+    _add_areas(conn, 5, "p/a", "Prof A", ["Machine Learning", "Graph Theory"])
+    _add_areas(conn, 5, "p/b", "Prof B", ["machine learning"])
+    counts = area_counts(conn, 5)
+    assert counts[0] == ("Machine Learning", 2)
+    assert ("Graph Theory", 1) in counts
+    assert len(counts) == len(areas_in_org(conn, 5))

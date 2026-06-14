@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections import Counter
 
 # Hand aliases beyond what organizations.name/slug already cover.
 _ORG_ALIASES = {
@@ -163,3 +164,50 @@ def count_people_by_research_area(conn: sqlite3.Connection, area: str,
     """Count of distinct faculty matching ``area`` — same query as the list, so they
     can never disagree."""
     return len(_research_entities(conn, area, org_id))
+
+
+def _area_rows(conn: sqlite3.Connection, org_id: int | None) -> list[tuple[str, str]]:
+    """(area_value, entity_id) for every tag on active research_areas items, optionally
+    scoped to an org subtree. Reads metadata.areas via json_each."""
+    clause, params = "", []
+    if org_id is not None:
+        ids = sorted(org_descendants(conn, org_id))
+        clause = " AND k.org_id IN (%s)" % ",".join("?" * len(ids))
+        params = list(ids)
+    q = ("SELECT je.value, json_extract(k.metadata,'$.entity_id') "
+         "FROM knowledge_items k, json_each(k.metadata,'$.areas') je "
+         "WHERE k.type='research_areas' AND k.is_active=1 "
+         "AND json_extract(k.metadata,'$.entity_id') IS NOT NULL" + clause)
+    out: list[tuple[str, str]] = []
+    for val, eid in conn.execute(q, params):
+        if val and val.strip() and eid:
+            out.append((val.strip(), eid))
+    return out
+
+
+def _canonical(forms: list[str]) -> str:
+    """Pick the display casing for a case-folded group: most frequent surface form,
+    ties broken alphabetically (cosmetic only — never a wrong fact)."""
+    counts = Counter(forms)
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+
+def areas_in_org(conn: sqlite3.Connection, org_id: int) -> list[str]:
+    """Distinct research areas across an org subtree, case-folded for grouping and shown
+    in a canonical casing. The new enumerable facet ('what areas does CS cover?')."""
+    groups: dict[str, list[str]] = {}
+    for val, _eid in _area_rows(conn, org_id):
+        groups.setdefault(val.casefold(), []).append(val)
+    return sorted((_canonical(forms) for forms in groups.values()), key=str.casefold)
+
+
+def area_counts(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, int]]:
+    """(canonical_area, distinct_faculty_count) across an org subtree, most faculty first."""
+    forms: dict[str, list[str]] = {}
+    ents: dict[str, set[str]] = {}
+    for val, eid in _area_rows(conn, org_id):
+        k = val.casefold()
+        forms.setdefault(k, []).append(val)
+        ents.setdefault(k, set()).add(eid)
+    out = [(_canonical(forms[k]), len(ents[k])) for k in forms]
+    return sorted(out, key=lambda t: (-t[1], t[0].casefold()))
