@@ -70,10 +70,12 @@ def decompose(rec: EntityRecord) -> list[KItem]:
                         f"Research statement of {subj}: {rec.research_statement.strip()}",
                         "main"))
     if rec.research_areas:
-        areas = "; ".join(a.strip() for a in rec.research_areas if a.strip())
-        if areas:
+        cleaned = [a.strip() for a in rec.research_areas if a.strip()]
+        if cleaned:
+            areas = "; ".join(cleaned)
             items.append(mk("research_areas", f"{rec.name} — Research areas",
-                            f"Research areas of {subj}: {areas}", "main"))
+                            f"Research areas of {subj}: {areas}", "main",
+                            extra={"areas": cleaned}))
 
     # ── publications — one item each, ALL of them (no cap) ─────────────────────
     for p in rec.publications:

@@ -100,3 +100,16 @@ def test_blank_title_publication_skipped():
                        publications=[Publication("   "), Publication("Real Paper")])
     pubs = [i for i in decompose(rec) if i.type == "publication"]
     assert len(pubs) == 1 and pubs[0].title == "Real Paper"
+
+
+def test_research_areas_item_carries_metadata_areas_list():
+    # the discrete list (not just the "; "-joined content) is stored as structured data
+    item = next(i for i in decompose(koutis()) if i.type == "research_areas")
+    assert item.metadata["areas"] == ["spectral graph theory", "graph sparsification"]
+
+
+def test_no_research_areas_means_no_areas_key():
+    rec = EntityRecord(entity_id="e1", name="Jane Doe", org="CS", source_url="u",
+                       research_areas=[])
+    items = [i for i in decompose(rec) if i.type == "research_areas"]
+    assert items == []  # no research_areas item at all, so no stray metadata
