@@ -71,3 +71,20 @@ def project_entity(conn: sqlite3.Connection, rec: EntityRecord, org_id: int,
 
     deactivate_edges(conn, active_edge_ids_from(conn, pid, source=source) - keep)
     return pid
+
+
+def project_appointment(conn: sqlite3.Connection, *, person_key: str, name: str,
+                        org_id: int, category: str | None, titles: list[str],
+                        source_section: str, source: str = "crawler") -> int:
+    """Record ONE appointment from a listing appearance — additively (multi-membership).
+
+    Upserts the Person (preserving any attrs a profile pass already set — attrs=None) and a
+    single ``has_role`` edge for (person, org) with the SECTION-derived ``category``. It does
+    NOT touch the person's appointments in OTHER orgs or their research edges, so a person
+    reached from two paths (e.g. Wang via College Administration *and* CS) accumulates both
+    roles instead of one wiping the other. Returns the Person node id."""
+    pid = upsert_node(conn, type="Person", key=person_key, name=name, attrs=None, source=source)
+    upsert_edge(conn, src_id=pid, type="has_role", dst_id=org_node_id(conn, org_id),
+                category=category, source_section=source_section,
+                attrs={"titles": titles}, source=source)
+    return pid

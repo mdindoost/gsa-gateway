@@ -10,16 +10,24 @@ def upsert_node(conn: sqlite3.Connection, *, type: str, key: str, name: str,
                 attrs: dict | None = None, source: str = "crawler",
                 source_doc_id: int | None = None, ontology_version: int = 1) -> int:
     """Insert or update a node by its (type, key) identity; returns the node id and
-    (re)activates it."""
-    a = json.dumps(attrs or {})
+    (re)activates it. ``attrs=None`` on an EXISTING node leaves its attrs untouched — so a
+    coarse listing pass can create/refresh a Person without clobbering richer attrs a later
+    profile pass set (additive enrichment). On insert, None means empty ``{}``."""
     row = conn.execute("SELECT id FROM nodes WHERE type=? AND key=?", (type, key)).fetchone()
     if row:
         nid = row[0]
-        conn.execute(
-            "UPDATE nodes SET name=?, attrs=?, source=?, source_doc_id=?, "
-            "ontology_version=?, is_active=1, updated_at=datetime('now') WHERE id=?",
-            (name, a, source, source_doc_id, ontology_version, nid))
+        if attrs is not None:
+            conn.execute(
+                "UPDATE nodes SET name=?, attrs=?, source=?, source_doc_id=?, "
+                "ontology_version=?, is_active=1, updated_at=datetime('now') WHERE id=?",
+                (name, json.dumps(attrs), source, source_doc_id, ontology_version, nid))
+        else:
+            conn.execute(
+                "UPDATE nodes SET name=?, source=?, source_doc_id=?, "
+                "ontology_version=?, is_active=1, updated_at=datetime('now') WHERE id=?",
+                (name, source, source_doc_id, ontology_version, nid))
         return nid
+    a = json.dumps(attrs or {})
     cur = conn.execute(
         "INSERT INTO nodes(type,key,name,attrs,source,source_doc_id,ontology_version) "
         "VALUES(?,?,?,?,?,?,?)", (type, key, name, a, source, source_doc_id, ontology_version))
