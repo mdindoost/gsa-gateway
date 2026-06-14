@@ -321,6 +321,9 @@ INDEXES = [
     "CREATE INDEX        IF NOT EXISTS idx_edges_src   ON edges(src_id, is_active);",
     "CREATE INDEX        IF NOT EXISTS idx_edges_dst   ON edges(dst_id, type, is_active);",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_frontier_uniq ON frontier(from_node_id, url);",
+    # NULL from_node_id (root entry points): SQLite treats NULLs as distinct in the
+    # composite unique index, so dedup those by url with a partial unique index.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_frontier_root ON frontier(url) WHERE from_node_id IS NULL;",
     "CREATE INDEX        IF NOT EXISTS idx_frontier_status ON frontier(status);",
     "CREATE INDEX        IF NOT EXISTS idx_page_nodes_node ON page_nodes(node_id);",
 ]
