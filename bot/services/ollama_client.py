@@ -264,20 +264,26 @@ class OllamaClient:
         long roster isn't truncated."""
         system_prompt = (
             "You are the GSA Gateway assistant. You are given the COMPLETE, correct "
-            "answer to the user's question as structured facts. Rephrase it into a "
-            "friendly, natural reply. Use ONLY these facts — never add, drop, or invent "
-            "names or numbers, and include EVERY item in any list. If the facts say "
-            "nothing was found, say that plainly."
+            "answer as structured Facts. Rephrase the Facts into a friendly, natural "
+            "reply. STRICT RULES: use ONLY the Facts; include EVERY item in any list; "
+            "never add, drop, or invent names or numbers. Do NOT expand, define, or "
+            "guess what any abbreviation means — write the organization's name EXACTLY "
+            "as it appears in the Facts (e.g. if the Facts say 'Ying Wu College of "
+            "Computing', never substitute another expansion). If the Facts say nothing "
+            "was found, say that plainly."
         )
-        user_prompt = f"Question: {question}\n\nFacts (the complete answer):\n{facts}\n\nReply:"
+        # The question is for tone only; the Facts already name the org in full, so the
+        # model has no reason to expand an abbreviation from the question.
+        user_prompt = (f"User asked: {question}\n\nFacts (the complete, authoritative "
+                       f"answer — rephrase these exactly):\n{facts}\n\nReply:")
         payload = {
             "model": self.model,
             "system": system_prompt,
             "prompt": user_prompt,
             "stream": False,
             "options": {
-                "temperature": 0.2,
-                "top_p": 0.9,
+                "temperature": 0.0,
+                "top_p": 1.0,
                 "num_ctx": self.num_ctx,
                 "num_predict": 900,
                 "stop": ["Student:", "===", "Human:"],
