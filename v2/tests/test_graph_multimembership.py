@@ -41,6 +41,23 @@ def test_two_paths_accumulate_not_overwrite(conn):
     assert [r[0] for r in rows] == ["admin", "faculty"]   # BOTH appointments survive
 
 
+def test_profile_pass_keeps_other_org_appointment(conn):
+    # the CS profile pass for Wang must NOT wipe the College-Admin appointment a listing made
+    from v2.core.graph.project import project_entity
+    from v2.core.ingestion.entity import EntityRecord
+    project_appointment(conn, person_key="people.njit.edu/profile/gwang", name="Guiling Wang",
+                        org_id=20, category="admin", titles=["Associate Dean of Research"],
+                        source_section="Associate Deans")
+    rec = EntityRecord(entity_id="people.njit.edu/profile/gwang", name="Guiling Wang",
+                       org="Computer Science", titles=["Distinguished Professor, Computer Science"],
+                       research_areas=["Applied AI in Finance"])
+    project_entity(conn, rec, 5)
+    pid = conn.execute("SELECT id FROM nodes WHERE key='people.njit.edu/profile/gwang'").fetchone()[0]
+    cats = sorted(r[0] for r in conn.execute(
+        "SELECT category FROM edges WHERE src_id=? AND type='has_role' AND is_active=1", (pid,)))
+    assert cats == ["admin", "faculty"]   # listing(admin) + profile(faculty) both survive
+
+
 def test_appointment_preserves_existing_person_attrs(conn):
     # a profile pass set contact attrs; a later listing appointment must not wipe them
     upsert_node(conn, type="Person", key="p/x", name="X", attrs={"email": "x@njit.edu"})
