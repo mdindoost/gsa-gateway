@@ -194,7 +194,7 @@ def commit(items_by_entity, db_path, org_id_override, changes_log,
                 print(f"  {C_OFF}! skip {rec.name}: could not resolve org_id for "
                       f"{rec.org!r} (pass --org-id / --default-org-id)")
                 continue
-            res = reconcile_entity(conn, org_id, rec.entity_id, items)
+            res = reconcile_entity(conn, org_id, rec.entity_id, items, rec=rec)
             # retire any legacy row for this same profile that the new pipeline did
             # NOT produce (the old crawler's monolithic type=contact card) so the
             # entity is represented only by the decomposed items.
