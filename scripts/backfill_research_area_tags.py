@@ -18,11 +18,30 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def area_tags_from_content(content: str) -> list[str]:
-    """Recover the discrete area list from a 'Research areas of X: A; B; C' string."""
+    """Recover the discrete area list from a 'Research areas of X: A; B; C' string.
+
+    Splits on the join delimiter ';' at the TOP LEVEL only — a ';' inside parentheses
+    belongs to an illustrative list within one area ('ML (a; b; c)') and must not
+    fragment it (matches njit_adapter._split_top_level's paren-awareness, so re-running
+    this on already-grouped content stays idempotent rather than re-fragmenting)."""
     if ": " not in content:
         return []
     tail = content.split(": ", 1)[1]
-    return [a.strip() for a in tail.split("; ") if a.strip()]
+    parts: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    for ch in tail:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}" and depth > 0:
+            depth -= 1
+        elif ch == ";" and depth == 0:
+            parts.append("".join(buf))
+            buf = []
+            continue
+        buf.append(ch)
+    parts.append("".join(buf))
+    return [a.strip() for a in parts if a.strip()]
 
 
 def main() -> int:

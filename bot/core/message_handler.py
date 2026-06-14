@@ -233,7 +233,7 @@ class MessageHandler:
         if not any(c in low for c in (
                 "who ", "which ", "list ", " all ", "how many", "department",
                 "faculty", "professor", "works on", "work on", "working on",
-                "research", "studies", "studying", "specializ", "expert")):
+                "research", "area", "studies", "studying", "specializ", "expert")):
             return None
 
         def _run() -> Optional[str]:

@@ -21,3 +21,15 @@ def test_single_area_content():
 
 def test_no_colon_returns_empty():
     assert area_tags_from_content("garbage with no separator") == []
+
+
+def test_semicolon_inside_parens_does_not_fragment():
+    # a ';' inside parentheses is part of one area, not an area separator — re-running
+    # backfill on already-grouped content must stay idempotent (not re-fragment).
+    c = ("Research areas of Chengjun Liu (CS): Video Analytics; "
+         "Machine Learning (Statistical Learning; Kernel Methods; Similarity Measures); "
+         "Computer Vision")
+    assert area_tags_from_content(c) == [
+        "Video Analytics",
+        "Machine Learning (Statistical Learning; Kernel Methods; Similarity Measures)",
+        "Computer Vision"]
