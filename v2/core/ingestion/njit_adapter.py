@@ -82,6 +82,81 @@ def _leaf_divs(pane):
     return [d for d in pane.find_all("div") if not d.find("div")]
 
 
+# Grant-section labels that follow the interests list in the research pane; the list
+# must never bleed into them (see _research_interests).
+_GRANT_LABELS = {"in progress", "completed"}
+_AREA_STOPWORDS = {"and", "etc", "&", ""}
+
+# NJIT authors frequently glue a free-prose research statement onto the end of the
+# comma/semicolon interests list inside the SAME element, with no delimiter
+# (e.g. "...data science I am seeking students to join my projects."). The list always
+# comes first; prose begins at a first-person/transition word or a new sentence. Cut there
+# so only the leading list survives.
+_PROSE_BOUNDARY = re.compile(
+    r"(?i)\s(?=(?:i|we|my|our)\b)|(?<=\.)\s+(?=[A-Z])")
+
+# In-content boilerplate lead-in some authors repeat before the list
+# ("My research interests include ...", "His research interests are ...").
+_LEADIN = re.compile(
+    r"(?i)^\s*(?:(?:my|his|her|their|our)\s+)?research\s+interests?\s*"
+    r"(?:are(?:\s+in)?|includes?|focus(?:es)?\s+on|span|lie\s+in|cover)?\s*[:\-]?\s*")
+
+
+def _is_area_token(t: str) -> bool:
+    """An area is a short noun phrase. Reject prose remnants: a heading colon, an internal
+    sentence ('. ' + word), or an over-long run of words (>12). Keeps verbose-but-real
+    areas like 'Applications in Graph Machine Learning and Deep Learning'."""
+    return not (":" in t or re.search(r"\.\s+\w", t) or len(t.split()) > 12)
+
+
+def _split_areas(s: str) -> list[str]:
+    """Cut the prose tail, then split the leading list into clean, de-duplicated area
+    tokens. NJIT delimits with ',' or ';'; a token may carry a leading 'and'/'&' or a
+    trailing period. Punctuation-only, stopword, and prose tokens are dropped; dedup is
+    case-insensitive, order-preserving. No min-length filter — 'AI'/'ML'/'CV' are 2 chars."""
+    head = _PROSE_BOUNDARY.split(_LEADIN.sub("", s or ""), maxsplit=1)[0]
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in re.split(r"[;,]", head):
+        t = re.sub(r"(?i)^(?:and|&)\s+", "", raw.strip()).strip(" .;-–—*•·\t").strip()
+        if not t or not re.search(r"[A-Za-z0-9]", t) or t.lower() in _AREA_STOPWORDS:
+            continue
+        if not _is_area_token(t):
+            continue
+        k = t.lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(t)
+    # A single token from this free-text field is empirically always prose/glued, never a
+    # real one-item list — emit only a genuine multi-item list, else [] (prose lives in
+    # research_statement). Precision over recall for the structured facet.
+    return out if len(out) >= 2 else []
+
+
+def _research_interests(pane) -> list[str]:
+    """The 'Research Interests' list as clean discrete areas, read from the pane STRUCTURE.
+    The list is the element trailing the label ('Research Interests Foo, Bar') or the leaf
+    element right after it — taking exactly that element's text (then cutting any glued prose
+    tail in _split_areas) excludes the following grants section ('In Progress'/'Completed').
+    No label, a grant label where the list should be, or all-prose content → [] (honest
+    empty; the prose still lives in research_statement for semantic search)."""
+    if not pane:
+        return []
+    divs = _leaf_divs(pane)
+    for i, d in enumerate(divs):
+        txt = _clean(d)
+        m = re.match(r"(?i)^research interests\b\s*(.*)", txt)
+        if not m:
+            continue
+        rest = m.group(1).strip()
+        if rest:                                       # label-and-list in one element
+            return _split_areas(rest)
+        if i + 1 < len(divs) and _clean(divs[i + 1]).lower() not in _GRANT_LABELS:
+            return _split_areas(_clean(divs[i + 1]))   # list is the next leaf element
+        return []                                      # label only / grants follow
+    return []
+
+
 # About-pane section labels -> canonical key. Anything not a label is content for
 # the current section; unknown labels are kept under their own slug (nothing dropped).
 _ABOUT_LABELS = {
@@ -185,12 +260,11 @@ def parse_entity(url: str, html: str, org_default: str = "") -> EntityRecord:
     def pane(k):
         return panes.get(k)
 
-    # research pane: full statement + the "Research Interests" list as areas
+    # research pane: full statement (descriptive, for semantic RAG) + the "Research
+    # Interests" list as clean discrete areas, read STRUCTURALLY so the trailing grants
+    # section can't bleed into the areas (see _research_interests).
     research = _clean(pane("research"))
-    research_areas: list[str] = []
-    ri = re.match(r"(?i)\s*research interests\s+(.*)", research)
-    if ri:
-        research_areas = [a.strip() for a in re.split(r"\s*;\s*", ri.group(1)) if a.strip()]
+    research_areas = _research_interests(pane("research"))
     teaching = _list_lines(pane("teaching")) if pane("teaching") else []
     service = _list_lines(pane("service")) if pane("service") else []
 

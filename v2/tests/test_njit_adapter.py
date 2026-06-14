@@ -174,8 +174,99 @@ def test_about_sections_split_awards_experience_website():
 def test_research_interests_become_areas():
     r = rec()
     assert "Spectral graph theory" in r.research_areas
-    assert "Graph sparsification." in r.research_areas
+    # trailing period is stripped — it is not part of the area name
+    assert "Graph sparsification" in r.research_areas
+    assert "Graph sparsification." not in r.research_areas
     assert len(r.research_areas) == 3
+
+
+# ── research_areas extraction is structural, not greedy (the 2026-06-14 fix) ────
+
+def _areas(research_pane_html: str) -> list[str]:
+    """Parse a profile whose research pane is `research_pane_html`, return areas."""
+    html = ('<html><body><div class="tabbed-content">'
+            '<a class="tab-control" data-target="research">Research</a>'
+            f'<div class="tab-content">{research_pane_html}</div>'
+            '</div></body></html>')
+    return parse_entity("https://people.njit.edu/profile/x", html).research_areas
+
+
+def test_comma_list_in_own_div_excludes_grants():
+    # the real people.njit.edu layout: label div, comma list div, then a grants
+    # section ("In Progress" + project blurbs) that must NOT bleed into the areas.
+    areas = _areas(
+        "<div>Research Interests</div>"
+        "<div>Data mining, machine learning, deep learning, generative AI, data science</div>"
+        "<div>In Progress</div>"
+        "<div>Mining Big Data Through Deep Learning, a five-year NSF project to ...</div>")
+    assert areas == ["Data mining", "machine learning", "deep learning",
+                     "generative AI", "data science"]
+
+
+def test_label_then_grants_with_no_list_returns_empty():
+    # label present but the next node is a grant-section label → no interests listed.
+    areas = _areas("<div>Research Interests</div><div>In Progress</div>"
+                   "<div>Some funded project description.</div>")
+    assert areas == []
+
+
+def test_compound_and_period_are_cleaned():
+    areas = _areas("<div>Research Interests Algorithms, Operations Research, "
+                   "and Artificial Intelligence.</div>")
+    assert areas == ["Algorithms", "Operations Research", "Artificial Intelligence"]
+
+
+def test_areas_are_deduped_case_insensitively():
+    areas = _areas("<div>Research Interests Machine learning, machine learning, "
+                   "Deep Learning</div>")
+    assert areas == ["Machine learning", "Deep Learning"]
+
+
+def test_no_research_interests_label_returns_empty():
+    assert _areas("<div>Some research blurb with no interests label.</div>") == []
+
+
+def test_list_with_glued_prose_tail_keeps_only_the_list():
+    # the real people.njit.edu shape: a comma list with a research-statement / recruiting
+    # blurb glued on with no delimiter — the prose tail must be cut at the first-person turn.
+    areas = _areas("<div>Research Interests</div><div>Data mining, machine learning, "
+                   "data science I am seeking students to join my NSF projects.</div>")
+    assert areas == ["Data mining", "machine learning", "data science"]
+
+
+def test_pure_prose_statement_returns_empty():
+    # some profiles write only a prose statement (headed paragraphs), no list → honest empty
+    # (the prose still lives in research_statement for semantic search).
+    areas = _areas("<div>Research Interests</div><div>Neurosymbolic AI &amp; Explainable "
+                   "Systems: Integrating symbolic structure with deep learning for "
+                   "transparent reasoning. We develop hybrid architectures.</div>")
+    assert areas == []
+
+
+def test_verbose_semicolon_areas_kept():
+    areas = _areas("<div>Research Interests</div><div>Algorithm design; Spectral graph "
+                   "theory; Applications in Graph Machine Learning and Deep Learning.</div>")
+    assert areas == ["Algorithm design", "Spectral graph theory",
+                     "Applications in Graph Machine Learning and Deep Learning"]
+
+
+def test_repeated_leadin_boilerplate_stripped():
+    # some authors repeat "His/My research interests are/include" inside the content
+    areas = _areas("<div>Research Interests</div><div>His research interests are geometric "
+                   "design, computer graphics, machine learning</div>")
+    assert areas == ["geometric design", "computer graphics", "machine learning"]
+
+
+def test_single_token_dropped_for_precision():
+    # one token from this free-text field is empirically always prose, never a real list
+    areas = _areas("<div>Research Interests</div>"
+                   "<div>Keeping updated for the new technology trends</div>")
+    assert areas == []
+
+
+def test_leading_dash_and_bullet_artifacts_stripped():
+    areas = _areas("<div>Research Interests</div><div>- Relational, Object, NoSQL</div>")
+    assert areas == ["Relational", "Object", "NoSQL"]
 
 
 def test_links_extracted():

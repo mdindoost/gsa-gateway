@@ -63,6 +63,30 @@ Result for Jason Wang: `["Data mining", "machine learning", "deep learning",
 "computer vision", "explainable AI", "responsible AI", "generative AI", "trustworthy AI",
 "data science"]` — clean, pure, delimited.
 
+### 2a. Senior-review tweaks (accepted)
+
+- **DOM-scoped string walk, not `_leaf_divs`.** Find the label by scanning the research
+  pane's own text nodes (`pane.find_all(string=…)`, document order, **scoped to the pane**)
+  for one that starts (anchored, case-insensitive) with "research interests". Take the
+  remainder of that node, or — if empty — the **next non-empty text node within the pane**.
+  This finds the list whether it is a sibling div, a nested div, or another inline tag,
+  without depending on `_leaf_divs` (which drops parent-label and non-`<div>` layouts).
+- **Grant-label guard.** If the label is present but the next content node is a known
+  grant-section label (`in progress`, `completed`), there is no interests list → return
+  `[]` (never capture "In Progress" as an area).
+- **Per-token cleanup** after splitting on `[;,]`: strip surrounding whitespace, strip a
+  trailing `.`/`;`, strip a leading `and `/`& `; drop tokens that are empty,
+  punctuation-only, or a stopword (`and`, `etc`, `&`); **case-insensitive dedup** preserving
+  order. This normalizes the *clean* field (e.g. `"Algorithms, Operations Research, and
+  Artificial Intelligence."` → `["Algorithms","Operations Research","Artificial
+  Intelligence"]`); it is not downstream patching. No min-length filter (real areas like
+  "AI"/"ML"/"CV" are 2 chars).
+- **Single-content-node assumption (documented).** All 37 live profiles put the interests
+  in ONE text node (comma/semicolon list). We take exactly that node, so grants are excluded
+  by construction. The unobserved `<ul><li>`-per-item layout would yield only the first item
+  — a graceful short result (surfaced by the dry-run), never grant noise; not engineered for
+  until observed.
+
 ## 3. Scope boundary — `research_statement` unchanged
 
 `research_statement = research` (the full flattened pane) is intentionally left as-is: it is
@@ -94,12 +118,33 @@ Unit tests on the parser with `BeautifulSoup` fixtures mirroring the real DOM (n
 
 Then the existing njit_adapter test suite must stay green; full suite green.
 
-## 6. Validation (live, after re-ingest)
+## 6. Validation (live, all 37 profiles — done 2026-06-14)
 
-- The 5 known-dirty profiles' cards are now short, clean comma/semicolon lists.
-- `people_by_research_area`/the P2 expansion map still returns the same-or-better sets
-  (cleaning removes noise words from the facet but the prose remains in `research_statement`
-  for FTS, so recall is preserved).
+Parsed every faculty profile that currently has a `research_areas` card through the fixed
+adapter (project UA). Real data is messier than first assumed — the "Research Interests"
+field is free text: some authors append a prose statement to the list with no delimiter,
+some write only prose. Result with the §2 + §2a rules:
+- **~20 clean** discrete lists (Bader, Oria, Koutis, Pan Xu, Jason Wang 9 items, Borcea,
+  Chase Wu, Frank Shih, Musialski/Vaish after lead-in strip, …).
+- **~11 honestly empty** — pure-prose / single-token profiles (Fuad Hamidli, Jun Wu, Ali
+  Mili, Asad Raza, Kellogg, Sharma, Thanh Nguyen, …). The ≥2-token precision rule turns
+  these into `[]` rather than a false area; the prose still lives in `research_statement`.
+- **~6 minor residual noise** — parenthetical lists whose internal commas shatter (Chengjun
+  Liu, Mengjia Xu), a space-glued no-delimiter tail (Guiling Wang). These are the long tail
+  of inconsistent human formatting; deliberately NOT chased with per-profile regex
+  (patch-over-patch). Still mostly informative (e.g. Guiling Wang's first 4 areas are exact).
+
+`people_by_research_area`/the P2 expansion map recall is preserved: cleaning only the facet;
+the prose remains in `research_statement`, which FTS also searches.
+
+### 6a. Crawl-robustness finding (gates the re-ingest)
+
+Re-fetching `xding` returned a 57 KB page with **no `tabbed-content`** (JS-shell / alternate
+template / transient). The adapter degrades to empty fields — so a naive re-ingest could
+**overwrite a good card with empty** on a bad/structureless fetch. **Before re-ingesting**,
+the ingest path must skip-not-clobber: if the fetched page lacks the expected structure
+(no `tabbed-content`), treat it as a failed fetch and leave the existing card intact. This
+is a prerequisite of step §4, tracked here.
 
 ## 7. Scope / non-goals
 
