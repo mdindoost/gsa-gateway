@@ -226,6 +226,19 @@ def test_areas_are_deduped_case_insensitively():
     assert areas == ["Machine learning", "Deep Learning"]
 
 
+def test_parenthetical_commas_do_not_split_the_area():
+    # an illustrative comma/semicolon list inside parens is part of ONE area and must
+    # not fragment on its internal delimiters (the 2026-06-14 paren-aware split).
+    areas = _areas(
+        "<div>Research Interests</div>"
+        "<div>Video Analytics, Machine Learning (Statistical Learning, Kernel Methods, "
+        "Similarity Measures), Computer Vision</div>")
+    assert areas == [
+        "Video Analytics",
+        "Machine Learning (Statistical Learning, Kernel Methods, Similarity Measures)",
+        "Computer Vision"]
+
+
 def test_no_research_interests_label_returns_empty():
     assert _areas("<div>Some research blurb with no interests label.</div>") == []
 

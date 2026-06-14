@@ -109,15 +109,38 @@ def _is_area_token(t: str) -> bool:
     return not (":" in t or re.search(r"\.\s+\w", t) or len(t.split()) > 12)
 
 
+def _split_top_level(s: str) -> list[str]:
+    """Split on ',' / ';' at the top level only — a delimiter inside parentheses or
+    brackets belongs to an illustrative list within one area ('ML (a, b, c)') and must
+    not fragment it. Unbalanced/unclosed parens degrade to plain splitting (depth never
+    goes negative), so malformed input is no worse than before."""
+    parts: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    for ch in s:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}" and depth > 0:
+            depth -= 1
+        elif ch in ";," and depth == 0:
+            parts.append("".join(buf))
+            buf = []
+            continue
+        buf.append(ch)
+    parts.append("".join(buf))
+    return parts
+
+
 def _split_areas(s: str) -> list[str]:
     """Cut the prose tail, then split the leading list into clean, de-duplicated area
-    tokens. NJIT delimits with ',' or ';'; a token may carry a leading 'and'/'&' or a
-    trailing period. Punctuation-only, stopword, and prose tokens are dropped; dedup is
-    case-insensitive, order-preserving. No min-length filter — 'AI'/'ML'/'CV' are 2 chars."""
+    tokens. NJIT delimits with ',' or ';' (but not inside parentheses — see
+    _split_top_level); a token may carry a leading 'and'/'&' or a trailing period.
+    Punctuation-only, stopword, and prose tokens are dropped; dedup is case-insensitive,
+    order-preserving. No min-length filter — 'AI'/'ML'/'CV' are 2 chars."""
     head = _PROSE_BOUNDARY.split(_LEADIN.sub("", s or ""), maxsplit=1)[0]
     out: list[str] = []
     seen: set[str] = set()
-    for raw in re.split(r"[;,]", head):
+    for raw in _split_top_level(head):
         t = re.sub(r"(?i)^(?:and|&)\s+", "", raw.strip()).strip(" .;-–—*•·\t").strip()
         if not t or not re.search(r"[A-Za-z0-9]", t) or t.lower() in _AREA_STOPWORDS:
             continue
