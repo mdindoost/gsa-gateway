@@ -75,3 +75,28 @@ def test_explore_rerun_skips_unchanged(conn):
     explore(conn, make_fetch(PAGES), depth=2)
     st2 = explore(conn, make_fetch(PAGES), depth=2)
     assert st2.skipped_unchanged >= 3 and st2.appointments == 0
+
+
+def test_depth3_profile_anchors_home_to_own_dept_not_path(conn):
+    # A dual-path person fetched via College Administration must keep that listing's
+    # section role (staff) AND get their OWN department (CS, from the profile) — the
+    # profile pass must NOT clobber the College-Admin appointment with the path org.
+    conn.execute("INSERT INTO organizations(id,parent_id,name,slug,type) "
+                 "VALUES(5,4,'Computer Science','computer-science','department')")
+    conn.commit()
+    fixture = (Path(__file__).parent / "fixtures" / "koutis_profile.html").read_text(encoding="utf-8")
+    pages = {
+        "https://computing.njit.edu/people":
+            '<a href="https://computing.njit.edu/administration">College Administration Learn More</a>',
+        "https://computing.njit.edu/administration":
+            '<h4>Staff</h4><a href="//people.njit.edu/profile/ikoutis" class="column">'
+            '<h1 class="name">Koutis, Ioannis</h1><p class="title">Staff Member</p></a>',
+        "https://people.njit.edu/profile/ikoutis": fixture,
+    }
+    explore(conn, make_fetch(pages), depth=3)
+    pid = conn.execute("SELECT id FROM nodes WHERE key='people.njit.edu/profile/ikoutis'").fetchone()[0]
+    roles = dict(conn.execute(
+        "SELECT o.key, e.category FROM edges e JOIN nodes o ON o.id=e.dst_id "
+        "WHERE e.src_id=? AND e.type='has_role' AND e.is_active=1", (pid,)).fetchall())
+    assert roles.get("college-administration") == "staff"   # listing role NOT clobbered
+    assert roles.get("computer-science") == "faculty"       # home anchored to own dept
