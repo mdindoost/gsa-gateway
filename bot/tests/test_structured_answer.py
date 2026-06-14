@@ -62,3 +62,25 @@ def test_empty_research_area_is_honest_not_guessed(conn):
 def test_faculty_in_department_answer(conn):
     txt = format_answer(run(conn, Route("faculty_in_department", {"org_id": 5})))
     assert "Ioannis Koutis" in txt and "1 faculty" in txt
+
+
+def test_format_areas_in_org():
+    from v2.core.retrieval.structured_answer import format_answer
+    out = format_answer({"skill": "areas_in_org", "org_name": "Computer Science",
+                         "area": None, "rows": ["Databases", "Machine Learning"]})
+    assert "Computer Science" in out and "Databases" in out and "Machine Learning" in out
+    assert "list research areas" in out  # the coverage-basis phrasing
+
+
+def test_format_area_counts():
+    from v2.core.retrieval.structured_answer import format_answer
+    out = format_answer({"skill": "area_counts", "org_name": "Computer Science",
+                         "area": None, "rows": [("Machine Learning", 5), ("Databases", 2)]})
+    assert "Machine Learning (5)" in out and "Databases (2)" in out
+
+
+def test_format_people_by_area_tag_empty_is_honest():
+    from v2.core.retrieval.structured_answer import format_answer
+    out = format_answer({"skill": "people_by_area_tag", "org_name": "CS",
+                         "area": "astrophysics", "rows": []})
+    assert "couldn't find" in out and "astrophysics" in out

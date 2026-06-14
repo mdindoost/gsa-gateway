@@ -30,6 +30,12 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         rows = [n for n, _ in skills.people_by_research_area(conn, a["area"], a.get("org_id"))]
     elif skill == "count_people_by_research_area":
         rows = skills.count_people_by_research_area(conn, a["area"], a.get("org_id"))
+    elif skill == "areas_in_org":
+        rows = skills.areas_in_org(conn, a["org_id"])
+    elif skill == "area_counts":
+        rows = skills.area_counts(conn, a["org_id"])
+    elif skill == "people_by_area_tag":
+        rows = [n for n, _ in skills.people_by_area_tag(conn, a["area"], a.get("org_id"))]
     else:  # pragma: no cover - router only emits known skills
         rows = []
     return {"skill": skill, "org_name": org_name, "area": a.get("area"), "rows": rows}
@@ -61,5 +67,22 @@ def format_answer(result: dict) -> str:
 
     if skill == "count_people_by_research_area":
         return f"{rows} faculty work on \"{area}\"{scope}."
+
+    if skill == "areas_in_org":
+        if not rows:
+            return f"I don't have research areas listed for {org}."
+        return (f"Across the faculty who list research areas{scope}, "
+                f"{len(rows)} areas appear: {_join(rows)}.")
+
+    if skill == "area_counts":
+        if not rows:
+            return f"I don't have research areas listed for {org}."
+        ranked = "; ".join(f"{a} ({n})" for a, n in rows)
+        return (f"Research areas{scope}, by number of faculty who list them: {ranked}.")
+
+    if skill == "people_by_area_tag":
+        if not rows:
+            return f"I couldn't find anyone who lists \"{area}\" as a research area{scope}."
+        return f"{len(rows)} faculty list \"{area}\" as a research area{scope}: {_join(rows)}."
 
     return ""  # pragma: no cover
