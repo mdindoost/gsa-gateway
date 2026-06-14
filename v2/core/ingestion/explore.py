@@ -7,6 +7,7 @@ Saves raw at each hop, records unexplored next-steps in `frontier`, links page->
 only (LLM-on-prose is Phase 2). Each page is processed in its own transaction."""
 from __future__ import annotations
 import sqlite3
+import urllib.request
 from collections import deque
 from dataclasses import dataclass
 
@@ -16,6 +17,22 @@ from v2.core.graph.raw import save_raw_page, struct_hash
 from v2.core.ingestion import entry_points as ep
 from v2.core.ingestion.discovery import category_for_section, hub_children, parse_listing
 from v2.core.ingestion.njit_adapter import entity_id_from_url, parse_entity
+
+
+_UA = "GSA-Gateway-Bot/1.0 (+https://github.com/mdindoost/gsa-gateway)"
+
+
+def http_fetch(url: str, timeout: int = 25) -> tuple[str, str, str]:
+    """Real fetcher for production runs: (final_url, html, status). Follows redirects
+    (urllib does) and reports the FINAL url so `web.njit.edu/~x` → `x.github.io` is
+    keyed correctly. Never raises — a failure returns ("", "error") so explore() marks
+    the frontier item 'error' and moves on. Tests inject their own fetcher instead."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": _UA})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.geturl(), r.read().decode("utf-8", "ignore"), "ok"
+    except Exception:  # noqa: BLE001 - any fetch failure is just a non-ok read
+        return url, "", "error"
 
 
 @dataclass
