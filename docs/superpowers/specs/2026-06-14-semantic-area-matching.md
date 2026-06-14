@@ -1,118 +1,143 @@
-# Semantic Area-Matching (Retrieval Phase 2) — Design Spec
+# Area-Matching via Curated FTS Query-Expansion (Retrieval Phase 2) — Design Spec
 
-**Goal:** Make "who works on X" find faculty by **meaning**, not exact token. Phase 1's
-`people_by_research_area` uses token-exact FTS, so "llm" returns 0 even though faculty
-work on "large language models" / "generative AI" / "natural language" (verified: FTS
-`llm`=0, `large language`=1, `generative`=3, `natural language`=3). This adds a
-**semantic** match leg so abbreviations/synonyms resolve — the "semantic" half of the
-hybrid architecture, applied inside the skill.
+**Status:** supersedes the earlier "semantic embedding-threshold" draft of this spec,
+which the senior review and a direct measurement **disproved** on this corpus (see §0).
 
-**Key property:** embeddings are **deterministic** (same query → same vectors → same
-results), so this keeps Phase 1's complete-and-consistent guarantee — it's a similarity
-*threshold* instead of exact tokens, not run-to-run LLM variance.
-
-**Scope note:** this fixes the **matching** layer. The separate **data-coverage** limit
-(NJIT profiles are thin on current topics; Google answers richer but over-includes —
-e.g. lists departed faculty — so it's not ground truth) is the parked enrichment track,
-not this spec.
+**Goal:** Make "who works on X" find faculty when X is an abbreviation or synonym of the
+words actually in the profiles. Phase 1's `people_by_research_area` uses token-exact FTS,
+so "llm" returns 0 even though faculty work on "large language models" / "generative AI" /
+"natural language" (verified on the live DB: FTS `llm`=0, `large language`=1,
+`generative`=3, `natural language`=3, `machine learning`=23).
 
 ---
 
-## 1. The change — `people_by_research_area` becomes hybrid (FTS ∪ semantic)
+## 0. Why not embeddings (the evidence that killed the previous draft)
 
-Today it returns the FTS-exact set. Phase 2 returns **FTS-exact ∪ semantic-KNN**:
-- **FTS leg (unchanged):** exact token matches — high precision (e.g. "security", "machine
-  learning"). Keeps current behavior as a floor.
-- **Semantic leg (new):** `Embedder.embed_query(area)` → 768-vec; KNN over
-  `knowledge_vectors`; keep matches that are (a) `is_active=1`, (b) a research type
-  (`research_areas`/`research_statement`/`overview`), (c) in the org subtree, and (d)
-  **within a distance threshold**. The union of both legs' entity_ids is the result.
-- `count_people_by_research_area` counts the same union (shared helper — list and count
-  can't disagree).
+The previous draft proposed a semantic KNN leg with a distance threshold. Measured on the
+real corpus, **nomic-embed does not know the abbreviations**, so there is no separable
+threshold:
+- L2(embed_query("llm"), "large language models") = **0.977** (essentially unrelated),
+  and "llm" is actually **closer** to "machine learning" (0.961).
+- Distances are a smooth continuum: at the threshold where "llm" returns its faculty
+  (~1.05), "basket weaving" → 23 hits and "machine learning" → 78 of 81. No cut separates
+  signal from noise.
+- vec0 KNN also needs its `LIMIT` applied before the join-filters, and the research-type
+  vectors (155 of ~2957) sit at KNN ranks 600–1000, so a modest pool never reaches them.
 
-This lifts recall (llm→large-language folks, graph→network-analysis) without per-term
-synonym patches, while the FTS floor preserves exact-match precision.
+**Conclusion (the principled one, driven by the data):** abbreviation/synonym resolution
+here is a **vocabulary** problem, not a semantic-distance problem. The right tool is a
+small, bounded, auditable **query-expansion map** feeding the existing FTS leg —
+deterministic, precise, no embedder/vec/threshold, no connection change. This reverses our
+earlier "embeddings principled / map patchy" prior: on this corpus the map is the correct
+tool, not a patch.
 
-## 2. Mechanism (follows the retriever's `_semantic` pattern)
+## 1. The change — `_research_entities` expands the area into an FTS OR-query
+
+Today `_research_entities` builds one FTS phrase from the raw area
+(`_fts_term(area)` → `"large language models"`). Phase 2 expands the area through a curated
+map into a **disjunction** of phrases, then runs the *same* FTS leg over the union:
+
+- `expand_area("llm")` → `["llm", "large language model", "large language models", "LLM",
+  "generative ai", "natural language"]` (illustrative).
+- Build the FTS query as an OR of quoted phrases:
+  `"\"llm\" OR \"large language model\" OR \"large language models\" OR …"`.
+- Everything else in `_research_entities` is unchanged: `MATCH`, `is_active=1`,
+  research-type filter, org-subtree scope, distinct entity_id.
+- `people_by_research_area` and `count_people_by_research_area` already call
+  `_research_entities`, so list and count stay in lockstep automatically.
+
+An area **not** in the map falls back to the single-phrase behavior (exactly Phase 1) — so
+this is purely additive and never regresses an exact term.
+
+## 2. The expansion map (curated, bounded, org-agnostic)
+
+A module-level dict in `skills.py` (or a sibling `area_synonyms.py`), keyed by the
+**normalized** area token, value = list of expansion phrases:
 
 ```python
-qvec = embedder.embed_query(area)                 # sync, normalized FLOAT[768]
-rows = conn.execute(
-    "SELECT item_id, distance FROM knowledge_vectors "
-    "WHERE embedding MATCH ? ORDER BY distance LIMIT ?",
-    (sqlite_vec.serialize_float32(qvec), KNN_FETCH)).fetchall()
-# then join knowledge_items and filter: is_active, research type, org-subtree,
-# distance <= THRESHOLD → distinct entity_id
+AREA_SYNONYMS = {
+    "llm":  ["llm", "large language model", "large language models", "generative ai"],
+    "llms": [... same as "llm" ...],
+    "nlp":  ["nlp", "natural language processing", "natural language"],
+    "ai":   ["ai", "artificial intelligence"],
+    "ml":   ["ml", "machine learning"],
+    "cv":   ["cv", "computer vision"],
+    "hci":  ["hci", "human computer interaction", "human-computer interaction"],
+    # … grown deliberately, each entry justified by terms that actually occur in the KB.
+}
 ```
-vec0 KNN takes `MATCH ? ORDER BY distance LIMIT N`; the type/org/is_active/threshold
-filters are applied on the join (in SQL or Python), exactly as the retriever fetches a
-pool then filters `allowed`. `KNN_FETCH` is a generous pool (e.g. 200) so the post-filter
-has enough candidates; `THRESHOLD` is the real knob (below).
 
-## 3. Connection + embedder wiring
+Design rules:
+- **Org-agnostic** — these are field abbreviations, not NJIT-specific, so the same map
+  serves every tenant (multi-tenant for free, per the locked architecture).
+- **Symmetric where it matters** — the abbreviation maps to the full forms AND keeps the
+  abbreviation itself (some profiles do write "LLM").
+- **Bounded & justified** — every entry exists because the long form occurs in real KB
+  text (we verify with FTS counts before adding), so the map can't silently over-match.
+- **Normalization:** lowercase, strip, collapse internal whitespace, and singular/plural
+  folded by storing both keys (`llm`/`llms`) — no stemmer dependency.
 
-- The semantic leg needs **sqlite-vec loaded**, so the structured path switches from the
-  plain `sqlite3.connect` (Phase 1, FTS-only) to **`get_connection(db_path)`** (loads
-  vec0; FTS5 still works on it). The handler's keyword pre-gate already limits this to
-  structured-looking questions, so the vec-load cost is paid only then.
-- The skill needs an **`Embedder`**. `embed_query` is synchronous (Ollama HTTP), so it
-  runs fine inside the existing `asyncio.to_thread`. Pass the embedder from
-  `build_assistant` (it already builds one for the retriever) into the structured path;
-  if no embedder is available, the semantic leg is skipped (FTS-only fallback — never an
-  error).
+This is **not manual per-question patching**: it is one small reference table applied
+uniformly by one mechanism (the same objection that made templates principled over
+per-question rules). Growing it is a data-curation task, the entries are auditable, and the
+fallback for an unknown term is well-defined.
 
-## 4. The threshold (the one real tuning knob)
+## 3. Determinism & honesty (unchanged from Phase 1)
 
-L2-normalized vectors → vec0 `distance` ranks like cosine. We keep matches with
-`distance <= THRESHOLD`. Too loose → false positives (people only loosely related); too
-tight → misses synonyms. It is **tuned by the eval set (§6)**, not guessed, and is
-**admin-configurable** via a `settings` row (`retriever.area_distance_max`, the same
-pattern as the existing retriever boosts) so it can be adjusted without a deploy.
-Default chosen from the eval, documented.
+- Pure FTS over a fixed map → same question, same set, every run. Phase 1's
+  "complete + stable" guarantee holds; no LLM/embedding variance enters.
+- Empty result → the existing honest "I couldn't find anyone working on X"; never a guess.
+  `compose_from_rows` still forbids inventing/expanding terms downstream.
+- No connection change: the handler keeps the plain `sqlite3.connect` (FTS-only). No
+  embedder, no vec0 load.
 
-## 5. Determinism & honesty
+## 4. Eval (extend the Phase-1 seed set; this is the regression gate)
 
-- Embeddings are deterministic → same question, same set (no LLM variance). Phase 1's
-  "complete + stable" holds.
-- Empty union → the existing honest "I couldn't find anyone working on X" (never a
-  guess). The downstream `compose_from_rows` already forbids inventing terms.
+Add labeled cases and assert them against the live DB in the eval harness:
+- **Recall:** "who works on llm in YWCC" → includes the large-language / generative / NLP
+  faculty (the union of the expanded phrases), not the empty set; "nlp" → the
+  natural-language faculty; "ai", "ml" likewise.
+- **Precision guard:** an unrelated area ("basket weaving") → empty; a tight term ("graph")
+  with no map entry → still exactly the graph set (Phase-1 behavior unchanged), NOT all of
+  ML — proves expansion only fires for mapped terms.
+- **Lockstep:** for every case, `count_people_by_research_area == len(people_by_research_area)`.
 
-## 6. Eval (extend the Phase-1 seed set)
+## 5. Testing (TDD)
 
-Add semantic cases to the labeled set and use them to pick `THRESHOLD`:
-- "who works on llm in YWCC" → should include the large-language / generative / NLP
-  faculty (Hai Phan, Guiling Wang, Jason Wang, …), not the empty set.
-- Precision guard: an unrelated area (e.g. "basket weaving") → empty/near-empty; a
-  tight-topic area ("graph") → still the graph set, not all of ML.
-- Report recall + precision per threshold; pick the threshold that maximizes recall
-  while keeping precision sane on these labels. This is the regression gate for the
-  threshold.
+- **Unit — `expand_area` (pure):** mapped token → expected phrase list (incl. plural key);
+  unknown token → `[token]` (single-phrase fallback); normalization (case/whitespace).
+- **Unit — `_research_entities` with a fixture DB:** insert known research_areas items +
+  FTS rows for a few entities whose text says "large language models" / "generative ai";
+  assert `people_by_research_area("llm")` returns them; assert an unmapped unrelated term
+  returns empty; assert org-subtree scoping still filters; assert count == len(list).
+- **Unit — precision:** a mapped term must not pull entities that only match an *unrelated*
+  word (the OR is over the curated phrases only).
+- **Live (manual, after restart):** real "who works on llm in YWCC" returns the
+  large-language faculty; "graph" unchanged; "nlp"/"ai"/"ml" sane.
 
-## 7. Testing (TDD)
+## 6. Scope / non-goals
 
-- **Unit (no Ollama):** fixture inserts known 768-vectors into `knowledge_vectors`
-  (`sqlite_vec.serialize_float32`) for a few entities, with a **stub embedder** returning
-  a chosen query vector; assert the semantic leg returns the near entities within
-  threshold and excludes the far ones; assert FTS ∪ semantic union; assert count == len(list).
-- **Unit:** no-embedder → FTS-only (semantic leg skipped, no error).
-- **Live (manual):** the real "who works on llm in YWCC" returns the large-language
-  faculty; "graph" still returns its set; threshold sanity on a few areas.
+**In:** `expand_area` + the curated `AREA_SYNONYMS` map; `_research_entities` building an
+FTS OR-query from the expansion; eval cases (recall + precision guard + lockstep); TDD
+units. No new deps, no connection change.
 
-## 8. Scope / non-goals
+**Out:**
+- **Embeddings / vec / distance threshold** — disproven on this corpus (§0); do not
+  re-attempt.
+- **The research-area facet (P2.5)** — turning the `research_areas` card into a clean
+  discrete structured field. Note: where that card is *dirty* (run-on text), the fix
+  belongs at the **crawl/extraction** step (store clean, pure data at the source), not a
+  downstream normalizer — that is the enrichment/ingestion track, separate from this spec.
+- **events/contacts skills (P3); data-coverage enrichment** (a professor whose profile
+  never mentions an LLM-adjacent term in any words can't be found by any matcher — that's
+  the source-data track, called out so expectations are right).
 
-**In:** the semantic leg + FTS union in `people_by_research_area`/`count_…`, the vec
-connection + embedder wiring, the configurable distance threshold, eval cases to tune it.
-**Out:** a curated synonym map (the embedding match supersedes it); applying semantic
-matching to non-area skills (org/department/faculty are exact by nature); events/contacts
-skills (P3); data enrichment (separate track).
+## 7. Risks
 
-## 9. Risks
-
-- **Threshold tuning** is the crux — eval-driven, configurable, documented; conservative
-  default. A bad threshold degrades gracefully (more/fewer names), never a wrong fact.
-- **Semantic false positives** (e.g. "llm" pulling generic ML people) — bounded by the
-  threshold + the FTS floor for exact terms; measured by the eval precision guard.
-- **vec-load per structured query** — gated by the keyword pre-gate; small corpus, fast.
-- **Coverage still bounds it** — if a professor's profile never mentions LLM-adjacent
-  work in any words, no matcher can find them; that's the enrichment track, called out so
-  expectations are right.
+- **Map coverage** — only mapped abbreviations expand; unmapped synonyms still miss. Bounded
+  and intentional: the map grows from observed KB vocabulary, each entry verified by FTS
+  counts. Degrades gracefully to Phase-1 exact match, never to a wrong fact.
+- **Over-expansion** — a too-broad expansion phrase could pull loosely related people. Guard:
+  every phrase must correspond to real KB text and be reviewed; the precision-guard eval
+  case is the regression gate.
+- **Coverage still bounds it** — see §6 (source-data track).

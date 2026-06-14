@@ -29,11 +29,47 @@ _ORG_ALIASES = {
 }
 _RESEARCH_TYPES = ("research_areas", "research_statement", "overview")
 
+# Curated, org-agnostic vocabulary map (Phase 2, spec docs/superpowers/specs/
+# 2026-06-14-semantic-area-matching.md). A query abbreviation/synonym expands into the
+# words faculty profiles actually use, so token-exact FTS bridges "llm" → "large language
+# models". This is controlled-vocabulary query expansion (cf. MeSH/PubMed), not a
+# per-question patch: ONE mechanism, every phrase justified by real KB FTS counts, and an
+# unmapped term degrades to Phase-1 exact match. Intentionally kept TIGHT — "llm" does NOT
+# expand to "machine learning"/"ai" (would over-match); only LLM-specific phrasings.
+AREA_SYNONYMS: dict[str, list[str]] = {
+    "llm":  ["llm", "large language model", "large language models", "generative ai"],
+    "llms": ["llm", "large language model", "large language models", "generative ai"],
+    "nlp":  ["nlp", "natural language processing", "natural language"],
+    "ai":   ["ai", "artificial intelligence"],
+    "ml":   ["ml", "machine learning"],
+    "cv":   ["cv", "computer vision"],
+    "hci":  ["hci", "human computer interaction", "human-computer interaction"],
+}
+
+
+def _normalize_area(area: str) -> str:
+    """Lowercase, strip, collapse internal whitespace — the map's lookup key."""
+    return " ".join((area or "").lower().split())
+
+
+def expand_area(area: str) -> list[str]:
+    """Expand an area term into the curated set of FTS phrases to match (the term itself
+    plus known synonyms). Unmapped terms return ``[term]`` — identical to Phase-1 exact
+    match, so expansion only ever ADDS recall for known abbreviations, never regresses."""
+    key = _normalize_area(area)
+    return list(AREA_SYNONYMS.get(key, [key]))
+
 
 def _fts_term(area: str) -> str:
     """Quote the area as an FTS5 phrase so multi-word terms match and operators
     (- * : " OR NEAR) can't break the query."""
     return '"' + (area or "").strip().replace('"', '""') + '"'
+
+
+def _fts_query(area: str) -> str:
+    """Build the FTS5 MATCH expression for an area: an OR of its expanded phrases, each a
+    quoted phrase (word-boundary, operator-safe)."""
+    return " OR ".join(_fts_term(p) for p in expand_area(area))
 
 
 def resolve_org(conn: sqlite3.Connection, name: str) -> int | None:
@@ -100,7 +136,7 @@ def faculty_in_department(conn: sqlite3.Connection, org_id: int) -> list[tuple[s
 
 
 def _research_entities(conn: sqlite3.Connection, area: str, org_id: int | None) -> set[str]:
-    params: list = [_fts_term(area), *_RESEARCH_TYPES]
+    params: list = [_fts_query(area), *_RESEARCH_TYPES]
     org_clause = ""
     if org_id is not None:
         ids = sorted(org_descendants(conn, org_id))

@@ -12,6 +12,7 @@ import pytest
 from v2.core.database.schema import create_all
 from v2.core.retrieval.skills import (
     count_people_by_research_area,
+    expand_area,
     faculty_in_department,
     org_departments,
     org_descendants,
@@ -48,6 +49,13 @@ def conn(tmp_path):
     add(6, "p/bader", "David Bader", "research_statement", "high performance graph analytics on Arkouda")
     add(6, "p/oria", "Vincent Oria", "profile", "Profile: Vincent Oria")
     add(6, "p/oria", "Vincent Oria", "research_areas", "Research areas: multimedia databases")
+    # CS: Phan does LLMs (text says "large language models", never the token "llm");
+    # MlOnly does plain machine learning — the 'llm' expansion must NOT pull them in.
+    add(5, "p/phan", "Hai Phan", "profile", "Profile: Hai Phan")
+    add(5, "p/phan", "Hai Phan", "research_areas",
+        "Research areas: large language models, generative AI, differential privacy")
+    add(5, "p/mlonly", "Em Ell", "profile", "Profile: Em Ell")
+    add(5, "p/mlonly", "Em Ell", "research_areas", "Research areas: machine learning")
     # an INACTIVE stale graph row — must be excluded by is_active
     add(5, "p/ghost", "Ghost Prof", "research_areas", "graph theory ghost", active=0)
     c.commit()
@@ -83,7 +91,8 @@ def test_org_departments_lists_children(conn):
 # ── faculty / research ────────────────────────────────────────────────────────
 
 def test_faculty_in_department(conn):
-    assert _names(faculty_in_department(conn, 5)) == {"Ioannis Koutis", "Frank Shih"}
+    assert _names(faculty_in_department(conn, 5)) == {
+        "Ioannis Koutis", "Frank Shih", "Hai Phan", "Em Ell"}
     assert _names(faculty_in_department(conn, 6)) == {"David Bader", "Vincent Oria"}
 
 
@@ -107,3 +116,47 @@ def test_research_area_scoped_to_department(conn):
 def test_unknown_area_returns_empty(conn):
     assert people_by_research_area(conn, "quantum", org_id=4) == []
     assert count_people_by_research_area(conn, "quantum", org_id=4) == 0
+
+
+# ── area expansion (Phase 2: curated FTS query-expansion) ──────────────────────
+
+def test_expand_area_mapped_includes_self_and_synonyms():
+    out = expand_area("llm")
+    assert "llm" in out                       # keeps the abbreviation itself
+    assert "large language models" in out      # bridges to the words profiles use
+    # plural key resolves to the same expansion
+    assert set(expand_area("llms")) == set(out)
+
+
+def test_expand_area_unknown_is_single_phrase_fallback():
+    # an unmapped term expands to just itself → identical to Phase-1 exact match
+    assert expand_area("graph") == ["graph"]
+    assert expand_area("quantum") == ["quantum"]
+
+
+def test_expand_area_normalizes_case_and_whitespace():
+    assert expand_area("  LLM ") == expand_area("llm")
+    assert expand_area("NLP") == expand_area("nlp")
+
+
+def test_llm_query_finds_large_language_faculty(conn):
+    # "llm" never appears as a token, but expansion bridges to "large language models"
+    names = _names(people_by_research_area(conn, "llm", org_id=4))
+    assert "Hai Phan" in names
+
+
+def test_llm_expansion_does_not_over_match_plain_ml(conn):
+    # precision guard: expanding "llm" must NOT pull in machine-learning-only faculty
+    names = _names(people_by_research_area(conn, "llm", org_id=4))
+    assert "Em Ell" not in names
+
+
+def test_unmapped_tight_term_unchanged_by_expansion(conn):
+    # "graph" has no map entry → behaves exactly as Phase 1 (Koutis + Bader only)
+    assert _names(people_by_research_area(conn, "graph", org_id=4)) == {
+        "Ioannis Koutis", "David Bader"}
+
+
+def test_count_matches_list_for_expanded_area(conn):
+    n = count_people_by_research_area(conn, "llm", org_id=4)
+    assert n == len(people_by_research_area(conn, "llm", org_id=4))
