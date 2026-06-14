@@ -544,13 +544,20 @@ class Database:
         return [dict(r) for r in rows]
 
     def get_upcoming_events_db(self, days: int = 7) -> list[dict[str, Any]]:
-        """Return events between today and today+days (inclusive)."""
+        """Return events between today and today+days (inclusive), counting "today"
+        by the audience's **US Eastern** day — not UTC. With ``date('now')`` (UTC),
+        an event on the current ET day is dropped once UTC rolls past midnight (after
+        ~8 PM ET) — the same UTC/local boundary bug fixed for the World Cup digest.
+        Event dates are stored as ET calendar dates."""
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+
+        today = datetime.now(ZoneInfo("America/New_York")).date()
         rows = self.conn.execute(
             """SELECT * FROM events
-               WHERE date >= date('now')
-                 AND date <= date('now', ?)
+               WHERE date >= ? AND date <= ?
                ORDER BY date ASC""",
-            (f"+{days} days",),
+            (today.isoformat(), (today + timedelta(days=days)).isoformat()),
         ).fetchall()
         return [dict(r) for r in rows]
 
