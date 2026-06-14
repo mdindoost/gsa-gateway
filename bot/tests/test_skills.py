@@ -212,3 +212,37 @@ def test_people_by_area_tag_casefold_and_expansion(conn):
     assert _names(people_by_area_tag(conn, "llm", org_id=5)) == {"Prof B"}
     # unmapped, unlisted area -> empty (honest)
     assert people_by_area_tag(conn, "astrophysics", org_id=5) == []
+
+
+# ── follow-ups: batch name resolution + facet consistency ─────────────────────
+
+def test_display_names_batch_prefers_profile_and_falls_back(conn):
+    from v2.core.retrieval.skills import _display_names
+    got = _display_names(conn, ["p/koutis", "p/oria", "p/unknown"])
+    assert got == {"p/koutis": "Ioannis Koutis", "p/oria": "Vincent Oria",
+                   "p/unknown": "unknown"}
+
+
+def test_display_names_overview_fallback_when_no_profile(conn):
+    from v2.core.retrieval.skills import _display_names
+    conn.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,is_active) "
+                 "VALUES(5,'overview','Jane Roe — overview','x',?,1)",
+                 (json.dumps({"entity_id": "p/roe"}),))
+    conn.commit()
+    assert _display_names(conn, ["p/roe"]) == {"p/roe": "Jane Roe"}
+
+
+def test_areas_in_org_is_exactly_area_counts_names(conn):
+    # the two facets must never disagree on the area set (areas_in_org derives from counts)
+    _add_areas(conn, 5, "p/a", "Prof A", ["Machine Learning", "Graph Theory"])
+    _add_areas(conn, 5, "p/b", "Prof B", ["machine learning"])
+    assert areas_in_org(conn, 5) == sorted(
+        (a for a, _ in area_counts(conn, 5)), key=str.casefold)
+
+
+def test_canonical_casing_dedups_case_variants_to_one_entry(conn):
+    _add_areas(conn, 5, "p/a", "Prof A", ["Machine Learning"])
+    _add_areas(conn, 5, "p/b", "Prof B", ["machine learning"])
+    areas = areas_in_org(conn, 5)
+    # one canonical entry for the case-variant group, deterministically chosen
+    assert sum(a.casefold() == "machine learning" for a in areas) == 1

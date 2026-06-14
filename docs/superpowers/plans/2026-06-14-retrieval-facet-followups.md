@@ -10,7 +10,7 @@ Status: ☐ open · ☑ done
 
 ## Retrieval-side cleanup
 
-- [ ] **1. N+1 in `_display_name`** (`v2/core/retrieval/skills.py`)
+- [x] **1. N+1 in `_display_name`** (`v2/core/retrieval/skills.py`)
   `people_by_area_tag`, `faculty_in_department`, and `people_by_research_area` each call
   `_display_name(conn, e)` per entity, and `_display_name` itself runs up to 2 point
   queries. For N results that's up to 2N queries after the main scan.
@@ -18,13 +18,13 @@ Status: ☐ open · ☑ done
   `entity_id IN (?,…)` lookup (prefer `profile`, fall back to `overview`); refactor the
   three skills to build the dict once and look up in memory.
 
-- [ ] **2. `areas_in_org` duplicates `area_counts` grouping** (`v2/core/retrieval/skills.py`)
+- [x] **2. `areas_in_org` duplicates `area_counts` grouping** (`v2/core/retrieval/skills.py`)
   Both casefold-group and canonicalize independently. `areas_in_org` is just the area
   names of `area_counts`.
   **Fix:** `return sorted((a for a, _ in area_counts(conn, org_id)), key=str.casefold)`.
   One grouping mechanism, so the two facets can't drift on the area set or display casing.
 
-- [ ] **3. `_canonical` case-sensitive tie-break** (`v2/core/retrieval/skills.py`)
+- [x] **3. `_canonical` case-sensitive tie-break** (`v2/core/retrieval/skills.py`)
   Grouping is casefold but the alphabetical tie-break (`kv[0]`) is case-sensitive, so a
   tie between `machine learning` and `Machine Learning` is broken by ASCII (`M`<`m`)
   rather than naturally.
