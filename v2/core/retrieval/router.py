@@ -26,6 +26,15 @@ _AREA_TRIGGER = re.compile(
     r"researchers?\s+(?:in|on|of)|studies|studying|specializ(?:es|ing)\s+in|"
     r"expert(?:ise)?\s+in)\s+(.+)")
 
+# Enumeration of the research-area facet ("what research areas does CS cover").
+_ENUM_AREAS = re.compile(
+    r"\b(?:research areas?|areas? of research|"
+    r"(?:what|which|list|all|show)\s+(?:research\s+)?areas?)\b")
+# Ranking/aggregation cue ("which areas have the MOST faculty").
+_RANK = re.compile(r"\b(?:most|top|popular|biggest|largest|ranked|by count|how many people)\b")
+# "who LISTS X as a research area" -> precise tag match.
+_LISTS_AREA = re.compile(r"who\s+lists?\s+(.+?)\s+as\s+(?:an?\s+)?research\s+area")
+
 
 @dataclass
 class Route:
@@ -75,10 +84,27 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     org_id, org_phrase = _find_org(conn, q)
     area = _extract_area(q, org_phrase)
 
+    # precise "who lists X as a research area" (before the generic area branches)
+    m = _LISTS_AREA.search(q)
+    if m:
+        tag = m.group(1).strip()
+        if org_phrase and org_phrase in tag:
+            tag = tag.split(org_phrase)[0].strip()
+        tag = tag.strip(" .,?")
+        if tag:
+            return Route("people_by_area_tag", {"area": tag, "org_id": org_id})
+
     if "how many" in q and area:
         return Route("count_people_by_research_area", {"area": area, "org_id": org_id})
     if area:
         return Route("people_by_research_area", {"area": area, "org_id": org_id})
+
+    # enumeration / aggregation over the area facet (org required)
+    if org_id is not None and _ENUM_AREAS.search(q):
+        if _RANK.search(q):
+            return Route("area_counts", {"org_id": org_id})
+        return Route("areas_in_org", {"org_id": org_id})
+
     if "department" in q and org_id is not None and "faculty" not in q and "professor" not in q:
         return Route("org_departments", {"org_id": org_id})
     if ("faculty" in q or "professor" in q) and org_id is not None:
