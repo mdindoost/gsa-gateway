@@ -216,6 +216,57 @@ CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Group C — knowledge graph (STRICT)
+# ─────────────────────────────────────────────────────────────────────────────
+
+RAW_PAGES = """
+CREATE TABLE IF NOT EXISTS raw_pages (
+    url          TEXT PRIMARY KEY,
+    content      TEXT NOT NULL,
+    struct_hash  TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    fetched_at   TEXT NOT NULL DEFAULT (datetime('now'))
+) STRICT;
+"""
+
+NODES = """
+CREATE TABLE IF NOT EXISTS nodes (
+    id               INTEGER PRIMARY KEY,
+    type             TEXT NOT NULL,
+    key              TEXT NOT NULL,
+    name             TEXT NOT NULL,
+    attrs            TEXT NOT NULL DEFAULT '{}',
+    source           TEXT NOT NULL,
+    source_doc_id    INTEGER,
+    ontology_version INTEGER NOT NULL DEFAULT 1,
+    is_active        INTEGER NOT NULL DEFAULT 1,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+) STRICT;
+"""
+
+EDGES = """
+CREATE TABLE IF NOT EXISTS edges (
+    id               INTEGER PRIMARY KEY,
+    src_id           INTEGER NOT NULL REFERENCES nodes(id),
+    type             TEXT NOT NULL,
+    dst_id           INTEGER NOT NULL REFERENCES nodes(id),
+    category         TEXT,
+    area_source      TEXT,
+    source_section   TEXT,
+    attrs            TEXT NOT NULL DEFAULT '{}',
+    source           TEXT NOT NULL,
+    source_doc_id    INTEGER,
+    ontology_version INTEGER NOT NULL DEFAULT 1,
+    is_active        INTEGER NOT NULL DEFAULT 1,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (category IS NULL OR category IN
+           ('faculty','staff','admin','advisor','joint','emeritus'))
+) STRICT;
+"""
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Indexes
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -241,6 +292,11 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_remind_event ON event_reminders(event_id);",
     "CREATE INDEX IF NOT EXISTS idx_remind_due   ON event_reminders(enabled, post_id);",
     "CREATE INDEX IF NOT EXISTS idx_settings_org ON settings(org_id);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_nodes_key   ON nodes(type, key);",
+    "CREATE INDEX        IF NOT EXISTS idx_nodes_type  ON nodes(type, is_active);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_edges_triple ON edges(src_id, type, dst_id);",
+    "CREATE INDEX        IF NOT EXISTS idx_edges_src   ON edges(src_id, is_active);",
+    "CREATE INDEX        IF NOT EXISTS idx_edges_dst   ON edges(dst_id, type, is_active);",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -301,6 +357,9 @@ _TABLE_DDL = [
     EVENTS,
     EVENT_REMINDERS,
     SETTINGS,
+    RAW_PAGES,
+    NODES,
+    EDGES,
 ]
 
 _TRIGGER_DDL = [
