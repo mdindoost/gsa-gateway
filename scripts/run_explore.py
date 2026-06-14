@@ -23,10 +23,19 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(REPO / "gsa_gateway.db"))
     ap.add_argument("--depth", type=int, default=2)
+    ap.add_argument("--reset", action="store_true",
+                    help="clear the graph layer first (re-derive from scratch; resets "
+                         "change-detection so every page re-extracts)")
     args = ap.parse_args()
 
     create_all(args.db)                       # ensure graph tables exist (idempotent)
     conn = get_connection(args.db)
+    if args.reset:
+        # FK-safe order; only the re-derivable graph layer — never knowledge_items/orgs.
+        for t in ("page_nodes", "edges", "frontier", "nodes", "raw_pages"):
+            conn.execute(f"DELETE FROM {t}")
+        conn.commit()
+        print("graph layer cleared (--reset)")
     st = explore(conn, http_fetch, depth=args.depth)
     print(f"\nexplore stats: {st}")
 

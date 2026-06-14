@@ -38,9 +38,16 @@ def area_key(area: str) -> str:
 
 
 def project_entity(conn: sqlite3.Connection, rec: EntityRecord, org_id: int,
-                   source: str = "crawler") -> int:
-    """Rebuild this entity's graph to match ``rec``; deactivate its crawler edges that
-    are no longer present. Returns the Person node id."""
+                   source: str = "crawler", home_appointment: bool = True) -> int:
+    """Enrich a person from their profile: attrs + structured research edges, and
+    (when ``home_appointment``) their home has_role from the profile title.
+
+    In the explore() flow listings are the AUTHORITATIVE source of appointments (the
+    section gives the role category), and they always run before profiles — so the
+    profile pass passes ``home_appointment=False`` and only adds attrs+research, never
+    creating or clobbering a role (e.g. it must not turn a 'Staff'-section person into
+    'admin' because their title carries an '…Office of the Dean' suffix). The standalone
+    single-profile ingest path (no listing) keeps the default True. Returns the Person id."""
     attrs = {k: v for k, v in {
         "email": rec.contact.get("email"),
         "phone": rec.contact.get("phone"),
@@ -50,11 +57,12 @@ def project_entity(conn: sqlite3.Connection, rec: EntityRecord, org_id: int,
     pid = upsert_node(conn, type="Person", key=rec.entity_id, name=rec.name,
                       attrs=attrs, source=source)
 
-    # the home appointment (from the profile's own title); upserted, never swept here
-    upsert_edge(
-        conn, src_id=pid, type="has_role", dst_id=org_node_id(conn, org_id),
-        category=category_from_titles(rec.titles),
-        attrs={"titles": rec.titles, "is_primary": True}, source=source)
+    if home_appointment:
+        # the home appointment (from the profile's own title); upserted, never swept here
+        upsert_edge(
+            conn, src_id=pid, type="has_role", dst_id=org_node_id(conn, org_id),
+            category=category_from_titles(rec.titles),
+            attrs={"titles": rec.titles, "is_primary": True}, source=source)
 
     keep_research: set[int] = set()
     seen: set[str] = set()

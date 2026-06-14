@@ -17,7 +17,6 @@ from v2.core.graph.raw import save_raw_page, struct_hash
 from v2.core.ingestion import entry_points as ep
 from v2.core.ingestion.discovery import category_for_section, hub_children, parse_listing
 from v2.core.ingestion.njit_adapter import entity_id_from_url, parse_entity
-from v2.core.retrieval.skills import resolve_org
 
 
 _UA = "GSA-Gateway-Bot/1.0 (+https://github.com/mdindoost/gsa-gateway)"
@@ -123,14 +122,12 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                 if unchanged:
                     continue
                 rec = parse_entity(final_url, html)
-                # Anchor the profile's HOME appointment to the person's OWN department
-                # (rec.org from their profile title), NOT the listing path we reached them
-                # through — otherwise a dual-role person fetched via College Administration
-                # would have that admin appointment clobbered with their faculty title.
-                # Fall back to the path org only if the profile names no resolvable org.
-                home = resolve_org(conn, rec.org) if rec.org else None
-                org_id = home or ensure_org(conn, node.org_slug, node.org_name, node.parent_slug)
-                pid = project_entity(conn, rec, org_id)
+                # Profiles ENRICH only (attrs + research). Listings own appointments — the
+                # section is the authoritative role — and always run before profiles, so the
+                # profile must not create/clobber a has_role (e.g. turn a 'Staff' person into
+                # 'admin' off an '…Office of the Dean' title suffix).
+                org_id = ensure_org(conn, node.org_slug, node.org_name, node.parent_slug)
+                pid = project_entity(conn, rec, org_id, home_appointment=False)
                 conn.execute("INSERT OR IGNORE INTO page_nodes(raw_url,node_id) VALUES(?,?)",
                              (final_url, pid))
                 site = rec.links.get("website")

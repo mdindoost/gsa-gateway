@@ -77,13 +77,11 @@ def test_explore_rerun_skips_unchanged(conn):
     assert st2.skipped_unchanged >= 3 and st2.appointments == 0
 
 
-def test_depth3_profile_anchors_home_to_own_dept_not_path(conn):
-    # A dual-path person fetched via College Administration must keep that listing's
-    # section role (staff) AND get their OWN department (CS, from the profile) — the
-    # profile pass must NOT clobber the College-Admin appointment with the path org.
-    conn.execute("INSERT INTO organizations(id,parent_id,name,slug,type) "
-                 "VALUES(5,4,'Computer Science','computer-science','department')")
-    conn.commit()
+def test_depth3_profile_enriches_without_clobbering_listing_role(conn):
+    # Listings OWN appointments (section = authoritative role). A person listed under
+    # College Administration "Staff" must STAY staff after their profile is fetched — the
+    # profile pass only enriches (research/attrs), it never creates/clobbers a role (so an
+    # '…Office of the Dean' title suffix can't flip a staff member to admin/faculty).
     fixture = (Path(__file__).parent / "fixtures" / "koutis_profile.html").read_text(encoding="utf-8")
     pages = {
         "https://computing.njit.edu/people":
@@ -98,5 +96,7 @@ def test_depth3_profile_anchors_home_to_own_dept_not_path(conn):
     roles = dict(conn.execute(
         "SELECT o.key, e.category FROM edges e JOIN nodes o ON o.id=e.dst_id "
         "WHERE e.src_id=? AND e.type='has_role' AND e.is_active=1", (pid,)).fetchall())
-    assert roles.get("college-administration") == "staff"   # listing role NOT clobbered
-    assert roles.get("computer-science") == "faculty"       # home anchored to own dept
+    assert roles == {"college-administration": "staff"}     # only the listing role; not clobbered
+    n_areas = conn.execute("SELECT COUNT(*) FROM edges WHERE src_id=? AND type='researches' "
+                           "AND is_active=1", (pid,)).fetchone()[0]
+    assert n_areas >= 1                                     # but the profile DID enrich research
