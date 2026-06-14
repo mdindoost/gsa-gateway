@@ -103,7 +103,11 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     if org_id is not None and _ENUM_AREAS.search(q):
         if _RANK.search(q):
             return Route("area_counts", {"org_id": org_id})
-        return Route("areas_in_org", {"org_id": org_id})
+        # a 'faculty'/'professor' mention WITHOUT a ranking cue is a roster ask
+        # ("list faculty and their areas"), not area enumeration — fall through to the
+        # faculty branch instead of answering with a bare list of area names.
+        if "faculty" not in q and "professor" not in q:
+            return Route("areas_in_org", {"org_id": org_id})
 
     if "department" in q and org_id is not None and "faculty" not in q and "professor" not in q:
         return Route("org_departments", {"org_id": org_id})

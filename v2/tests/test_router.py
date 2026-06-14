@@ -90,3 +90,16 @@ def test_who_works_on_still_routes_to_recall_skill(conn):
     # unchanged: "who works on X" must NOT switch to the low-recall tag facet
     r = route(conn, "who works on graph in CS?")
     assert r is not None and r.skill == "people_by_research_area"
+
+
+def test_faculty_roster_with_areas_is_not_shadowed_by_enumeration(conn):
+    # "faculty" + "research areas" but NO ranking cue is a roster ask, not enumeration —
+    # it must reach faculty_in_department, not be captured by areas_in_org.
+    r = route(conn, "show all faculty and their research areas in CS")
+    assert r is not None and r.skill == "faculty_in_department" and r.args["org_id"] == 5
+
+
+def test_area_ranking_with_faculty_metric_still_routes_to_counts(conn):
+    # the word 'faculty' here is the ranking metric, not a roster request — _RANK wins.
+    r = route(conn, "which research areas have the most faculty in YWCC?")
+    assert r is not None and r.skill == "area_counts" and r.args["org_id"] == 4

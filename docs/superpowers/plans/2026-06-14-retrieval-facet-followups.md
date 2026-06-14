@@ -32,24 +32,22 @@ Status: ☐ open · ☑ done
 
 ## Router phrasing gaps
 
-- [ ] **4. `_RANK` misses bare "how many [research areas]"** (`v2/core/retrieval/router.py`)
-  "how many research areas does CS have" → no `_AREA_TRIGGER` verb (area=None), `_RANK`
-  only matches "how many **people**", so it routes to `areas_in_org` (full list) instead
-  of a count.
-  **Fix:** either add a count-of-areas shape, or treat bare "how many … areas" as a
-  count. Lower priority — there is no count-of-areas skill yet; decide scope first.
+- [x] **4. `_RANK` misses bare "how many [research areas]"** — **CLOSED, accept as-is.**
+  `areas_in_org`'s answer already leads with the count ("…N areas appear: …"), so
+  "how many research areas does CS have" already returns the number (plus the list). A
+  dedicated count-of-areas skill is added complexity for no real information gain.
 
-- [ ] **5. Router precedence: enum branch shadows faculty roster** (`v2/core/retrieval/router.py`)
-  `_ENUM_AREAS` is checked before the `faculty`/`professor` branch, so
-  "show all faculty and their research areas in CS" routes to `areas_in_org` instead of
-  the faculty roster.
-  **Fix:** add explicit overlap handling/precedence + tests for the compound phrasings.
+- [x] **5. Router precedence: enum branch shadows faculty roster** (`v2/core/retrieval/router.py`)
+  Fixed: the plain-enumeration branch now only fires when the query has no
+  `faculty`/`professor` mention (a roster ask falls through to `faculty_in_department`);
+  a ranking cue (`_RANK`, e.g. "most faculty") still routes to `area_counts` first, so
+  "which areas have the most faculty" is unaffected. Tests added for both compounds.
 
-- [ ] **6. `_PROSE_BOUNDARY` truncates areas after abbreviation period / standalone "I"**
-  (`v2/core/ingestion/njit_adapter.py`) — e.g. "Machine Learning, Approx. Algorithms"
-  loses "Algorithms"; "Type I Diabetes …" truncates at "Type".
-  Documented precision/recall tradeoff from the structural-extraction commit. **Evaluate
-  whether to refine** (abbreviation allowlist / require lowercase-prose context) or leave.
+- [x] **6. `_PROSE_BOUNDARY` truncates areas after abbreviation period / standalone "I"**
+  — **CLOSED, leave as-is (deliberate precision tradeoff).** Loosening the boundary risks
+  regressing the real trailing-prose stripping it exists for, and no actual truncation is
+  observed in the live 26-row dataset. Revisit only with a concrete real-data example
+  (then prefer an abbreviation-aware boundary over removing the guard).
 
 ## Ingestion-side (fold into next ingestion pass, or now while context is hot)
 
