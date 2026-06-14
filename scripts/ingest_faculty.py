@@ -30,7 +30,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from v2.core.ingestion.decompose import decompose
-from v2.core.ingestion.njit_adapter import fetch, parse_entity
+from v2.core.ingestion.njit_adapter import fetch, is_valid_profile, parse_entity
 
 FACULTY_LIST = "https://cs.njit.edu/faculty"
 
@@ -300,9 +300,19 @@ def _parse_profiles(urls, args):
     parsed, total_items = [], 0
     for i, url in enumerate(urls, 1):
         try:
-            rec = parse_entity(url, fetch(url))
+            html = fetch(url)
         except Exception as exc:  # noqa: BLE001 - one bad profile shouldn't abort the run
-            print(f"\n  ! {url}: fetch/parse failed: {exc}")
+            print(f"\n  ! {url}: fetch failed: {exc}")
+            continue
+        # skip-not-clobber: a structureless page (JS shell / transient) parses to empty
+        # fields that would overwrite an existing good card — treat it as a failed fetch.
+        if not is_valid_profile(html):
+            print(f"\n  ! {url}: no profile structure (tabbed-content) — skipping (keeps existing data)")
+            continue
+        try:
+            rec = parse_entity(url, html)
+        except Exception as exc:  # noqa: BLE001 - one bad profile shouldn't abort the run
+            print(f"\n  ! {url}: parse failed: {exc}")
             continue
         if args.overview:
             from v2.core.ingestion.overview import generate as gen_overview

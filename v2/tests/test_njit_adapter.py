@@ -8,7 +8,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from v2.core.ingestion.njit_adapter import entity_id_from_url, parse_entity
+from v2.core.ingestion.njit_adapter import (
+    entity_id_from_url,
+    is_valid_profile,
+    parse_entity,
+)
 
 # A trimmed but structurally faithful copy of the NJIT profile template: a
 # div.tabbed-content with about/teaching/research/publications/service panes, and
@@ -267,6 +271,17 @@ def test_single_token_dropped_for_precision():
 def test_leading_dash_and_bullet_artifacts_stripped():
     areas = _areas("<div>Research Interests</div><div>- Relational, Object, NoSQL</div>")
     assert areas == ["Relational", "Object", "NoSQL"]
+
+
+# ── skip-not-clobber: a structureless page is a failed fetch, not empty data ────
+
+def test_is_valid_profile_requires_tabbed_content():
+    # the real NJIT profile template always has div.tabbed-content
+    assert is_valid_profile('<html><body><div class="tabbed-content">x</div></body></html>')
+    # a JS shell / error / transient page has none → must NOT be treated as a real profile
+    assert not is_valid_profile("<html><body>just a 57kb js shell, no panes</body></html>")
+    assert not is_valid_profile("")
+    assert not is_valid_profile(None)
 
 
 def test_links_extracted():

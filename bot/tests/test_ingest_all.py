@@ -120,3 +120,30 @@ def test_run_all_continues_past_a_failing_department(monkeypatch):
 
     assert rc == 1                  # Dept A failed → non-zero overall
     assert committed_orgs == [7]    # but Dept B still committed (with its own org)
+
+
+def test_parse_profiles_skips_structureless_page(monkeypatch):
+    # A structureless fetch (JS shell / transient) must be skipped, never parsed into
+    # empty fields — otherwise a re-ingest would clobber an existing good card.
+    mod = _load_ingest()
+    pages = {
+        "http://x/profile/good": '<html><body><div class="tabbed-content">ok</div></body></html>',
+        "http://x/profile/bad": "<html><body>57kb js shell, no panes</body></html>",
+    }
+    monkeypatch.setattr(mod, "fetch", lambda u: pages[u])
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    parsed_urls = []
+
+    def fake_parse(url, html):
+        parsed_urls.append(url)
+        return SimpleNamespace(name=url.rsplit("/", 1)[-1], overview=None)
+
+    monkeypatch.setattr(mod, "parse_entity", fake_parse)
+    monkeypatch.setattr(mod, "decompose", lambda rec: ["item"])
+    monkeypatch.setattr(mod, "show", lambda rec, items: None)
+
+    parsed, total = mod._parse_profiles(list(pages), _args(overview=False, web=False))
+
+    assert parsed_urls == ["http://x/profile/good"]      # the bad page was never parsed
+    assert [rec.name for rec, _ in parsed] == ["good"]   # and never reached the result
+    assert total == 1

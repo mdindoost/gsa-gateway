@@ -221,6 +221,16 @@ def _resolve_org(titles: list[str], html: str, default: str) -> str:
     return default
 
 
+def is_valid_profile(html: str) -> bool:
+    """True iff the page carries the NJIT profile template (``div.tabbed-content``). A page
+    without it — a JS shell, an error page, or a transient response — must NOT be ingested:
+    parsing it yields empty fields that would clobber an existing good card. Callers skip
+    (keep existing data) when this is False."""
+    if not html:
+        return False
+    return BeautifulSoup(html, "html.parser").find("div", class_="tabbed-content") is not None
+
+
 def parse_entity(url: str, html: str, org_default: str = "") -> EntityRecord:
     soup = BeautifulSoup(html, "html.parser")
 
