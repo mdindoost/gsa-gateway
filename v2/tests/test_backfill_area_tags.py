@@ -14,9 +14,12 @@ def test_recovers_list_from_joined_content():
         "Multimedia Databases", "Spatio-temporal Databases", "Recommender Systems"]
 
 
-def test_single_area_content():
+def test_single_area_content_is_dropped_for_precision():
+    # canonical definition (njit_adapter._split_areas): a lone token from this free-text
+    # field is treated as prose, never a real one-item list, so it yields [] — the same
+    # rule decompose applied at ingestion, so backfill agrees with how the data was made.
     c = "Research areas of X (CS): Algorithms"
-    assert area_tags_from_content(c) == ["Algorithms"]
+    assert area_tags_from_content(c) == []
 
 
 def test_no_colon_returns_empty():

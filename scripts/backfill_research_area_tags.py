@@ -1,47 +1,29 @@
 #!/usr/bin/env python
-"""One-time backfill: populate metadata.areas on existing active research_areas items.
+"""One-time backfill: populate metadata.areas on existing active research_areas items
+that don't carry it yet (legacy rows from before decompose wrote it natively).
 
-Lossless — decompose joins areas with "; " and areas never contain ',' or ';', so the
-content tail recovers the exact list. DEFAULT IS A DRY RUN; --commit writes (auto-backup
-first). Going forward decompose writes metadata.areas natively.
+Areas are recovered from the row's stored content via the canonical splitter (see
+scripts/_area_tag_migrate.canonical_areas), so this agrees exactly with ingestion and
+with the repair script — a ';' inside parens does not fragment an area, and prose /
+single-token content honestly yields []. DEFAULT IS A DRY RUN; --commit writes
+(hardened, integrity-checked backup first). Going forward decompose writes natively.
 """
 from __future__ import annotations
 
 import argparse
-import json
-import shutil
-import sqlite3
-from datetime import datetime
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+from scripts._area_tag_migrate import canonical_areas, run_area_migration
 
 
 def area_tags_from_content(content: str) -> list[str]:
-    """Recover the discrete area list from a 'Research areas of X: A; B; C' string.
-
-    Splits on the join delimiter ';' at the TOP LEVEL only — a ';' inside parentheses
-    belongs to an illustrative list within one area ('ML (a; b; c)') and must not
-    fragment it (matches njit_adapter._split_top_level's paren-awareness, so re-running
-    this on already-grouped content stays idempotent rather than re-fragmenting)."""
-    if ": " not in content:
-        return []
-    tail = content.split(": ", 1)[1]
-    parts: list[str] = []
-    buf: list[str] = []
-    depth = 0
-    for ch in tail:
-        if ch in "([{":
-            depth += 1
-        elif ch in ")]}" and depth > 0:
-            depth -= 1
-        elif ch == ";" and depth == 0:
-            parts.append("".join(buf))
-            buf = []
-            continue
-        buf.append(ch)
-    parts.append("".join(buf))
-    return [a.strip() for a in parts if a.strip()]
+    """Back-compat alias for the canonical area derivation (one definition, shared)."""
+    return canonical_areas(content)
 
 
 def main() -> int:
@@ -49,40 +31,9 @@ def main() -> int:
     ap.add_argument("--db", default=str(REPO / "gsa_gateway.db"))
     ap.add_argument("--commit", action="store_true", help="write changes (else dry run)")
     args = ap.parse_args()
-
-    conn = sqlite3.connect(args.db)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT id, content, metadata FROM knowledge_items "
-        "WHERE type='research_areas' AND is_active=1").fetchall()
-
-    planned = []
-    for r in rows:
-        meta = json.loads(r["metadata"])
-        if meta.get("areas"):
-            continue  # already has it (native decompose)
-        tags = area_tags_from_content(r["content"])
-        if tags:
-            meta["areas"] = tags
-            planned.append((r["id"], json.dumps(meta), tags))
-
-    print(f"{len(rows)} active research_areas items; {len(planned)} need backfill.")
-    for _id, _m, tags in planned[:5]:
-        print(f"  id={_id}: {tags}")
-
-    if not args.commit:
-        print("DRY RUN — pass --commit to write.")
-        return 0
-
-    backup = REPO / ".backups" / f"gsa_gateway.{datetime.now():%Y%m%d-%H%M%S}.pre-areas-backfill.db"
-    backup.parent.mkdir(exist_ok=True)
-    shutil.copy2(args.db, backup)
-    print(f"backup: {backup}")
-    conn.executemany("UPDATE knowledge_items SET metadata=? WHERE id=?",
-                     [(m, i) for i, m, _t in planned])
-    conn.commit()
-    print(f"backfilled {len(planned)} items.")
-    return 0
+    # Backfill scope: rows that currently carry no areas but have a recoverable list.
+    return run_area_migration(args.db, args.commit, "pre-areas-backfill",
+                              needs=lambda old, new: not old and bool(new))
 
 
 if __name__ == "__main__":

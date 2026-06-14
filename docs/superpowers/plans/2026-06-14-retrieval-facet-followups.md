@@ -53,7 +53,7 @@ Status: ☐ open · ☑ done
 
 ## Ingestion-side (fold into next ingestion pass, or now while context is hot)
 
-- [ ] **7. Unify `backfill` + `repair` on one area definition**
+- [x] **7. Unify `backfill` + `repair` on one area definition**
   (`scripts/backfill_research_area_tags.py`, `scripts/repair_paren_fragmented_areas.py`)
   Both reconstruct areas from stored content but `backfill` uses a raw delimiter split
   while `repair` routes through `njit_adapter._split_areas` (the canonical filters).
