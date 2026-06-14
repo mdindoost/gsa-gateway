@@ -77,7 +77,7 @@ def _insert(conn, org_id: int, item: KItem, meta: dict, created_by: str,
 
 
 def reconcile_entity(conn, org_id: int, entity_id: str, items: list[KItem],
-                     created_by: str = "ingest") -> ReconcileResult:
+                     created_by: str = "ingest", rec=None) -> ReconcileResult:
     """Apply the freshly-decomposed ``items`` as the new active state of one entity.
 
     Caller is responsible for embedding ``result.to_embed`` and dropping vectors
@@ -135,5 +135,11 @@ def reconcile_entity(conn, org_id: int, entity_id: str, items: list[KItem],
                     "UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') WHERE id=?",
                     (row["id"],))
                 result.deactivated_ids.append(row["id"])
+
+        # B1: project the entity into the graph in the SAME transaction, so the
+        # graph layer can never diverge from the text layer. Deterministic only.
+        if rec is not None:
+            from v2.core.graph.project import project_entity
+            project_entity(conn, rec, org_id, source="crawler")
 
     return result
