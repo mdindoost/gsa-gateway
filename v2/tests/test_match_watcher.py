@@ -41,6 +41,23 @@ def test_first_live_emits_kickoff():
     assert st["started"] is True and st["score"] == (0, 0)
 
 
+def test_late_first_read_near_kickoff_still_emits_kickoff():
+    # API reported the live state late: first read is 1-0 but we're still near kickoff.
+    # Announce kickoff, adopt the score silently (no back-announced goal).
+    st = fresh()
+    evs = w()._process(mk("IN_PLAY", 1, 0), st, near_kickoff=True)
+    assert [e["type"] for e in evs] == ["kickoff"]
+    assert st["started"] is True and st["score"] == (1, 0)
+
+
+def test_first_read_far_from_kickoff_stays_silent_restart():
+    # mid-match restart (not near kickoff): adopt score silently, NO kickoff, NO goals.
+    st = fresh()
+    evs = w()._process(mk("IN_PLAY", 1, 0), st, near_kickoff=False)
+    assert evs == []
+    assert st["started"] is True and st["score"] == (1, 0)
+
+
 def test_score_increase_emits_goal_for_right_team():
     st = {"started": True, "score": (0, 0), "finished": False}
     evs = w()._process(mk("IN_PLAY", 1, 0), st)

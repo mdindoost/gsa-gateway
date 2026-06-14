@@ -44,6 +44,11 @@ PRIMARY_INTERVAL = 10
 BURST_TRIES = 12                  # rapid reads across all keys
 BURST_INTERVAL = 2
 MATCH_MAX = datetime.timedelta(hours=2, minutes=30)   # safety stop after kickoff
+KICKOFF_GRACE = datetime.timedelta(minutes=30)        # if the first live read is caught this
+                                                      # soon after the scheduled kickoff it's
+                                                      # still "the start" (the free API can
+                                                      # report the live state late); catching
+                                                      # it later means a mid-match restart
 
 
 def _utcnow() -> datetime.datetime:
@@ -117,9 +122,13 @@ class MatchWatcher:
         m["score"] = {"fullTime": {"home": score[0], "away": score[1]}}
         return m
 
-    def _process(self, match: dict, state: dict) -> list[dict]:
+    def _process(self, match: dict, state: dict, near_kickoff: bool = False) -> list[dict]:
         """Given a catchable read + running state, return event dicts to post and
-        mutate ``state`` (keys: started, score, finished)."""
+        mutate ``state`` (keys: started, score, finished).
+
+        ``near_kickoff`` (True when we're still within KICKOFF_GRACE of the scheduled
+        kickoff) decides what a non-0-0 FIRST live read means: a genuine start the API
+        reported late (announce kickoff) vs. a mid-match restart (stay silent)."""
         status, (h, a) = self._parse(match)
         events: list[dict] = []
         if status in DONE:
@@ -133,11 +142,15 @@ class MatchWatcher:
             if not state["started"]:
                 state["started"] = True
                 if (h, a) != (0, 0):
-                    # Joined a match already in progress (e.g. after a restart) —
-                    # adopt the current score as a SILENT baseline. Don't re-fire
-                    # kickoff or back-announce missed goals (which would also
-                    # reconstruct a wrong order, e.g. a phantom 1-0 for a 0-1,1-1 game).
+                    # Caught after the opening whistle. Adopt the current score as a SILENT
+                    # baseline either way — never back-announce / mis-order goals already
+                    # scored (a phantom 1-0 for a 0-1,1-1 game). But if we're still near the
+                    # scheduled kickoff, the match genuinely just started and the API merely
+                    # reported the live state late, so we STILL announce kickoff; far past
+                    # kickoff it's a restart and we stay silent.
                     state["score"] = (h, a)
+                    if near_kickoff:
+                        events.append({"type": "kickoff", "match": match})
                     return events
                 events.append({"type": "kickoff", "match": match})
             ph, pa = state["score"]
@@ -212,7 +225,8 @@ class MatchWatcher:
         while self._running and not state["finished"] and _utcnow() < deadline:
             m = await self._catch(match_id, et_day)
             if m:
-                for ev in self._process(m, state):
+                near = _utcnow() < kickoff_utc + KICKOFF_GRACE
+                for ev in self._process(m, state, near):
                     self._post(match_id, ev)
                 if state["finished"]:
                     break
