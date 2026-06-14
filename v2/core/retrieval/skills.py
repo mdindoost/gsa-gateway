@@ -211,3 +211,13 @@ def area_counts(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, int]]:
         ents.setdefault(k, set()).add(eid)
     out = [(_canonical(forms[k]), len(ents[k])) for k in forms]
     return sorted(out, key=lambda t: (-t[1], t[0].casefold()))
+
+
+def people_by_area_tag(conn: sqlite3.Connection, area: str,
+                       org_id: int | None = None) -> list[tuple[str, str]]:
+    """Faculty (name, entity_id) who LIST ``area`` as a research-area tag — exact
+    (case-folded) match against metadata.areas, with P2 expansion so 'ml'/'llm' hit the
+    canonical tags. Precise, lower-recall (only faculty who list discrete areas)."""
+    targets = {p.casefold() for p in expand_area(area)}
+    eids = {eid for val, eid in _area_rows(conn, org_id) if val.casefold() in targets}
+    return sorted((_display_name(conn, e), e) for e in eids)

@@ -18,6 +18,7 @@ from v2.core.retrieval.skills import (
     faculty_in_department,
     org_departments,
     org_descendants,
+    people_by_area_tag,
     people_by_research_area,
     resolve_org,
 )
@@ -198,3 +199,16 @@ def test_area_counts_counts_distinct_entities_sorted_desc(conn):
     assert counts[0] == ("Machine Learning", 2)
     assert ("Graph Theory", 1) in counts
     assert len(counts) == len(areas_in_org(conn, 5))
+
+
+def test_people_by_area_tag_casefold_and_expansion(conn):
+    _add_areas(conn, 5, "p/a", "Prof A", ["Machine Learning"])
+    _add_areas(conn, 5, "p/b", "Prof B", ["large language models"])
+    # exact tag, case-insensitive
+    assert _names(people_by_area_tag(conn, "machine learning", org_id=5)) == {"Prof A"}
+    # P2 expansion: "ml" -> matches the "Machine Learning" tag
+    assert _names(people_by_area_tag(conn, "ml", org_id=5)) == {"Prof A"}
+    # "llm" expands to "large language models" -> matches Prof B
+    assert _names(people_by_area_tag(conn, "llm", org_id=5)) == {"Prof B"}
+    # unmapped, unlisted area -> empty (honest)
+    assert people_by_area_tag(conn, "astrophysics", org_id=5) == []
