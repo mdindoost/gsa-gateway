@@ -1,0 +1,9 @@
+org: {slug: gsa, name: "Graduate Student Association", parent: njit}
+people:
+  - {name: "Fernando Vera Buschmann", title: "GSA President", category: officer, email: gsa-pres@njit.edu, note: "Data Science PhD"}
+  - {name: "Mohammad Dindoost", title: "VP Academic Affairs", category: officer, email: gsa-vpa@njit.edu, note: "Computer Science PhD; Chair of 3MRP and Graduate Research Day"}
+  - {name: "Mohith Oduru", title: "VP Finances", category: officer, email: gsa-vpf@njit.edu, note: "Information Systems PhD"}
+  - {name: "Durvish Paliwal", title: "VP Programming", category: officer, email: dp2225@njit.edu, note: "Data Science MS"}
+  - {name: "Nistha Hiteshkumar Chauhan", title: "VP Communications", category: officer, email: nhc27@njit.edu}
+  - {name: "Ritwik Reddy Kolan", title: "VP Public Relations", category: officer, email: rk982@njit.edu}
+rgos: []
