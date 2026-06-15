@@ -317,6 +317,10 @@ function renderPeople() {
     + "AND e3.is_active=1) DESC, n.name",
     PEOPLE_SEARCH ? [like, like] : []);
 
+  const errs = query(
+    "SELECT f.url, f.error, n.name FROM frontier f LEFT JOIN nodes n ON n.id=f.from_node_id "
+    + "WHERE f.status='error' ORDER BY n.name");
+
   el.innerHTML = `
     <div class="kb-list-head">
       <div class="kb-list-title"><strong>${total}</strong> people ·
@@ -337,7 +341,19 @@ function renderPeople() {
         <td style="padding:6px 8px">${r.areas}</td>
         <td style="padding:6px 8px">${r.frontier ? "🔗 " + r.frontier : ""}</td>
       </tr>`).join("") || `<tr><td colspan="4" class="panel-empty">No people.</td></tr>`}</tbody>
-    </table>`;
+    </table>
+    ${errs.length ? `<div style="margin-top:20px">
+      <div class="kb-list-title">⚠️ Crawl issues (${errs.length}) <span class="muted">— frontier sites that failed to load (usually source-side: dead link / DNS / SSL)</span></div>
+      <table class="data-table" style="width:100%;border-collapse:collapse;margin-top:6px">
+        <thead><tr style="text-align:left">
+          <th style="padding:6px 8px">Person</th><th style="padding:6px 8px">URL</th>
+          <th style="padding:6px 8px">Reason</th></tr></thead>
+        <tbody>${errs.map((e) => `<tr style="border-top:1px solid #2a2a2a">
+          <td style="padding:6px 8px">${esc(e.name || "—")}</td>
+          <td style="padding:6px 8px"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.url)}</a></td>
+          <td style="padding:6px 8px">${esc(e.error || "?")}</td>
+        </tr>`).join("")}</tbody>
+      </table></div>` : ""}`;
 
   let deb;
   document.getElementById("people-search").oninput = (e) => {
@@ -383,6 +399,10 @@ function renderJobs() {
         <label class="jobs-web"><input type="checkbox" id="job-web" />
           include personal websites (slower)</label>
       </div>
+      <div class="jobs-actions" style="margin-top:8px">
+        <button class="btn btn-primary" id="job-explore">🕸 Gather KG (people + roles + research)</button>
+        <button class="btn btn-ghost" id="job-frontier">🔗 Process frontier sites</button>
+      </div>
       <div id="jobs-scope" class="jobs-scope"></div>
       <div id="jobs-eta" class="jobs-eta"></div>
       <div id="job-active"></div>
@@ -390,9 +410,24 @@ function renderJobs() {
       <div id="jobs-recent">Loading…</div>
     </div>`;
   document.getElementById("job-refresh-all").addEventListener("click", startRefreshAll);
+  document.getElementById("job-explore").addEventListener("click", () => startExplore({}));
+  document.getElementById("job-frontier").addEventListener("click", () => startExplore({ frontier: true }));
   document.getElementById("job-web").addEventListener("change", refreshJobsHealth);
   refreshJobsHealth();
   refreshJobsList();
+}
+
+function startExplore(opts) {
+  jobsApi("/api/jobs/explore", { method: "POST", body: opts })
+    .then(({ status, body }) => {
+      if (status === 409) { toast("A job is already running", false); return; }
+      if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
+      toast(opts.frontier ? "Frontier processing started ✅" : "KG gather started ✅");
+      pollJob(body.job_id);
+      refreshJobsList();
+      refreshJobsHealth();
+    })
+    .catch((e) => toast("Server error: " + e.message, false));
 }
 
 // Render minutes from seconds, rounded to a friendly value.
