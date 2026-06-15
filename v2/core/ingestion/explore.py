@@ -45,6 +45,7 @@ class ExploreStats:
     appointments: int = 0
     frontier_added: int = 0
     errors: int = 0
+    departed: int = 0          # appointments retired by the M3 section-scoped sweep
 
 
 def _record_frontier(conn, from_node_id, url, aspect, depth):
@@ -115,9 +116,11 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                         st.frontier_added += 1
             elif node.kind == "listing":
                 org_id = ensure_org(conn, node.org_slug, node.org_name, node.parent_slug)
+                present: set[str] = set()
                 for p in parse_listing(html):
                     purl = "https://people.njit.edu/profile/" + p.slug
                     pkey = entity_id_from_url(purl)
+                    present.add(pkey)
                     if unchanged:
                         pid = conn.execute(
                             "SELECT id FROM nodes WHERE type='Person' AND key=?",
@@ -139,6 +142,21 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                     else:
                         _record_frontier(conn, pid, purl, aspect, d - 1)
                         st.frontier_added += 1
+                # M3 — section-scoped deactivation: people who were on THIS listing before
+                # but aren't now (departed or moved to another dept) lose their appointment
+                # to THIS org. Scoped to this org + crawler-source, and only when we actually
+                # re-parsed a non-empty listing (a failed/empty fetch must never deactivate).
+                if not unchanged and present:
+                    ph = ",".join("?" * len(present))
+                    onode = org_node_id(conn, org_id)
+                    for (eid,) in conn.execute(
+                            f"SELECT e.id FROM edges e JOIN nodes p ON p.id=e.src_id "
+                            f"WHERE e.type='has_role' AND e.dst_id=? AND e.is_active=1 "
+                            f"AND e.source='crawler' AND p.key NOT IN ({ph})",
+                            [onode, *present]).fetchall():
+                        conn.execute("UPDATE edges SET is_active=0, "
+                                     "updated_at=datetime('now') WHERE id=?", (eid,))
+                        st.departed += 1
             elif node.kind == "profile":
                 if unchanged:
                     continue
@@ -167,23 +185,25 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
     return st
 
 
-def _upsert_site_item(conn, org_id, entity_id, url, text):
+def _upsert_site_item(conn, org_id, entity_id, name, url, text):
     """Insert-or-version-bump ONE 'webpage' knowledge_item for a personal site, keyed by a
     stable natural_key so a re-run dedups (no duplicate). Leaves the person's other items
-    untouched (unlike full reconcile)."""
+    untouched (unlike full reconcile). Title carries the person's NAME so person-specific
+    queries rank their site (the title is part of the embedded/searched text)."""
     nk = entity_id + ":site"
+    title = f"{name} — personal website"
     row = conn.execute(
-        "SELECT id, content FROM knowledge_items WHERE is_active=1 AND org_id=? "
+        "SELECT id, content, title FROM knowledge_items WHERE is_active=1 AND org_id=? "
         "AND json_extract(metadata,'$.natural_key')=?", (org_id, nk)).fetchone()
-    if row and row[1] == text:
-        return                                    # unchanged
+    if row and row[1] == text and row[2] == title:
+        return                                    # unchanged (content + title)
     if row:
         conn.execute("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
                      "WHERE id=?", (row[0],))
     conn.execute(
         "INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
         "is_active,created_by) VALUES(?,?,?,?,?,?,1,'crawler')",
-        (org_id, "webpage", "Personal website", text,
+        (org_id, "webpage", title, text,
          json.dumps({"entity_id": entity_id, "natural_key": nk}), url))
 
 
@@ -207,15 +227,55 @@ def process_frontier(conn: sqlite3.Connection, fetch, limit: int | None = None) 
             continue
         with conn:
             save_raw_page(conn, final_url, html, status)
-            prow = conn.execute("SELECT key FROM nodes WHERE id=?", (person_node,)).fetchone()
+            prow = conn.execute("SELECT key, name FROM nodes WHERE id=?", (person_node,)).fetchone()
             org = conn.execute(
                 "SELECT org_id FROM knowledge_items WHERE is_active=1 AND created_by='crawler' "
                 "AND json_extract(metadata,'$.entity_id')=? LIMIT 1",
                 (prow[0],)).fetchone() if prow else None
             if org:
-                _upsert_site_item(conn, org[0], prow[0], final_url, page_text(html)[:6000])
+                _upsert_site_item(conn, org[0], prow[0], prow[1], final_url,
+                                  page_text(html)[:6000])
                 conn.execute("INSERT OR IGNORE INTO page_nodes(raw_url,node_id) VALUES(?,?)",
                              (final_url, person_node))
             conn.execute("UPDATE frontier SET status='fetched' WHERE id=?", (fid,))
             st.fetched += 1
     return st
+
+
+def reconcile_departures(conn: sqlite3.Connection) -> dict:
+    """Post-gather cleanup for people who left or moved depts (M3). For each crawler Person:
+      * no active appointment at all  -> fully departed: deactivate the node, its edges, and
+        its crawler knowledge_items (+ drop their vectors).
+      * crawler knowledge_items filed under an org that is NOT their current home department
+        -> stale from a move (the profile pass re-filed under the new dept): deactivate them.
+    Returns counts. Idempotent — a no-departures run changes nothing."""
+    out = {"departed_people": 0, "items_retired": 0}
+
+    def _drop_items(item_ids):
+        if not item_ids:
+            return
+        conn.executemany("DELETE FROM knowledge_vectors WHERE item_id=?", [(i,) for i in item_ids])
+        conn.executemany("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
+                         "WHERE id=?", [(i,) for i in item_ids])
+        out["items_retired"] += len(item_ids)
+
+    with conn:
+        for pid, key in conn.execute(
+                "SELECT id, key FROM nodes WHERE type='Person' AND is_active=1 "
+                "AND source='crawler'").fetchall():
+            appts = conn.execute(
+                "SELECT COUNT(*) FROM edges WHERE src_id=? AND type='has_role' AND is_active=1",
+                (pid,)).fetchone()[0]
+            ki = conn.execute(
+                "SELECT id, org_id FROM knowledge_items WHERE is_active=1 AND created_by='crawler' "
+                "AND json_extract(metadata,'$.entity_id')=?", (key,)).fetchall()
+            if appts == 0:                                   # fully departed
+                _drop_items([i for i, _ in ki])
+                conn.execute("UPDATE edges SET is_active=0 WHERE src_id=? AND is_active=1", (pid,))
+                conn.execute("UPDATE nodes SET is_active=0, updated_at=datetime('now') WHERE id=?", (pid,))
+                out["departed_people"] += 1
+                continue
+            home = _home_dept_org_id(conn, pid)              # moved: KB under a non-home dept is stale
+            if home is not None:
+                _drop_items([i for i, org in ki if org != home])
+    return out

@@ -60,6 +60,11 @@ def main() -> int:
     st = explore(conn, http_fetch, depth=args.depth)
     print(f"\nexplore stats: {st}")
 
+    from v2.core.ingestion.explore import reconcile_departures
+    dep = reconcile_departures(conn)        # M3: retire people who left / clean moved KB
+    print(f"departures (M3): appointments retired={st.departed}, "
+          f"people removed={dep['departed_people']}, stale items retired={dep['items_retired']}")
+
     print("\n=== graph summary ===")
     for typ, n in conn.execute(
             "SELECT type, COUNT(*) FROM nodes WHERE is_active=1 GROUP BY type ORDER BY type"):
