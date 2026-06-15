@@ -40,6 +40,13 @@ RETRIEVAL_DEBUG_FILE = Path(__file__).resolve().parents[3] / "logs" / "retrieval
 RRF_K = 60
 DEFAULT_CONTACT_BOOST = 1.5
 DEFAULT_EVENT_BOOST = 1.2
+# Types kept OUT of the default answer corpus. Publications are ~78% of the corpus
+# and pure noise for almost every student-facing question (they bury the bios that
+# actually answer "are there robotic labs"); raw personal-website dumps are long and
+# low-signal. They stay embedded and are still reachable via an explicit item_types
+# whitelist or a publications-intent route — just not in general answers. Admin-tunable
+# via the `retriever.exclude_types` setting (comma-separated; empty string = exclude none).
+DEFAULT_EXCLUDE_TYPES = frozenset({"publication", "webpage"})
 # Candidate pool per leg for fusion — deliberately decoupled from `limit`.
 # "pool" = how wide we search; "limit" = how many we return. A boosted item that
 # is strong in only one leg must still enter the pool to be liftable. Never drops
@@ -54,7 +61,8 @@ _TOKEN = re.compile(r"\w+", re.UNICODE)
 _STOPWORDS = frozenset(
     "a an and or of to for in on at is are am was were be been do does did "
     "i me my you your he she it its we they them this that these those "
-    "how what who whom where when which why with as by from".split()
+    "how what who whom where when which why with as by from "
+    "there here have has had been being".split()
 )
 
 
@@ -117,6 +125,17 @@ class V2Retriever:
         # Admin-tunable pool size, but never below MIN_POOL_SIZE.
         self.pool_size = max(MIN_POOL_SIZE,
                              int(self._load_boost("retriever.pool_size", DEFAULT_POOL_SIZE)))
+        # Types excluded from the default answer corpus (see DEFAULT_EXCLUDE_TYPES).
+        self.exclude_types = self._load_exclude("retriever.exclude_types", DEFAULT_EXCLUDE_TYPES)
+
+    def _load_exclude(self, key: str, default: frozenset) -> frozenset:
+        row = self.conn.execute(
+            "SELECT value FROM settings WHERE key=? ORDER BY org_id LIMIT 1", (key,)
+        ).fetchone()
+        if not row or row["value"] is None:
+            return default
+        # explicit setting wins, including an empty string meaning "exclude nothing"
+        return frozenset(t.strip().lower() for t in str(row["value"]).split(",") if t.strip())
 
     def _load_boost(self, key: str, default: float) -> float:
         row = self.conn.execute(
@@ -162,9 +181,9 @@ class V2Retriever:
         return path
 
     # ── filtering ───────────────────────────────────────────────────────────
-    def _allowed_ids(self, org_id, org_subtree, item_types) -> set[int] | None:
+    def _allowed_ids(self, org_id, org_subtree, item_types, exclude_types=None) -> set[int] | None:
         """Return the set of item ids permitted by the filters, or None (no filter)."""
-        if org_id is None and not item_types:
+        if org_id is None and not item_types and not exclude_types:
             return None
         clauses, params = ["is_active=1"], []
         if org_id is not None:
@@ -174,6 +193,9 @@ class V2Retriever:
         if item_types:
             clauses.append(f"type IN ({','.join('?' * len(item_types))})")
             params += list(item_types)
+        if exclude_types:
+            clauses.append(f"type NOT IN ({','.join('?' * len(exclude_types))})")
+            params += list(exclude_types)
         rows = self.conn.execute(
             f"SELECT id FROM knowledge_items WHERE {' AND '.join(clauses)}", params
         ).fetchall()
@@ -217,8 +239,14 @@ class V2Retriever:
         item_types: list[str] | None = None,
         limit: int = 5,
         group_by_entity: bool = True,
+        exclude_types: list[str] | None = None,
     ) -> list[RetrievedChunk]:
-        allowed = self._allowed_ids(org_id, org_subtree, item_types)
+        # Default answer corpus drops noise-heavy types (publications, raw webpages).
+        # An explicit item_types whitelist already constrains, so exclusion is skipped
+        # then; a caller can override with exclude_types (e.g. [] to search everything).
+        eff_exclude = None if item_types else (
+            exclude_types if exclude_types is not None else self.exclude_types)
+        allowed = self._allowed_ids(org_id, org_subtree, item_types, eff_exclude)
         total_active = self.conn.execute(
             "SELECT COUNT(*) FROM knowledge_items WHERE is_active=1"
         ).fetchone()[0]

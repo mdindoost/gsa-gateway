@@ -134,6 +134,45 @@ def test_item_type_filter(retriever):
     assert all(c.type == "contact" for c in results)
 
 
+def _insert(retriever, slug, ktype, title, content):
+    iid = retriever.conn.execute(
+        "INSERT INTO knowledge_items(org_id,type,title,content) VALUES(?,?,?,?)",
+        (retriever._org_ids[slug], ktype, title, content)).lastrowid
+    vec = retriever.embedder.embed_document(content)
+    retriever.conn.execute("INSERT INTO knowledge_vectors(item_id,embedding) VALUES(?,?)",
+                           (iid, sqlite_vec.serialize_float32(vec)))
+    retriever.conn.commit()
+    return iid
+
+
+def test_publications_excluded_from_default_corpus(retriever):
+    # Publications pollute general answers, so the default corpus drops them.
+    _insert(retriever, "gsa", "publication", "A Conference Paper",
+            "conference travel award funding conference conference")
+    results = retriever.retrieve("conference travel award funding", limit=5)
+    assert results
+    assert all(c.type != "publication" for c in results), \
+        "publications must not appear in the default answer corpus"
+
+
+def test_publications_returned_when_exclusion_overridden(retriever):
+    # exclude_types=[] searches everything (e.g. a publications-intent route).
+    _insert(retriever, "gsa", "publication", "A Conference Paper",
+            "conference travel award funding conference conference")
+    results = retriever.retrieve("conference travel award funding", limit=5, exclude_types=[])
+    assert any(c.type == "publication" for c in results), \
+        "an explicit exclude_types=[] must let publications through"
+
+
+def test_exclude_types_loaded_from_settings(retriever):
+    retriever.conn.execute("INSERT INTO settings(org_id,key,value) VALUES(?,'retriever.exclude_types','faq')",
+                           (retriever._org_ids["njit"],))
+    retriever.conn.commit()
+    from v2.core.retrieval.retriever import V2Retriever
+    r2 = V2Retriever(retriever.conn, retriever.embedder)
+    assert r2.exclude_types == frozenset({"faq"})
+
+
 def test_keyword_only_hit_has_no_similarity(retriever):
     # A query term present in text but semantically off still returns via FTS.
     results = retriever.retrieve("Mohith Oduru", limit=5)
@@ -146,6 +185,13 @@ def test_stopwords_filtered_from_match_expr():
     expr = _fts_match_expr("who is in charge of GSA finances")
     assert '"who"' not in expr and '"is"' not in expr and '"of"' not in expr
     assert '"gsa"' in expr and '"finances"' in expr
+
+
+def test_existential_there_is_a_stopword():
+    # "are there robotic labs" must not match every FAQ containing "there".
+    expr = _fts_match_expr("are there robotic labs")
+    assert '"there"' not in expr
+    assert expr == '"robotic" OR "labs"'
 
 
 def test_all_stopword_query_falls_back():
