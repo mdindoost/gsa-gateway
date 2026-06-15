@@ -33,3 +33,16 @@ def test_who_is_the_gsa_president_routes(conn):
 
 def test_descriptive_question_still_falls_through(conn):
     assert route(conn, "what is the meaning of graduate research day") is None
+
+
+def test_who_works_at_routes_to_people_in_org(conn):
+    conn.execute("INSERT INTO organizations(id,parent_id,name,slug,type) "
+                 "VALUES(3,1,'Graduate Studies','graduate-studies','office')")
+    conn.commit()
+    r = route(conn, "who works at graduate studies")
+    assert r is not None and r.skill == "people_in_org" and r.args["org_id"] == 3
+
+
+def test_officers_still_route_to_officers(conn):
+    r = route(conn, "who are the GSA officers")
+    assert r is not None and r.skill == "officers_in_org" and r.args["org_id"] == 2

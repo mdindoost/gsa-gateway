@@ -200,6 +200,10 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     return self._json(self._post_org(conn, body))
                 if path == "/settings":
                     return self._json(self._post_setting(conn, body))
+                if path == "/people":
+                    return self._json(self._post_person(conn, body))
+                if path == "/people/remove":
+                    return self._json(self._post_person_remove(conn, body))
             finally:
                 conn.close()
             self._error("Not found", 404)
@@ -469,6 +473,29 @@ class GatewayHandler(BaseHTTPRequestHandler):
              json.dumps(b.get("metadata", {})), b.get("source_url"), "dashboard"))
         conn.commit()
         return {"success": True, "item_id": cur.lastrowid, "needs_reindex": True}
+
+    _ROLE_TYPE_TO_CATEGORY = {
+        "officer": "officer", "dept rep": "deprep", "deprep": "deprep",
+        "staff": "staff", "advisor": "advisor", "admin": "admin",
+    }
+
+    def _post_person(self, conn, b):
+        if not b.get("org_id") or not b.get("name") or not b.get("title"):
+            raise ValueError("org_id, name and title are required")
+        from v2.core.ingestion.people_editor import add_or_edit_person
+        category = GatewayHandler._ROLE_TYPE_TO_CATEGORY.get(str(b.get("role_type", "officer")).lower(), "officer")
+        res = add_or_edit_person(conn, org_id=b["org_id"], name=b["name"], title=b["title"],
+                                 category=category, email=b.get("email"), about=b.get("about"))
+        conn.commit()
+        return {"success": True, "needs_reindex": bool(b.get("about")), **res}
+
+    def _post_person_remove(self, conn, b):
+        if not b.get("person_key") or not b.get("org_id"):
+            raise ValueError("person_key and org_id are required")
+        from v2.core.ingestion.people_editor import remove_person_role
+        res = remove_person_role(conn, person_key=b["person_key"], org_id=b["org_id"])
+        conn.commit()
+        return {"success": True, **res}
 
     def _post_org(self, conn, b):
         if not b.get("name"):
