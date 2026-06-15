@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -36,6 +37,27 @@ FREE_MODE_SYSTEM_PROMPT = (
     "periodically remind students you can also help with GSA events, funding, "
     "and campus resources."
 )
+
+
+def _source_note_for(answer_text: str, chunks) -> str:
+    """Credit the source(s) the answer ACTUALLY cited (its 'doc_id N' references), in
+    citation order; fall back to the top-ranked retrieved chunks, in rank order. Avoids the
+    old bug of crediting an unordered ``set`` of every retrieved chunk — which surfaced
+    unrelated near-duplicate docs (e.g. sibling club 'About' pages) and dropped the real one."""
+    cited_ids = [int(m) for m in re.findall(r"doc_id\s*(\d+)", answer_text or "")]
+    by_id = {getattr(c, "item_id", None): c for c in chunks}
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for did in cited_ids:                       # 1) what the answer cited, in order
+        c = by_id.get(did)
+        if c and c.source_file and c.source_file not in seen:
+            seen.add(c.source_file); ordered.append(c.source_file)
+    if not ordered:                             # 2) fallback: top-ranked chunks, rank order
+        for c in chunks:
+            if c.source_file and c.source_file not in seen:
+                seen.add(c.source_file); ordered.append(c.source_file)
+    names = [SOURCE_FRIENDLY_NAMES.get(f, f) for f in ordered[:2]]
+    return " & ".join(names)
 
 
 @dataclass
@@ -394,9 +416,7 @@ class MessageHandler:
                 )
                 if ai_resp:
                     response_text = ai_resp
-                    source_files = list({c.source_file for c in chunks})
-                    source_names = [SOURCE_FRIENDLY_NAMES.get(f, f) for f in source_files[:2]]
-                    source_note = " & ".join(source_names)
+                    source_note = _source_note_for(ai_resp, chunks)
                     used_ai = True
                 else:
                     best = chunks[0]
