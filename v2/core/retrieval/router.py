@@ -41,6 +41,11 @@ _OFFICER = re.compile(
     r"\b(officers?|e-?board|executive board|president|vice[- ]president|\bvp\b|"
     r"treasurer|secretary|deprep|department representatives?)\b")
 
+# "who works at/in <org>", "people in <org>", "<org> staff/team" -> the full roster.
+_PEOPLE = re.compile(
+    r"\b(who works?\b|works? (?:at|in|for)\b|people (?:in|at|of)\b|"
+    r"staff (?:of|at|in)\b|team (?:of|at|in)\b|members? of\b)")
+
 
 @dataclass
 class Route:
@@ -117,6 +122,9 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
 
     if org_id is not None and _OFFICER.search(q):
         return Route("officers_in_org", {"org_id": org_id})
+
+    if org_id is not None and _PEOPLE.search(q):
+        return Route("people_in_org", {"org_id": org_id})
 
     if "department" in q and org_id is not None and "faculty" not in q and "professor" not in q:
         return Route("org_departments", {"org_id": org_id})
