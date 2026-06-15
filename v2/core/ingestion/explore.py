@@ -12,11 +12,14 @@ from collections import deque
 from dataclasses import dataclass
 
 from v2.core.graph.orgs import ensure_org, org_node_id
-from v2.core.graph.project import project_appointment, project_entity
+from v2.core.graph.project import project_appointment
 from v2.core.graph.raw import save_raw_page, struct_hash
 from v2.core.ingestion import entry_points as ep
+from v2.core.ingestion.decompose import decompose
 from v2.core.ingestion.discovery import category_for_section, hub_children, parse_listing
 from v2.core.ingestion.njit_adapter import entity_id_from_url, parse_entity
+from v2.core.ingestion.reconcile import reconcile_entity
+from v2.core.retrieval.skills import resolve_org
 
 
 _UA = "GSA-Gateway-Bot/1.0 (+https://github.com/mdindoost/gsa-gateway)"
@@ -122,12 +125,19 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                 if unchanged:
                     continue
                 rec = parse_entity(final_url, html)
-                # Profiles ENRICH only (attrs + research). Listings own appointments — the
-                # section is the authoritative role — and always run before profiles, so the
-                # profile must not create/clobber a has_role (e.g. turn a 'Staff' person into
-                # 'admin' off an '…Office of the Dean' title suffix).
-                org_id = ensure_org(conn, node.org_slug, node.org_name, node.parent_slug)
-                pid = project_entity(conn, rec, org_id, home_appointment=False)
+                # Populate BOTH layers in one reconcile transaction (B1): decomposed
+                # knowledge_items (the text/semantic layer → KB tab + RAG) AND the graph
+                # (attrs + research). home_appointment=False because listings own the roles
+                # (section = authoritative); the profile must not create/clobber one (e.g.
+                # turn a 'Staff' person into 'admin' off an '…Office of the Dean' suffix).
+                # knowledge_items are filed under the person's HOME dept (rec.org), not the
+                # path we reached them through.
+                ki_org = (resolve_org(conn, rec.org)
+                          or ensure_org(conn, node.org_slug, node.org_name, node.parent_slug))
+                reconcile_entity(conn, ki_org, rec.entity_id, decompose(rec),
+                                 created_by="crawler", rec=rec, home_appointment=False)
+                pid = conn.execute("SELECT id FROM nodes WHERE type='Person' AND key=?",
+                                   (rec.entity_id,)).fetchone()[0]
                 conn.execute("INSERT OR IGNORE INTO page_nodes(raw_url,node_id) VALUES(?,?)",
                              (final_url, pid))
                 site = rec.links.get("website")

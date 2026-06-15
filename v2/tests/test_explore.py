@@ -99,4 +99,9 @@ def test_depth3_profile_enriches_without_clobbering_listing_role(conn):
     assert roles == {"college-administration": "staff"}     # only the listing role; not clobbered
     n_areas = conn.execute("SELECT COUNT(*) FROM edges WHERE src_id=? AND type='researches' "
                            "AND is_active=1", (pid,)).fetchone()[0]
-    assert n_areas >= 1                                     # but the profile DID enrich research
+    assert n_areas >= 1                                     # graph: profile enriched research
+    # text layer: the profile is decomposed into knowledge_items (KB tab + RAG corpus)
+    n_ki = conn.execute("SELECT COUNT(*) FROM knowledge_items WHERE is_active=1 "
+                        "AND json_extract(metadata,'$.entity_id')=?",
+                        ("people.njit.edu/profile/ikoutis",)).fetchone()[0]
+    assert n_ki >= 1
