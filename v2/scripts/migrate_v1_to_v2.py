@@ -357,7 +357,6 @@ ROOT_SETTINGS = [
         {"offset": 1, "unit": "days", "channels": ["discord", "telegram"]},
         {"offset": 1, "unit": "hours", "channels": ["discord"]},
     ]), "json", "Default event reminder schedule"),
-    ("retriever.contact_boost", "1.5", "string", "Multiply RRF score of contact items"),
     ("retriever.event_boost", "1.2", "string", "Multiply RRF score of event_info items"),
     ("retriever.pool_size", "40", "int", "Fusion candidate pool per leg (>= MIN_POOL_SIZE)"),
 ]
