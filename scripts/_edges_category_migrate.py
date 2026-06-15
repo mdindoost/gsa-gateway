@@ -69,6 +69,7 @@ def migrate(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA foreign_keys=OFF")
     try:
         conn.execute("BEGIN")
+        conn.execute("DROP TABLE IF EXISTS edges_new")   # self-heal a prior aborted run
         conn.execute(EDGES_NEW)
         conn.execute(f"INSERT INTO edges_new ({_COLS}) SELECT {_COLS} FROM edges")
         conn.execute("DROP TABLE edges")
