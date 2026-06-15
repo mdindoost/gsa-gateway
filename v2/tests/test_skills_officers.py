@@ -45,7 +45,17 @@ def test_officers_in_org_returns_name_and_title(conn):
 
 def test_officers_in_org_ignores_inactive_and_other_categories(conn):
     sync_org_nodes(conn)
-    pid = project_appointment(conn, person_key="dashboard/gsa/x", name="Faculty X",
-                              org_id=2, category="faculty", titles=["Professor"],
-                              source_section="E-Board", source="dashboard")
-    assert officers_in_org(conn, 2) == []
+    # 'faculty' is not an officer/deprep role -> excluded
+    project_appointment(conn, person_key="dashboard/gsa/x", name="Faculty X",
+                        org_id=2, category="faculty", titles=["Professor"],
+                        source_section="E-Board", source="dashboard")
+    # a DepRep (category 'deprep') IS included
+    project_appointment(conn, person_key="dashboard/gsa/rep", name="Dana Rep",
+                        org_id=2, category="deprep", titles=["Dept Representative"],
+                        source_section="DepRep", source="dashboard")
+    assert ("Dana Rep", "Dept Representative") in officers_in_org(conn, 2)
+    # deactivating the deprep's appointment removes them (exercises e.is_active filter)
+    conn.execute("UPDATE edges SET is_active=0 WHERE category='deprep'")
+    assert all(name != "Dana Rep" for name, _ in officers_in_org(conn, 2))
+    # the faculty person never appears
+    assert all(name != "Faculty X" for name, _ in officers_in_org(conn, 2))

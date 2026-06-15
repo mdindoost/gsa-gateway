@@ -169,7 +169,7 @@ def officers_in_org(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, st
     rows = conn.execute(
         "SELECT p.name, e.attrs, e.category FROM edges e "
         "JOIN nodes p ON p.id=e.src_id "
-        "JOIN nodes o ON o.id=e.dst_id "
+        "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
         "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1 "
         "AND e.category IN ('officer','deprep') "
         "AND json_extract(o.attrs,'$.org_id')=?",
