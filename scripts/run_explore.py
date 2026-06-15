@@ -62,6 +62,16 @@ def main() -> int:
         "GROUP BY n.id HAVING c>1 ORDER BY c DESC, n.name").fetchall()
     for name, c in rows:
         print(f"  {name}: {c} appointments")
+
+    from scripts.verify_kg import verify_kg
+    issues = verify_kg(conn)
+    print("\n=== mandatory alignment check (listing ⟷ KB) ===")
+    if issues:
+        print(f"  ✗ {len(issues)} problem(s):")
+        for i in issues[:20]:
+            print("   -", i)
+    else:
+        print("  ✓ KG aligned with KB — no mis-filed or missing people")
     return 0
 
 
