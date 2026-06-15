@@ -306,7 +306,8 @@ function renderPeople() {
   const like = "%" + PEOPLE_SEARCH + "%";
   const rows = query(
     "SELECT n.id, n.name, "
-    + "(SELECT group_concat(o.name || ' — ' || COALESCE(e.category,'?'), '; ') "
+    + "(SELECT group_concat(o.name || ' — ' || "
+    + "    COALESCE(json_extract(e.attrs,'$.titles[0]'), e.category, '?'), '; ') "
     + "  FROM edges e JOIN nodes o ON o.id=e.dst_id "
     + "  WHERE e.src_id=n.id AND e.type='has_role' AND e.is_active=1) AS roles, "
     + "(SELECT COUNT(*) FROM edges r WHERE r.src_id=n.id AND r.type='researches' AND r.is_active=1) AS areas, "

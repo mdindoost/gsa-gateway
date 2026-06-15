@@ -36,10 +36,11 @@ logger = logging.getLogger(__name__)
 #   ask        -> replaced by #ask-gsa RAG
 #   admin      -> control moves to the v2 dashboard
 #   scheduler  -> v2 scheduler (Wire B) owns all autonomous posting
-#   events/initiative/feedback/resources/qrcode -> dashboard/website (later phases)
+#   events/initiative/feedback/resources -> dashboard/website (later phases)
+# All-conversational: /contact and /help are retired (answered via chat); only
+# /qrcode (a generative tool, not a lookup) remains a slash command.
 EXTENSIONS = [
-    "bot.commands.contact",
-    "bot.commands.help_cmd",
+    "bot.commands.qrcode_cmd",
 ]
 
 
