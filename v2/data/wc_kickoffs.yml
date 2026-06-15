@@ -1,0 +1,21 @@
+# World Cup live-watcher schedule — authoritative kickoff times.
+#
+# The MatchWatcher wakes ~5 min before each kickoff, catches the live state in
+# short bursts (API 1 first, API 2 only as backup), posts start / score / full-
+# time, then sleeps until the next game. Nothing runs between games.
+#
+# Times are US Eastern (ET). Add a game per entry. If a game here has no time,
+# or isn't listed at all, the watcher falls back to the API's kickoff time
+# (utcDate is static schedule data and reliable, unlike the live status/score).
+#
+# Format:
+#   - date: "YYYY-MM-DD"      # ET calendar date of kickoff
+#     home: "Team Name"        # as FIFA lists it (e.g. "Korea Republic")
+#     away: "Team Name"
+#     kickoff_et: "HH:MM"      # 24h Eastern time
+
+games:
+  - date: "2026-06-11"
+    home: "Korea Republic"
+    away: "Czechia"
+    kickoff_et: "22:00"

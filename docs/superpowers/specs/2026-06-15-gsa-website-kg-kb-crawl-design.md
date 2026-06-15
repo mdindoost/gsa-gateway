@@ -1,7 +1,12 @@
 # GSA Website → KG + KB (Crawl-Based) Design
 
+> ⚠️ **SUPERSEDED (2026-06-15).** The crawl-based approach was abandoned — gsanjit.com is
+> Wix/React and not cleanly crawlable (see `docs/superpowers/findings/2026-06-15-gsa-wix-extraction.md`).
+> GSA is maintained **manually**; the shipped approach is `docs/superpowers/plans/2026-06-15-gsa-kg-kb-foundation.md`
+> + the People & Roles dashboard editor. Kept for the rationale only — do not implement this.
+
 **Date:** 2026-06-15
-**Status:** Design — pending implementation plan
+**Status:** SUPERSEDED — see banner above
 **Author:** brainstormed with Mohammad Dindoost (VP Academic Affairs)
 
 ## Goal

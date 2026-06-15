@@ -68,3 +68,6 @@ worldcup_state.json
 
 # Crawler review output (regenerated each run)
 docs/faculty_review.txt
+
+# Brainstorming visual-companion mockups (local only)
+.superpowers/
