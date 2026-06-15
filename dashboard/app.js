@@ -1679,6 +1679,15 @@ function saveKBContent(editing, it) {
 }
 
 // ── add organization modal ──────────────────────────────────────────────
+// Clean slug for a new org: prefer a parenthetical acronym in the name
+// (e.g. "Graduate Women in Computing Society (GWICS)" -> "gwics"), else slugify the
+// whole name. The router resolves orgs by slug, so a clean short slug means the acronym
+// "just works" — exactly like GSA's slug is 'gsa'.
+function smartOrgSlug(name) {
+  const m = (name || "").match(/\(([^)]{2,})\)/);
+  return PL.slugify(m ? m[1] : (name || ""));
+}
+
 function openAddOrgModal() {
   const orgs = query(
     "WITH RECURSIVE t(id,name,parent_id,depth) AS (SELECT id,name,parent_id,0 FROM organizations WHERE parent_id IS NULL " +
@@ -1688,17 +1697,25 @@ function openAddOrgModal() {
   document.getElementById("modal-body").innerHTML = `
     <h2>Add Organization</h2>
     <div class="field"><label>Parent</label><select id="o-parent">${orgs.map((o) => `<option value="${o.id}" ${o.id === KB.orgId ? "selected" : ""}>${"   ".repeat(o.depth)}${esc(o.name)}</option>`).join("")}</select></div>
-    <div class="field"><label>Name</label><input type="text" id="o-name" placeholder="e.g. YWCC"></div>
-    <div class="field"><label>Type</label><select id="o-type">${types.map((t) => `<option value="${t}" ${t === "custom" ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+    <div class="field"><label>Name</label><input type="text" id="o-name" placeholder="e.g. Graduate Women in Computing Society (GWICS)"></div>
+    <div class="field"><label>Slug</label><input type="text" id="o-slug" placeholder="auto from name — e.g. gwics"><div class="muted" style="font-size:12px;margin-top:2px">short id used to find the org (e.g. acronym). Auto-fills from the name; edit if you like.</div></div>
+    <div class="field"><label>Type</label><select id="o-type">${types.map((t) => `<option value="${t}" ${t === "club" ? "selected" : ""}>${t}</option>`).join("")}</select></div>
     <div class="field"><label>Description</label><textarea id="o-desc" rows="2"></textarea></div>
     <div class="modal-actions"><button class="btn btn-ghost" id="o-cancel">Cancel</button><button class="btn btn-primary" id="o-save">Save</button></div>`;
   document.getElementById("modal").hidden = false;
   document.getElementById("o-cancel").onclick = closeModal;
+  // auto-fill the slug from the name until the admin edits the slug themselves
+  let slugEdited = false;
+  const slugEl = document.getElementById("o-slug");
+  slugEl.oninput = () => { slugEdited = true; };
+  document.getElementById("o-name").oninput = (e) => {
+    if (!slugEdited) slugEl.value = smartOrgSlug(e.target.value.trim());
+  };
   document.getElementById("o-save").onclick = () => {
     const name = val("o-name").trim();
     if (!name) { toast("Name is required", false); return; }
     const parentId = Number(val("o-parent"));
-    let slug = PL.slugify(name), base = slug, i = 2;
+    let slug = (val("o-slug").trim() || smartOrgSlug(name)), base = slug, i = 2;
     while (query("SELECT 1 FROM organizations WHERE slug=?", [slug]).length) slug = base + "-" + (i++);
     const type = val("o-type"), description = val("o-desc").trim();
     const patch = PL.buildOrgPatch({ parentId, name, slug, type, description }, PL.orgTimezone(db));
