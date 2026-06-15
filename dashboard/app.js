@@ -309,6 +309,7 @@ function savePerson(orgId, form) {
 }
 
 function removePerson(personKey, orgId) {
+  if (!orgId) { toast("Select an org first (use the picker above) to remove a person", false); return; }
   if (!isServerMode()) { alert("Editing people requires the dashboard server (run v2/local_server.py)."); return; }
   if (!confirm("Remove this person/role? (kept in history, can be re-added)")) return;
   serverFetch("/people/remove", { method: "POST", body: { person_key: personKey, org_id: orgId } })
@@ -435,7 +436,7 @@ function renderPeople() {
         <input type="text" id="pf-name" class="set-input" value="${esc(editRow ? editRow.name : "")}" placeholder="Full name">
       </div>
       <div class="form-row">
-        <label class="form-label">Title</label>
+        <label class="form-label">Title <span style="color:#ff8a8a">*</span></label>
         <input type="text" id="pf-title" class="set-input" value="${esc(editRow ? (editRow.edit_title || "") : "")}" placeholder="e.g. Assistant Professor">
       </div>
       <div class="form-row">
@@ -527,11 +528,13 @@ function renderPeople() {
   document.getElementById("pf-save").onclick = () => {
     const name = document.getElementById("pf-name").value.trim();
     if (!name) { toast("Name is required", false); return; }
+    const title = document.getElementById("pf-title").value.trim();
+    if (!title) { toast("Title is required", false); return; }
     const targetOrg = PEOPLE_ORG_ID;
     if (!targetOrg) { toast("Select an org first (use the org picker above)", false); return; }
     savePerson(targetOrg, {
       name,
-      title: document.getElementById("pf-title").value.trim(),
+      title,
       role_type: document.getElementById("pf-role-type").value,
       email: document.getElementById("pf-email").value.trim(),
       about: document.getElementById("pf-about").value.trim(),
