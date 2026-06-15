@@ -8,6 +8,7 @@ only (LLM-on-prose is Phase 2). Each page is processed in its own transaction.""
 from __future__ import annotations
 import json
 import sqlite3
+import urllib.error
 import urllib.request
 from collections import deque
 from dataclasses import dataclass
@@ -34,8 +35,12 @@ def http_fetch(url: str, timeout: int = 25) -> tuple[str, str, str]:
         req = urllib.request.Request(url, headers={"User-Agent": _UA})
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.geturl(), r.read().decode("utf-8", "ignore"), "ok"
-    except Exception:  # noqa: BLE001 - any fetch failure is just a non-ok read
-        return url, "", "error"
+    except urllib.error.HTTPError as e:
+        return url, "", f"HTTP {e.code}"
+    except urllib.error.URLError as e:
+        return url, "", f"URLError: {e.reason}"
+    except Exception as e:  # noqa: BLE001 - any other failure is still just a non-ok read
+        return url, "", f"{type(e).__name__}: {e}"
 
 
 @dataclass
@@ -92,7 +97,8 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
         visited.add(node.url)
         final_url, html, status = fetch(node.url)
         if status != "ok":
-            conn.execute("UPDATE frontier SET status='error' WHERE url=?", (node.url,))
+            conn.execute("UPDATE frontier SET status='error', error=? WHERE url=?",
+                         (status, node.url))
             st.errors += 1
             continue
         unchanged = _unchanged(conn, final_url, html)
@@ -221,7 +227,8 @@ def process_frontier(conn: sqlite3.Connection, fetch, limit: int | None = None) 
     for fid, person_node, url in conn.execute(sql, params).fetchall():
         final_url, html, status = fetch(url)
         if status != "ok" or not person_node:
-            conn.execute("UPDATE frontier SET status='error' WHERE id=?", (fid,))
+            conn.execute("UPDATE frontier SET status='error', error=? WHERE id=?",
+                         (status if status != "ok" else "no person node", fid))
             conn.commit()
             st.errors += 1
             continue

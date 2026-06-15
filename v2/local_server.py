@@ -180,6 +180,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
             try:
                 if path == "/api/jobs/refresh":
                     return self._api_refresh()
+                if path == "/api/jobs/explore":
+                    return self._api_explore()
                 if path.startswith("/api/jobs/") and path.endswith("/cancel"):
                     return self._api_cancel(path[len("/api/jobs/"):-len("/cancel")])
                 return self._error("Not found", 404)
@@ -285,6 +287,19 @@ class GatewayHandler(BaseHTTPRequestHandler):
         web = bool(body.get("web", False))
         try:
             res = JOBS.start_refresh(department=dept, limit=limit, web=web)
+        except JobBusyError:
+            return self._error("a job is already running", 409)
+        return self._json(res, 201)
+
+    def _api_explore(self):
+        body = self._body()
+        try:
+            depth = int(body.get("depth", 3))
+        except (TypeError, ValueError):
+            return self._error("depth must be an integer", 400)
+        try:
+            res = JOBS.start_explore(depth=depth, frontier=bool(body.get("frontier", False)),
+                                     reset=bool(body.get("reset", False)))
         except JobBusyError:
             return self._error("a job is already running", 409)
         return self._json(res, 201)

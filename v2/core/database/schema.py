@@ -275,6 +275,7 @@ CREATE TABLE IF NOT EXISTS frontier (
     url              TEXT NOT NULL,
     aspect           TEXT NOT NULL DEFAULT 'people',
     status           TEXT NOT NULL DEFAULT 'pending',
+    error            TEXT,                          -- failure reason when status='error'
     depth_discovered INTEGER NOT NULL DEFAULT 0,
     discovered_at    TEXT NOT NULL DEFAULT (datetime('now')),
     CHECK (status IN ('pending','fetched','error'))
@@ -400,6 +401,12 @@ _TRIGGER_DDL = [
     TRIGGER_FTS_UPDATE,
 ]
 
+# Additive column migrations for already-created v2 tables (ALTER ... ADD COLUMN is
+# idempotent here via try/except — SQLite has no "ADD COLUMN IF NOT EXISTS").
+_COLUMN_MIGRATIONS = [
+    ("frontier", "error", "TEXT"),
+]
+
 
 def load_sqlite_vec(conn: sqlite3.Connection) -> None:
     """Load the sqlite-vec extension into a connection (needed for vec0)."""
@@ -441,6 +448,11 @@ def create_all(db_path: str) -> sqlite3.Connection:
             conn.execute(ddl)
         for ddl in _TRIGGER_DDL:
             conn.execute(ddl)
+        for table, col, coltype in _COLUMN_MIGRATIONS:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+            except sqlite3.OperationalError:
+                pass                                   # column already exists — idempotent
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations(version) VALUES (?);",
             (SCHEMA_VERSION,),

@@ -87,6 +87,18 @@ def build_refresh_all_command(*, python_bin, repo_root, db_path, web,
     return cmd
 
 
+def build_explore_command(*, python_bin, repo_root, db_path, depth, frontier, reset) -> list[str]:
+    """Build the KG gather command (run_explore.py). ``frontier`` processes pending personal
+    sites instead of a hub crawl; ``reset`` re-derives the graph + crawler KB from scratch."""
+    script = str(Path(repo_root) / "scripts" / "run_explore.py")
+    cmd = [python_bin, script, "--db", str(db_path), "--depth", str(depth)]
+    if frontier:
+        cmd.append("--frontier")
+    if reset:
+        cmd.append("--reset")
+    return cmd
+
+
 def _duration_seconds(started_at, finished_at):
     """Wall-clock seconds between two UTC 'YYYY-MM-DD HH:MM:SS' strings, or None."""
     if not started_at or not finished_at:
@@ -116,6 +128,11 @@ class JobManager:
 
     # ── command ──────────────────────────────────────────────────────────────
     def _default_build_cmd(self, job_type, args) -> list[str]:
+        if job_type == "explore":
+            return build_explore_command(
+                python_bin=self.python_bin, repo_root=self.repo_root,
+                db_path=self.db_path, depth=args.get("depth", 3),
+                frontier=args.get("frontier", False), reset=args.get("reset", False))
         if job_type == "refresh_all":
             return build_refresh_all_command(
                 python_bin=self.python_bin, repo_root=self.repo_root,
@@ -183,6 +200,10 @@ class JobManager:
 
     def start_refresh_all(self, web=False) -> dict:
         return self._start("refresh_all", {"scope": "all", "web": web})
+
+    def start_explore(self, depth=3, frontier=False, reset=False) -> dict:
+        return self._start("explore",
+                           {"depth": depth, "frontier": frontier, "reset": reset})
 
     def estimate_refresh_all(self, web=False) -> dict | None:
         """Duration estimate for an all-departments run, from the last completed one.
