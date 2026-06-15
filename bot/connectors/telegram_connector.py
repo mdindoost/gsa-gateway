@@ -9,7 +9,7 @@ import logging
 import time
 from typing import Optional
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 from telegram.ext import MessageHandler as PTBHandler
 from telegram.ext import filters
@@ -105,6 +105,16 @@ class TelegramConnector(BasePlatform):
         self._stop_event = asyncio.Event()
         async with self.app:
             await self.app.start()
+            # Populate the Telegram command menu (the blue "/" list). The handlers
+            # work without this, but the commands stay invisible until registered.
+            try:
+                await self.app.bot.set_my_commands([
+                    BotCommand("start",  "Welcome + how to use the bot"),
+                    BotCommand("qrcode", "Generate a GSA-branded QR code"),
+                ])
+                logger.info("Telegram command menu registered (/start, /qrcode)")
+            except Exception as exc:  # noqa: BLE001 - menu is cosmetic; never block startup
+                logger.warning("Could not set Telegram command menu: %s", exc)
             await self.app.updater.start_polling()
             asyncio.create_task(self._cleanup_pending_feedback())
             logger.info("Telegram bot polling — press Ctrl+C to stop")
@@ -354,7 +364,8 @@ class TelegramConnector(BasePlatform):
             "Hi! I'm the Graduate Student Association assistant. Just ask me anything "
             "in plain language — officers, events, funding, travel awards, how to get "
             "involved, campus resources, and more.\n\n"
-            "You can also use */qrcode <link or text>* to generate a GSA-branded QR code.\n\n"
+            "You can also use */qrcode <link or text>* to generate a GSA-branded QR code "
+            "(black by default — add `red` for the NJIT-red version).\n\n"
             "_Tip: DM me for a private feedback experience after each answer._"
         )
         try:
@@ -364,14 +375,24 @@ class TelegramConnector(BasePlatform):
             await update.message.reply_text(text)
 
     async def _cmd_qrcode(self, update: Update, context) -> None:
-        """/qrcode <url or text> — branded GSA QR code (Red & White)."""
+        """/qrcode <url or text> [black|red] — branded GSA QR code (default Black & White)."""
         if not update.message:
             return
         from bot.services.qr import MAX_QR_INPUT, build_pair
-        content = " ".join(context.args or []).strip()
+        # Optional color keyword (leading or trailing). Default is black; the user
+        # can opt into NJIT red. Mirrors the Discord /qrcode style choice.
+        args = list(context.args or [])
+        black = True
+        if args and args[-1].lower() in ("black", "red"):
+            black = args.pop().lower() == "black"
+        elif args and args[0].lower() in ("black", "red"):
+            black = args.pop(0).lower() == "black"
+        content = " ".join(args).strip()
         if not content:
             await update.message.reply_text(
-                "Send the link or text to encode, e.g. `/qrcode https://gsanjit.com`",
+                "Send the link or text to encode, e.g. `/qrcode https://gsanjit.com`\n"
+                "Add `red` or `black` to choose the color (default is black), "
+                "e.g. `/qrcode https://gsanjit.com red`",
                 parse_mode="Markdown")
             return
         if len(content) > MAX_QR_INPUT:
@@ -380,17 +401,18 @@ class TelegramConnector(BasePlatform):
                 f"(yours is {len(content)}).")
             return
         try:
-            branded, transparent = await asyncio.to_thread(build_pair, content)
+            branded, transparent = await asyncio.to_thread(build_pair, content, black=black)
         except Exception:  # noqa: BLE001
             logger.exception("Telegram QR generation failed for content=%r", content[:60])
             await update.message.reply_text(
                 "Something went wrong generating the QR code. Please try again.")
             return
+        style_label = "Black & White" if black else "Red & White"
         branded_io = io.BytesIO(branded); branded_io.name = "qr_branded.png"
         transparent_io = io.BytesIO(transparent); transparent_io.name = "qr_transparent.png"
         await update.message.reply_photo(
             photo=branded_io,
-            caption=f"QR code for: {content[:80]}{'…' if len(content) > 80 else ''}")
+            caption=f"QR code ({style_label}) for: {content[:80]}{'…' if len(content) > 80 else ''}")
         await update.message.reply_document(
             document=transparent_io,
             caption="Transparent version — paste onto flyers & slides.")

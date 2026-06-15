@@ -25,11 +25,11 @@ class QRCodeCog(commands.Cog, name="QRCode"):
     )
     @app_commands.describe(
         content="The URL or text to encode (max 500 characters).",
-        style="Color style — Red & White (default) or Black & White.",
+        style="Color style — Black & White (default) or Red & White.",
     )
     @app_commands.choices(style=[
-        app_commands.Choice(name="Red & White (default)", value="red"),
-        app_commands.Choice(name="Black & White", value="black"),
+        app_commands.Choice(name="Black & White (default)", value="black"),
+        app_commands.Choice(name="Red & White", value="red"),
     ])
     async def qrcode(
         self,
@@ -53,7 +53,7 @@ class QRCodeCog(commands.Cog, name="QRCode"):
                 f"Slow down a bit! Try again in **{retry:.0f}s**.", ephemeral=True)
             return
 
-        black = bool(style and style.value == "black")
+        black = not (style and style.value == "red")
         style_label = "Black & White" if black else "Red & White"
         embed_color = (discord.Color.dark_gray() if black
                        else discord.Color.from_str("#CC0000"))

@@ -79,8 +79,9 @@ def build_qr(data: str, *, transparent: bool, dot_color: tuple) -> bytes:
     return buf.read()
 
 
-def build_pair(content: str, *, black: bool = False) -> tuple[bytes, bytes]:
-    """Return ``(branded_png, transparent_png)`` for ``content``."""
+def build_pair(content: str, *, black: bool = True) -> tuple[bytes, bytes]:
+    """Return ``(branded_png, transparent_png)`` for ``content``. Defaults to black
+    dots (the user can opt into NJIT red with ``black=False``)."""
     color = BLACK if black else NJIT_RED
     return (build_qr(content, transparent=False, dot_color=color),
             build_qr(content, transparent=True, dot_color=color))
