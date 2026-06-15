@@ -38,6 +38,8 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         rows = [n for n, _ in skills.people_by_area_tag(conn, a["area"], a.get("org_id"))]
     elif skill == "officers_in_org":
         rows = skills.officers_in_org(conn, a["org_id"])   # list of (name, title, email)
+    elif skill == "people_in_org":
+        rows = skills.people_in_org(conn, a["org_id"])     # list of (name, title, email)
     else:  # pragma: no cover - router only emits known skills
         rows = []
     return {"skill": skill, "org_name": org_name, "area": a.get("area"), "rows": rows}
@@ -94,5 +96,13 @@ def format_answer(result: dict) -> str:
             f"{title} — {name}" + (f" ({email})" if email else "")
             for name, title, email in rows)
         return f"{org} has {len(rows)} officer(s): {listed}."
+
+    if skill == "people_in_org":
+        if not rows:
+            return f"I don't have people listed for {org}."
+        listed = "; ".join(
+            f"{title} — {name}" + (f" ({email})" if email else "")
+            for name, title, email in rows)
+        return f"{org} has {len(rows)} people: {listed}."
 
     return ""  # pragma: no cover

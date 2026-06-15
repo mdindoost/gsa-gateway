@@ -40,3 +40,17 @@ def test_officers_empty_is_stated_not_guessed(conn):
     ans = structured_answer.format_answer(
         structured_answer.run(conn, Route("officers_in_org", {"org_id": 1})))
     assert "don't have officer" in ans.lower()
+
+
+def test_people_in_org_answer_lists_all_roles(conn):
+    from v2.core.graph.project import project_appointment
+    from v2.core.retrieval.router import Route
+    gsa = conn.execute("SELECT id FROM organizations WHERE slug='gsa'").fetchone()[0]
+    project_appointment(conn, person_key="dashboard/gsa/sam-staff", name="Sam Staff",
+                        org_id=gsa, category="staff", titles=["Office Manager"],
+                        source_section="manual", source="dashboard")
+    conn.commit()
+    ans = structured_answer.format_answer(
+        structured_answer.run(conn, Route("people_in_org", {"org_id": gsa})))
+    assert "Sam Staff" in ans and "Office Manager" in ans
+    assert "people" in ans.lower()
