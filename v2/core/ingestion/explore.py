@@ -6,6 +6,7 @@ Saves raw at each hop, records unexplored next-steps in `frontier`, links page->
 `page_nodes`, and skips re-extraction when a page's struct_hash is unchanged. Deterministic
 only (LLM-on-prose is Phase 2). Each page is processed in its own transaction."""
 from __future__ import annotations
+import json
 import sqlite3
 import urllib.request
 from collections import deque
@@ -13,7 +14,7 @@ from dataclasses import dataclass
 
 from v2.core.graph.orgs import ensure_org, org_node_id
 from v2.core.graph.project import project_appointment
-from v2.core.graph.raw import save_raw_page, struct_hash
+from v2.core.graph.raw import page_text, save_raw_page, struct_hash
 from v2.core.ingestion import entry_points as ep
 from v2.core.ingestion.decompose import decompose
 from v2.core.ingestion.discovery import category_for_section, hub_children, parse_listing
@@ -163,4 +164,58 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                 if site:
                     _record_frontier(conn, pid, site, aspect, d - 1)
                     st.frontier_added += 1
+    return st
+
+
+def _upsert_site_item(conn, org_id, entity_id, url, text):
+    """Insert-or-version-bump ONE 'webpage' knowledge_item for a personal site, keyed by a
+    stable natural_key so a re-run dedups (no duplicate). Leaves the person's other items
+    untouched (unlike full reconcile)."""
+    nk = entity_id + ":site"
+    row = conn.execute(
+        "SELECT id, content FROM knowledge_items WHERE is_active=1 AND org_id=? "
+        "AND json_extract(metadata,'$.natural_key')=?", (org_id, nk)).fetchone()
+    if row and row[1] == text:
+        return                                    # unchanged
+    if row:
+        conn.execute("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
+                     "WHERE id=?", (row[0],))
+    conn.execute(
+        "INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
+        "is_active,created_by) VALUES(?,?,?,?,?,?,1,'crawler')",
+        (org_id, "webpage", "Personal website", text,
+         json.dumps({"entity_id": entity_id, "natural_key": nk}), url))
+
+
+def process_frontier(conn: sqlite3.Connection, fetch, limit: int | None = None) -> ExploreStats:
+    """Explore pending frontier next-steps (personal sites): fetch → save raw → add the page
+    text as a 'webpage' knowledge_item under the person's home dept (semantic-searchable; the
+    structured extraction — students/advises, awards — is Phase 2/LLM) → mark fetched.
+    Idempotent. This is the unit a controllable Job will invoke."""
+    st = ExploreStats()
+    sql = "SELECT id, from_node_id, url FROM frontier WHERE status='pending'"
+    params: tuple = ()
+    if limit:
+        sql += " LIMIT ?"
+        params = (limit,)
+    for fid, person_node, url in conn.execute(sql, params).fetchall():
+        final_url, html, status = fetch(url)
+        if status != "ok" or not person_node:
+            conn.execute("UPDATE frontier SET status='error' WHERE id=?", (fid,))
+            conn.commit()
+            st.errors += 1
+            continue
+        with conn:
+            save_raw_page(conn, final_url, html, status)
+            prow = conn.execute("SELECT key FROM nodes WHERE id=?", (person_node,)).fetchone()
+            org = conn.execute(
+                "SELECT org_id FROM knowledge_items WHERE is_active=1 AND created_by='crawler' "
+                "AND json_extract(metadata,'$.entity_id')=? LIMIT 1",
+                (prow[0],)).fetchone() if prow else None
+            if org:
+                _upsert_site_item(conn, org[0], prow[0], final_url, page_text(html)[:6000])
+                conn.execute("INSERT OR IGNORE INTO page_nodes(raw_url,node_id) VALUES(?,?)",
+                             (final_url, person_node))
+            conn.execute("UPDATE frontier SET status='fetched' WHERE id=?", (fid,))
+            st.fetched += 1
     return st

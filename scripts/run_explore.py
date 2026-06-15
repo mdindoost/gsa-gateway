@@ -26,6 +26,9 @@ def main() -> int:
     ap.add_argument("--reset", action="store_true",
                     help="clear the graph layer first (re-derive from scratch; resets "
                          "change-detection so every page re-extracts)")
+    ap.add_argument("--frontier", action="store_true",
+                    help="instead of a hub crawl, process pending frontier next-steps "
+                         "(personal sites) into 'webpage' knowledge_items")
     args = ap.parse_args()
 
     create_all(args.db)                       # ensure graph tables exist (idempotent)
@@ -42,6 +45,18 @@ def main() -> int:
             conn.execute(f"DELETE FROM {t}")
         conn.commit()
         print(f"reset: cleared graph layer + {len(ki)} crawler knowledge_items")
+
+    if args.frontier:
+        from v2.core.ingestion.explore import process_frontier
+        st = process_frontier(conn, http_fetch)
+        print(f"\nfrontier stats: {st}")
+        print("  webpage items:",
+              conn.execute("SELECT COUNT(*) FROM knowledge_items WHERE type='webpage' "
+                           "AND is_active=1").fetchone()[0])
+        print("  pending frontier left:",
+              conn.execute("SELECT COUNT(*) FROM frontier WHERE status='pending'").fetchone()[0])
+        return 0
+
     st = explore(conn, http_fetch, depth=args.depth)
     print(f"\nexplore stats: {st}")
 
