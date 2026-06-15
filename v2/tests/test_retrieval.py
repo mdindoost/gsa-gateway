@@ -200,36 +200,17 @@ def test_all_stopword_query_falls_back():
     assert expr is not None and expr != ""
 
 
-# ── the required contact-boost test ──────────────────────────────────────────
+# ── type boost ───────────────────────────────────────────────────────────────
 
-def _rank_of(results, predicate):
-    for i, c in enumerate(results, start=1):
-        if predicate(c):
-            return i
-    return None
-
-
-def test_contact_boost_surfaces_contact(retriever):
-    query = "who handles GSA finances"
-    is_contact = lambda c: c.type == "contact"
-
-    # Without the boost, the short contact record loses to longer FAQ text.
-    retriever.contact_boost = 1.0
-    base = retriever.retrieve(query, limit=5)
-    base_rank = _rank_of(base, is_contact)
-
-    # With the boost, the contact is surfaced into the top 3.
-    retriever.contact_boost = 1.5
-    boosted = retriever.retrieve(query, limit=5)
-    boost_rank = _rank_of(boosted, is_contact)
-
-    assert boost_rank is not None, "contact must be retrieved with the boost"
-    assert boost_rank <= 3, f"contact should be top-3 with boost, was rank {boost_rank}"
-    if base_rank is not None:
-        assert boost_rank <= base_rank, "boost must not push the contact down"
+def test_contact_type_is_not_boosted(retriever):
+    # The contact boost was removed: a contact record gets the neutral 1.0 factor,
+    # same as any non-event type (officers are answered by the structured router now).
+    assert retriever._boost_for("contact") == 1.0
+    assert retriever._boost_for("faq") == 1.0
 
 
-def test_boost_loaded_from_settings(retriever):
+def test_event_boost_loaded_from_settings(retriever):
     # Default code value when no settings row exists (in-memory db has none).
-    assert retriever.contact_boost == 1.5
     assert retriever.event_boost == 1.2
+    assert retriever._boost_for("event_info") == 1.2
+    assert not hasattr(retriever, "contact_boost")

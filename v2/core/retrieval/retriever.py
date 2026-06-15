@@ -38,7 +38,11 @@ logger = logging.getLogger(__name__)
 RETRIEVAL_DEBUG_FILE = Path(__file__).resolve().parents[3] / "logs" / "retrieval_debug.log"
 
 RRF_K = 60
-DEFAULT_CONTACT_BOOST = 1.5
+# NOTE: the old `contact` type boost was removed (2026-06-15). It was a band-aid to lift
+# officer contact cards; now officers live in the KG (answered by the structured router)
+# and the remaining campus-office contacts rank fine on their own — the boost only caused
+# over-ranking (e.g. "NJIT Library" winning "robotics at NJIT", campus "Office of…" cards
+# burying the GSA office doc). event_info keeps a small boost (short records, unflagged).
 DEFAULT_EVENT_BOOST = 1.2
 # Types kept OUT of the default answer corpus. Publications are ~78% of the corpus
 # and pure noise for almost every student-facing question (they bury the bios that
@@ -117,10 +121,9 @@ class V2Retriever:
         self.embedder = embedder
         self._org_path_cache: dict[int, str] = {}
         self.debug_log = os.getenv("RETRIEVAL_DEBUG_LOG", "false").lower() == "true"
-        # Type boosts correct for content-length asymmetry: short structured
-        # records (contacts, events) lose to long FAQ/policy text on semantic
-        # distance alone. Admin-tunable via the settings table.
-        self.contact_boost = self._load_boost("retriever.contact_boost", DEFAULT_CONTACT_BOOST)
+        # event_info gets a small boost (short records lose to long FAQ/policy text on
+        # semantic distance alone). The old contact boost was removed — see note at top.
+        # Admin-tunable via the settings table.
         self.event_boost = self._load_boost("retriever.event_boost", DEFAULT_EVENT_BOOST)
         # Admin-tunable pool size, but never below MIN_POOL_SIZE.
         self.pool_size = max(MIN_POOL_SIZE,
@@ -147,8 +150,6 @@ class V2Retriever:
             return default
 
     def _boost_for(self, item_type: str) -> float:
-        if item_type == "contact":
-            return self.contact_boost
         if item_type == "event_info":
             return self.event_boost
         return 1.0
