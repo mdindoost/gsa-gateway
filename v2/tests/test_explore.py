@@ -123,3 +123,15 @@ def test_home_dept_org_id_prefers_department_over_admin_unit(conn):
     pid2 = project_appointment(conn, person_key="p/s", name="S", org_id=20,
                                category="staff", titles=[], source_section="Staff")
     assert _home_dept_org_id(conn, pid2) is None        # pure staff: no dept appointment
+
+
+def test_explore_builds_full_org_hierarchy_in_kg(conn):
+    explore(conn, make_fetch(PAGES), depth=2)
+    keys = {r[0] for r in conn.execute("SELECT key FROM nodes WHERE type='Org' AND is_active=1")}
+    assert {"njit", "ywcc", "computer-science"} <= keys     # roots are nodes, not just depts
+    def onode(slug):
+        return conn.execute("SELECT id FROM nodes WHERE type='Org' AND key=?", (slug,)).fetchone()[0]
+    assert conn.execute("SELECT 1 FROM edges WHERE src_id=? AND type='part_of' AND dst_id=?",
+                        (onode("ywcc"), onode("njit"))).fetchone()           # YWCC part_of NJIT
+    assert conn.execute("SELECT 1 FROM edges WHERE src_id=? AND type='part_of' AND dst_id=?",
+                        (onode("computer-science"), onode("ywcc"))).fetchone()  # CS part_of YWCC

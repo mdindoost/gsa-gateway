@@ -13,7 +13,7 @@ import urllib.request
 from collections import deque
 from dataclasses import dataclass
 
-from v2.core.graph.orgs import ensure_org, org_node_id
+from v2.core.graph.orgs import ensure_org, org_node_id, sync_org_nodes
 from v2.core.graph.project import project_appointment
 from v2.core.graph.raw import page_text, save_raw_page, struct_hash
 from v2.core.ingestion import entry_points as ep
@@ -188,6 +188,11 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                 if site:
                     _record_frontier(conn, pid, site, aspect, d - 1)
                     st.frontier_added += 1
+    # Project the full org tree (NJIT, YWCC, …) into the KG with part_of edges, so the
+    # hierarchy is navigable (college → departments) and roots like NJIT/YWCC are nodes
+    # that can hold a Dean/President even though no listing crawl appoints to them directly.
+    with conn:
+        sync_org_nodes(conn)
     return st
 
 
