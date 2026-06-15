@@ -260,7 +260,8 @@ function onDbLoaded(name) {
 
 // ───────── tab nav ─────────
 const TITLES = { overview: "Overview", posts: "Posts", kb: "Knowledge Base",
-  org: "Organization", analytics: "Analytics", settings: "Settings", jobs: "Jobs" };
+  org: "Organization", people: "People (Knowledge Graph)", analytics: "Analytics",
+  settings: "Settings", jobs: "Jobs" };
 
 document.querySelectorAll(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => switchTab(btn.dataset.tab));
@@ -277,9 +278,72 @@ function switchTab(tab) {
   if (tab === "overview") renderOverview();
   if (tab === "posts") renderPosts();
   if (tab === "kb") renderKB();
+  if (tab === "people") renderPeople();
   if (tab === "analytics") renderAnalytics();
   if (tab === "settings") renderSettings();
   if (tab === "jobs") renderJobs();
+}
+
+// ───────── Tab: People (Knowledge Graph) ─────────
+// Read-only view of the graph layer (nodes/edges) the explore() engine gathers.
+// Everything is queried from the in-memory db (works for both server + loaded-file mode).
+let PEOPLE_SEARCH = "";
+
+function renderPeople() {
+  const el = document.getElementById("tab-people");
+  const hasGraph = scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='nodes'");
+  if (!hasGraph) {
+    el.innerHTML = emptyMsg("No knowledge-graph tables yet. Run the explore() gather first.");
+    return;
+  }
+  const total = scalar("SELECT COUNT(*) FROM nodes WHERE type='Person' AND is_active=1") || 0;
+  const appts = scalar("SELECT COUNT(*) FROM edges WHERE type='has_role' AND is_active=1") || 0;
+  const areas = scalar("SELECT COUNT(*) FROM nodes WHERE type='ResearchArea' AND is_active=1") || 0;
+  const multi = scalar("SELECT COUNT(*) FROM (SELECT src_id FROM edges WHERE type='has_role' "
+    + "AND is_active=1 GROUP BY src_id HAVING COUNT(*)>1)") || 0;
+  const pend = scalar("SELECT COUNT(*) FROM frontier WHERE status='pending'") || 0;
+
+  const like = "%" + PEOPLE_SEARCH + "%";
+  const rows = query(
+    "SELECT n.id, n.name, "
+    + "(SELECT group_concat(o.name || ' — ' || COALESCE(e.category,'?'), '; ') "
+    + "  FROM edges e JOIN nodes o ON o.id=e.dst_id "
+    + "  WHERE e.src_id=n.id AND e.type='has_role' AND e.is_active=1) AS roles, "
+    + "(SELECT COUNT(*) FROM edges r WHERE r.src_id=n.id AND r.type='researches' AND r.is_active=1) AS areas, "
+    + "(SELECT COUNT(*) FROM frontier f WHERE f.from_node_id=n.id AND f.status='pending') AS frontier "
+    + "FROM nodes n WHERE n.type='Person' AND n.is_active=1 "
+    + (PEOPLE_SEARCH ? "AND (n.name LIKE ? OR n.key LIKE ?) " : "")
+    + "ORDER BY (SELECT COUNT(*) FROM edges e3 WHERE e3.src_id=n.id AND e3.type='has_role' "
+    + "AND e3.is_active=1) DESC, n.name",
+    PEOPLE_SEARCH ? [like, like] : []);
+
+  el.innerHTML = `
+    <div class="kb-list-head">
+      <div class="kb-list-title"><strong>${total}</strong> people ·
+        <strong>${appts}</strong> appointments · <strong>${multi}</strong> multi-role ·
+        <strong>${areas}</strong> research areas · <strong>${pend}</strong> frontier next-steps</div>
+      <div class="list-toolbar" style="border:0;padding:10px 0 0">
+        <input id="people-search" type="text" placeholder="Search name…" value="${esc(PEOPLE_SEARCH)}">
+      </div>
+    </div>
+    <table class="data-table" style="width:100%;border-collapse:collapse">
+      <thead><tr style="text-align:left">
+        <th style="padding:6px 8px">Name</th><th style="padding:6px 8px">Appointment(s) — role</th>
+        <th style="padding:6px 8px">Areas</th><th style="padding:6px 8px">Frontier</th>
+      </tr></thead>
+      <tbody>${rows.map((r) => `<tr style="border-top:1px solid #2a2a2a">
+        <td style="padding:6px 8px">${esc(r.name)}</td>
+        <td style="padding:6px 8px">${esc(r.roles || "—")}</td>
+        <td style="padding:6px 8px">${r.areas}</td>
+        <td style="padding:6px 8px">${r.frontier ? "🔗 " + r.frontier : ""}</td>
+      </tr>`).join("") || `<tr><td colspan="4" class="panel-empty">No people.</td></tr>`}</tbody>
+    </table>`;
+
+  let deb;
+  document.getElementById("people-search").oninput = (e) => {
+    clearTimeout(deb);
+    deb = setTimeout(() => { PEOPLE_SEARCH = e.target.value.trim(); renderPeople(); }, 200);
+  };
 }
 
 // ───────── Tab: Jobs (control plane) ─────────

@@ -38,9 +38,16 @@ def area_key(area: str) -> str:
 
 
 def project_entity(conn: sqlite3.Connection, rec: EntityRecord, org_id: int,
-                   source: str = "crawler") -> int:
-    """Rebuild this entity's graph to match ``rec``; deactivate its crawler edges that
-    are no longer present. Returns the Person node id."""
+                   source: str = "crawler", home_appointment: bool = True) -> int:
+    """Enrich a person from their profile: attrs + structured research edges, and
+    (when ``home_appointment``) their home has_role from the profile title.
+
+    In the explore() flow listings are the AUTHORITATIVE source of appointments (the
+    section gives the role category), and they always run before profiles — so the
+    profile pass passes ``home_appointment=False`` and only adds attrs+research, never
+    creating or clobbering a role (e.g. it must not turn a 'Staff'-section person into
+    'admin' because their title carries an '…Office of the Dean' suffix). The standalone
+    single-profile ingest path (no listing) keeps the default True. Returns the Person id."""
     attrs = {k: v for k, v in {
         "email": rec.contact.get("email"),
         "phone": rec.contact.get("phone"),
@@ -50,12 +57,14 @@ def project_entity(conn: sqlite3.Connection, rec: EntityRecord, org_id: int,
     pid = upsert_node(conn, type="Person", key=rec.entity_id, name=rec.name,
                       attrs=attrs, source=source)
 
-    keep: set[int] = set()
-    keep.add(upsert_edge(
-        conn, src_id=pid, type="has_role", dst_id=org_node_id(conn, org_id),
-        category=category_from_titles(rec.titles),
-        attrs={"titles": rec.titles, "is_primary": True}, source=source))
+    if home_appointment:
+        # the home appointment (from the profile's own title); upserted, never swept here
+        upsert_edge(
+            conn, src_id=pid, type="has_role", dst_id=org_node_id(conn, org_id),
+            category=category_from_titles(rec.titles),
+            attrs={"titles": rec.titles, "is_primary": True}, source=source)
 
+    keep_research: set[int] = set()
     seen: set[str] = set()
     for area in rec.research_areas:
         a = area.strip()
@@ -66,8 +75,28 @@ def project_entity(conn: sqlite3.Connection, rec: EntityRecord, org_id: int,
             continue
         seen.add(k)
         anode = upsert_node(conn, type="ResearchArea", key=k, name=a, source=source)
-        keep.add(upsert_edge(conn, src_id=pid, type="researches", dst_id=anode,
-                             area_source="structured", source=source))
+        keep_research.add(upsert_edge(conn, src_id=pid, type="researches", dst_id=anode,
+                                      area_source="structured", source=source))
 
-    deactivate_edges(conn, active_edge_ids_from(conn, pid, source=source) - keep)
+    # Scope deactivation to THIS profile's research edges only — never sweep the person's
+    # appointments in OTHER orgs (multi-membership created from listings).
+    deactivate_edges(
+        conn, active_edge_ids_from(conn, pid, type="researches", source=source) - keep_research)
+    return pid
+
+
+def project_appointment(conn: sqlite3.Connection, *, person_key: str, name: str,
+                        org_id: int, category: str | None, titles: list[str],
+                        source_section: str, source: str = "crawler") -> int:
+    """Record ONE appointment from a listing appearance — additively (multi-membership).
+
+    Upserts the Person (preserving any attrs a profile pass already set — attrs=None) and a
+    single ``has_role`` edge for (person, org) with the SECTION-derived ``category``. It does
+    NOT touch the person's appointments in OTHER orgs or their research edges, so a person
+    reached from two paths (e.g. Wang via College Administration *and* CS) accumulates both
+    roles instead of one wiping the other. Returns the Person node id."""
+    pid = upsert_node(conn, type="Person", key=person_key, name=name, attrs=None, source=source)
+    upsert_edge(conn, src_id=pid, type="has_role", dst_id=org_node_id(conn, org_id),
+                category=category, source_section=source_section,
+                attrs={"titles": titles}, source=source)
     return pid
