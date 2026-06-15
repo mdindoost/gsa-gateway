@@ -159,6 +159,28 @@ def faculty_in_department(conn: sqlite3.Connection, org_id: int) -> list[tuple[s
     return _named_rows(conn, [e for (e,) in rows])
 
 
+def officers_in_org(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, str]]:
+    """(name, title) for every active officer/DepRep appointed directly to this org.
+
+    Queries the graph `has_role` edges (category 'officer'/'deprep') whose target Org node
+    bridges this exact ``org_id`` (NOT descendants — GSA officers are distinct from an RGO's
+    officers; resolve the RGO's id to list its officers). Title is the first entry in the
+    edge's ``attrs.titles``; falls back to the category. Sorted by name."""
+    rows = conn.execute(
+        "SELECT p.name, e.attrs, e.category FROM edges e "
+        "JOIN nodes p ON p.id=e.src_id "
+        "JOIN nodes o ON o.id=e.dst_id "
+        "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1 "
+        "AND e.category IN ('officer','deprep') "
+        "AND json_extract(o.attrs,'$.org_id')=?",
+        (org_id,)).fetchall()
+    out: list[tuple[str, str]] = []
+    for name, attrs, category in rows:
+        titles = (json.loads(attrs) if attrs else {}).get("titles") or []
+        out.append((name, titles[0] if titles else category))
+    return sorted(set(out))
+
+
 def _research_entities(conn: sqlite3.Connection, area: str, org_id: int | None) -> set[str]:
     params: list = [_fts_query(area), *_RESEARCH_TYPES]
     org_clause = ""
