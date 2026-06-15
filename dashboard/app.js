@@ -285,9 +285,39 @@ function switchTab(tab) {
 }
 
 // ───────── Tab: People (Knowledge Graph) ─────────
-// Read-only view of the graph layer (nodes/edges) the explore() engine gathers.
-// Everything is queried from the in-memory db (works for both server + loaded-file mode).
+// Combines a read-only KG view (crawler rows) with add/edit/remove for
+// dashboard-created people (source='dashboard'). Writes require server mode.
 let PEOPLE_SEARCH = "";
+let PEOPLE_ORG_ID = null;   // null = all orgs
+let PEOPLE_EDIT_KEY = null; // null = add mode; set to person key when editing
+
+function savePerson(orgId, form) {
+  const body = { org_id: orgId, name: form.name, title: form.title,
+                 role_type: form.role_type, email: form.email, about: form.about };
+  if (isServerMode()) {
+    serverFetch("/people", { method: "POST", body })
+      .then((res) => {
+        if (res && res.success === false) { toast(res.error || "Server error", false); return; }
+        toast("Person saved ✅");
+        PEOPLE_EDIT_KEY = null;
+        renderPeople();
+      })
+      .catch((e) => toast("Server error: " + e.message, false));
+  } else {
+    alert("Editing people requires the dashboard server (run v2/local_server.py).");
+  }
+}
+
+function removePerson(personKey, orgId) {
+  if (!confirm("Remove this person/role? (kept in history, can be re-added)")) return;
+  serverFetch("/people/remove", { method: "POST", body: { person_key: personKey, org_id: orgId } })
+    .then((res) => {
+      if (res && res.success === false) { toast(res.error || "Server error", false); return; }
+      toast("Person removed ✅");
+      renderPeople();
+    })
+    .catch((e) => toast("Server error: " + e.message, false));
+}
 
 function renderPeople() {
   const el = document.getElementById("tab-people");
@@ -303,46 +333,124 @@ function renderPeople() {
     + "AND is_active=1 GROUP BY src_id HAVING COUNT(*)>1)") || 0;
   const pend = scalar("SELECT COUNT(*) FROM frontier WHERE status='pending'") || 0;
 
+  // Org picker data
+  const orgs = query("SELECT id, name FROM organizations WHERE is_active=1 ORDER BY name");
+
   const like = "%" + PEOPLE_SEARCH + "%";
-  const rows = query(
-    "SELECT n.id, n.name, "
+  // Base query: extended with n.key and n.source so edit/remove and read-only guard work.
+  let peopleSql =
+    "SELECT n.id, n.key, n.name, n.source, "
     + "(SELECT group_concat(o.name || ' — ' || "
     + "    COALESCE(json_extract(e.attrs,'$.titles[0]'), e.category, '?'), '; ') "
     + "  FROM edges e JOIN nodes o ON o.id=e.dst_id "
     + "  WHERE e.src_id=n.id AND e.type='has_role' AND e.is_active=1) AS roles, "
     + "(SELECT COUNT(*) FROM edges r WHERE r.src_id=n.id AND r.type='researches' AND r.is_active=1) AS areas, "
     + "(SELECT COUNT(*) FROM frontier f WHERE f.from_node_id=n.id AND f.status='pending') AS frontier "
-    + "FROM nodes n WHERE n.type='Person' AND n.is_active=1 "
-    + (PEOPLE_SEARCH ? "AND (n.name LIKE ? OR n.key LIKE ?) " : "")
-    + "ORDER BY (SELECT COUNT(*) FROM edges e3 WHERE e3.src_id=n.id AND e3.type='has_role' "
-    + "AND e3.is_active=1) DESC, n.name",
-    PEOPLE_SEARCH ? [like, like] : []);
+    + "FROM nodes n WHERE n.type='Person' AND n.is_active=1 ";
+  const sqlParams = [];
+  if (PEOPLE_SEARCH) {
+    peopleSql += "AND (n.name LIKE ? OR n.key LIKE ?) ";
+    sqlParams.push(like, like);
+  }
+  peopleSql += "ORDER BY (SELECT COUNT(*) FROM edges e3 WHERE e3.src_id=n.id AND e3.type='has_role' "
+    + "AND e3.is_active=1) DESC, n.name";
+
+  let rows = query(peopleSql, sqlParams);
+
+  // Client-side org filter: only show people who have a has_role edge to the selected org.
+  if (PEOPLE_ORG_ID !== null) {
+    const orgIdNum = Number(PEOPLE_ORG_ID);
+    const memberIds = new Set(
+      query(
+        "SELECT DISTINCT src_id FROM edges WHERE type='has_role' AND dst_id=? AND is_active=1",
+        [orgIdNum]
+      ).map((r) => r.src_id)
+    );
+    rows = rows.filter((r) => memberIds.has(r.id));
+  }
 
   const errs = query(
     "SELECT f.url, f.error, n.name FROM frontier f LEFT JOIN nodes n ON n.id=f.from_node_id "
     + "WHERE f.status='error' ORDER BY n.name");
+
+  const orgOptions = orgs.map((o) =>
+    `<option value="${o.id}"${PEOPLE_ORG_ID == o.id ? " selected" : ""}>${esc(o.name)}</option>`
+  ).join("");
+
+  // Pre-fill edit form if in edit mode
+  let editRow = null;
+  if (PEOPLE_EDIT_KEY) {
+    editRow = rows.find((r) => r.key === PEOPLE_EDIT_KEY) || null;
+  }
 
   el.innerHTML = `
     <div class="kb-list-head">
       <div class="kb-list-title"><strong>${total}</strong> people ·
         <strong>${appts}</strong> appointments · <strong>${multi}</strong> multi-role ·
         <strong>${areas}</strong> research areas · <strong>${pend}</strong> frontier next-steps</div>
-      <div class="list-toolbar" style="border:0;padding:10px 0 0">
+      <div class="list-toolbar" style="border:0;padding:10px 0 0;gap:8px;display:flex;flex-wrap:wrap;align-items:center">
         <input id="people-search" type="text" placeholder="Search name…" value="${esc(PEOPLE_SEARCH)}">
+        <select id="people-org" style="min-width:160px">
+          <option value="">All orgs</option>
+          ${orgOptions}
+        </select>
+        <button class="btn btn-ghost btn-sm" id="people-new-org">+ New club/org</button>
       </div>
     </div>
     <table class="data-table" style="width:100%;border-collapse:collapse">
       <thead><tr style="text-align:left">
         <th style="padding:6px 8px">Name</th><th style="padding:6px 8px">Appointment(s) — role</th>
         <th style="padding:6px 8px">Areas</th><th style="padding:6px 8px">Frontier</th>
+        <th style="padding:6px 8px"></th>
       </tr></thead>
-      <tbody>${rows.map((r) => `<tr style="border-top:1px solid #2a2a2a">
-        <td style="padding:6px 8px">${esc(r.name)}</td>
-        <td style="padding:6px 8px">${esc(r.roles || "—")}</td>
-        <td style="padding:6px 8px">${r.areas}</td>
-        <td style="padding:6px 8px">${r.frontier ? "🔗 " + r.frontier : ""}</td>
-      </tr>`).join("") || `<tr><td colspan="4" class="panel-empty">No people.</td></tr>`}</tbody>
+      <tbody>${rows.map((r) => {
+        const editable = r.source === "dashboard";
+        const editBtns = editable
+          ? `<button class="btn btn-ghost btn-sm people-edit-btn" data-key="${esc(r.key)}" style="margin-right:4px">Edit</button>`
+            + `<button class="btn btn-ghost btn-sm people-rm-btn" data-key="${esc(r.key)}" style="color:#ff8a8a">Remove</button>`
+          : `<span class="muted" style="font-size:0.82em">crawler</span>`;
+        return `<tr style="border-top:1px solid #2a2a2a">
+          <td style="padding:6px 8px">${esc(r.name)}</td>
+          <td style="padding:6px 8px">${esc(r.roles || "—")}</td>
+          <td style="padding:6px 8px">${r.areas}</td>
+          <td style="padding:6px 8px">${r.frontier ? "🔗 " + r.frontier : ""}</td>
+          <td style="padding:6px 8px;white-space:nowrap">${editBtns}</td>
+        </tr>`;
+      }).join("") || `<tr><td colspan="5" class="panel-empty">No people.</td></tr>`}</tbody>
     </table>
+
+    <div class="panel" style="margin-top:20px;max-width:520px">
+      <h3 style="margin:0 0 12px">${PEOPLE_EDIT_KEY ? "Edit person" : "Add person"}</h3>
+      <div class="form-row">
+        <label class="form-label">Name <span style="color:#ff8a8a">*</span></label>
+        <input type="text" id="pf-name" class="set-input" value="${esc(editRow ? editRow.name : "")}" placeholder="Full name">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Title</label>
+        <input type="text" id="pf-title" class="set-input" value="${esc(editRow ? (editRow.roles || "") : "")}" placeholder="e.g. Assistant Professor">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Role type</label>
+        <select id="pf-role-type" class="set-input">
+          ${["Officer","Dept Rep","Staff","Advisor","Admin"].map((rt) =>
+            `<option${editRow ? "" : (rt === "Officer" ? " selected" : "")}>${esc(rt)}</option>`
+          ).join("")}
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Email (optional)</label>
+        <input type="email" id="pf-email" class="set-input" value="${esc(editRow ? (editRow.email || "") : "")}" placeholder="name@njit.edu">
+      </div>
+      <div class="form-row">
+        <label class="form-label">About (optional)</label>
+        <textarea id="pf-about" class="set-input" rows="3" placeholder="Short bio or notes">${esc(editRow ? (editRow.about || "") : "")}</textarea>
+      </div>
+      <div class="form-buttons" style="justify-content:flex-start;gap:8px">
+        <button class="btn btn-primary" id="pf-save">Save</button>
+        ${PEOPLE_EDIT_KEY ? `<button class="btn btn-ghost" id="pf-cancel">Cancel</button>` : ""}
+      </div>
+    </div>
+
     ${errs.length ? `<div style="margin-top:20px">
       <div class="kb-list-title">⚠️ Crawl issues (${errs.length}) <span class="muted">— frontier sites that failed to load (usually source-side: dead link / DNS / SSL)</span></div>
       <table class="data-table" style="width:100%;border-collapse:collapse;margin-top:6px">
@@ -356,11 +464,70 @@ function renderPeople() {
         </tr>`).join("")}</tbody>
       </table></div>` : ""}`;
 
+  // ── wire search ──
   let deb;
   document.getElementById("people-search").oninput = (e) => {
     clearTimeout(deb);
     deb = setTimeout(() => { PEOPLE_SEARCH = e.target.value.trim(); renderPeople(); }, 200);
   };
+
+  // ── wire org picker ──
+  document.getElementById("people-org").onchange = (e) => {
+    PEOPLE_ORG_ID = e.target.value ? Number(e.target.value) : null;
+    PEOPLE_EDIT_KEY = null;
+    renderPeople();
+  };
+
+  // ── wire new org button ──
+  document.getElementById("people-new-org").onclick = () => {
+    const name = prompt("New club / org name:");
+    if (!name || !name.trim()) return;
+    if (!isServerMode()) { alert("Creating orgs requires the dashboard server (run v2/local_server.py)."); return; }
+    serverFetch("/orgs", { method: "POST", body: { name: name.trim() } })
+      .then((res) => {
+        if (res && res.success === false) { toast(res.error || "Server error", false); return; }
+        toast("Org created ✅");
+        if (res && res.id) PEOPLE_ORG_ID = res.id;
+        renderPeople();
+      })
+      .catch((e) => toast("Server error: " + e.message, false));
+  };
+
+  // ── wire per-row Edit buttons ──
+  el.querySelectorAll(".people-edit-btn").forEach((btn) => {
+    btn.onclick = () => {
+      PEOPLE_EDIT_KEY = btn.dataset.key;
+      renderPeople();
+      el.querySelector(".panel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    };
+  });
+
+  // ── wire per-row Remove buttons ──
+  el.querySelectorAll(".people-rm-btn").forEach((btn) => {
+    btn.onclick = () => {
+      if (!isServerMode()) { alert("Removing people requires the dashboard server (run v2/local_server.py)."); return; }
+      removePerson(btn.dataset.key, PEOPLE_ORG_ID);
+    };
+  });
+
+  // ── wire Save (add / edit) ──
+  document.getElementById("pf-save").onclick = () => {
+    const name = document.getElementById("pf-name").value.trim();
+    if (!name) { toast("Name is required", false); return; }
+    const targetOrg = PEOPLE_ORG_ID;
+    if (!targetOrg) { toast("Select an org first (use the org picker above)", false); return; }
+    savePerson(targetOrg, {
+      name,
+      title: document.getElementById("pf-title").value.trim(),
+      role_type: document.getElementById("pf-role-type").value,
+      email: document.getElementById("pf-email").value.trim(),
+      about: document.getElementById("pf-about").value.trim(),
+    });
+  };
+
+  // ── wire Cancel (edit mode only) ──
+  const cancelBtn = document.getElementById("pf-cancel");
+  if (cancelBtn) cancelBtn.onclick = () => { PEOPLE_EDIT_KEY = null; renderPeople(); };
 }
 
 // ───────── Tab: Jobs (control plane) ─────────
