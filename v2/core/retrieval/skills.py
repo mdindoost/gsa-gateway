@@ -183,6 +183,26 @@ def officers_in_org(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, st
     return sorted(set(out), key=lambda r: r[0])
 
 
+def people_in_org(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, str, str | None]]:
+    """(name, title, email) for EVERY active person with any role directly in this org —
+    not just officers (cf. officers_in_org). Answers 'who works at/in <org>'. Title is the
+    first of the edge's attrs.titles (falls back to category); email from the Person node.
+    Sorted by name."""
+    rows = conn.execute(
+        "SELECT p.name, e.attrs, e.category, p.attrs FROM edges e "
+        "JOIN nodes p ON p.id=e.src_id "
+        "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
+        "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1 "
+        "AND json_extract(o.attrs,'$.org_id')=?",
+        (org_id,)).fetchall()
+    out: list[tuple[str, str, str | None]] = []
+    for name, eattrs, category, pattrs in rows:
+        titles = (json.loads(eattrs) if eattrs else {}).get("titles") or []
+        email = (json.loads(pattrs) if pattrs else {}).get("email")
+        out.append((name, titles[0] if titles else category, email))
+    return sorted(set(out), key=lambda r: r[0])
+
+
 def _research_entities(conn: sqlite3.Connection, area: str, org_id: int | None) -> set[str]:
     params: list = [_fts_query(area), *_RESEARCH_TYPES]
     org_clause = ""
