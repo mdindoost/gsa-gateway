@@ -8,9 +8,11 @@
 
 Replace GSA's hand-written Q&A knowledge with the same two-layer model used for YWCC:
 a **graph layer** (people, roles, orgs) and a **text layer** (prose from primary
-documents), sourced by **crawling gsanjit.com as an entry point** and kept current by
-**re-crawl + reconciliation**. Officer turnover (e.g. Mohith Oduru leaving the E-Board)
-is handled automatically by the existing departure machinery — no manual upkeep.
+documents). The preferred source is **crawling gsanjit.com as an entry point**, kept
+current by **re-crawl + reconciliation** (officer turnover — e.g. Mohith Oduru leaving
+the E-Board — handled automatically by the existing departure machinery). If the Wix site
+is too hard to extract, a **manual fallback** (download/paste docs + dashboard-author
+people) reaches the same KG+KB end state with manual updates.
 
 ## Why (problem)
 
@@ -27,10 +29,14 @@ is handled automatically by the existing departure machinery — no manual upkee
 
 1. **Scope: GSA only.** MMI stays in QA for a later, separate spec (it needs a new
    Event/Talk ontology we are deliberately deferring).
-2. **Crawl-based, not dashboard-authored.** gsanjit.com is the entry point; re-crawl +
-   reconcile updates everything. (This reverses an earlier "dashboard-authored" decision
-   and the older "the crawler is YWCC-only / GSA is manual" principle — GSA people and
-   documents are now crawled; only ad-hoc corrections happen in the dashboard.)
+2. **Crawl-based if feasible; manual provisioning otherwise.** gsanjit.com is the
+   preferred entry point (re-crawl + reconcile updates everything). But the Wix crawl is
+   **best-effort, not a hard gate** — if extraction is too hard, we fall back to manual
+   provisioning (download/copy-paste the documents → KB; dashboard-author or paste the
+   people roster → KG). **The end-state KG+KB is identical either way**; only the *update
+   mechanism* differs (auto re-crawl vs. manual refresh/dashboard edits). The task-1
+   spike picks the path. (This relaxes the older "crawler is YWCC-only / GSA is manual"
+   principle: GSA is crawled *if* the site cooperates, manual if not.)
 3. **All-conversational bot.** Only `/qrcode` remains a slash command. `/contact`,
    `/help`, and the (already-removed) `/ask /events /resources /initiative /feedback`
    are answered conversationally via retrieval. `bot_features.md` is replaced by a
@@ -106,8 +112,17 @@ implementation task is a **read-only spike**:
     affiliation probe (self-grounding: every extracted name/role must appear verbatim in
     the page; reject empty/ungrounded; human-flag low confidence). LLM-extraction is the
     last resort because of the recall/temporal issues we measured.
-- The spike's output is a one-page finding that selects the method; the rest of the build
-  is written against that choice.
+- **Manual fallback (if Wix is too hard):** abandon the GSA crawler entirely and
+  provision the same data by hand —
+  - **Documents → KB:** download or copy-paste the GSA PDFs/pages into
+    `bot/data/sources/gsa/`; chunk + embed (identical to the crawl's KB output).
+  - **People → KG:** author officers/DepReps/RGOs in the dashboard (`source='dashboard'`,
+    like President Lim) *or* paste a simple roster (name, role, org) that a small ingest
+    turns into Person/`has_role`/`part_of`.
+  - This produces the **same KG+KB**; only updates become manual (dashboard edits /
+    re-paste) instead of auto re-crawl. No Wix code is shipped in this branch.
+- The spike's output is a one-page finding that selects crawl vs. manual; the rest of the
+  build is written against that choice.
 
 ## Entry points & crawl scope
 
@@ -134,8 +149,8 @@ existing runner flags.
 
 ## Updates & turnover (reconcile + M3)
 
-Re-crawl is the update mechanism. Turnover is the existing **section-scoped
-deactivation**:
+**Crawl path** — re-crawl is the update mechanism; turnover is the existing
+**section-scoped deactivation**:
 
 - Mohith is on the E-Board page today → `Person(mohith) has_role(officer, VP Finances) →
   GSA` active.
@@ -144,6 +159,11 @@ deactivation**:
   gets a fresh edge. Identical to a departed-faculty sweep.
 - Re-crawl is idempotent (change-detection via `struct_hash`); unchanged pages are
   skipped.
+
+**Manual path** — updates are dashboard edits (deactivate a departed officer's role, add
+the new one) or a periodic re-paste/re-ingest of the roster. The same reconcile logic
+applies to a pasted roster, so turnover still deactivates cleanly; it just isn't
+automatic.
 
 ## Bot read-path (all conversational)
 
@@ -202,8 +222,10 @@ deactivation**:
 
 ## Open risks
 
-- **Wix extraction feasibility** is the central unknown — resolved by the task-1 spike;
-  if no deterministic path exists, the rendered/LLM fallback raises effort and fragility.
+- **Wix extraction feasibility** — resolved by the task-1 spike. No longer
+  project-blocking: if the site won't yield clean data, we drop the crawler and use the
+  manual fallback (download/paste docs + dashboard people). Worst case is "updates are
+  manual," not "no GSA KG+KB."
 - **Site structure churn** — Wix layouts change; the adapter must fail safe (a
   failed/empty fetch must never deactivate existing people, same guard as the NJIT
   listing sweep).
