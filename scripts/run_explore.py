@@ -41,10 +41,17 @@ def main() -> int:
             "SELECT id FROM knowledge_items WHERE created_by='crawler'")]
         conn.executemany("DELETE FROM knowledge_vectors WHERE item_id=?", [(i,) for i in ki])
         conn.execute("DELETE FROM knowledge_items WHERE created_by='crawler'")
-        for t in ("page_nodes", "edges", "frontier", "nodes", "raw_pages"):
-            conn.execute(f"DELETE FROM {t}")
+        # Graph: clear only CRAWLER-derived data. Keep manual (source!='crawler') nodes/edges
+        # — e.g. a manually-added President — and keep Org nodes (re-derived each gather and
+        # referenced by manual appointments). FK-safe order.
+        conn.execute("DELETE FROM page_nodes")
+        conn.execute("DELETE FROM frontier")
+        conn.execute("DELETE FROM raw_pages")
+        conn.execute("DELETE FROM edges WHERE source='crawler'")
+        conn.execute("DELETE FROM nodes WHERE source='crawler' AND type!='Org'")
         conn.commit()
-        print(f"reset: cleared graph layer + {len(ki)} crawler knowledge_items")
+        print(f"reset: cleared crawler graph + {len(ki)} crawler knowledge_items "
+              f"(manual content + org tree kept)")
 
     if args.frontier:
         from v2.core.ingestion.explore import process_frontier

@@ -133,8 +133,17 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                             (pkey,)).fetchone()
                         pid = pid[0] if pid else None
                     else:
+                        # Option A: a college's Dean / Associate Deans lead the COLLEGE, so
+                        # appoint them to the parent org (YWCC), not the admin sub-unit; all
+                        # other roles (staff, faculty, …) stay on the listing's own org.
+                        appt_org = org_id
+                        if node.parent_slug and "dean" in p.section.lower():
+                            prow = conn.execute("SELECT id FROM organizations WHERE slug=?",
+                                                (node.parent_slug,)).fetchone()
+                            if prow:
+                                appt_org = prow[0]
                         pid = project_appointment(
-                            conn, person_key=pkey, name=p.name, org_id=org_id,
+                            conn, person_key=pkey, name=p.name, org_id=appt_org,
                             category=category_for_section(p.section),
                             titles=p.titles, source_section=p.section)
                         conn.execute(

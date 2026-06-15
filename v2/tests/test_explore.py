@@ -71,6 +71,21 @@ def test_explore_depth2_builds_cross_path_appointments(conn):
     assert st.appointments >= 3   # Wang x2 + Giorgio + Oria (gwang counted in both listings)
 
 
+def test_dean_appointment_lands_on_parent_college_not_admin_unit(conn):
+    # Option A: a Dean / Associate Dean leads the COLLEGE, so their admin appointment
+    # is filed on the parent org (YWCC), not the 'College Administration' sub-unit.
+    # Wang is listed under 'Associate Deans' in the administration listing.
+    explore(conn, make_fetch(PAGES), depth=2)
+    pid = conn.execute("SELECT id FROM nodes WHERE type='Person' AND key=?",
+                       ("people.njit.edu/profile/gwang",)).fetchone()[0]
+    admin_dsts = {r[0] for r in conn.execute(
+        "SELECT o.key FROM edges e JOIN nodes o ON o.id=e.dst_id "
+        "WHERE e.src_id=? AND e.type='has_role' AND e.category='admin' AND e.is_active=1",
+        (pid,)).fetchall()}
+    assert admin_dsts == {"ywcc"}                       # dean role on the college, not the unit
+    assert "college-administration" not in admin_dsts
+
+
 def test_explore_rerun_skips_unchanged(conn):
     explore(conn, make_fetch(PAGES), depth=2)
     st2 = explore(conn, make_fetch(PAGES), depth=2)
