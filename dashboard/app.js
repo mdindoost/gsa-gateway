@@ -300,7 +300,7 @@ function savePerson(orgId, form) {
         if (res && res.success === false) { toast(res.error || "Server error", false); return; }
         toast("Person saved ✅");
         PEOPLE_EDIT_KEY = null;
-        renderPeople();
+        reloadDbQuietly().then(renderPeople);
       })
       .catch((e) => toast("Server error: " + e.message, false));
   } else {
@@ -316,7 +316,7 @@ function removePerson(personKey, orgId) {
     .then((res) => {
       if (res && res.success === false) { toast(res.error || "Server error", false); return; }
       toast("Person removed ✅");
-      renderPeople();
+      reloadDbQuietly().then(renderPeople);
     })
     .catch((e) => toast("Server error: " + e.message, false));
 }
@@ -372,7 +372,8 @@ function renderPeople() {
     const orgIdNum = Number(PEOPLE_ORG_ID);
     const memberIds = new Set(
       query(
-        "SELECT DISTINCT src_id FROM edges WHERE type='has_role' AND dst_id=? AND is_active=1",
+        "SELECT DISTINCT e.src_id FROM edges e JOIN nodes o ON o.id=e.dst_id "
+        + "WHERE e.type='has_role' AND e.is_active=1 AND json_extract(o.attrs,'$.org_id')=?",
         [orgIdNum]
       ).map((r) => r.src_id)
     );
