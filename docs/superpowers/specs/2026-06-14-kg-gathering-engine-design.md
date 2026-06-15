@@ -227,6 +227,12 @@ explore(start_node, depth, aspect):
 
 ## 11. Out of scope (future)
 
+- **Adapter extraction (multi-institution reuse).** Today the engine imports the NJIT
+  discovery + `parse_entity` directly and hardcodes the `people.njit.edu/profile/` URL, so
+  another school (e.g. MIT) can't plug in without editing `explore.py`. Extract an Adapter
+  interface — `parse_listing`, `parse_profile -> EntityRecord`, `profile_url(slug)`, entry
+  points — and inject it into `explore()`; NJIT becomes one adapter, MIT another. The engine
+  core, graph layer, reconcile, org bridge, and retrieval are already institution-agnostic.
 - Crawlers for non-YWCC colleges / other institutions (manual, or their own).
 - `Document`/`mentions`, the compound-question **planner**.
 - The `ontology_version` **re-extraction runner** (re-extract stored `raw_pages` on an
