@@ -309,6 +309,7 @@ function savePerson(orgId, form) {
 }
 
 function removePerson(personKey, orgId) {
+  if (!isServerMode()) { alert("Editing people requires the dashboard server (run v2/local_server.py)."); return; }
   if (!confirm("Remove this person/role? (kept in history, can be re-added)")) return;
   serverFetch("/people/remove", { method: "POST", body: { person_key: personKey, org_id: orgId } })
     .then((res) => {
@@ -345,7 +346,15 @@ function renderPeople() {
     + "  FROM edges e JOIN nodes o ON o.id=e.dst_id "
     + "  WHERE e.src_id=n.id AND e.type='has_role' AND e.is_active=1) AS roles, "
     + "(SELECT COUNT(*) FROM edges r WHERE r.src_id=n.id AND r.type='researches' AND r.is_active=1) AS areas, "
-    + "(SELECT COUNT(*) FROM frontier f WHERE f.from_node_id=n.id AND f.status='pending') AS frontier "
+    + "(SELECT COUNT(*) FROM frontier f WHERE f.from_node_id=n.id AND f.status='pending') AS frontier, "
+    + "json_extract(n.attrs,'$.email') AS email, "
+    + "(SELECT json_extract(e.attrs,'$.titles[0]') FROM edges e "
+    + "  WHERE e.src_id=n.id AND e.type='has_role' AND e.is_active=1 LIMIT 1) AS edit_title, "
+    + "(SELECT e.category FROM edges e "
+    + "  WHERE e.src_id=n.id AND e.type='has_role' AND e.is_active=1 LIMIT 1) AS edit_category, "
+    + "(SELECT json_extract(ki.metadata,'$.about') FROM knowledge_items ki "
+    + "  WHERE ki.is_active=1 AND ki.created_by='dashboard' "
+    + "  AND json_extract(ki.metadata,'$.entity_id')=n.key LIMIT 1) AS edit_about "
     + "FROM nodes n WHERE n.type='Person' AND n.is_active=1 ";
   const sqlParams = [];
   if (PEOPLE_SEARCH) {
@@ -427,14 +436,18 @@ function renderPeople() {
       </div>
       <div class="form-row">
         <label class="form-label">Title</label>
-        <input type="text" id="pf-title" class="set-input" value="${esc(editRow ? (editRow.roles || "") : "")}" placeholder="e.g. Assistant Professor">
+        <input type="text" id="pf-title" class="set-input" value="${esc(editRow ? (editRow.edit_title || "") : "")}" placeholder="e.g. Assistant Professor">
       </div>
       <div class="form-row">
         <label class="form-label">Role type</label>
         <select id="pf-role-type" class="set-input">
-          ${["Officer","Dept Rep","Staff","Advisor","Admin"].map((rt) =>
-            `<option${editRow ? "" : (rt === "Officer" ? " selected" : "")}>${esc(rt)}</option>`
-          ).join("")}
+          ${(function() {
+            const ROLE_LABELS = { officer: "Officer", deprep: "Dept Rep", staff: "Staff", advisor: "Advisor", admin: "Admin" };
+            const editLabel = editRow ? (ROLE_LABELS[editRow.edit_category] || "Officer") : null;
+            return ["Officer","Dept Rep","Staff","Advisor","Admin"].map((rt) =>
+              `<option${(editRow ? rt === editLabel : rt === "Officer") ? " selected" : ""}>${esc(rt)}</option>`
+            ).join("");
+          })()}
         </select>
       </div>
       <div class="form-row">
@@ -443,7 +456,7 @@ function renderPeople() {
       </div>
       <div class="form-row">
         <label class="form-label">About (optional)</label>
-        <textarea id="pf-about" class="set-input" rows="3" placeholder="Short bio or notes">${esc(editRow ? (editRow.about || "") : "")}</textarea>
+        <textarea id="pf-about" class="set-input" rows="3" placeholder="Short bio or notes">${esc(editRow ? (editRow.edit_about || "") : "")}</textarea>
       </div>
       <div class="form-buttons" style="justify-content:flex-start;gap:8px">
         <button class="btn btn-primary" id="pf-save">Save</button>
@@ -487,7 +500,7 @@ function renderPeople() {
       .then((res) => {
         if (res && res.success === false) { toast(res.error || "Server error", false); return; }
         toast("Org created ✅");
-        if (res && res.id) PEOPLE_ORG_ID = res.id;
+        if (res && res.org_id) PEOPLE_ORG_ID = res.org_id;
         renderPeople();
       })
       .catch((e) => toast("Server error: " + e.message, false));

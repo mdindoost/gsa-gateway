@@ -47,7 +47,7 @@ def add_or_edit_person(conn: sqlite3.Connection, *, org_id: int, name: str, titl
                  "AND created_by=?", (key, source))
     if about and about.strip():
         meta = json.dumps({"entity_id": key, "verified": True,
-                           "natural_key": f"{key}:profile:main"})
+                           "natural_key": f"{key}:profile:main", "about": about.strip()})
         content = f"{name} — {title}. {about.strip()}"
         cur = conn.execute(
             "INSERT INTO knowledge_items(org_id,type,title,content,metadata,version,"

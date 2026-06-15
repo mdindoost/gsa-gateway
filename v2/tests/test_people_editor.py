@@ -32,6 +32,10 @@ def test_add_person_creates_graph_and_bio(conn):
     n = conn.execute("SELECT COUNT(*) FROM knowledge_items WHERE is_active=1 AND created_by='dashboard' "
                      "AND json_extract(metadata,'$.entity_id')=?", (res["person_key"],)).fetchone()[0]
     assert n == 1
+    about = conn.execute("SELECT json_extract(metadata,'$.about') FROM knowledge_items "
+                         "WHERE is_active=1 AND json_extract(metadata,'$.entity_id')=?",
+                         (res["person_key"],)).fetchone()[0]
+    assert about == "Pat runs intramural sports nights for grad students."
 
 
 def test_edit_person_is_idempotent_and_updates(conn):
