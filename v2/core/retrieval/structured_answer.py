@@ -36,6 +36,8 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         rows = skills.area_counts(conn, a["org_id"])
     elif skill == "people_by_area_tag":
         rows = [n for n, _ in skills.people_by_area_tag(conn, a["area"], a.get("org_id"))]
+    elif skill == "officers_in_org":
+        rows = skills.officers_in_org(conn, a["org_id"])   # list of (name, title)
     else:  # pragma: no cover - router only emits known skills
         rows = []
     return {"skill": skill, "org_name": org_name, "area": a.get("area"), "rows": rows}
@@ -84,5 +86,11 @@ def format_answer(result: dict) -> str:
         if not rows:
             return f"I couldn't find anyone who lists \"{area}\" as a research area{scope}."
         return f"{len(rows)} faculty list \"{area}\" as a research area{scope}: {_join(rows)}."
+
+    if skill == "officers_in_org":
+        if not rows:
+            return f"I don't have officer information for {org}."
+        listed = "; ".join(f"{title} — {name}" for name, title in rows)
+        return f"{org} has {len(rows)} officer(s): {listed}."
 
     return ""  # pragma: no cover
