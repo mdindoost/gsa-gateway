@@ -19,7 +19,6 @@ from v2.core.ingestion.decompose import decompose
 from v2.core.ingestion.discovery import category_for_section, hub_children, parse_listing
 from v2.core.ingestion.njit_adapter import entity_id_from_url, parse_entity
 from v2.core.ingestion.reconcile import reconcile_entity
-from v2.core.retrieval.skills import resolve_org
 
 
 _UA = "GSA-Gateway-Bot/1.0 (+https://github.com/mdindoost/gsa-gateway)"
@@ -55,6 +54,24 @@ def _record_frontier(conn, from_node_id, url, aspect, depth):
 def _unchanged(conn, url, html) -> bool:
     row = conn.execute("SELECT struct_hash FROM raw_pages WHERE url=?", (url,)).fetchone()
     return row is not None and row[0] == struct_hash(html)
+
+
+def _home_dept_org_id(conn, person_node_id) -> int | None:
+    """The organizations.id of the person's DEPARTMENT appointment — listings are the
+    authoritative source of where someone belongs (a profile page's text can mention the
+    wrong dept, e.g. Amy Hoover's page says 'Computer Science' but she's Informatics).
+    Prefers a faculty / primary role. None when they have no department appointment (pure
+    admin/staff), so the caller falls back to the path org."""
+    row = conn.execute(
+        "SELECT json_extract(o.attrs,'$.org_id') AS oid "
+        "FROM edges e JOIN nodes o ON o.id=e.dst_id "
+        "WHERE e.src_id=? AND e.type='has_role' AND e.is_active=1 "
+        "AND json_extract(o.attrs,'$.org_id') IN "
+        "    (SELECT id FROM organizations WHERE type='department') "
+        "ORDER BY (e.category='faculty') DESC, "
+        "         (json_extract(e.attrs,'$.is_primary')=1) DESC LIMIT 1",
+        (person_node_id,)).fetchone()
+    return row[0] if row else None
 
 
 def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
@@ -132,8 +149,10 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                 # turn a 'Staff' person into 'admin' off an '…Office of the Dean' suffix).
                 # knowledge_items are filed under the person's HOME dept (rec.org), not the
                 # path we reached them through.
-                ki_org = (resolve_org(conn, rec.org)
-                          or ensure_org(conn, node.org_slug, node.org_name, node.parent_slug))
+                prow = conn.execute("SELECT id FROM nodes WHERE type='Person' AND key=?",
+                                    (rec.entity_id,)).fetchone()
+                home = _home_dept_org_id(conn, prow[0]) if prow else None
+                ki_org = home or ensure_org(conn, node.org_slug, node.org_name, node.parent_slug)
                 reconcile_entity(conn, ki_org, rec.entity_id, decompose(rec),
                                  created_by="crawler", rec=rec, home_appointment=False)
                 pid = conn.execute("SELECT id FROM nodes WHERE type='Person' AND key=?",

@@ -105,3 +105,21 @@ def test_depth3_profile_enriches_without_clobbering_listing_role(conn):
                         "AND json_extract(metadata,'$.entity_id')=?",
                         ("people.njit.edu/profile/ikoutis",)).fetchone()[0]
     assert n_ki >= 1
+
+
+def test_home_dept_org_id_prefers_department_over_admin_unit(conn):
+    from v2.core.graph.project import project_appointment
+    from v2.core.ingestion.explore import _home_dept_org_id
+    conn.execute("INSERT INTO organizations(id,parent_id,name,slug,type) "
+                 "VALUES(5,4,'Computer Science','computer-science','department')")
+    conn.execute("INSERT INTO organizations(id,parent_id,name,slug,type) "
+                 "VALUES(20,4,'College Administration','college-administration','unit')")
+    conn.commit()
+    pid = project_appointment(conn, person_key="p/w", name="W", org_id=20,
+                              category="admin", titles=[], source_section="Associate Deans")
+    project_appointment(conn, person_key="p/w", name="W", org_id=5,
+                        category="faculty", titles=[], source_section="Professors")
+    assert _home_dept_org_id(conn, pid) == 5            # CS dept, not the admin unit
+    pid2 = project_appointment(conn, person_key="p/s", name="S", org_id=20,
+                               category="staff", titles=[], source_section="Staff")
+    assert _home_dept_org_id(conn, pid2) is None        # pure staff: no dept appointment

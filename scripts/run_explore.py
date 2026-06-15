@@ -31,11 +31,17 @@ def main() -> int:
     create_all(args.db)                       # ensure graph tables exist (idempotent)
     conn = get_connection(args.db)
     if args.reset:
-        # FK-safe order; only the re-derivable graph layer — never knowledge_items/orgs.
+        # Re-derive everything the CRAWLER produces (graph layer + crawler knowledge_items
+        # + their vectors). Manual content (created_by!='crawler', e.g. GSA/MMI) is left
+        # untouched. FK-safe order; FTS rows self-clean via the knowledge_items delete trigger.
+        ki = [r[0] for r in conn.execute(
+            "SELECT id FROM knowledge_items WHERE created_by='crawler'")]
+        conn.executemany("DELETE FROM knowledge_vectors WHERE item_id=?", [(i,) for i in ki])
+        conn.execute("DELETE FROM knowledge_items WHERE created_by='crawler'")
         for t in ("page_nodes", "edges", "frontier", "nodes", "raw_pages"):
             conn.execute(f"DELETE FROM {t}")
         conn.commit()
-        print("graph layer cleared (--reset)")
+        print(f"reset: cleared graph layer + {len(ki)} crawler knowledge_items")
     st = explore(conn, http_fetch, depth=args.depth)
     print(f"\nexplore stats: {st}")
 
