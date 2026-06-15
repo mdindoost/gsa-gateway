@@ -13,6 +13,7 @@ are rule-based. See docs/superpowers/specs/2026-06-13-structured-retrieval-phase
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -55,12 +56,31 @@ class Route:
 
 def _org_candidates(conn: sqlite3.Connection) -> list[tuple[str, int]]:
     cands: list[tuple[str, int]] = []
-    for oid, name, slug in conn.execute(
-            "SELECT id,name,slug FROM organizations WHERE is_active=1"):
-        cands.append((name.lower(), oid))
+    for oid, name, slug, metadata in conn.execute(
+            "SELECT id,name,slug,metadata FROM organizations WHERE is_active=1"):
+        nl = name.lower()
+        cands.append((nl, oid))
         cands.append((slug.lower(), oid))
         if "-" in slug:
             cands.append((slug.replace("-", " ").lower(), oid))
+        # the name with parentheticals stripped: "… Society (GWICS)" -> "… society"
+        stripped = re.sub(r"\([^)]*\)", "", name).strip().lower()
+        if stripped and stripped != nl:
+            cands.append((stripped, oid))
+        # parenthetical acronyms/short names: "(GWICS)" -> "gwics" (>=3 chars to avoid noise)
+        for paren in re.findall(r"\(([^)]+)\)", name):
+            p = paren.strip().lower()
+            if len(p) >= 3:
+                cands.append((p, oid))
+        # admin-declared aliases in organizations.metadata.aliases (JSON list of nicknames)
+        try:
+            aliases = (json.loads(metadata) if metadata else {}).get("aliases") or []
+        except (TypeError, ValueError):
+            aliases = []
+        for a in aliases:
+            a = str(a).strip().lower()
+            if a:
+                cands.append((a, oid))
     for alias in skills._ORG_ALIASES:
         oid = skills.resolve_org(conn, alias)
         if oid:
