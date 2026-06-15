@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import io
 import logging
 import time
 from typing import Optional
@@ -87,11 +88,11 @@ class TelegramConnector(BasePlatform):
     async def setup_services(self) -> None:
         self.app = Application.builder().token(self.token).build()
         self.app.add_handler(PTBHandler(filters.TEXT & ~filters.COMMAND, self._on_message))
-        self.app.add_handler(CommandHandler("start",     self._cmd_help))
-        self.app.add_handler(CommandHandler("help",      self._cmd_help))
-        self.app.add_handler(CommandHandler("events",    self._cmd_events))
-        self.app.add_handler(CommandHandler("contact",   self._cmd_contact))
-        self.app.add_handler(CommandHandler("resources", self._cmd_resources))
+        # All-conversational: only /start (welcome) and /qrcode (a generative tool)
+        # remain. Everything that used to be /help /events /contact /resources is
+        # answered by asking the bot naturally (the message handler above).
+        self.app.add_handler(CommandHandler("start",  self._cmd_start))
+        self.app.add_handler(CommandHandler("qrcode", self._cmd_qrcode))
         self.app.add_handler(
             CallbackQueryHandler(self._on_feedback,        pattern=r"^fb:\d+:")
         )
@@ -344,102 +345,52 @@ class TelegramConnector(BasePlatform):
 
     # ── Command handlers ──────────────────────────────────────────────────────
 
-    async def _cmd_events(self, update: Update, context) -> None:
-        if not update.message:
-            return
-        events = self.kb.events
-        if not events:
-            await update.message.reply_text("No upcoming events found.")
-            return
-        lines = ["*Upcoming GSA Events*\n"]
-        for ev in events[:10]:
-            lines.append(f"*{ev.name}*")
-            lines.append(f"📅 {ev.date} at {ev.time}")
-            lines.append(f"📍 {ev.location}")
-            if ev.description:
-                lines.append(str(ev.description)[:120])
-            lines.append("")
-        text = "\n".join(lines).strip()
-        try:
-            await update.message.reply_text(text, parse_mode="Markdown")
-        except Exception as exc:
-            logger.warning("Markdown parse failed in _cmd_events, sending plain: %s", exc)
-            await update.message.reply_text(text)
-
-    async def _cmd_contact(self, update: Update, context) -> None:
-        if not update.message:
-            return
-        args = context.args or []
-        contacts = list(self.kb.contacts.values())
-        if args:
-            query = " ".join(args).lower()
-            contacts = [
-                c for c in contacts
-                if query in c.role.lower() or query in c.name.lower()
-            ]
-        if not contacts:
-            await update.message.reply_text("No matching contacts found.")
-            return
-        lines = ["*GSA Contacts*\n"]
-        for c in contacts[:10]:
-            lines.append(f"*{c.name}* — {c.role}")
-            lines.append(f"📧 {c.email}")
-            if c.office and c.office != "N/A":
-                lines.append(f"🏢 {c.office}")
-            lines.append("")
-        text = "\n".join(lines).strip()
-        try:
-            await update.message.reply_text(text, parse_mode="Markdown")
-        except Exception as exc:
-            logger.warning("Markdown parse failed in _cmd_contact, sending plain: %s", exc)
-            await update.message.reply_text(text)
-
-    async def _cmd_resources(self, update: Update, context) -> None:
-        if not update.message:
-            return
-        args = context.args or []
-        resources = self.kb.resources
-        if args:
-            query_str = " ".join(args).lower()
-            resources = {k: v for k, v in resources.items() if query_str in k.lower()}
-        if not resources:
-            available = ", ".join(self.kb.resources.keys())
-            await update.message.reply_text(
-                f"No resources found for that category.\n\nAvailable: {available}"
-            )
-            return
-        lines = []
-        for cat, items in list(resources.items())[:5]:
-            lines.append(f"*{cat.title()}*")
-            for item in items[:4]:
-                line = f"• {item.title}"
-                if item.url:
-                    line += f": {item.url}"
-                lines.append(line)
-            lines.append("")
-        text = "\n".join(lines).strip()
-        try:
-            await update.message.reply_text(text, parse_mode="Markdown")
-        except Exception as exc:
-            logger.warning("Markdown parse failed in _cmd_resources, sending plain: %s", exc)
-            await update.message.reply_text(text)
-
-    async def _cmd_help(self, update: Update, context) -> None:
+    async def _cmd_start(self, update: Update, context) -> None:
+        """Welcome / entry point. No command menu — the bot is conversational."""
         if not update.message:
             return
         text = (
-            "*GSA Gateway — Telegram Bot*\n\n"
-            "I answer questions about NJIT's Graduate Student Association.\n\n"
-            "*Commands:*\n"
-            "/events — Upcoming GSA events\n"
-            "/contact [role] — Find GSA officers\n"
-            "/resources [category] — Campus resources\n"
-            "/help — This message\n\n"
-            "Or just type your question naturally!\n\n"
-            "_Tip: DM this bot for a private feedback experience after each answer._"
+            "*GSA Gateway*\n\n"
+            "Hi! I'm the Graduate Student Association assistant. Just ask me anything "
+            "in plain language — officers, events, funding, travel awards, how to get "
+            "involved, campus resources, and more.\n\n"
+            "You can also use */qrcode <link or text>* to generate a GSA-branded QR code.\n\n"
+            "_Tip: DM me for a private feedback experience after each answer._"
         )
         try:
             await update.message.reply_text(text, parse_mode="Markdown")
-        except Exception as exc:
-            logger.warning("Markdown parse failed in _cmd_help, sending plain: %s", exc)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Markdown parse failed in _cmd_start, sending plain: %s", exc)
             await update.message.reply_text(text)
+
+    async def _cmd_qrcode(self, update: Update, context) -> None:
+        """/qrcode <url or text> — branded GSA QR code (Red & White)."""
+        if not update.message:
+            return
+        from bot.services.qr import MAX_QR_INPUT, build_pair
+        content = " ".join(context.args or []).strip()
+        if not content:
+            await update.message.reply_text(
+                "Send the link or text to encode, e.g. `/qrcode https://gsanjit.com`",
+                parse_mode="Markdown")
+            return
+        if len(content) > MAX_QR_INPUT:
+            await update.message.reply_text(
+                f"Input too long — keep it under {MAX_QR_INPUT} characters "
+                f"(yours is {len(content)}).")
+            return
+        try:
+            branded, transparent = await asyncio.to_thread(build_pair, content)
+        except Exception:  # noqa: BLE001
+            logger.exception("Telegram QR generation failed for content=%r", content[:60])
+            await update.message.reply_text(
+                "Something went wrong generating the QR code. Please try again.")
+            return
+        branded_io = io.BytesIO(branded); branded_io.name = "qr_branded.png"
+        transparent_io = io.BytesIO(transparent); transparent_io.name = "qr_transparent.png"
+        await update.message.reply_photo(
+            photo=branded_io,
+            caption=f"QR code for: {content[:80]}{'…' if len(content) > 80 else ''}")
+        await update.message.reply_document(
+            document=transparent_io,
+            caption="Transparent version — paste onto flyers & slides.")
