@@ -47,6 +47,28 @@ def verify_kg(conn: sqlite3.Connection) -> list[str]:
     return issues
 
 
+def verify_gsa(conn: sqlite3.Connection) -> list[str]:
+    """GSA-specific alignment: the GSA org has at least one officer, and no legacy QA
+    (type='faq') remains active under GSA. Empty list = aligned."""
+    issues: list[str] = []
+    g = conn.execute("SELECT id FROM organizations WHERE slug='gsa' AND is_active=1").fetchone()
+    if not g:
+        return ["no GSA org found"]
+    gid = g[0]
+    officers = conn.execute(
+        "SELECT COUNT(*) FROM edges e JOIN nodes o ON o.id=e.dst_id "
+        "WHERE e.type='has_role' AND e.is_active=1 AND e.category IN ('officer','deprep') "
+        "AND json_extract(o.attrs,'$.org_id')=?", (gid,)).fetchone()[0]
+    if officers == 0:
+        issues.append("no GSA officers in the graph (roster not ingested?)")
+    leftover = conn.execute(
+        "SELECT COUNT(*) FROM knowledge_items WHERE org_id=? AND type='faq' AND is_active=1",
+        (gid,)).fetchone()[0]
+    if leftover:
+        issues.append(f"{leftover} active GSA QA item(s) remain (not retired)")
+    return issues
+
+
 def main() -> int:
     import argparse
     from v2.core.database.schema import get_connection

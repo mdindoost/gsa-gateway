@@ -35,6 +35,12 @@ _RANK = re.compile(r"\b(?:most|top|popular|biggest|largest|ranked|by count|how m
 # "who LISTS X as a research area" -> precise tag match.
 _LISTS_AREA = re.compile(r"who\s+lists?\s+(.+?)\s+as\s+(?:an?\s+)?research\s+area")
 
+# Officer / governance cue ("who are the OFFICERS", "who is the PRESIDENT / VP finance").
+# Deliberately excludes 'professor'/'faculty' so it never hijacks the YWCC faculty branch.
+_OFFICER = re.compile(
+    r"\b(officers?|e-?board|executive board|president|vice[- ]president|\bvp\b|"
+    r"treasurer|secretary|deprep|department representatives?)\b")
+
 
 @dataclass
 class Route:
@@ -108,6 +114,9 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         # faculty branch instead of answering with a bare list of area names.
         if "faculty" not in q and "professor" not in q:
             return Route("areas_in_org", {"org_id": org_id})
+
+    if org_id is not None and _OFFICER.search(q):
+        return Route("officers_in_org", {"org_id": org_id})
 
     if "department" in q and org_id is not None and "faculty" not in q and "professor" not in q:
         return Route("org_departments", {"org_id": org_id})

@@ -262,7 +262,7 @@ CREATE TABLE IF NOT EXISTS edges (
     created_at       TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
     CHECK (category IS NULL OR category IN
-           ('faculty','staff','admin','advisor','joint','emeritus'))
+           ('faculty','staff','admin','advisor','joint','emeritus','officer','deprep'))
 ) STRICT;
 """
 
