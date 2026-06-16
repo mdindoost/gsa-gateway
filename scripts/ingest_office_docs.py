@@ -33,6 +33,8 @@ SRC = REPO / "bot" / "data" / "sources"
 OFFICES: dict[str, tuple[str, str, str, str]] = {
     "graduate-studies": ("graduate-studies", "Graduate Studies", "njit", "office"),
     "ogi": ("ogi", "Office of Global Initiatives", "njit", "office"),
+    "computer-science": ("computer-science", "Computer Science", "ywcc", "department"),
+    "informatics": ("informatics", "Informatics", "ywcc", "department"),
 }
 
 _FRONT_MATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
