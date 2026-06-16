@@ -1061,6 +1061,7 @@ const tomorrow9 = () => { const d = new Date(Date.now() + 864e5); return PL.fmtD
 function renderNewPostForm() {
   const fs = FormState;
   const tg = PL.getSetting(db, fs.orgId, "org.telegram_channel", "") || "—";
+  const gm = PL.getSetting(db, fs.orgId, "org.groupme_group", "") || "GSAGateWayNJIT";
   document.getElementById("detail-pane").innerHTML = `
    <div class="form">
     <h2>New Post</h2>
@@ -1137,10 +1138,12 @@ function renderNewPostForm() {
       <div class="inline" style="margin-bottom:10px">
         <label class="checkrow"><input type="checkbox" id="f-pf-discord" ${fs.platforms.includes("discord") ? "checked" : ""}> Discord</label>
         <label class="checkrow"><input type="checkbox" id="f-pf-telegram" ${fs.platforms.includes("telegram") ? "checked" : ""}> Telegram</label>
+        <label class="checkrow"><input type="checkbox" id="f-pf-groupme" ${fs.platforms.includes("groupme") ? "checked" : ""}> GroupMe</label>
       </div>
       <div class="inline">
         <div class="field" style="flex:1"><label>Discord channel</label><select id="f-dchan">${channelOptions()}</select></div>
         <div class="field"><label>Telegram channel</label><input type="text" value="${esc(tg)}" readonly></div>
+        <div class="field"><label>GroupMe group</label><input type="text" value="${esc(gm)}" readonly></div>
       </div>
     </div>
 
@@ -1159,9 +1162,11 @@ function renderNewPostForm() {
       <div class="preview-toggle" id="pv-toggle">
         <button data-p="discord" class="on">Discord</button>
         <button data-p="telegram">Telegram</button>
+        <button data-p="groupme">GroupMe</button>
       </div>
       <div id="pv-discord" class="preview-discord"></div>
       <div id="pv-telegram" class="preview-telegram" hidden></div>
+      <div id="pv-groupme" class="preview-groupme" hidden></div>
     </div>
 
     <div id="grp-addkb" class="checkrow" style="margin-top:12px">
@@ -1221,11 +1226,12 @@ function wireForm() {
   document.getElementById("f-ann-sched").addEventListener("change", () => {});
   document.getElementById("f-ann-now").addEventListener("change", () => {});
   // platforms
-  ["f-pf-discord", "f-pf-telegram"].forEach((id) =>
+  ["f-pf-discord", "f-pf-telegram", "f-pf-groupme"].forEach((id) =>
     document.getElementById(id).addEventListener("change", () => {
       FormState.platforms = [];
       if (document.getElementById("f-pf-discord").checked) FormState.platforms.push("discord");
       if (document.getElementById("f-pf-telegram").checked) FormState.platforms.push("telegram");
+      if (document.getElementById("f-pf-groupme").checked) FormState.platforms.push("groupme");
       updatePreview();
     }));
   // signature
@@ -1248,8 +1254,10 @@ function wireForm() {
     b.addEventListener("click", () => {
       FormState.previewPlat = b.dataset.p;
       document.querySelectorAll("#pv-toggle button").forEach((x) => x.classList.toggle("on", x === b));
-      document.getElementById("pv-discord").hidden = b.dataset.p !== "discord";
-      document.getElementById("pv-telegram").hidden = b.dataset.p !== "telegram";
+      ["discord", "telegram", "groupme"].forEach((p) => {
+        const el = document.getElementById(`pv-${p}`);
+        if (el) el.hidden = b.dataset.p !== p;
+      });
     }));
   document.getElementById("f-cancel").addEventListener("click", () => { PS.view = "none"; renderRightPane(); });
   document.getElementById("f-submit").addEventListener("click", submitForm);
@@ -1308,8 +1316,8 @@ function renderReminders() {
         </span>
         <div class="rm-fire">${fire ? fire.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "set event date"}</div>
       </div>
-      <div class="platpills">${["discord", "telegram"].map((pf) =>
-        `<span class="platpill ${r.platforms.includes(pf) ? "on" : ""}" data-i="${i}" data-pf="${pf}">${pf[0].toUpperCase()}</span>`).join("")}</div>
+      <div class="platpills">${["discord", "telegram", "groupme"].map((pf) =>
+        `<span class="platpill ${r.platforms.includes(pf) ? "on" : ""}" data-i="${i}" data-pf="${pf}">${pf === "groupme" ? "G" : pf[0].toUpperCase()}</span>`).join("")}</div>
     </div>`;
   }).join("") + `<a href="#" id="add-rem" class="muted">+ Add reminder</a>`;
 
@@ -1347,8 +1355,12 @@ function updatePreview() {
   const sig = currentSignature();
   const body = previewContent();
   const full = sig ? body + "\n\n" + sig : body;
-  document.getElementById("pv-discord").innerHTML = `<div class="pv-author">GSA Gateway</div>` + esc(full);
-  document.getElementById("pv-telegram").innerHTML = `<div class="pv-bubble">${tgHtml(full)}</div>`;
+  const dc = document.getElementById("pv-discord");
+  const tg = document.getElementById("pv-telegram");
+  const gm = document.getElementById("pv-groupme");
+  if (dc) dc.innerHTML = `<div class="pv-author">GSA Gateway</div>` + esc(full);
+  if (tg) tg.innerHTML = `<div class="pv-bubble">${tgHtml(full)}</div>`;
+  if (gm) gm.innerHTML = `<div class="pv-groupme-bubble">${esc(full)}</div>`;
 }
 
 function submitForm() {
@@ -1866,7 +1878,7 @@ const catMatch = {
   notif: (k) => k === "reminders.default",
   retr: (k) => k.startsWith("retriever."),
   feat: (k) => k.startsWith("feature."),
-  plat: (k) => k === "org.telegram_channel",
+  plat: (k) => k === "org.telegram_channel" || k === "org.groupme_group",
 };
 
 function settingsRows(cat) {
@@ -1978,7 +1990,7 @@ function renderReminderSettings(host) {
       <div id="nrem-list">${rems.map((r, i) => `
         <div class="reminder">
           <div class="rm-when"><strong>${r.offset} ${r.unit}</strong> before</div>
-          <div class="platpills">${["discord", "telegram"].map((pf) => `<span class="platpill ${(r.channels || []).includes(pf) ? "on" : ""}" data-i="${i}" data-pf="${pf}">${pf[0].toUpperCase()}</span>`).join("")}</div>
+          <div class="platpills">${["discord", "telegram", "groupme"].map((pf) => `<span class="platpill ${(r.channels || []).includes(pf) ? "on" : ""}" data-i="${i}" data-pf="${pf}">${pf === "groupme" ? "G" : pf[0].toUpperCase()}</span>`).join("")}</div>
           <a href="#" class="muted nrem-del" data-i="${i}">Remove</a>
         </div>`).join("")}</div>
       <a href="#" id="nrem-add" class="muted">+ Add reminder</a>
@@ -2001,20 +2013,39 @@ function renderReminderSettings(host) {
 }
 
 function renderPlatformSettings(host) {
-  const tg = settingsRows("plat")[0];
+  const gsaId = scalar("SELECT id FROM organizations WHERE slug='gsa'")
+    || scalar("SELECT id FROM organizations ORDER BY id LIMIT 1");
+  const tg = query("SELECT id,org_id,key,value FROM settings WHERE org_id=? AND key='org.telegram_channel'", [gsaId])[0];
+  const gm = query("SELECT id,org_id,key,value FROM settings WHERE org_id=? AND key='org.groupme_group'", [gsaId])[0];
+  const tgVal = tg ? tg.value : "";
+  const gmVal = gm ? gm.value : "GSAGateWayNJIT";
   host.innerHTML = `<h2>Platform Config</h2>
     <div class="set-row"><div class="set-label"><div>Telegram channel</div><div class="set-key">org.telegram_channel</div></div>
-      <div class="set-control"><input type="text" class="set-input" id="plat-tg" value="${esc(tg ? tg.value : "")}"></div></div>
+      <div class="set-control"><input type="text" class="set-input" id="plat-tg" value="${esc(tgVal)}"></div></div>
+    <div class="set-row"><div class="set-label"><div>GroupMe group</div><div class="set-key">org.groupme_group</div></div>
+      <div class="set-control"><input type="text" class="set-input" id="plat-gm" value="${esc(gmVal)}"></div></div>
     <div class="set-row"><div class="set-label"><div>Discord bot token</div><div class="set-key">.env DISCORD_TOKEN</div></div>
       <div class="set-control"><input type="text" class="set-input" value="••••••••••••" readonly></div></div>
     <div class="set-row"><div class="set-label"><div>Telegram bot token</div><div class="set-key">.env TELEGRAM_TOKEN</div></div>
       <div class="set-control"><input type="text" class="set-input" value="••••••••••••" readonly></div></div>
-    <p class="muted" style="margin-top:8px">🔒 Bot tokens live in <code>.env</code>, never in the database — they are not editable from the dashboard.</p>
+    <div class="set-row"><div class="set-label"><div>GroupMe bot ID</div><div class="set-key">.env GROUPME_BOT_ID</div></div>
+      <div class="set-control"><input type="text" class="set-input" value="••••••••••••" readonly></div></div>
+    <p class="muted" style="margin-top:8px">🔒 Bot tokens and IDs live in <code>.env</code>, never in the database — they are not editable from the dashboard.</p>
     <div class="form-buttons" style="justify-content:flex-end"><button class="btn btn-primary" id="plat-save">Save</button></div>`;
   document.getElementById("plat-save").onclick = () => {
-    if (!tg) { toast("No telegram channel setting", false); return; }
-    applyAndExport(settingUpdateStmt(tg.org_id, "org.telegram_channel", val("plat-tg")),
-      "Platform settings ready to apply", { type: "settings",
-        server: { path: "/settings", body: { org_id: tg.org_id, key: "org.telegram_channel", value: val("plat-tg") } } });
+    if (!gsaId) { toast("No organization found", false); return; }
+    const changes = [
+      { org_id: gsaId, key: "org.telegram_channel", value: val("plat-tg") },
+      { org_id: gsaId, key: "org.groupme_group", value: val("plat-gm") },
+    ];
+    if (SERVER_URL) {
+      Promise.all(changes.map((ch) => serverFetch("/settings", { method: "POST", body: ch })))
+        .then(() => { toast("Platform settings applied ✅"); reloadFromServer(); })
+        .catch((e) => toast("Server error: " + e.message, false));
+      return;
+    }
+    applyAndExport(
+      changes.map((ch) => settingUpdateStmt(ch.org_id, ch.key, ch.value)).join("\n"),
+      "Platform settings ready to apply", { type: "settings" });
   };
 }

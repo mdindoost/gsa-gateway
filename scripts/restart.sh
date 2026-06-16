@@ -156,6 +156,31 @@ else
     tail -10 telegram_bot.log 2>/dev/null || true
 fi
 
+# ── 4. GroupMe bot (optional) ────────────────────────────────────────────────
+echo ""
+echo "[ GroupMe Bot ]"
+stop_all "python.*run_groupme" "GroupMe bot"
+if grep -qi '^GROUPME_ENABLED=true' .env 2>/dev/null; then
+    info "Starting GroupMe bot..."
+    nohup .venv/bin/python run_groupme.py > /dev/null 2>&1 &
+    GM_PID=$!
+    echo $GM_PID > /tmp/gsa-gateway-groupme.pid
+    sleep 5
+    if kill -0 "$GM_PID" 2>/dev/null; then
+        if grep -q "GroupMe polling started" <(tail -20 groupme_bot.log 2>/dev/null); then
+            ok "GroupMe bot running (PID $GM_PID)"
+        else
+            warn "GroupMe bot process up (PID $GM_PID) — polling not confirmed yet"
+            info "Watch logs: tail -f groupme_bot.log"
+        fi
+    else
+        fail "GroupMe bot failed to start — last 10 log lines:"
+        tail -10 groupme_bot.log 2>/dev/null || true
+    fi
+else
+    info "GROUPME_ENABLED is not true in .env — skipping GroupMe bot"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════"
@@ -167,5 +192,6 @@ fi
 echo -e "  ${GREEN}Done.${NC} To watch live logs:"
 echo "  tail -f gsa_gateway.log        (Discord)"
 echo "  tail -f telegram_bot.log       (Telegram)"
+echo "  tail -f groupme_bot.log        (GroupMe, if enabled)"
 echo "══════════════════════════════════════════════"
 echo ""

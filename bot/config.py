@@ -60,6 +60,13 @@ class Config:
     telegram_channel_id: str
     telegram_chat_id: str
     telegram_broadcast_target: str  # chat_id preferred, channel_id as fallback
+    # GroupMe — outbound needs only the bot_id; inbound uses polling (access token).
+    # Runs as its own process (run_groupme.py), mirroring the Telegram connector.
+    groupme_enabled: bool
+    groupme_bot_id: str
+    groupme_access_token: str
+    groupme_group_id: str
+    groupme_poll_interval: int
     # Dashboard control plane — bot supervises v2/local_server.py as a child so the
     # localhost dashboard backend (and its /api/* job runner) is always-on for free.
     dashboard_server_enabled: bool
@@ -114,6 +121,11 @@ def load_config() -> Config:
         telegram_channel_id=os.getenv("TELEGRAM_CHANNEL_ID", ""),
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
         telegram_broadcast_target=os.getenv("TELEGRAM_CHAT_ID", "") or os.getenv("TELEGRAM_CHANNEL_ID", ""),
+        groupme_enabled=os.getenv("GROUPME_ENABLED", "false").lower() == "true",
+        groupme_bot_id=os.getenv("GROUPME_BOT_ID", ""),
+        groupme_access_token=os.getenv("GROUPME_ACCESS_TOKEN", ""),
+        groupme_group_id=os.getenv("GROUPME_GROUP_ID", ""),
+        groupme_poll_interval=int(os.getenv("GROUPME_POLL_INTERVAL", "5")),
         dashboard_server_enabled=os.getenv("DASHBOARD_SERVER_ENABLED", "false").lower() == "true",
         dashboard_server_port=int(os.getenv("DASHBOARD_SERVER_PORT", "5555")),
     )

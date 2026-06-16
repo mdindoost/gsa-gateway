@@ -15,7 +15,7 @@ import asyncio
 import logging
 
 from v2.core.database.schema import get_connection
-from v2.core.publishing.sources import PostDraft, EnqueueError, enqueue_post
+from v2.core.publishing.sources import PostDraft, EnqueueError, enqueue_post, platform_channels
 from v2.integration.worldcup_tracker import WorldCupTracker, format_event
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class WorldCupRunner:
         self.interval = interval
         self._conn = None
         self.org_id = None
-        self.allowed = {"discord", "telegram"}
+        self.allowed = set(platform_channels())
         self._task = None
         self._running = False
 
@@ -87,7 +87,7 @@ class WorldCupRunner:
                 org_id=self.org_id,
                 content=format_event(ev),
                 type="worldcup",
-                channels=["discord", "telegram"],
+                channels=[c for c in platform_channels() if c in self.allowed],
                 discord_channel=self.channel,
                 source_type="worldcup",
                 dedup_key=dedup_key,

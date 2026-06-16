@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 
-from v2.core.publishing.sources import PostDraft, PostSource
+from v2.core.publishing.sources import PostDraft, PostSource, platform_channels
 from v2.integration.worldcup_tracker import BASE_URL, team_label
 from v2.integration.wc_schedule import et_date, fifa_date, reconcile, venue_for
 
@@ -173,7 +173,7 @@ def build_fixtures_draft(org_id: int, day: datetime.date, matches: list[dict],
         org_id=org_id,
         content=format_fixtures(day, matches),
         type="broadcast",
-        channels=channels if channels is not None else ["discord", "telegram"],
+        channels=channels if channels is not None else platform_channels(),
         discord_channel=discord_channel,
         scheduled_for=scheduled_for,
         source_type="wc_fixtures",

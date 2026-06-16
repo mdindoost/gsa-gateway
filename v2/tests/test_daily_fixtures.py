@@ -121,9 +121,16 @@ def test_build_draft_fields():
     assert draft.metadata["date"] == DAY.isoformat()
 
 
-def test_build_draft_default_channels():
+def test_build_draft_default_channels(monkeypatch):
+    monkeypatch.delenv("GROUPME_BOT_ID", raising=False)
     draft = build_fixtures_draft(org_id=2, day=DAY, matches=[M_MEX])
     assert draft.channels == ["discord", "telegram"]
+
+
+def test_build_draft_includes_groupme_when_configured(monkeypatch):
+    monkeypatch.setenv("GROUPME_BOT_ID", "bot123")
+    draft = build_fixtures_draft(org_id=2, day=DAY, matches=[M_MEX])
+    assert draft.channels == ["discord", "telegram", "groupme"]
 
 
 def test_build_draft_no_matches_returns_none():

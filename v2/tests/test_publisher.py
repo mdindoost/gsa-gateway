@@ -35,6 +35,7 @@ SETTINGS = [
     ("default.channel.broadcast", "gsa-announcements", "string"),
     ("default.channel.mathcafe", "gsa-mathcafe", "string"),
     ("org.telegram_channel", "@GSAGateWayNJIT", "string"),
+    ("org.groupme_group", "GSAGateWayNJIT", "string"),
 ]
 
 
@@ -53,6 +54,7 @@ def env():
     registry = ConnectorRegistry(conn=conn)
     registry.register(StubConnector("discord"))
     registry.register(StubConnector("telegram"))
+    registry.register(StubConnector("groupme"))
     sigs = SignatureService(conn)
     publisher = PostPublisher(conn, registry, sigs)
     scheduler = Scheduler(conn, publisher)
@@ -122,6 +124,17 @@ async def test_channel_resolution_from_settings(env):
     tch = env["registry"].get("telegram").calls[0]["channel"]
     assert dch == "gsa-mathcafe"          # mapped from post type
     assert tch == "@GSAGateWayNJIT"        # org telegram channel
+
+
+@pytest.mark.asyncio
+async def test_groupme_channel_from_settings(env):
+    conn, org = env["conn"], env["org"]
+    _insert_post(conn, org, scheduled_for=PAST, content="GroupMe hello",
+                 channels='["groupme"]')
+    conn.commit()
+    await env["publisher"].publish_due()
+    gch = env["registry"].get("groupme").calls[0]["channel"]
+    assert gch == "GSAGateWayNJIT"
 
 
 @pytest.mark.asyncio

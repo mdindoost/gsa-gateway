@@ -193,14 +193,19 @@ class GSABot(commands.Bot):
         if v2_sched or v2_wc or wc_fixtures:
             from v2.core.connectors.registry import ConnectorRegistry
             from v2.core.connectors.discord_connector import DiscordConnector
+            from v2.core.connectors.groupme_connector import GroupMeConnector as GroupMePublishConnector
             from v2.core.connectors.telegram_connector import TelegramConnector
             from v2.integration.discord_client import DiscordClientAdapter
+            from v2.integration.groupme_client import GroupMePostClient
             from v2.integration.telegram_client import TelegramClientAdapter
             registry = ConnectorRegistry()
             registry.register(DiscordConnector(client=DiscordClientAdapter(self)))
             if self.telegram_connector:
                 registry.register(TelegramConnector(
                     client=TelegramClientAdapter(self.telegram_connector)))
+            if config.groupme_bot_id:
+                registry.register(GroupMePublishConnector(
+                    client=GroupMePostClient(config.groupme_bot_id)))
 
             if v2_sched and self.v2_scheduler_runner is None:
                 from v2.integration.scheduler_runner import SchedulerRunner
@@ -238,6 +243,7 @@ class GSABot(commands.Bot):
                     from v2.core.database.schema import get_connection
                     from v2.core.publishing.sources import SourceRunner
                     from v2.integration.daily_fixtures import DailyFixturesSource
+                    from v2.core.publishing.sources import platform_channels
                     chan = os.getenv("FOOTBALL_CHANNEL", "world-cup-2026")
                     org_slug = os.getenv("FOOTBALL_ORG_SLUG", "gsa")
                     hour = int(os.getenv("WC_FIXTURES_HOUR_ET", "9"))
@@ -252,7 +258,7 @@ class GSABot(commands.Bot):
                         try:
                             source = DailyFixturesSource(
                                 api_key=key, org_id=row["id"],
-                                channels=["discord", "telegram"], discord_channel=chan,
+                                channels=platform_channels(), discord_channel=chan,
                                 post_hour_et=hour)
                             self.v2_fixtures_runner = SourceRunner(
                                 self._fixtures_conn, source, interval=3600)

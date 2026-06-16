@@ -149,6 +149,7 @@ body {
 .plat { font-size: 10.5px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: #eef1f5; color: #4b5563; }
 .plat-d { background: #e0ebff; color: var(--blue); }
 .plat-t { background: #dcfce7; color: var(--green); }
+.plat-g { background: #fef3c7; color: #b45309; }
 
 /* ───────── System health ───────── */
 .health {
@@ -271,6 +272,8 @@ body {
 .preview-discord .pv-author { color: #fff; font-weight: 600; margin-bottom: 4px; }
 .preview-telegram { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-size: 14px; line-height: 1.5; }
 .preview-telegram .pv-bubble { background: #eef9ff; border-radius: 10px; padding: 10px 12px; display: inline-block; max-width: 100%; white-space: pre-wrap; }
+.preview-groupme { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-size: 14px; line-height: 1.5; }
+.preview-groupme .pv-groupme-bubble { background: #f3f4f6; border-radius: 10px; padding: 10px 12px; display: inline-block; max-width: 100%; white-space: pre-wrap; }
 
 .form-buttons { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 16px; margin-top: 8px; }
 

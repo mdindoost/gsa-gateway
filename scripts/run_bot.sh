@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Start both GSA Gateway bots (Discord + Telegram) with logging.
+# Start the GSA Gateway bots (Discord + Telegram, plus GroupMe when enabled) with logging.
 # Usage: bash scripts/run_bot.sh
-# Ctrl+C stops both.
+# Ctrl+C stops all of them.
 
 set -euo pipefail
 
@@ -19,8 +19,16 @@ echo "Starting Telegram bot...   (logs: telegram_bot.log)"
 python run_telegram.py &
 TG_PID=$!
 
-# Kill Telegram on exit (Ctrl+C, script exit, or error)
-trap "echo ''; echo 'Stopping both bots...'; kill $TG_PID 2>/dev/null; exit" INT TERM EXIT
+# Start GroupMe bot in background (only when enabled in .env)
+GM_PID=""
+if grep -qi '^GROUPME_ENABLED=true' .env 2>/dev/null; then
+    echo "Starting GroupMe bot...    (logs: groupme_bot.log)"
+    python run_groupme.py &
+    GM_PID=$!
+fi
+
+# Kill background bots on exit (Ctrl+C, script exit, or error)
+trap "echo ''; echo 'Stopping bots...'; kill $TG_PID ${GM_PID} 2>/dev/null; exit" INT TERM EXIT
 
 # Start Discord bot in foreground
 echo "Starting Discord bot...    (logs: gsa_gateway.log)"

@@ -63,6 +63,9 @@ class PostPublisher:
     def _telegram_channel(self, row) -> str | None:
         return get_setting(self.conn, row["org_id"], "org.telegram_channel")
 
+    def _groupme_group(self, row) -> str | None:
+        return get_setting(self.conn, row["org_id"], "org.groupme_group")
+
     def build_post(self, row) -> Post:
         platforms = self._platforms(row)
         signature = self.signatures.render(row["org_id"], row["signature"])
@@ -71,6 +74,8 @@ class PostPublisher:
             platform_channels["discord"] = self._discord_channel(row)
         if "telegram" in platforms:
             platform_channels["telegram"] = self._telegram_channel(row)
+        if "groupme" in platforms:
+            platform_channels["groupme"] = self._groupme_group(row) or "GSAGateWayNJIT"
         return Post(
             id=row["id"], content=row["content"], channels=platforms,
             signature=signature or None, platform_channels=platform_channels,

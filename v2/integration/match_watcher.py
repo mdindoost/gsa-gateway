@@ -27,7 +27,7 @@ import os
 import aiohttp
 
 from v2.core.database.schema import get_connection
-from v2.core.publishing.sources import EnqueueError, PostDraft, enqueue_post
+from v2.core.publishing.sources import EnqueueError, PostDraft, enqueue_post, platform_channels
 from v2.integration.worldcup_tracker import BASE_URL, DEBUG_FILE, format_event
 
 logger = logging.getLogger(__name__)
@@ -183,7 +183,7 @@ class MatchWatcher:
         try:
             enqueue_post(self._conn, PostDraft(
                 org_id=self.org_id, content=format_event(ev), type="worldcup",
-                channels=["discord", "telegram"], discord_channel=self.channel,
+                channels=platform_channels(), discord_channel=self.channel,
                 source_type="worldcup", dedup_key=self._dedup_key(match_id, ev),
                 metadata={"event_type": ev["type"]}))
             logger.info("MatchWatcher: posted %s for match %s", ev["type"], match_id)

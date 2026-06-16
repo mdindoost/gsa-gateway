@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shutdown.sh — Stop the GSA Gateway bots (Discord + dashboard + Telegram) and Ollama.
+# shutdown.sh — Stop the GSA Gateway bots (Discord + dashboard + Telegram + GroupMe) and Ollama.
 # Usage: bash scripts/shutdown.sh [--keep-llm]
 #   --keep-llm   leave Ollama running (only stop the bots + dashboard).
 #
@@ -71,7 +71,13 @@ echo "[ Telegram Bot ]"
 stop_all "python.*run_telegram" "Telegram bot"
 rm -f /tmp/gsa-gateway-telegram.pid
 
-# ── 3. Ollama LLM ────────────────────────────────────────────────────────────
+# ── 3. GroupMe bot ───────────────────────────────────────────────────────────
+echo ""
+echo "[ GroupMe Bot ]"
+stop_all "python.*run_groupme" "GroupMe bot"
+rm -f /tmp/gsa-gateway-groupme.pid
+
+# ── 4. Ollama LLM ────────────────────────────────────────────────────────────
 echo ""
 echo "[ Ollama LLM ]"
 if [ "$KEEP_LLM" = true ]; then

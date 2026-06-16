@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from v2.core.connectors.base import Button, DeliveryResult, Post
 from v2.core.connectors.discord_connector import DiscordConnector
+from v2.core.connectors.groupme_connector import GroupMeConnector
 from v2.core.connectors.registry import ConnectorRegistry
 from v2.core.connectors.stub_connector import StubConnector
 from v2.core.connectors.telegram_connector import TelegramConnector, markdown_to_html
@@ -168,7 +169,32 @@ def test_telegram_html_escapes_then_formats():
 
 def test_unwired_connectors_fail_cleanly():
     import asyncio
-    for conn in (DiscordConnector(), TelegramConnector()):
+    for conn in (DiscordConnector(), TelegramConnector(), GroupMeConnector()):
         r = asyncio.run(conn.send_text("hi", "chan"))
         assert isinstance(r, DeliveryResult) and r.success is False
         assert "not wired" in r.error
+
+
+def test_groupme_format_strips_markdown():
+    c = GroupMeConnector()
+    out = c.format_content("**Bold** line", "_NJIT GSA_")
+    assert "**" not in out and out.startswith("Bold line")
+
+
+@pytest.mark.asyncio
+async def test_groupme_publish_via_registry():
+    class FakeGM:
+        async def send_message(self, channel, content, **kw):
+            assert channel == "GSAGateWayNJIT"
+            assert content == "Hello GroupMe"
+            return "gm-1"
+
+        async def ping(self):
+            return True
+
+    reg = ConnectorRegistry()
+    reg.register(GroupMeConnector(client=FakeGM()))
+    post = Post(content="**Hello** GroupMe", channels=["groupme"],
+                platform_channels={"groupme": "GSAGateWayNJIT"})
+    results = await reg.publish(post)
+    assert len(results) == 1 and results[0].success and results[0].platform == "groupme"

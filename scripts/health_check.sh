@@ -142,7 +142,48 @@ else
     fi
 fi
 
-# ── 4. Log checks (since last startup) ───────────────────────────────────────
+# ── 4. GroupMe bot (conversational — optional) ─────────────────────────────
+echo ""
+echo "[ GroupMe Bot ]"
+
+GM_ENABLED=false
+GM_BOT_ID=""
+if [[ -f "$ENV_FILE" ]]; then
+    grep -qi '^GROUPME_ENABLED=true' "$ENV_FILE" && GM_ENABLED=true
+    GM_BOT_ID=$(grep -E '^GROUPME_BOT_ID=' "$ENV_FILE" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)
+fi
+
+GM_PID=$(pgrep -f "python.*run_groupme" 2>/dev/null | head -1 || true)
+
+if $GM_ENABLED; then
+    if [[ -n "$GM_PID" ]]; then
+        ok "GroupMe bot running (PID $GM_PID)"
+        if grep -q "GroupMe polling started" groupme_bot.log 2>/dev/null; then
+            ok "GroupMe polling active (see groupme_bot.log)"
+        else
+            warn "GroupMe process up but polling not confirmed — tail -f groupme_bot.log"
+        fi
+    else
+        fail "GroupMe bot is NOT running (GROUPME_ENABLED=true)"
+        if $FIX; then
+            info "Starting GroupMe bot..."
+            nohup .venv/bin/python run_groupme.py > /dev/null 2>&1 &
+            sleep 5
+            NEW_PID=$(pgrep -f "python.*run_groupme" 2>/dev/null | head -1 || true)
+            if [[ -n "$NEW_PID" ]]; then
+                ok "GroupMe bot started (PID $NEW_PID)"
+            else
+                fail "GroupMe bot failed to start — check: tail -20 groupme_bot.log"
+            fi
+        else
+            info "Fix: bash scripts/restart.sh"
+        fi
+    fi
+else
+    info "GROUPME_ENABLED is not true — conversational GroupMe bot skipped"
+fi
+
+# ── 5. Log checks (since last startup) ───────────────────────────────────────
 echo ""
 echo "[ Log & Activity ]"
 
@@ -196,6 +237,17 @@ if (( ERROR_COUNT > 0 )); then
     done
 else
     ok "No errors since last startup"
+fi
+
+# GroupMe post publishing (rides on the Discord bot's v2 scheduler)
+if [[ -n "${GM_BOT_ID:-}" ]]; then
+    if echo "$RECENT_LOGS" | grep -q "V2 Scheduler active (3 connector"; then
+        ok "GroupMe post publishing registered (3 platforms)"
+    elif echo "$RECENT_LOGS" | grep -q "V2 Scheduler active (2 connector"; then
+        warn "GroupMe posts may be skipped — only 2 connectors; restart Discord bot"
+    else
+        info "GROUPME_BOT_ID set — restart Discord bot if posts skip GroupMe"
+    fi
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────

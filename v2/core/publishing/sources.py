@@ -10,7 +10,7 @@ then delivers it. Nothing in publisher/registry/connectors/schema changes.
 Admins never set status/sent_at/created_at and never hold the db connection
 directly (a SourceRunner owns it). Validation here is the SINGLE checked door:
 arbitrary admin code cannot push malformed / oversized / unsafe content
-downstream into Discord/Telegram.
+downstream into Discord/Telegram/GroupMe.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ import asyncio  # used by SourceRunner (Task 2)
 import hashlib
 import json
 import logging
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -33,8 +34,20 @@ ALLOWED_TYPES = {
     "one_time", "recurring_instance", "event_announcement", "event_reminder",
     "mathcafe", "worldcup", "broadcast", "digest", "generator",
 }
-DEFAULT_CHANNELS = {"discord", "telegram"}
+DEFAULT_CHANNELS = {"discord", "telegram", "groupme"}
 MAX_PER_TICK = 20   # flood cap: most rows one source may enqueue per tick
+
+
+def platform_channels() -> list[str]:
+    """Broadcast targets for autonomous generators (World Cup, digests, …).
+
+    GroupMe is included when ``GROUPME_BOT_ID`` is set in the environment —
+    the same gate the publishing connector uses in ``bot/main.py``.
+    """
+    ch = ["discord", "telegram"]
+    if os.getenv("GROUPME_BOT_ID", "").strip():
+        ch.append("groupme")
+    return ch
 
 
 @dataclass
@@ -76,7 +89,7 @@ def enqueue_post(conn, draft: "PostDraft", *, allowed_channels=None) -> int:
     Returns the new post id, or the existing id when the draft is a duplicate.
     Raises EnqueueError on invalid input. ``allowed_channels`` (a set of
     registered connector names) restricts the channels a draft may target; when
-    None, defaults to {"discord","telegram"}.
+    None, defaults to {"discord","telegram","groupme"} (GroupMe only when targeted).
     """
     valid_channels = DEFAULT_CHANNELS if allowed_channels is None else set(allowed_channels)
 
