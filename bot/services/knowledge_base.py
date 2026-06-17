@@ -56,11 +56,10 @@ class Resource:
     category: str
 
 
-_POLICY_DOCS: list[tuple[str, str]] = [
-    ("gsa_constitution.md", "gsa_constitution"),
-    ("travel_award.md", "travel_award"),
-    ("club_finance.md", "club_finance"),
-]
+# v1 policy docs (gsa_constitution / travel_award / club_finance) were removed — the
+# authoritative versions now live in the v2 KB (DB) under bot/data/sources/gsa/. The v1
+# policy_entries are not used in the v2 answer path, so this list is intentionally empty.
+_POLICY_DOCS: list[tuple[str, str]] = []
 
 
 @dataclass

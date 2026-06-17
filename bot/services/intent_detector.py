@@ -27,13 +27,17 @@ GREETING_PATTERNS = [
     r"^what'?s up",
 ]
 
+# Whole-message commands only. These are matched against the entire (normalized)
+# message via the ^…$ anchors, so a question that merely *contains* "reset"/"clear"/
+# "forget" — e.g. "how do I reset my NJIT password" or "did you forget my question" —
+# does NOT wipe the conversation. Only a standalone clear command does.
 CLEAR_PATTERNS = [
-    r"\bclear\b",
-    r"\breset\b",
-    r"\bstart over\b",
-    r"\bforget\b",
-    r"\bnew conversation\b",
-    r"\bstart fresh\b",
+    r"^(?:please\s+)?(?:clear|reset|wipe|forget)"
+    r"(?:\s+(?:the|this|our|my|all|everything))?"
+    r"(?:\s+(?:conversation|chat|history|context|memory|session))?"
+    r"(?:\s+please)?\s*[.!?]*$",
+    r"^(?:let'?s\s+)?start\s+(?:over|fresh|again)\s*[.!?]*$",
+    r"^(?:start\s+)?(?:a\s+)?new\s+(?:conversation|chat|session)\s*[.!?]*$",
 ]
 
 THANKS_PATTERNS = [

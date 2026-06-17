@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 RETRIEVAL_DEBUG_FILE = Path(__file__).resolve().parents[3] / "logs" / "retrieval_debug.log"
 
 RRF_K = 60
+# Smaller K for the cross-encoder leg in rerank fusion → CE differences matter more, so it
+# dominates ordering while the fused leg (K=60) keeps an exact-match floor.
+RERANK_CE_K = 10
 # NOTE: the old `contact` type boost was removed (2026-06-15). It was a band-aid to lift
 # officer contact cards; now officers live in the KG (answered by the structured router)
 # and the remaining campus-office contacts rank fine on their own — the boost only caused
@@ -116,9 +119,10 @@ def _fts_match_expr(query: str) -> str | None:
 
 
 class V2Retriever:
-    def __init__(self, conn, embedder):
+    def __init__(self, conn, embedder, reranker=None):
         self.conn = conn
         self.embedder = embedder
+        self.reranker = reranker
         self._org_path_cache: dict[int, str] = {}
         self.debug_log = os.getenv("RETRIEVAL_DEBUG_LOG", "false").lower() == "true"
         # event_info gets a small boost (short records lose to long FAQ/policy text on
@@ -130,6 +134,19 @@ class V2Retriever:
                              int(self._load_boost("retriever.pool_size", DEFAULT_POOL_SIZE)))
         # Types excluded from the default answer corpus (see DEFAULT_EXCLUDE_TYPES).
         self.exclude_types = self._load_exclude("retriever.exclude_types", DEFAULT_EXCLUDE_TYPES)
+        # Cross-encoder rerank of the fused pool (admin-tunable; instant kill-switch).
+        self.rerank_enabled = self._load_bool("retriever.rerank_enabled", True)
+        # Rerank the FULL fused pool by default (senior review S2), never below pool_size.
+        self.rerank_pool = max(self.pool_size,
+                               int(self._load_boost("retriever.rerank_pool", self.pool_size)))
+
+    def _load_bool(self, key: str, default: bool) -> bool:
+        row = self.conn.execute(
+            "SELECT value FROM settings WHERE key=? ORDER BY org_id LIMIT 1", (key,)
+        ).fetchone()
+        if not row or row["value"] is None:
+            return default
+        return str(row["value"]).strip().lower() in ("1", "true", "yes", "on")
 
     def _load_exclude(self, key: str, default: frozenset) -> frozenset:
         row = self.conn.execute(
@@ -153,6 +170,34 @@ class V2Retriever:
         if item_type == "event_info":
             return self.event_boost
         return 1.0
+
+    def _rerank(self, query, ranked, rows):
+        """Re-fuse the fused pool with the cross-encoder. We RRF-fuse the CE ranking with
+        the existing fused ranking (same RRF the retriever already uses) rather than letting
+        CE override — pure CE reorder *demotes* exact-keyword facts that bm25 nailed
+        (regressions), while RRF-fusion keeps those wins AND lifts the semantically-correct
+        chunk. type_boost stays a multiplicative prior (senior review C2). Returns `ranked`
+        unchanged on any miss — reranking is strictly additive."""
+        if not self.rerank_enabled or self.reranker is None or len(ranked) < 2:
+            return ranked
+        window = ranked[: self.rerank_pool]
+        passages = [rows[iid]["content"] or "" for iid, _ in window]
+        ce = self.reranker.score(query, passages)
+        if ce is None:
+            return ranked
+        fused_rank = {iid: r for r, (iid, _) in enumerate(window, start=1)}
+        ce_order = sorted(range(len(window)), key=lambda i: -ce[i])
+        ce_rank = {window[i][0]: r for r, i in enumerate(ce_order, start=1)}
+
+        # Asymmetric RRF: the CE leg gets a smaller K so it dominates ordering (fixes the
+        # semantic "wrong chunk" misses), while the existing fused leg stays a floor so
+        # exact-keyword facts bm25 nailed aren't demoted (avoids regressions).
+        def _score(iid):
+            rrf = 1.0 / (RRF_K + fused_rank[iid]) + 1.0 / (RERANK_CE_K + ce_rank[iid])
+            return rrf * self._boost_for(rows[iid]["type"])
+
+        rescored = sorted(((iid, _score(iid)) for iid, _ in window), key=lambda kv: -kv[1])
+        return rescored + ranked[self.rerank_pool:]
 
     # ── organization tree helpers ───────────────────────────────────────────
     def _subtree_ids(self, org_id: int) -> list[int]:
@@ -294,6 +339,7 @@ class V2Retriever:
             scores[iid] *= self._boost_for(rows[iid]["type"])
 
         ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+        ranked = self._rerank(query, ranked, rows)
         if group_by_entity:
             final = self._diversify_and_expand(ranked, rows, limit, item_types)
         else:

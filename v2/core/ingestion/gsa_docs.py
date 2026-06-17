@@ -7,14 +7,14 @@ import json
 import sqlite3
 from pathlib import Path
 
-from bot.services.chunker import DocumentChunker
-
-_CHUNKER = DocumentChunker(Path(__file__).resolve().parents[2] / "bot" / "data")
+from v2.core.ingestion.section_chunker import chunk_markdown
 
 
 def chunk_doc(text: str) -> list[str]:
-    """Split prose into <=350-token chunks (sentence-aware), via the shared chunker."""
-    return [c for c in _CHUNKER.split_text_by_tokens(text) if c.strip()]
+    """Structure-aware chunking: one chunk per markdown section/subsection (heading path
+    kept for context), so distinct facts (officer duties, Advisors, Prizes) don't share a
+    chunk and compete at retrieval. Over-long sections are sub-split by paragraph."""
+    return [c for c in chunk_markdown(text) if c.strip()]
 
 
 def upsert_doc_items(conn: sqlite3.Connection, *, org_id: int, slug: str, title: str,
@@ -24,14 +24,21 @@ def upsert_doc_items(conn: sqlite3.Connection, *, org_id: int, slug: str, title:
     the retriever groups them), created_by='dashboard'. Returns the chunk count. The caller
     embeds afterwards via v2/scripts/embed_all.py (resumable). NOT committed here — the CLI
     wrapper owns the transaction + backup."""
-    entity_id = f"gsa-doc/{slug}"
+    doc_id = f"gsa-doc/{slug}"
+    # Retire prior chunks for this doc — match new-style (doc_id) and legacy (shared
+    # entity_id) metadata so re-ingest is idempotent across the entity_id change.
     conn.execute(
         "UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
-        "WHERE is_active=1 AND json_extract(metadata,'$.entity_id')=?", (entity_id,))
+        "WHERE is_active=1 AND (json_extract(metadata,'$.doc_id')=? "
+        "OR json_extract(metadata,'$.entity_id')=?)", (doc_id, doc_id))
     chunks = chunk_doc(text)
     for i, chunk in enumerate(chunks):
-        meta = json.dumps({"entity_id": entity_id, "verified": True,
-                           "natural_key": f"{entity_id}:{doc_type}:{i}"})
+        # Per-section entity_id → each section is its own retrieval bucket, so distinct facts
+        # in one doc (e.g. AirBNB / $900 / fiscal-year in the travel packet) can co-surface
+        # instead of competing for a single per-doc slot under _diversify_and_expand. The
+        # shared doc_id keeps re-ingest/retire doc-scoped.
+        meta = json.dumps({"entity_id": f"{doc_id}#{i}", "doc_id": doc_id, "verified": True,
+                           "natural_key": f"{doc_id}:{doc_type}:{i}"})
         # search_text is a GENERATED column (title || ' ' || content) — never insert it.
         cur = conn.execute(
             "INSERT INTO knowledge_items(org_id,type,title,content,metadata,version,"

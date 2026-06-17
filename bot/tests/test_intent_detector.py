@@ -142,6 +142,20 @@ def test_forget_detected(detector):
     assert intent == INTENT_CLEAR_HISTORY
 
 
+@pytest.mark.parametrize("msg", [
+    "how do I reset my NJIT password",
+    "how do I clear my schedule",
+    "did you forget my question",
+    "I want to start over my application",
+    "what is the travel award reset policy",
+])
+def test_clear_keyword_in_question_does_not_wipe_history(detector, msg):
+    """Regression: a question that merely contains clear/reset/forget must NOT trigger a
+    conversation wipe — only a standalone clear command should (eval #77)."""
+    intent, _ = detector.detect(msg)
+    assert intent != INTENT_CLEAR_HISTORY
+
+
 # ── Help intent ───────────────────────────────────────────────────────────────
 
 def test_help_command(detector):

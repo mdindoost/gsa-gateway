@@ -43,10 +43,12 @@ class V1Chunk:
 
 
 class V2RetrieverShim:
-    def __init__(self, db_path: str, embedder, org_id: int | None = None, max_concurrency: int = 4):
+    def __init__(self, db_path: str, embedder, org_id: int | None = None,
+                 max_concurrency: int = 4, reranker=None):
         self.db_path = db_path
         self.embedder = embedder
         self.org_id = org_id  # None = search the whole org tree
+        self.reranker = reranker  # shared singleton; passed into each per-call V2Retriever
         self._sem = asyncio.Semaphore(max_concurrency)  # serialize v2 sqlite access
 
     # ── v1 Retriever interface ────────────────────────────────────────────────
@@ -70,7 +72,7 @@ class V2RetrieverShim:
     def _retrieve_sync(self, query, item_types):
         conn = get_connection(self.db_path)  # fresh, sqlite-vec loaded, this thread only
         try:
-            retriever = V2Retriever(conn, self.embedder)
+            retriever = V2Retriever(conn, self.embedder, self.reranker)
             results = retriever.retrieve(query, org_id=self.org_id, item_types=item_types, limit=5)
             return [self._to_v1(c) for c in results]
         except Exception:  # noqa: BLE001 - never break the answer path; fall back to empty
