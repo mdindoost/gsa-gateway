@@ -17,9 +17,19 @@ FOOD_KEYWORDS = [
 ]
 
 
+# Questions that mention "food" but are about BUDGET / POLICY (not "where's the free food").
+# These must go to RAG (the financial bylaws), never to the free-food-events path.
+_FOOD_POLICY_GUARD = (
+    "cost", "budget", "limit", "spend", "spending", "reimburs", "per person", "per-person",
+    "allowance", "maximum", "policy", "bylaw", "how much", "allowed", "cap ", "caps",
+)
+
+
 def is_food_query(query: str) -> bool:
-    """Return True if the query is asking about food at GSA events."""
+    """True if the query asks about (free) food at GSA events — NOT food budget/policy."""
     q = query.strip().lower()
+    if any(g in q for g in _FOOD_POLICY_GUARD):
+        return False
     return any(kw in q for kw in FOOD_KEYWORDS)
 
 

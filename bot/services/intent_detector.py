@@ -97,6 +97,14 @@ FOOD_KEYWORDS = [
     "meal", "free lunch", "free snacks",
 ]
 
+# Questions that mention food but are about BUDGET / POLICY (e.g. "per-person food cost limit",
+# "how much can a club spend on food") must NOT route to the free-food-events path — they go to
+# RAG (the financial bylaws).
+FOOD_POLICY_GUARD = [
+    "cost", "budget", "limit", "spend", "reimburs", "per person", "per-person", "allowance",
+    "maximum", "policy", "bylaw", "how much", "allowed", "caps", "cap ",
+]
+
 SOCIAL_KEYWORDS = [
     "fun", "social", "hangout", "hang out", "chill",
     "party", "meet people", "socialize", "activities",
@@ -155,10 +163,11 @@ class IntentDetector:
             if re.search(pattern, msg):
                 return INTENT_GSA_MODE, 1.0
 
-        # 2. Food
-        for kw in FOOD_KEYWORDS:
-            if kw in msg:
-                return INTENT_FOOD, 1.0
+        # 2. Food (free-food-at-events) — but NOT food budget/policy questions, which go to RAG.
+        if not any(g in msg for g in FOOD_POLICY_GUARD):
+            for kw in FOOD_KEYWORDS:
+                if kw in msg:
+                    return INTENT_FOOD, 1.0
 
         # 3. Social / fun activities (short messages only, word boundary to avoid
         #    "fun" matching inside "funding", "function", etc.)

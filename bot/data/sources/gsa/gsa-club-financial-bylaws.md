@@ -36,9 +36,6 @@ of 15% of the approved amount.
   and follow the Student Organization Handbook.
 - Budget may be allocated for food, speakers, decorations, and items necessary to hold the
   event.
-- According to the number of students attending, per-person cost on food per event should
-  not exceed: $9 per person for an event of 0 to 30 students; $8 per person for an event of
-  31 students and above.
 - Budget for off-campus events may cover transportation costs as well.
 - A single event cannot cost more than 40% of the approved academic budget.
 - All Graduate Clubs must give explanation and proof on how they calculated the expected
@@ -54,6 +51,12 @@ of 15% of the approved amount.
 - In case of discontent, the Finance Committee can amend the expenses or suggest changes.
   Final decisions will be taken by the General Assembly. In case of absence of the
   committee, decisions will be taken by the GSA E-board.
+
+### Per-person food cost limit at club events
+
+The per-person cost on food per club event must not exceed **$9 per person for an event of 0
+to 30 students**, and **$8 per person for an event of 31 students and above**. (For example, a
+club event with 25 students is capped at $9 per person for food.)
 
 ## IV. Non-Event Spending
 
