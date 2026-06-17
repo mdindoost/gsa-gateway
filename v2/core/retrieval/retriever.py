@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 RETRIEVAL_DEBUG_FILE = Path(__file__).resolve().parents[3] / "logs" / "retrieval_debug.log"
 
 RRF_K = 60
+# Smaller K for the cross-encoder leg in rerank fusion → CE differences matter more, so it
+# dominates ordering while the fused leg (K=60) keeps an exact-match floor.
+RERANK_CE_K = 10
 # NOTE: the old `contact` type boost was removed (2026-06-15). It was a band-aid to lift
 # officer contact cards; now officers live in the KG (answered by the structured router)
 # and the remaining campus-office contacts rank fine on their own — the boost only caused
@@ -169,9 +172,12 @@ class V2Retriever:
         return 1.0
 
     def _rerank(self, query, ranked, rows):
-        """Reorder the fused pool by sigmoid(CE) x type_boost (senior review C2: keep the
-        boost as a multiplicative prior so event_info items don't get demoted). Returns
-        `ranked` unchanged on any miss — reranking is strictly additive."""
+        """Re-fuse the fused pool with the cross-encoder. We RRF-fuse the CE ranking with
+        the existing fused ranking (same RRF the retriever already uses) rather than letting
+        CE override — pure CE reorder *demotes* exact-keyword facts that bm25 nailed
+        (regressions), while RRF-fusion keeps those wins AND lifts the semantically-correct
+        chunk. type_boost stays a multiplicative prior (senior review C2). Returns `ranked`
+        unchanged on any miss — reranking is strictly additive."""
         if not self.rerank_enabled or self.reranker is None or len(ranked) < 2:
             return ranked
         window = ranked[: self.rerank_pool]
@@ -179,9 +185,18 @@ class V2Retriever:
         ce = self.reranker.score(query, passages)
         if ce is None:
             return ranked
-        rescored = [(iid, s * self._boost_for(rows[iid]["type"]))
-                    for (iid, _old), s in zip(window, ce)]
-        rescored.sort(key=lambda kv: -kv[1])
+        fused_rank = {iid: r for r, (iid, _) in enumerate(window, start=1)}
+        ce_order = sorted(range(len(window)), key=lambda i: -ce[i])
+        ce_rank = {window[i][0]: r for r, i in enumerate(ce_order, start=1)}
+
+        # Asymmetric RRF: the CE leg gets a smaller K so it dominates ordering (fixes the
+        # semantic "wrong chunk" misses), while the existing fused leg stays a floor so
+        # exact-keyword facts bm25 nailed aren't demoted (avoids regressions).
+        def _score(iid):
+            rrf = 1.0 / (RRF_K + fused_rank[iid]) + 1.0 / (RERANK_CE_K + ce_rank[iid])
+            return rrf * self._boost_for(rows[iid]["type"])
+
+        rescored = sorted(((iid, _score(iid)) for iid, _ in window), key=lambda kv: -kv[1])
         return rescored + ranked[self.rerank_pool:]
 
     # ── organization tree helpers ───────────────────────────────────────────
