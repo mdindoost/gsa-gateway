@@ -132,3 +132,11 @@ def load_config() -> Config:
 
 
 config = load_config()
+
+
+# --- Live njit.edu search fallback (Sub-project 1) ---
+# Fires only on a KB miss (no chunk, or top reranked relevance < LIVE_THRESHOLD).
+# LIVE_ENABLED=0 disables the live path entirely (kill-switch). Key is in .env (never committed).
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
+LIVE_ENABLED = os.getenv("LIVE_ENABLED", "1") == "1"
+LIVE_THRESHOLD = float(os.getenv("LIVE_THRESHOLD", "0.15"))

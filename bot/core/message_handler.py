@@ -24,6 +24,10 @@ from bot.services.intent_detector import (
 )
 from bot.services.retriever import SOURCE_FRIENDLY_NAMES
 from bot.core.headsup import apply_headsup
+from bot.core.live_fallback import maybe_answer_live
+from v2.integration.njit_search import search as brave_search
+from v2.core.ingestion.explore import http_fetch
+import bot.config as botcfg
 
 logger = logging.getLogger(__name__)
 
@@ -407,8 +411,30 @@ class MessageHandler:
                     source_type_filter=contact_filter,
                 )
 
+            # KB miss -> live njit.edu fallback (grounded, extractive). Fires when there is no
+            # usable KB chunk OR the best chunk's reranker relevance is below threshold. No-ops
+            # without a Brave key; LIVE_ENABLED=0 disables it (kill-switch). See live_fallback.py.
+            used_live = False
+            if botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY and self.ollama and self.retriever:
+                relevance = self.retriever.top_relevance(clean_text, chunks) if chunks else None
+                if (not chunks) or (relevance is not None and relevance < botcfg.LIVE_THRESHOLD):
+                    live = await maybe_answer_live(
+                        clean_text,
+                        search_fn=brave_search,
+                        fetch_fn=http_fetch,
+                        generate=lambda system, user: self.ollama.generate(user, system),
+                    )
+                    if live is not None:
+                        response_text = live.text
+                        source_note = live.source_url
+                        used_ai = True
+                        used_live = True
+                        logger.info("live njit.edu fallback answered from %s", live.source_url)
+
             # Generate
-            if chunks and self.ollama:
+            if used_live:
+                pass
+            elif chunks and self.ollama:
                 ai_resp = await self.ollama.generate_answer(
                     question=clean_text,
                     chunks=chunks,
@@ -446,8 +472,9 @@ class MessageHandler:
 
             # High-stakes heads-up: we still answer, but for immigration/billing/funding
             # questions, tell the student to confirm with the authoritative office. Only when
-            # we actually answered from chunks (not the "no info" deflection above).
-            if chunks:
+            # we actually answered from chunks (not the "no info" deflection above) or from the
+            # live njit.edu fallback.
+            if chunks or used_live:
                 response_text = apply_headsup(response_text, clean_text)
 
             # Update conversation memory
