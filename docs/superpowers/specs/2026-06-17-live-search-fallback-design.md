@@ -28,7 +28,7 @@ question
   → answerable from KB?  (top reranked chunk's relevance ≥ threshold)
        yes → answer from KB (today's path) + heads-up
        no  → LIVE FALLBACK:
-              search njit.edu (Google Programmable Search)  → top URLs
+              search njit.edu (Brave Search API)  → top njit.edu URLs
               → http_fetch top 1–2 pages (raw_pages cache)  [reuse]
               → answer_from_page(question, page_text)        [grounded extractive]
                    = LLM selects verbatim spans answering the question;
@@ -50,8 +50,8 @@ question
 - This same function backs Sub-project 2's batch crawler (extract per page → doc).
 
 ### 2. `v2/integration/njit_search.py` (search client)
-`search(query, k=3) -> list[str]` over the **Google Programmable Search JSON API**, restricted to
-njit.edu via the configured CSE. Reads `GOOGLE_CSE_ID` / `GOOGLE_API_KEY` from env (in `.env`).
+`search(query, k=3) -> list[str]` over the **Brave Search API** (`/res/v1/web/search`), with the query scoped to njit.edu
+(`site:njit.edu` + filtering results to njit.edu hosts). Reads `BRAVE_API_KEY` from env (in `.env`).
 Network call is **injected/mockable** (`search(query, http_get=...)`), so unit tests need no key.
 Returns `[]` on any error (missing key, quota, network) → fallback degrades to today's decline.
 
@@ -87,14 +87,13 @@ Admin-tunable; `0` disables the live path (kill-switch).
 ## Latency & cost
 
 Live path runs **only on a KB miss**: ~2–5 s (search + 1–2 fetches + one LLM call). Covered
-questions are unaffected (instant KB). Google PSE free tier ≈ 100 queries/day; cache the
-question→answer briefly to avoid repeats (raw_pages already caches fetched pages).
+questions are unaffected (instant KB). Brave free tier = 2,000 queries/month (no card); cache the question→answer briefly to avoid repeats (raw_pages already caches fetched pages).
 
 ## Error handling
 
 | Condition | Behavior |
 |---|---|
-| No key / search error / quota | `search` returns `[]` → live path no-ops → today's decline |
+| No key / search error / monthly cap | `search` returns `[]` → live path no-ops → today's decline |
 | Fetch fails / robots-disallow / non-HTML | that result skipped; try next; none → decline |
 | LLM returns junk / no grounded span | return `None` → decline (never fabricate) |
 | `live_enabled=0` | live path skipped entirely (kill-switch) |
@@ -129,7 +128,7 @@ are dropped; covered questions unchanged; kill-switch + no-key both degrade to t
 - Create `v2/core/ingestion/grounded_extract.py`, `v2/integration/njit_search.py`,
   `bot/core/live_fallback.py`.
 - Modify `bot/core/message_handler.py` (RAG-branch miss → live fallback), `bot/config.py`
-  (`GOOGLE_CSE_ID`, `GOOGLE_API_KEY`, `live_enabled`/threshold), the retriever to surface the top
+  (`BRAVE_API_KEY`, `live_enabled`/threshold), the retriever to surface the top
   rerank relevance.
 - Create `v2/tests/test_grounded_extract.py`, `v2/tests/test_njit_search.py`,
   `v2/tests/test_live_fallback.py`.
