@@ -1,166 +1,110 @@
-# Answerability Gate + Router Precision — Design
+# High-Stakes Heads-Up + Router Precision — Design
 
 **Date:** 2026-06-17
-**Status:** Approved + senior-eng review incorporated — C1 signal→margin (data-decided, not
-absolute sigmoid), C2 impeach=answerable, S1 best-real-score across pool, S2/S3 per-call
-threshold read (instant kill-switch, no getattr), S4 gate at shared generation point (covers
-social+retry), S5 ≥20 hard-negative decline set, S6 positive-identity router rule, N1 decline
-logging, N2 unified wording. Ready to plan.
-**Relates to:** `2026-06-16-rerank-retrieval-design.md`, `project_retrieval_architecture`,
-`project_day_to_day_intents` (this is the "retrieval safety layer" that must precede scaling
-the KB to the 150 day-to-day intents, many of which are high-stakes: visa, billing, deadlines)
+**Status:** Approved (simplified from the earlier cross-encoder answerability-gate design after
+discussion — see "Design evolution" below). Self-reviewed; heavyweight senior review skipped by
+agreement (the increment is now small and deterministic).
+**Relates to:** `2026-06-16-rerank-retrieval-design.md`, `project_day_to_day_intents` (the
+retrieval-safety step before scaling the KB to the 150 day-to-day intents, many high-stakes).
 
-## Problem & Evidence
+## Problem
 
-The 100-question eval (post-rerank) exposed two downstream failure modes that retrieval
-precision alone does not fix:
-
-1. **Confident-wrong / should-decline.** When retrieval is weak, the bot dresses up a
-   weakly-relevant chunk as an answer instead of declining: "how do I get a parking permit"
-   → returned an unrelated GSA Highlander-Hub page; "how do I drop a class" → returned OGI
-   F-1 enrollment rules. For the upcoming high-stakes content (visa/billing/deadlines), a
-   confident-wrong answer is the worst outcome.
+Two issues the post-rerank eval exposed:
+1. **High-stakes topics need a guardrail, not a guess.** As we add day-to-day content
+   (visa/I-20/CPT/OPT, tuition/billing, funding), the bot must never present itself as the
+   authority on immigration or money — rules change and the official offices own them. The bot
+   should answer with what it has **and always tell the student to confirm with the authority**.
 2. **Router over-trigger.** "Who can **impeach** a GSA **officer**" is hijacked by the
-   `officers_in_org` structured skill (the bare word "officer" matches `_OFFICER`), so it
-   returns the officer roster instead of the constitution's impeachment rule.
+   `officers_in_org` skill (bare "officer" matches), returning the officer roster instead of the
+   constitution's impeachment rule.
 
-This increment is the **retrieval safety layer**: decline-and-route when we don't
-confidently have the answer, and stop the router from hijacking process questions. It is the
-prerequisite for safely scaling the KB.
+## Design evolution (why this is small)
 
-**Explicitly out of scope** (separate next increments): generation-quality misses where the
-right chunk WAS retrieved but the LLM flubbed it (who-chairs-GA, term-limits, food-cost-for-25),
-and smart per-topic office routing (the cat-M office-routing pilot). `decline_route` is built
-as the seam the latter plugs into.
+We first designed a cross-encoder *answerability gate* (decline+route when retrieval is weak),
+then a senior review showed the CE score isn't cross-query calibrated, pushing it toward a
+margin signal + calibration. In discussion we concluded that for the actual need — **high-stakes
+topics** — a confidence score is the wrong tool: you want to **always** defer those to the
+authority regardless of confidence. So the gate is dropped in favor of a small curated
+**heads-up table**. "Topics we don't cover yet" handling is also dropped (YAGNI). What remains is
+deliberately tiny and deterministic.
 
-## Two independent components
+## Component A — High-stakes heads-up
 
-### Component B — Router precision (`v2/core/retrieval/router.py`)
+A small **topic table** (data, in one module): each entry = `(name, patterns, office, headsup)`.
 
-The `officers_in_org` route fires whenever an officer term ("officer/president/vp/e-board/…")
-appears anywhere AND an org resolves. Fix by **structure, not substring** (same approach as the
-`reset`→clear-history fix), using a **positive identity requirement rather than a verb denylist**
-(senior review S6 — a denylist leaks "who can *nominate* an officer", "how is an officer
-*chosen*", etc.). Route to `officers_in_org` **only** when the question matches an identity
-pattern asking *who holds the seat*:
+| name | patterns (case-insensitive, word-ish) | office (headsup target) |
+|---|---|---|
+| immigration | visa, i-20, i20, cpt, opt, sevis, f-1, f1, work authorization, immigration status | Office of Global Initiatives (OGI) |
+| billing | tuition, bill, billing, payment, bursar, refund, financial hold, late fee, fees | Office of the Bursar / Student Accounts |
+| funding | assistantship, stipend, fellowship, teaching assistant, research assistant, TA position, RA position, tuition waiver | Office of Graduate Studies / your department |
+
+**Behavior:** we still **answer normally** (retrieve + generate). After producing the answer in
+the RAG path, if the *question* matched a high-stakes topic, **append a one-line heads-up** for
+the first matched topic:
+
+> ⚠️ *This is based on the GSA's knowledge — please confirm with the {office}, since these rules
+> can change and they're the official authority.*
+
+- Match is on the **question text** (not the answer), keyword/phrase based, same spirit as
+  `intent_detector` patterns. Patterns are reasonably specific to limit false matches; a spurious
+  "confirm with the Bursar" note is harmless (errs toward caution), so precision isn't critical.
+- Applied **once**, first matching topic wins (order: immigration, billing, funding).
+- Appended whether the answer came from the LLM or the raw-chunk fallback (any real answer in the
+  RAG branch). Not appended to structured-router answers (those are GSA-internal facts:
+  officers/areas/etc.) or to the "no information found" deflection.
+- Lives in a small helper, e.g. `bot/core/headsup.py` (`match_topic(question) -> Topic | None`,
+  `headsup_line(topic) -> str`), called from `message_handler`. Single responsibility, unit-testable.
+
+## Component B — Router precision (`v2/core/retrieval/router.py`)
+
+The `officers_in_org` route fires whenever an officer term appears anywhere + an org resolves.
+Fix with a **positive identity requirement** (not a verb denylist, which leaks "who can
+*nominate*…", "how is an officer *chosen*…"): route to `officers_in_org` only when the question
+matches an identity ask —
 - `who (is|are|'s) [the] … <officer-title>` (President / VP … / officers / e-board), or
 - `(list|name|show) [the] … officers`.
 
-Everything else falls through to RAG — the router's existing safe default — so any unforeseen
-process phrasing ("who can impeach a GSA officer", "what are the duties of the VP", "how do I
-become an officer", "who is eligible to be an officer") is handled by the constitution via RAG.
-Pure-deterministic; can only make routing *more* conservative. The positive pattern must be
-tested against contractions ("who's the VP of Finance") and bare "list the GSA officers"
-(senior review S7), plus the existing `test_router_officers.py` positives must still pass.
-
-### Component A — Answerability gate
-
-**Signal (data-decided, margin-first — senior review C1).** `sigmoid(CE)` from
-`ms-marco-MiniLM` is a *ranking* score, monotonic within a query but **not a calibrated,
-cross-query absolute relevance** — its magnitude drifts with phrasing/length, so a single fixed
-absolute threshold would systematically false-decline real answers and pass confident-wrong
-ones (the high-stakes failure we're preventing). Instead the gate uses a **margin / "does one
-chunk stand out" signal that is query-stable**: the top-1 CE logit minus the k-th (or median)
-CE logit of the reranked pool. An in-corpus question yields a clear standout top-1; an
-out-of-scope question (parking, drop-class) yields a flat, low pool where nothing stands out.
-
-The signal is **chosen by the diagnostic, not assumed**: `_answerability_diagnostic.py` logs,
-per query, BOTH the absolute `sigmoid(CE)` of the best real chunk AND the top1−median margin
-(raw-logit space). We pick whichever cleanly separates the answerable vs decline sets; if only
-the margin separates (expected), the gate uses the margin. We do **not** commit to the absolute
-threshold before the diagnostic runs.
-
-**Plumbing:**
-- `RetrievedChunk` gains `rerank_score: float | None` (raw CE logit for chunks the reranker
-  scored; `None` for keyword-only / expanded chunks). `_rerank` sets it.
-- `_rerank` also computes the **per-query `answerability` margin** over the windowed pool
-  (top-1 − k-th logit) and threads it out of `retrieve()`; the shim attaches it to **every**
-  returned `V1Chunk` (`V1Chunk.answerability`) so the value survives `_diversify_and_expand`
-  reordering and an expanded `profile` landing at `chunks[0]` (senior review S1).
-
-**Gate — wraps the shared generation point** (`message_handler` `if chunks and self.ollama:`
-block, ~L410, NOT a single branch), so it also covers the SOCIAL branch and the retry path
-(senior review S4):
-```
-ans = next((c.answerability for c in chunks if c.answerability is not None), None)
-if ans is not None and ans < ANSWERABILITY_MIN:
-    log_decline(query, ans)            # always-on (senior review N1)
-    return decline_route(query)        # do NOT generate from weak context
-# else: generate as today
-```
-- Fires **only when a real margin is present**. Reranker unavailable → `answerability is None`
-  → gate inert → behavior identical to today. The gate can only *decline*, never worsen a good
-  answer.
-- `decline_route(query)` returns the GSA-contact decline, unified with the existing "no chunks"
-  deflection wording (senior review N2) so the two paths don't drift. It is the seam the cat-M
-  office-routing skill later replaces with per-topic routing.
-- **`ANSWERABILITY_MIN` is read per-call** (senior review S2/S3): `V2RetrieverShim._retrieve_sync`
-  already opens a `get_connection`; it reads `retriever.answerability_min` there (one `SELECT`,
-  matching the `_load_*` pattern) so flipping it to `0` in `settings` is an **instant**
-  kill-switch with no restart. The effective threshold is threaded out alongside `answerability`
-  (e.g. the shim returns/attaches both), not read by the handler via `getattr` duck-typing.
-
-## Calibration (measured, not guessed)
-
-`scripts/_answerability_diagnostic.py` logs, per query, BOTH signals (absolute `sigmoid(CE)`
-of the best real chunk AND the top1−median margin) for two labeled sets:
-- **answerable** — the GOLD + GUARD questions from `v2/tests/rerank_gold.py`. **Note (senior
-  review C2): "Who can impeach a GSA officer…" is a GOLD question — it is *answerable* from the
-  constitution (Component B routes it to RAG), NOT a decline.** The router fix and the gate must
-  agree on this: impeach → answer.
-- **should-decline (≥20, hard negatives — senior review S5)** — not just easy campus-life
-  out-of-scope (parking, wifi, gym, spring break, pay tuition) but **GSA-adjacent-but-
-  unanswerable** ones that sit near the boundary: "how do I drop a class", "how do I get a
-  parking permit", "what's the deadline to add a course", "how do I register for classes", "how
-  do I reset my NJIT password", "where is on-campus housing", "how do I waive health insurance",
-  "what are the dining hall hours", etc. (the spec's own example, drop-class→visa-rules, is a
-  hard negative and must be in the set).
-
-Pick the signal + threshold giving **zero false-declines on the answerable set** while declining
-the maximum of the should-decline set, and **report the separation margin** (not just a pass).
-If neither signal cleanly separates (esp. the hard negatives), that is a finding — surface it
-and discuss before shipping; we will not ship a gate that declines real answers.
+Everything else falls through to RAG (the router's existing safe default), so any process
+phrasing ("who can impeach a GSA officer", "what are the duties of the VP", "how do I become an
+officer", "who is eligible to be an officer") is answered from the constitution via RAG. Must
+keep the existing `test_router_officers.py` positives passing and cover contractions ("who's the
+VP of Finance") and bare "list the GSA officers".
 
 ## Error handling
 
-| Condition | Behavior |
-|---|---|
-| Reranker unavailable / `rerank_score is None` | gate inert → generate as today |
-| `ANSWERABILITY_MIN = 0` | gate never fires (kill-switch) |
-| No chunks at all | existing "couldn't find / contact GSA" path, unchanged |
-| Router: ambiguous question | falls through to RAG (existing safe default) |
+- No new failure modes. The heads-up is a pure suffix; if `match_topic` returns None, nothing
+  changes. The router change only ever makes routing *more* conservative (RAG default).
+- No kill-switch / setting (YAGNI — a one-line disclaimer on matched topics needs no toggle).
 
-## Testing & acceptance (deterministic; no LLM in the gates)
+## Testing (deterministic)
 
-**Component B — router** (`v2/tests/test_router_precision.py`): parametrized
+**Component A — `bot/tests/test_headsup.py`:**
+- match: "how do I apply for CPT" → immigration/OGI; "how do I pay my tuition" → billing/Bursar;
+  "how do I apply for a TA position" → funding/Grad Studies.
+- no match: "who are the GSA officers", "what is the travel award", "when is the next event" → None.
+- `headsup_line(immigration)` contains "Office of Global Initiatives".
+- handler-level: a high-stakes question's response **ends with** the heads-up; a normal GSA
+  question's response does **not** contain a heads-up.
+
+**Component B — `v2/tests/test_router_precision.py`:** parametrized
 - routes → `officers_in_org`: "who are the GSA officers", "who is the GSA president",
-  "list the GSA officers", "who's the VP of Finance".
-- falls through (route is None): "who can impeach a GSA officer", "what are the duties of the
-  VP of Finance", "how do I become a GSA officer", "how many officers are there",
-  "who is eligible to be an officer".
+  "who's the VP of Finance", "list the GSA officers".
+- falls through (None): "who can impeach a GSA officer", "what are the duties of the VP of
+  Finance", "how do I become a GSA officer", "who is eligible to be an officer".
+- existing `test_router_officers.py` still green.
 
-**Component A — answerability** (`v2/tests/test_answerability_gate.py`), chunk-level, no generation:
-- answerable set (incl. impeach): `answerability ≥ ANSWERABILITY_MIN` (would answer) — **0 false-declines**.
-- should-decline set (≥20 hard negatives): `answerability < ANSWERABILITY_MIN` (would decline).
-- unit: `decline_route(q)` returns the GSA contact; gate inert when `answerability is None`; the
-  decline picks the best-real score across the pool, not positional `chunks[0]` (S1).
-
-**Acceptance bar:**
-| Metric | Target |
-|---|---|
-| Router tests | all green (identity routes; impeach/duties/become/eligible fall through) |
-| Answerability separation | declines the ≥20 out-of-scope, **0 false-declines** on answerable, **reported margin** |
-| End-to-end smoke (100-Q) | parking/drop-class/wifi now decline+route; **impeach answers from the constitution** |
+**Acceptance bar:** both test files green; end-to-end smoke — a visa/CPT/tuition question now
+ends with the heads-up; "who can impeach…" now answers from the constitution.
 
 ## Files
 
-- Modify `v2/core/retrieval/router.py` — officer route structural guard.
-- Modify `v2/core/retrieval/retriever.py` — `RetrievedChunk.rerank_score`; `_rerank` sets it.
-- Modify `v2/integration/retriever_shim.py` — carry `rerank_score` onto `V1Chunk`.
-- Modify `bot/core/message_handler.py` — the gate guard + `decline_route` (or a small helper module).
-- Create `scripts/_answerability_diagnostic.py` — threshold calibration.
-- Create `v2/tests/test_router_precision.py`, `v2/tests/test_answerability_gate.py`.
+- Create `bot/core/headsup.py` — topic table + `match_topic` / `headsup_line`.
+- Modify `bot/core/message_handler.py` — append heads-up after generation in the RAG branch.
+- Modify `v2/core/retrieval/router.py` — positive-identity officer rule.
+- Create `bot/tests/test_headsup.py`, `v2/tests/test_router_precision.py`.
 
 ## Out of scope (separate increments)
-- Generation-quality misses (right chunk retrieved, LLM flubbed) — prompting/answer-verification.
-- Smart per-topic office routing (cat-M office-routing pilot) — `decline_route` is its seam.
+- Cross-encoder answerability gate / "topics we don't cover yet" decline-and-route (dropped).
+- Generation-quality misses (right chunk retrieved, LLM flubbed).
+- Smart per-topic office *routing/answers* (the cat-M office-routing pilot) — this heads-up table
+  is a small seed of that office map.
