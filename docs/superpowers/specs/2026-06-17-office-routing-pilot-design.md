@@ -1,7 +1,9 @@
 # Office-Routing Content Pilot (Category M) + NJIT Entity Capture — Design
 
 **Date:** 2026-06-17
-**Status:** Approved + senior-eng review incorporated — C1 explicit legacy-seed retirement
+**Status:** IMPLEMENTED (2026-06-17). Gate 15/15 — all 12 office intents (incl. the 4 adversarial overlap pairs) route to the correct office at rank<=2; 3 guard questions held. RAG-first held (no structured skill needed). 10 offices ingested, 3 legacy seeds retired. Directors captured in the office docs; standalone person-nodes deferred.
+
+**Original status:** Approved + senior-eng review incorporated — C1 explicit legacy-seed retirement
 (the 3 GSA-filed contacts get migrated, not duplicated), S1 migrate-not-enrich, S2 overlap
 pairs as a gate acceptance criterion, N1 one-section-per-office, N2 person-capture routed
 through verification (user-confirmed: capture but verify, don't drop, don't blind-insert), N3 rank≤2 on id-stable tokens, N4 doc_type=contact.
