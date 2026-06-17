@@ -1,3 +1,6 @@
+# Brainstorming visual-companion mockups (local only)
+.superpowers/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -71,3 +74,6 @@ docs/faculty_review.txt
 
 # Brainstorming visual-companion mockups (local only)
 .superpowers/
+
+# Reranker model (auto-downloaded once, ~90MB)
+models/reranker/

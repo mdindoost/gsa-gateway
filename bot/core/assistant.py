@@ -69,9 +69,16 @@ async def build_assistant(config, db, kb, rate_limiter) -> Assistant:
     retriever = None
     if os.getenv("V2_RETRIEVER_ENABLED", "false").lower() == "true":
         from v2.core.retrieval.embedder import Embedder as V2Embedder
+        from v2.core.retrieval.reranker import CrossEncoderReranker
         from v2.integration.retriever_shim import V2RetrieverShim
-        retriever = V2RetrieverShim(db_path="gsa_gateway.db", embedder=V2Embedder())
-        logger.info("V2 Retriever active")
+        reranker = CrossEncoderReranker()
+        try:
+            reranker.warm()  # one-time load/download; non-fatal (falls back to RRF order)
+        except Exception:  # noqa: BLE001
+            logger.warning("reranker warm failed; retrieval uses RRF order")
+        retriever = V2RetrieverShim(db_path="gsa_gateway.db", embedder=V2Embedder(),
+                                    reranker=reranker)
+        logger.info("V2 Retriever active (reranker available=%s)", reranker.available)
     elif embedder and not vector_store.is_empty():
         from bot.services.retriever import Retriever
         retriever = Retriever(embedder=embedder, vector_store=vector_store)
