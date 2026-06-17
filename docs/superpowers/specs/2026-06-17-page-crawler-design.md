@@ -1,7 +1,7 @@
 # NJIT Page Crawler → Grounded KB Content — Design
 
 **Date:** 2026-06-17
-**Status:** Approved (design); pending senior-eng review before build
+**Status:** Senior-reviewed; RE-SCOPED to Sub-project 2 (deferred). Architecture changed to KB-first + live-search fallback: this batch crawler becomes the KB-population optimization AFTER the grounded-core + live-fallback ship (see 2026-06-17-live-search-fallback-design.md). Senior review reshaped it to extractive/verbatim + sentence-grounding (folded into the new spec's shared core).
 **Relates to:** `project_day_to_day_intents` (eliminates the manual paste-per-page tedium for the
 remaining categories), `project_hybrid_ingestion` (reuses the Phase 1b grounded crawl/extract),
 `2026-06-17-admissions-pilot-design.md` (the validation target), `2026-06-11-hybrid-knowledge-ingestion.md`.
