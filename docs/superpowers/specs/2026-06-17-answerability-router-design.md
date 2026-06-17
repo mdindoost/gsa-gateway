@@ -1,7 +1,7 @@
 # High-Stakes Heads-Up + Router Precision — Design
 
 **Date:** 2026-06-17
-**Status:** Approved (simplified from the earlier cross-encoder answerability-gate design after
+**Status:** IMPLEMENTED (2026-06-17). (simplified from the earlier cross-encoder answerability-gate design after
 discussion — see "Design evolution" below). Self-reviewed; heavyweight senior review skipped by
 agreement (the increment is now small and deterministic).
 **Relates to:** `2026-06-16-rerank-retrieval-design.md`, `project_day_to_day_intents` (the
