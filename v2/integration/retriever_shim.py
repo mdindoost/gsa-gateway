@@ -64,6 +64,18 @@ class V2RetrieverShim:
         # Food handling uses get_food_events(kb, db) directly, not retriever chunks.
         return []
 
+    def top_relevance(self, query, chunks):
+        """Cross-encoder relevance (0..1) of the best returned chunk — the KB-miss signal
+        for the live njit.edu fallback. None if no reranker or no chunks (caller treats
+        None as 'cannot judge'). reranker.score(query, [text]) -> list[float] | None."""
+        if not self.reranker or not chunks:
+            return None
+        try:
+            scores = self.reranker.score(query, [chunks[0].text])
+        except Exception:  # noqa: BLE001 - never break the answer path
+            return None
+        return float(scores[0]) if scores else None
+
     def rebuild_bm25_index(self):
         # v2 FTS is rebuilt out-of-band by scripts/rebuild_index.py; no-op here.
         logger.info("V2RetrieverShim.rebuild_bm25_index() is a no-op (use rebuild_index.py)")
