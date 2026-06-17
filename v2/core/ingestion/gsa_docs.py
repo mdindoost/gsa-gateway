@@ -18,7 +18,8 @@ def chunk_doc(text: str) -> list[str]:
 
 
 def upsert_doc_items(conn: sqlite3.Connection, *, org_id: int, slug: str, title: str,
-                     text: str, source_url: str | None, doc_type: str = "policy") -> int:
+                     text: str, source_url: str | None, doc_type: str = "policy",
+                     source: str = "dashboard") -> int:
     """(Re)ingest one doc: retire any prior active chunks for this doc slug, insert the new
     chunks as knowledge_items (one per chunk, shared metadata.entity_id='gsa-doc/<slug>' so
     the retriever groups them), created_by='dashboard'. Returns the chunk count. The caller
@@ -42,8 +43,8 @@ def upsert_doc_items(conn: sqlite3.Connection, *, org_id: int, slug: str, title:
         # search_text is a GENERATED column (title || ' ' || content) — never insert it.
         cur = conn.execute(
             "INSERT INTO knowledge_items(org_id,type,title,content,metadata,version,"
-            "source_url,is_active,created_by) VALUES(?,?,?,?,?,1,?,1,'dashboard')",
-            (org_id, doc_type, title, chunk, meta, source_url))
+            "source_url,is_active,created_by) VALUES(?,?,?,?,?,1,?,1,?)",
+            (org_id, doc_type, title, chunk, meta, source_url, source))
         conn.execute("UPDATE knowledge_items SET root_id=? WHERE id=?",
                      (cur.lastrowid, cur.lastrowid))
     return len(chunks)
