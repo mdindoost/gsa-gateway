@@ -12,6 +12,7 @@ def test_billing_and_funding_match():
     assert match_topic("How do I pay my tuition?").name == "billing"
     assert match_topic("Why do I have a financial hold?").name == "billing"
     assert match_topic("How do I apply for a teaching assistant position?").name == "funding"
+    assert match_topic("How do I apply for a TA?").name == "funding"
     assert match_topic("What is the stipend for a funded PhD student?").name == "funding"
 
 

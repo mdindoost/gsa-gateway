@@ -27,7 +27,8 @@ TOPICS: tuple[Topic, ...] = (
            "pay my bill", "payment plan", "refund")),
     Topic("funding", "Office of Graduate Studies or your department",
           ("assistantship", "stipend", "fellowship", "teaching assistant",
-           "research assistant", "ta position", "ra position", "tuition waiver")),
+           "research assistant", "ta", "ra", "ta position", "ra position",
+           "tuition waiver")),
 )
 
 _COMPILED: tuple[tuple[Topic, "re.Pattern[str]"], ...] = tuple(
