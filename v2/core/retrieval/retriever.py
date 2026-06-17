@@ -116,9 +116,10 @@ def _fts_match_expr(query: str) -> str | None:
 
 
 class V2Retriever:
-    def __init__(self, conn, embedder):
+    def __init__(self, conn, embedder, reranker=None):
         self.conn = conn
         self.embedder = embedder
+        self.reranker = reranker
         self._org_path_cache: dict[int, str] = {}
         self.debug_log = os.getenv("RETRIEVAL_DEBUG_LOG", "false").lower() == "true"
         # event_info gets a small boost (short records lose to long FAQ/policy text on
@@ -130,6 +131,19 @@ class V2Retriever:
                              int(self._load_boost("retriever.pool_size", DEFAULT_POOL_SIZE)))
         # Types excluded from the default answer corpus (see DEFAULT_EXCLUDE_TYPES).
         self.exclude_types = self._load_exclude("retriever.exclude_types", DEFAULT_EXCLUDE_TYPES)
+        # Cross-encoder rerank of the fused pool (admin-tunable; instant kill-switch).
+        self.rerank_enabled = self._load_bool("retriever.rerank_enabled", True)
+        # Rerank the FULL fused pool by default (senior review S2), never below pool_size.
+        self.rerank_pool = max(self.pool_size,
+                               int(self._load_boost("retriever.rerank_pool", self.pool_size)))
+
+    def _load_bool(self, key: str, default: bool) -> bool:
+        row = self.conn.execute(
+            "SELECT value FROM settings WHERE key=? ORDER BY org_id LIMIT 1", (key,)
+        ).fetchone()
+        if not row or row["value"] is None:
+            return default
+        return str(row["value"]).strip().lower() in ("1", "true", "yes", "on")
 
     def _load_exclude(self, key: str, default: frozenset) -> frozenset:
         row = self.conn.execute(
@@ -153,6 +167,22 @@ class V2Retriever:
         if item_type == "event_info":
             return self.event_boost
         return 1.0
+
+    def _rerank(self, query, ranked, rows):
+        """Reorder the fused pool by sigmoid(CE) x type_boost (senior review C2: keep the
+        boost as a multiplicative prior so event_info items don't get demoted). Returns
+        `ranked` unchanged on any miss — reranking is strictly additive."""
+        if not self.rerank_enabled or self.reranker is None or len(ranked) < 2:
+            return ranked
+        window = ranked[: self.rerank_pool]
+        passages = [rows[iid]["content"] or "" for iid, _ in window]
+        ce = self.reranker.score(query, passages)
+        if ce is None:
+            return ranked
+        rescored = [(iid, s * self._boost_for(rows[iid]["type"]))
+                    for (iid, _old), s in zip(window, ce)]
+        rescored.sort(key=lambda kv: -kv[1])
+        return rescored + ranked[self.rerank_pool:]
 
     # ── organization tree helpers ───────────────────────────────────────────
     def _subtree_ids(self, org_id: int) -> list[int]:
@@ -294,6 +324,7 @@ class V2Retriever:
             scores[iid] *= self._boost_for(rows[iid]["type"])
 
         ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+        ranked = self._rerank(query, ranked, rows)
         if group_by_entity:
             final = self._diversify_and_expand(ranked, rows, limit, item_types)
         else:
