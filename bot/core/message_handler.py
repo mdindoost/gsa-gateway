@@ -23,6 +23,7 @@ from bot.services.intent_detector import (
     INTENT_THANKS,
 )
 from bot.services.retriever import SOURCE_FRIENDLY_NAMES
+from bot.core.headsup import apply_headsup
 
 logger = logging.getLogger(__name__)
 
@@ -442,6 +443,12 @@ class MessageHandler:
                     "- Email us at gsa-pres@njit.edu\n"
                     "- Use /contact to find the right officer"
                 )
+
+            # High-stakes heads-up: we still answer, but for immigration/billing/funding
+            # questions, tell the student to confirm with the authoritative office. Only when
+            # we actually answered from chunks (not the "no info" deflection above).
+            if chunks:
+                response_text = apply_headsup(response_text, clean_text)
 
             # Update conversation memory
             if self.conversation_manager:
