@@ -1,7 +1,7 @@
 # KB-First + Live njit.edu Search Fallback (Grounded Extractive) — Design
 
 **Date:** 2026-06-17
-**Status:** Approved (design); pending senior-eng review before build
+**Status:** IMPLEMENTED (2026-06-17). Brave search live (real njit.edu URLs); grounded extractive path verified end-to-end (parking questions -> verbatim njit.edu answers + source links). 13 unit tests; trigger cleanly separates covered (rel=1.000->KB) vs uncovered (rel~0.000->LIVE) at threshold 0.15; regression 52/52 (covered unchanged). Shared grounded_extract core feeds the batch crawler (Sub-project 2).
 **Relates to:** `project_day_to_day_intents` (covers the long tail without pre-building every
 intent), `2026-06-17-page-crawler-design.md` (Sub-project 2 — the batch crawler that reuses this
 spec's grounded-extract core), the immigration/billing/funding **heads-up** (already live),
