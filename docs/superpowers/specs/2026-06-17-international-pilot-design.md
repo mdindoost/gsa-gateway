@@ -1,7 +1,7 @@
 # International Content Pilot (Categories D + L: I-20 / SEVIS / CPT / OPT) — Design
 
 **Date:** 2026-06-17
-**Status:** Approved (design); pending senior-eng review before build
+**Status:** IMPLEMENTED (2026-06-17). 6 OGI overview docs (CPT/OPT/STEM/I-20-forms/SEVIS/maintaining-status) under OGI; gate 19/19 (14 intents at rank<=2, OPT job-vs-apply overlap both ways, 0 regressions); RAG-first held; immigration heads-up fires.
 **Relates to:** `project_day_to_day_intents` (second content pilot — categories D + L of the 150
 intents), `2026-06-17-office-routing-pilot-design.md` (reuses that pipeline), the
 immigration **heads-up** (already live: immigration questions get "confirm with OGI" appended).
