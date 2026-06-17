@@ -26,7 +26,7 @@ SRC = REPO / "bot" / "data" / "sources" / "offices"
 
 # slug -> (display name, parent slug, type). Add offices here as the pilot grows.
 OFFICES: dict[str, tuple[str, str, str]] = {
-    "graduate-admissions": ("Office of Graduate Admissions", "njit", "office"),
+    "graduate-admissions": ("Office of University Admissions", "njit", "office"),
     "ogi": ("Office of Global Initiatives", "njit", "office"),
     "registrar": ("Office of the Registrar", "njit", "office"),
     "bursar": ("Office of the Bursar / Student Accounts", "njit", "office"),
