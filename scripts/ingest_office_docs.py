@@ -34,6 +34,7 @@ OFFICES: dict[str, tuple[str, str, str, str]] = {
     "graduate-studies": ("graduate-studies", "Graduate Studies", "njit", "office"),
     "ogi": ("ogi", "Office of Global Initiatives", "njit", "office"),
     "international": ("ogi", "Office of Global Initiatives", "njit", "office"),
+    "admissions": ("graduate-admissions", "Office of University Admissions", "njit", "office"),
     "computer-science": ("computer-science", "Computer Science", "ywcc", "department"),
     "informatics": ("informatics", "Informatics", "ywcc", "department"),
 }
