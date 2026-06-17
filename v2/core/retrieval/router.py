@@ -36,11 +36,25 @@ _RANK = re.compile(r"\b(?:most|top|popular|biggest|largest|ranked|by count|how m
 # "who LISTS X as a research area" -> precise tag match.
 _LISTS_AREA = re.compile(r"who\s+lists?\s+(.+?)\s+as\s+(?:an?\s+)?research\s+area")
 
-# Officer / governance cue ("who are the OFFICERS", "who is the PRESIDENT / VP finance").
-# Deliberately excludes 'professor'/'faculty' so it never hijacks the YWCC faculty branch.
-_OFFICER = re.compile(
-    r"\b(officers?|e-?board|executive board|president|vice[- ]president|\bvp\b|"
-    r"treasurer|secretary|deprep|department representatives?)\b")
+# Officer-IDENTITY ask only: "who is/are/'s the <title>", "list/name/show the officers".
+# A bare mention of "officer" in a process question (impeach / elect / duties / eligibility)
+# must NOT route here — it falls through to RAG (the constitution). Excludes professor/faculty
+# so it never hijacks the YWCC faculty branch.
+_OFFICER_TITLE = (
+    r"(?:officers?|e-?board|executive board|president|vice[- ]president|\bvp\b|"
+    r"treasurer|secretary|deprep|department representatives?)")
+# Positive identity structure: a who/list trigger, then up to 3 modifier words (determiner +
+# org name, e.g. "the GWICS"), then the title. The short window keeps process phrasings out
+# (their title sits too far after the trigger, e.g. "who is eligible to be an officer").
+_OFFICER_IDENTITY = re.compile(
+    r"(?:who(?:\s+(?:is|are)|'?s)|\b(?:list|name|show))\s+"
+    r"(?:[a-z0-9'\-]+\s+){0,3}?"
+    + _OFFICER_TITLE)
+# Secondary guard: even if the identity shape matches, a process/relational verb means it is
+# NOT an identity ask ("who is responsible for officer elections") → fall through to RAG.
+_OFFICER_PROCESS = re.compile(
+    r"\b(?:impeach|elect|appoint|nominat|remov|dismiss|replac|becom|eligib|qualif|"
+    r"responsib|dut(?:y|ies)|chosen|select|how\s+many)")
 
 # "who works at/in <org>", "people in <org>", "<org> staff/team" -> the full roster.
 _PEOPLE = re.compile(
@@ -140,7 +154,8 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         if "faculty" not in q and "professor" not in q:
             return Route("areas_in_org", {"org_id": org_id})
 
-    if org_id is not None and _OFFICER.search(q):
+    if (org_id is not None and _OFFICER_IDENTITY.search(q)
+            and not _OFFICER_PROCESS.search(q)):
         return Route("officers_in_org", {"org_id": org_id})
 
     if org_id is not None and _PEOPLE.search(q):
