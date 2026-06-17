@@ -4,7 +4,7 @@
 **Status:** Approved + senior-eng review incorporated — C1 explicit legacy-seed retirement
 (the 3 GSA-filed contacts get migrated, not duplicated), S1 migrate-not-enrich, S2 overlap
 pairs as a gate acceptance criterion, N1 one-section-per-office, N2 person-capture routed
-through verification (pending user confirm), N3 rank≤2 on id-stable tokens, N4 doc_type=contact.
+through verification (user-confirmed: capture but verify, don't drop, don't blind-insert), N3 rank≤2 on id-stable tokens, N4 doc_type=contact.
 **Relates to:** `project_day_to_day_intents` (this is the first content pilot — category M of
 the 150 intents), `2026-06-16-rerank-retrieval-design.md` (answering uses that stack),
 `2026-06-17-answerability-router-design.md` (heads-up still fires).
