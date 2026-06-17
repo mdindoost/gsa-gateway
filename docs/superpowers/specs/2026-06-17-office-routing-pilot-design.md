@@ -1,7 +1,10 @@
 # Office-Routing Content Pilot (Category M) + NJIT Entity Capture — Design
 
 **Date:** 2026-06-17
-**Status:** IMPLEMENTED (2026-06-17). Gate 15/15 — all 12 office intents (incl. the 4 adversarial overlap pairs) route to the correct office at rank<=2; 3 guard questions held. RAG-first held (no structured skill needed). 10 offices ingested, 3 legacy seeds retired. Directors captured in the office docs; standalone person-nodes deferred.
+**Status:** IMPLEMENTED (2026-06-17). Gate 15/15 — all 12 office intents (incl. the 4 adversarial overlap pairs) route to the correct office at rank<=2; 3 guard questions held. RAG-first held (no structured skill needed). 10 offices ingested (KG org nodes + KB contact docs), 3 legacy seeds retired. **56 verified
+office staff captured as KG Person nodes** (has_role to their office + email) from the official
+contact pages — Admissions 26, Graduate Studies 7, Dean of Students 7, Career Development 16;
+surfaced via people-in-org structured queries.
 
 **Original status:** Approved + senior-eng review incorporated — C1 explicit legacy-seed retirement
 (the 3 GSA-filed contacts get migrated, not duplicated), S1 migrate-not-enrich, S2 overlap
