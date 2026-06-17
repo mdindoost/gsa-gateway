@@ -77,3 +77,7 @@ docs/faculty_review.txt
 
 # Reranker model (auto-downloaded once, ~90MB)
 models/reranker/
+
+# Eval harness run artifacts (regenerated)
+eval_results.jsonl
+eval_run.log
