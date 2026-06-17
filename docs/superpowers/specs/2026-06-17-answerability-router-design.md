@@ -1,7 +1,11 @@
 # Answerability Gate + Router Precision — Design
 
 **Date:** 2026-06-17
-**Status:** Approved (design); pending senior-eng review before build
+**Status:** Approved + senior-eng review incorporated — C1 signal→margin (data-decided, not
+absolute sigmoid), C2 impeach=answerable, S1 best-real-score across pool, S2/S3 per-call
+threshold read (instant kill-switch, no getattr), S4 gate at shared generation point (covers
+social+retry), S5 ≥20 hard-negative decline set, S6 positive-identity router rule, N1 decline
+logging, N2 unified wording. Ready to plan.
 **Relates to:** `2026-06-16-rerank-retrieval-design.md`, `project_retrieval_architecture`,
 `project_day_to_day_intents` (this is the "retrieval safety layer" that must precede scaling
 the KB to the 150 day-to-day intents, many of which are high-stakes: visa, billing, deadlines)
@@ -34,60 +38,88 @@ as the seam the latter plugs into.
 ### Component B — Router precision (`v2/core/retrieval/router.py`)
 
 The `officers_in_org` route fires whenever an officer term ("officer/president/vp/e-board/…")
-appears anywhere AND an org resolves. Fix by **structure, not substring** (same approach as
-the `reset`→clear-history fix): route to `officers_in_org` only for an **identity ask** —
-"who is/are the … officer(s)/president/vp", "list/name the officers" — and **never** when an
-action/relational verb makes the officer the object: impeach, remove, elect, appoint, become,
-eligible, dismiss, replace, duties, responsibilities, role. Those fall through to RAG (the
-router's existing safe default). Pure-deterministic; can only make routing *more*
-conservative, so it cannot introduce a new wrong-route.
+appears anywhere AND an org resolves. Fix by **structure, not substring** (same approach as the
+`reset`→clear-history fix), using a **positive identity requirement rather than a verb denylist**
+(senior review S6 — a denylist leaks "who can *nominate* an officer", "how is an officer
+*chosen*", etc.). Route to `officers_in_org` **only** when the question matches an identity
+pattern asking *who holds the seat*:
+- `who (is|are|'s) [the] … <officer-title>` (President / VP … / officers / e-board), or
+- `(list|name|show) [the] … officers`.
+
+Everything else falls through to RAG — the router's existing safe default — so any unforeseen
+process phrasing ("who can impeach a GSA officer", "what are the duties of the VP", "how do I
+become an officer", "who is eligible to be an officer") is handled by the constitution via RAG.
+Pure-deterministic; can only make routing *more* conservative. The positive pattern must be
+tested against contractions ("who's the VP of Finance") and bare "list the GSA officers"
+(senior review S7), plus the existing `test_router_officers.py` positives must still pass.
 
 ### Component A — Answerability gate
 
-**Signal:** the cross-encoder's absolute relevance score (chosen over cosine similarity —
-poorly calibrated for "answers the question" — and an LLM self-check — non-deterministic, weak
-8B judge). `_rerank` already computes per-chunk CE scores and currently discards them.
+**Signal (data-decided, margin-first — senior review C1).** `sigmoid(CE)` from
+`ms-marco-MiniLM` is a *ranking* score, monotonic within a query but **not a calibrated,
+cross-query absolute relevance** — its magnitude drifts with phrasing/length, so a single fixed
+absolute threshold would systematically false-decline real answers and pass confident-wrong
+ones (the high-stakes failure we're preventing). Instead the gate uses a **margin / "does one
+chunk stand out" signal that is query-stable**: the top-1 CE logit minus the k-th (or median)
+CE logit of the reranked pool. An in-corpus question yields a clear standout top-1; an
+out-of-scope question (parking, drop-class) yields a flat, low pool where nothing stands out.
+
+The signal is **chosen by the diagnostic, not assumed**: `_answerability_diagnostic.py` logs,
+per query, BOTH the absolute `sigmoid(CE)` of the best real chunk AND the top1−median margin
+(raw-logit space). We pick whichever cleanly separates the answerable vs decline sets; if only
+the margin separates (expected), the gate uses the margin. We do **not** commit to the absolute
+threshold before the diagnostic runs.
 
 **Plumbing:**
-- `RetrievedChunk` gains `rerank_score: float | None` (= `sigmoid(CE)` for chunks the reranker
-  scored; `None` otherwise).
-- `_rerank` sets it on each windowed chunk.
-- `V2RetrieverShim._to_v1` carries it onto `V1Chunk.rerank_score`.
+- `RetrievedChunk` gains `rerank_score: float | None` (raw CE logit for chunks the reranker
+  scored; `None` for keyword-only / expanded chunks). `_rerank` sets it.
+- `_rerank` also computes the **per-query `answerability` margin** over the windowed pool
+  (top-1 − k-th logit) and threads it out of `retrieve()`; the shim attaches it to **every**
+  returned `V1Chunk` (`V1Chunk.answerability`) so the value survives `_diversify_and_expand`
+  reordering and an expanded `profile` landing at `chunks[0]` (senior review S1).
 
-**Gate (in `bot/core/message_handler.py`, RAG branch, before generation):**
+**Gate — wraps the shared generation point** (`message_handler` `if chunks and self.ollama:`
+block, ~L410, NOT a single branch), so it also covers the SOCIAL branch and the retry path
+(senior review S4):
 ```
-top = chunks[0]
-if top.rerank_score is not None and top.rerank_score < ANSWERABILITY_MIN:
-    return decline_route(query)     # do NOT generate from weak context
+ans = next((c.answerability for c in chunks if c.answerability is not None), None)
+if ans is not None and ans < ANSWERABILITY_MIN:
+    log_decline(query, ans)            # always-on (senior review N1)
+    return decline_route(query)        # do NOT generate from weak context
 # else: generate as today
 ```
-- Fires **only when a real CE score is present**. If the reranker is unavailable
-  (`rerank_score is None`), the gate is inert → behavior identical to today. The gate can only
-  *decline*, never worsen a good answer.
-- `decline_route(query)` — a small single-purpose function returning the GSA-contact decline
-  ("I don't have a confident answer on that in the GSA knowledge base. Contact the GSA at
-  gsa-pres@njit.edu or visit Campus Center 110A, weekdays 11AM–5PM."). This is the seam the
-  cat-M office-routing skill later replaces with per-topic routing.
-- `ANSWERABILITY_MIN` is admin-tunable via the `settings` table key
-  `retriever.answerability_min` (default = the calibrated value below; `0` = never decline =
-  kill-switch). To keep the handler decoupled from the v2 settings layer, **`V2RetrieverShim`
-  reads it once at construction** (it has `db_path`; same `get_connection` it already uses) and
-  exposes it as `self.answerability_min`. The gate reads
-  `min_score = getattr(self.retriever, "answerability_min", 0.0)` — so the v1 retriever (no such
-  attribute) and any future retriever default to `0.0`, i.e. gate inert.
+- Fires **only when a real margin is present**. Reranker unavailable → `answerability is None`
+  → gate inert → behavior identical to today. The gate can only *decline*, never worsen a good
+  answer.
+- `decline_route(query)` returns the GSA-contact decline, unified with the existing "no chunks"
+  deflection wording (senior review N2) so the two paths don't drift. It is the seam the cat-M
+  office-routing skill later replaces with per-topic routing.
+- **`ANSWERABILITY_MIN` is read per-call** (senior review S2/S3): `V2RetrieverShim._retrieve_sync`
+  already opens a `get_connection`; it reads `retriever.answerability_min` there (one `SELECT`,
+  matching the `_load_*` pattern) so flipping it to `0` in `settings` is an **instant**
+  kill-switch with no restart. The effective threshold is threaded out alongside `answerability`
+  (e.g. the shim returns/attaches both), not read by the handler via `getattr` duck-typing.
 
 ## Calibration (measured, not guessed)
 
-A pre-build diagnostic (`scripts/_answerability_diagnostic.py`, like the recall diagnostic)
-logs the **top chunk's `rerank_score`** for two labeled sets:
-- **answerable** — the GOLD + GUARD questions from `v2/tests/rerank_gold.py` (must stay ≥ threshold).
-- **should-decline** — out-of-scope: parking permit, drop a class, wifi password, campus gym,
-  spring break dates, pay tuition bill (must fall < threshold).
+`scripts/_answerability_diagnostic.py` logs, per query, BOTH signals (absolute `sigmoid(CE)`
+of the best real chunk AND the top1−median margin) for two labeled sets:
+- **answerable** — the GOLD + GUARD questions from `v2/tests/rerank_gold.py`. **Note (senior
+  review C2): "Who can impeach a GSA officer…" is a GOLD question — it is *answerable* from the
+  constitution (Component B routes it to RAG), NOT a decline.** The router fix and the gate must
+  agree on this: impeach → answer.
+- **should-decline (≥20, hard negatives — senior review S5)** — not just easy campus-life
+  out-of-scope (parking, wifi, gym, spring break, pay tuition) but **GSA-adjacent-but-
+  unanswerable** ones that sit near the boundary: "how do I drop a class", "how do I get a
+  parking permit", "what's the deadline to add a course", "how do I register for classes", "how
+  do I reset my NJIT password", "where is on-campus housing", "how do I waive health insurance",
+  "what are the dining hall hours", etc. (the spec's own example, drop-class→visa-rules, is a
+  hard negative and must be in the set).
 
-Pick the highest threshold that yields **zero false-declines on the answerable set** while
-declining all (or the maximum of) the should-decline set. If the two distributions overlap
-with no clean separator, that is a finding — surface it and discuss before shipping (the CE
-score alone may be insufficient; we would not ship a gate that declines real answers).
+Pick the signal + threshold giving **zero false-declines on the answerable set** while declining
+the maximum of the should-decline set, and **report the separation margin** (not just a pass).
+If neither signal cleanly separates (esp. the hard negatives), that is a finding — surface it
+and discuss before shipping; we will not ship a gate that declines real answers.
 
 ## Error handling
 
@@ -108,16 +140,17 @@ score alone may be insufficient; we would not ship a gate that declines real ans
   "who is eligible to be an officer".
 
 **Component A — answerability** (`v2/tests/test_answerability_gate.py`), chunk-level, no generation:
-- answerable set: top `rerank_score ≥ ANSWERABILITY_MIN` (would answer) — **0 false-declines**.
-- should-decline set: top `rerank_score < ANSWERABILITY_MIN` (would decline).
-- unit: `decline_route(q)` returns the GSA contact; gate inert when `rerank_score is None`.
+- answerable set (incl. impeach): `answerability ≥ ANSWERABILITY_MIN` (would answer) — **0 false-declines**.
+- should-decline set (≥20 hard negatives): `answerability < ANSWERABILITY_MIN` (would decline).
+- unit: `decline_route(q)` returns the GSA contact; gate inert when `answerability is None`; the
+  decline picks the best-real score across the pool, not positional `chunks[0]` (S1).
 
 **Acceptance bar:**
 | Metric | Target |
 |---|---|
-| Router tests | all green |
-| Answerability separation | declines the 6 out-of-scope, **0 false-declines** on answerable |
-| End-to-end smoke (100-Q) | parking/drop-class/wifi now decline+route; "impeach" answers from the constitution |
+| Router tests | all green (identity routes; impeach/duties/become/eligible fall through) |
+| Answerability separation | declines the ≥20 out-of-scope, **0 false-declines** on answerable, **reported margin** |
+| End-to-end smoke (100-Q) | parking/drop-class/wifi now decline+route; **impeach answers from the constitution** |
 
 ## Files
 
