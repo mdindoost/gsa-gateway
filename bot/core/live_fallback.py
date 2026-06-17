@@ -40,7 +40,7 @@ async def maybe_answer_live(question, *, search_fn, fetch_fn, generate, max_page
             final_url, html, status = await asyncio.to_thread(fetch_fn, url)
         except Exception:
             continue
-        if not html or not str(status).startswith("2"):
+        if not html or status != "ok":  # http_fetch returns status "ok" on success, else ""/error
             continue
         page_text = clean_text(html)
         system, user = build_extract_prompt(question, page_text)

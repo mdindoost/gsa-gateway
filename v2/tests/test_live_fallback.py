@@ -16,7 +16,7 @@ def _gen(payload):
 
 def test_returns_grounded_answer_with_link():
     search_fn = lambda q: ["https://www.njit.edu/parking"]
-    fetch_fn = lambda u: ("https://www.njit.edu/parking", PAGE_HTML, "200")
+    fetch_fn = lambda u: ("https://www.njit.edu/parking", PAGE_HTML, "ok")
     gen = _gen('{"spans": ["Visitor parking is available in the Lock Street Deck."]}')
     ans = _run(maybe_answer_live("where do visitors park", search_fn=search_fn,
                                  fetch_fn=fetch_fn, generate=gen))
@@ -33,7 +33,7 @@ def test_none_when_no_search_results():
 
 def test_none_when_page_does_not_answer():
     search_fn = lambda q: ["https://www.njit.edu/parking"]
-    fetch_fn = lambda u: ("https://www.njit.edu/parking", PAGE_HTML, "200")
+    fetch_fn = lambda u: ("https://www.njit.edu/parking", PAGE_HTML, "ok")
     gen = _gen('{"spans": []}')  # page has no answer
     assert _run(maybe_answer_live("tuition cost", search_fn=search_fn, fetch_fn=fetch_fn,
                                   generate=gen)) is None
@@ -45,8 +45,8 @@ def test_skips_failed_fetch_then_tries_next():
     def fetch_fn(u):
         calls["n"] += 1
         if calls["n"] == 1:
-            return ("", "", "404")        # first result fails
-        return ("https://www.njit.edu/parking", PAGE_HTML, "200")
+            return ("", "", "HTTP 404")   # first result fails
+        return ("https://www.njit.edu/parking", PAGE_HTML, "ok")
     search_fn = lambda q: ["https://www.njit.edu/bad", "https://www.njit.edu/parking"]
     gen = _gen('{"spans": ["Visitor parking is available in the Lock Street Deck."]}')
     ans = _run(maybe_answer_live("parking", search_fn=search_fn, fetch_fn=fetch_fn, generate=gen))
