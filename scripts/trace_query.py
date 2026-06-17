@@ -36,7 +36,7 @@ def hdr(t: str) -> None:
     print(f"\n{B}{'─' * 72}\n{t}\n{'─' * 72}{X}")
 
 
-def show(chunks, ce=None) -> None:
+def show(chunks, ce=None, verbose=False) -> None:
     if not chunks:
         print("  (no chunks)")
         return
@@ -46,13 +46,19 @@ def show(chunks, ce=None) -> None:
         org = (c.org_path or "").split(" > ")[-1]
         print(f"  {i:>2}. rrf={c.rrf_score:.4f}{sim}{cescore}  {B}{(c.title or '')[:44]}{X}  "
               f"{DIM}({org} · doc_id={c.item_id} · {c.type}){X}")
-        print(f"      {DIM}{' '.join((c.content or '').split())[:120]}{X}")
+        body = ' '.join((c.content or '').split())
+        if verbose:
+            print(f"      {DIM}{body}{X}")  # full chunk text
+        else:
+            print(f"      {DIM}{body[:120]}{X}")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("question")
     ap.add_argument("--answer", action="store_true", help="also generate the real LLM answer (slower)")
+    ap.add_argument("--verbose", "-v", action="store_true",
+                    help="show full chunk text + the exact system/user prompt sent to the LLM")
     ap.add_argument("--pool", type=int, default=8, help="how many candidates to show")
     args = ap.parse_args()
     q = args.question
@@ -76,19 +82,29 @@ def main() -> None:
 
     # 2. Fused-only pool (reranker off)
     hdr("2. HYBRID FUSED POOL  (RRF of semantic KNN + bm25, BEFORE rerank)")
-    show(V2Retriever(conn, emb).retrieve(q, limit=args.pool, group_by_entity=False))
+    show(V2Retriever(conn, emb).retrieve(q, limit=args.pool, group_by_entity=False), verbose=args.verbose)
 
     # 3. Reranked order + CE relevance per chunk
     hdr("3. CROSS-ENCODER RERANKED  (final order; CE = raw relevance the reranker assigns)")
     reranked = V2Retriever(conn, emb, reranker=rer).retrieve(q, limit=args.pool, group_by_entity=False)
     ce = rer.score(q, [c.content or "" for c in reranked])
-    show(reranked, ce=ce)
+    show(reranked, ce=ce, verbose=args.verbose)
     if ce is None:
         print(f"  {DIM}(reranker unavailable — order is RRF only){X}")
 
     # 4. What the bot answers from
     hdr("4. FINAL TOP-5  (entity-diversified — what the bot actually answers from)")
-    show(V2Retriever(conn, emb, reranker=rer).retrieve(q, limit=5))
+    final = V2Retriever(conn, emb, reranker=rer).retrieve(q, limit=5)
+    show(final, verbose=args.verbose)
+
+    # 4b. The exact prompt the LLM receives (verbose)
+    if args.verbose:
+        from v2.integration.retriever_shim import V2RetrieverShim
+        from bot.services.ollama_client import OllamaClient
+        v1 = [V2RetrieverShim._to_v1(c) for c in final]
+        sysp, usrp = OllamaClient()._build_full_prompt(q, v1)
+        hdr("4c. EXACT PROMPT SENT TO THE LLM  (system + user; heads-up is appended AFTER)")
+        print(f"{B}--- SYSTEM PROMPT ---{X}\n{sysp}\n\n{B}--- USER PROMPT ---{X}\n{usrp}")
 
     # 5. Heads-up
     hdr("5. HIGH-STAKES HEADS-UP")
