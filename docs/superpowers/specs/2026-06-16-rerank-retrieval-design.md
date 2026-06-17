@@ -1,8 +1,26 @@
 # Cross-Encoder Reranking for the v2 Retriever — Design
 
 **Date:** 2026-06-16
-**Status:** Approved + senior-eng review incorporated (C1 gate→chunk-level, C2 boost×CE,
-S2 full-pool rerank + recall diagnostic, S3/S4 tokenizer & I/O, N1-N5); ready to plan
+**Status:** IMPLEMENTED (2026-06-17). Gap A (section-aware chunking + per-section entity_id)
+was pulled in during the build — reranking alone could not hit zero-regressions because
+distinct facts shared 350-token chunks and one diversify slot per doc.
+
+**Measured results:**
+- **Deterministic gold-chunk gate: 21/21** — all 11 GOLD "wrong-chunk" facts now surface in
+  top-5, all 10 GUARD facts held, ZERO regressions (`v2/tests/test_rerank_gold_chunks.py`).
+- **End-to-end 100-Q eval:** the gold *chunks* are now retrieved for all 11 targets; ~7/11
+  also answer correctly end-to-end (six positions, min GPA, advisors, events/sem, conference
+  grant, 30-day deadline, AirBNB — previously all wrong). The remaining 4 (who chairs GA,
+  term limits, food-cost-for-25, impeachment) are now **retrieval-correct but downstream**:
+  generation picks the wrong retrieved chunk / can't do the "25∈0–30" step (Gap C grounding),
+  and "impeach" is hijacked by the officers structured-skill (router over-trigger). Both are
+  the explicitly-deferred next increments, not reranking failures.
+- Mechanism: asymmetric RRF fusion (CE leg K=10, fused leg K=60) — CE lifts semantic misses
+  without demoting bm25 exact-match wins.
+
+---
+**Original status:** Approved + senior-eng review incorporated (C1 gate→chunk-level, C2
+boost×CE, S2 full-pool rerank + recall diagnostic, S3/S4 tokenizer & I/O, N1-N5).
 **Author:** session work with Mohammad
 **Relates to:** `project_retrieval_architecture`, `project_golden_eval_harness`
 
