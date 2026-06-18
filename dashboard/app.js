@@ -2360,23 +2360,31 @@ function _judgingRefreshProgress(eventId) {
           </tr>`).join("") +
         "</tbody></table>";
         const judgeOpts = '<option value="">Select judge…</option>' +
-          d.judges.map((j) => `<option value="${j.id}">${j.name}</option>`).join("");
-        if (delSel) delSel.innerHTML = judgeOpts;
-        const setSel = document.getElementById("j-set-judge");
-        if (setSel) setSel.innerHTML = judgeOpts;
+          d.judges.map((j) => `<option value="${j.id}">${esc(j.name)}</option>`).join("");
+        // Preserve any in-progress selection across the 10s poll re-render.
+        [delSel, document.getElementById("j-set-judge")].forEach((sel) => {
+          if (!sel) return;
+          const prev = sel.value;
+          sel.innerHTML = judgeOpts;
+          if (prev) sel.value = prev;
+        });
       }
 
-      // Admin enter/edit score: render one input per criterion from the event config.
+      // Admin enter/edit score: one input per criterion. Only (re)build when the criteria/
+      // range actually change — NOT on every poll — so typed-in scores aren't wiped.
       const critBox = document.getElementById("j-set-criteria");
       if (critBox && d.event && Array.isArray(d.event.criteria)) {
         const lo = d.event.score_min, hi = d.event.score_max;
-        critBox.dataset.min = lo; critBox.dataset.max = hi;
-        critBox.innerHTML = d.event.criteria.map((c, i) =>
-          `<label style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin:2px 0">
-             <span>${esc(c)}</span>
-             <input class="j-set-score" data-idx="${i}" type="number" min="${lo}" max="${hi}"
-                    style="padding:4px;width:80px" placeholder="${lo}–${hi}">
-           </label>`).join("");
+        const sig = `${lo}-${hi}:${d.event.criteria.join("|")}`;
+        if (critBox.dataset.sig !== sig) {
+          critBox.dataset.min = lo; critBox.dataset.max = hi; critBox.dataset.sig = sig;
+          critBox.innerHTML = d.event.criteria.map((c, i) =>
+            `<label style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin:2px 0">
+               <span>${esc(c)}</span>
+               <input class="j-set-score" data-idx="${i}" type="number" min="${lo}" max="${hi}"
+                      style="padding:4px;width:80px" placeholder="${lo}–${hi}">
+             </label>`).join("");
+        }
       }
 
       // Presenters table
