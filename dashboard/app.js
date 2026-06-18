@@ -2102,8 +2102,9 @@ function _judgingRender(events) {
       <td>Top ${ev.top_n}</td>
       <td>${ev.created_at}</td>
       <td>
-        ${ev.status === "setup" ? `<button class="btn-sm" onclick="_judgingOpen(${ev.id})">Open</button>` : ""}
-        ${ev.status === "open"  ? `<button class="btn-sm btn-danger" onclick="_judgingClose(${ev.id})">Close</button>` : ""}
+        ${ev.status === "setup"  ? `<button class="btn-sm" onclick="_judgingOpen(${ev.id})">Open</button>` : ""}
+        ${ev.status === "closed" ? `<button class="btn-sm" onclick="_judgingReopen(${ev.id})">Re-open</button>` : ""}
+        ${ev.status === "open"   ? `<button class="btn-sm btn-danger" onclick="_judgingClose(${ev.id})">Close</button>` : ""}
         <button class="btn-sm" onclick="_judgingSelect(${ev.id})">Manage</button>
       </td>
     </tr>`).join("");
@@ -2265,10 +2266,20 @@ function _judgingCreate() {
   }).catch((e) => toast("Error: " + e.message, false));
 }
 
-function _judgingOpen(eventId) {
+function _judgingOpen(eventId, reopen) {
   _jPost(`/judging/events/${eventId}/open`)
-    .then(() => { toast("Judging opened"); _judgingLoadEvents(); })
+    .then((r) => r.json().catch(() => ({})).then((d) => {
+      if (d && d.error) { toast("Error: " + d.error, false); return; }  // e.g. another event already open
+      toast(reopen ? "Judging re-opened" : "Judging opened");
+      _judgingLoadEvents();
+    }))
     .catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingReopen(eventId) {
+  if (!confirm("Re-open this closed event? Judges will be able to submit scores again. "
+             + "Only one event can be open at a time.")) return;
+  _judgingOpen(eventId, true);
 }
 
 function _judgingClose(eventId) {
