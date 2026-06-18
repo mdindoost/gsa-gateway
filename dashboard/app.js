@@ -2065,6 +2065,15 @@ function renderJudging() {
   _judgingLoadEvents();
 }
 
+// M6: all judging POST calls require X-GSA-Dashboard header (same CSRF guard as /api/*)
+function _jPost(path, body = {}) {
+  return fetch(SERVER_URL + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-GSA-Dashboard": "1" },
+    body: JSON.stringify(body),
+  });
+}
+
 function _judgingLoadEvents() {
   fetch(SERVER_URL + "/judging/events")
     .then((r) => r.json())
@@ -2220,11 +2229,8 @@ function _judgingCreate() {
   const criteria = criteriaRaw.split("\n").map((l) => l.trim()).filter(Boolean);
   if (!name) { toast("Event name required", false); return; }
   if (scoreMin >= scoreMax) { toast("Score min must be less than score max", false); return; }
-  fetch(SERVER_URL + "/judging/events", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, top_n: topN, criteria, score_min: scoreMin, score_max: scoreMax, min_coverage: minCov, audience_top_n: audTopN }),
-  }).then((r) => r.json()).then((d) => {
+  _jPost("/judging/events", { name, top_n: topN, criteria, score_min: scoreMin, score_max: scoreMax, min_coverage: minCov, audience_top_n: audTopN })
+  .then((r) => r.json()).then((d) => {
     toast("Event created: " + d.name);
     JUDGING_SELECTED_EVENT = d.id;
     _judgingLoadEvents();
@@ -2232,16 +2238,14 @@ function _judgingCreate() {
 }
 
 function _judgingOpen(eventId) {
-  fetch(SERVER_URL + `/judging/events/${eventId}/open`, { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: "{}" })
+  _jPost(`/judging/events/${eventId}/open`)
     .then(() => { toast("Judging opened"); _judgingLoadEvents(); })
     .catch((e) => toast("Error: " + e.message, false));
 }
 
 function _judgingClose(eventId) {
   if (!confirm("Close judging? Judges will no longer be able to submit scores.")) return;
-  fetch(SERVER_URL + `/judging/events/${eventId}/close`, { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: "{}" })
+  _jPost(`/judging/events/${eventId}/close`)
     .then(() => { toast("Judging closed");
       if (JUDGING_POLL) { clearInterval(JUDGING_POLL); JUDGING_POLL = null; }
       _judgingLoadEvents(); })
@@ -2251,11 +2255,8 @@ function _judgingClose(eventId) {
 function _judgingLoadCSV(eventId) {
   const csv = document.getElementById("j-csv").value;
   if (!csv.trim()) { toast("Paste CSV first", false); return; }
-  fetch(SERVER_URL + `/judging/events/${eventId}/presenters`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ csv }),
-  }).then((r) => r.json()).then((d) => {
+  _jPost(`/judging/events/${eventId}/presenters`, { csv })
+  .then((r) => r.json()).then((d) => {
     document.getElementById("j-csv-result").textContent = `Loaded ${d.loaded} presenter(s).`;
     _judgingRefreshProgress(eventId);
   }).catch((e) => toast("Error: " + e.message, false));
@@ -2265,11 +2266,8 @@ function _judgingAddJudge(eventId) {
   const name = document.getElementById("j-judge-name").value.trim();
   const pin  = document.getElementById("j-judge-pin").value.trim();
   if (!name || !pin) { toast("Name and PIN required", false); return; }
-  fetch(SERVER_URL + `/judging/events/${eventId}/judges`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, pin }),
-  }).then((r) => r.json()).then(() => {
+  _jPost(`/judging/events/${eventId}/judges`, { name, pin })
+  .then((r) => r.json()).then(() => {
     document.getElementById("j-judge-name").value = "";
     document.getElementById("j-judge-pin").value = "";
     toast("Judge added");
@@ -2300,7 +2298,7 @@ function _judgingRefreshProgress(eventId) {
         </tr></thead><tbody>` +
           d.judges.map((j) => `<tr>
             <td>${j.name}</td>
-            <td><code>${j.pin}</code></td>
+            <td><code title="PIN is hashed — distribute privately at setup time">set ✓</code></td>
             <td>${j.authenticated ? "✅" : "—"}</td>
             <td><button class="btn-sm btn-danger" onclick="_judgingDeleteJudge(${eventId},${j.id})">Remove</button></td>
           </tr>`).join("") +
@@ -2383,17 +2381,15 @@ function _judgingRefreshAudience(eventId) {
 }
 
 function _judgingAudienceOpen(eventId) {
-  fetch(SERVER_URL + `/judging/events/${eventId}/audience-open`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
-  }).then(() => { toast("Audience voting opened"); _judgingRefreshAudience(eventId); })
+  _jPost(`/judging/events/${eventId}/audience-open`)
+    .then(() => { toast("Audience voting opened"); _judgingRefreshAudience(eventId); })
     .catch((e) => toast("Error: " + e.message, false));
 }
 
 function _judgingAudienceClose(eventId) {
   if (!confirm("Close audience voting?")) return;
-  fetch(SERVER_URL + `/judging/events/${eventId}/audience-close`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
-  }).then(() => { toast("Audience voting closed"); _judgingRefreshAudience(eventId); })
+  _jPost(`/judging/events/${eventId}/audience-close`)
+    .then(() => { toast("Audience voting closed"); _judgingRefreshAudience(eventId); })
     .catch((e) => toast("Error: " + e.message, false));
 }
 
@@ -2423,11 +2419,8 @@ function _judgingLoadResults(eventId) {
 }
 
 function _judgingMarkPresent(eventId, presenterNumber) {
-  fetch(SERVER_URL + `/judging/events/${eventId}/present`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ presenter_number: presenterNumber }),
-  }).then(() => { toast("Marked present"); _judgingRefreshProgress(eventId); })
+  _jPost(`/judging/events/${eventId}/present`, { presenter_number: presenterNumber })
+    .then(() => { toast("Marked present"); _judgingRefreshProgress(eventId); })
     .catch((e) => toast("Error: " + e.message, false));
 }
 
@@ -2469,11 +2462,8 @@ function _judgingDeleteScore(eventId) {
   const pnum    = document.getElementById("j-del-pnum").value;
   if (!judgeId || !pnum) { toast("Select a judge and enter participant number", false); return; }
   if (!confirm(`Delete score for participant #${pnum} by this judge?`)) return;
-  fetch(SERVER_URL + `/judging/events/${eventId}/scores-delete`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ judge_id: parseInt(judgeId), presenter_number: parseInt(pnum) }),
-  }).then((r) => r.json()).then((d) => {
+  _jPost(`/judging/events/${eventId}/scores-delete`, { judge_id: parseInt(judgeId), presenter_number: parseInt(pnum) })
+  .then((r) => r.json()).then((d) => {
     document.getElementById("j-del-result").textContent =
       d.deleted ? "Score deleted. Judge can re-score." : "Score not found.";
     _judgingRefreshProgress(eventId);
@@ -2481,11 +2471,11 @@ function _judgingDeleteScore(eventId) {
 }
 
 function _judgingDeleteJudge(eventId, judgeId) {
-  if (!confirm("Remove this judge and all their scores?")) return;
-  fetch(SERVER_URL + `/judging/events/${eventId}/judges-delete`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ judge_id: judgeId }),
-  }).then(() => { toast("Judge removed"); _judgingRefreshProgress(eventId); })
+  if (!confirm("Remove this judge? This will fail if they have submitted scores — delete their scores first.")) return;
+  _jPost(`/judging/events/${eventId}/judges-delete`, { judge_id: judgeId })
+    .then((r) => r.json()).then((d) => {
+      if (d.success) { toast("Judge removed"); _judgingRefreshProgress(eventId); }
+      else toast("Error: " + (d.error || "unknown"), false);
+    })
     .catch((e) => toast("Error: " + e.message, false));
 }

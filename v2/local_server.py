@@ -217,9 +217,12 @@ class GatewayHandler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
             # ── judging write endpoints ───────────────────────────────────
-            if path == "/judging/events":
-                return self._judging_post_events(body)
-            if path.startswith("/judging/events/"):
+            # M6: same CSRF guard as /api/* — require X-GSA-Dashboard header
+            if path in ("/judging/events",) or path.startswith("/judging/events/"):
+                if not self._csrf_ok():
+                    return self._error("forbidden", 403)
+                if path == "/judging/events":
+                    return self._judging_post_events(body)
                 return self._judging_post_event(path, body)
             self._error("Not found", 404)
         except ValueError as exc:
@@ -351,9 +354,19 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     raise ValueError("name and pin required")
                 judge_id = jdb.add_judge(conn, event_id, name, pin)
                 conn.commit()
-                return self._json({"id": judge_id, "name": name, "pin": pin})
+                # C1: never echo the PIN back after creation — admin already knows it
+                return self._json({"id": judge_id, "name": name, "has_pin": True})
             if action == "judges-delete":
                 judge_id = int(body.get("judge_id", 0))
+                # H4: give a clear 400 if judge has scores (FK prevents silent delete)
+                score_count = conn.execute(
+                    "SELECT COUNT(*) FROM judging_scores WHERE judge_id=?", (judge_id,)
+                ).fetchone()[0]
+                if score_count > 0:
+                    raise ValueError(
+                        f"Judge has {score_count} submitted score(s). "
+                        "Delete their scores first via the Scores panel."
+                    )
                 jdb.delete_judge(conn, judge_id)
                 conn.commit()
                 return self._json({"success": True})

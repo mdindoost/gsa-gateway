@@ -47,8 +47,9 @@ def get_leaderboard(conn: sqlite3.Connection, event_id: int,
             "avg_score": round(avg, 3) if avg is not None else None,
             "low_coverage": low_coverage,
         })
+        # H5: standard rank — next rank skips all tied positions
         if avg is not None:
-            rank += 1
+            rank = i + 2
     return results
 
 
@@ -104,18 +105,21 @@ def export_csv(conn: sqlite3.Connection, event_id: int) -> str:
     )
     lines = [",".join(header)]
 
+    # L3: fetch all score rows in one query instead of N+1
+    all_score_rows = conn.execute(
+        "SELECT presenter_number, scores_json FROM judging_scores WHERE event_id=?",
+        (event_id,),
+    ).fetchall()
+    scores_by_presenter: dict[int, list[dict]] = {}
+    for sr in all_score_rows:
+        scores_by_presenter.setdefault(sr[0], []).append(json.loads(sr[1]))
+
     for row in get_leaderboard(conn, event_id, min_coverage=min_cov):
-        score_rows = conn.execute(
-            "SELECT scores_json FROM judging_scores "
-            "WHERE event_id=? AND presenter_number=?",
-            (event_id, row["number"]),
-        ).fetchall()
         per_crit: dict[str, list[float]] = {c: [] for c in criteria}
-        for sr in score_rows:
-            d = json.loads(sr[0])
+        for score_dict in scores_by_presenter.get(row["number"], []):
             for c in criteria:
-                if c in d:
-                    per_crit[c].append(float(d[c]))
+                if c in score_dict:
+                    per_crit[c].append(float(score_dict[c]))
 
         line = [
             str(row["rank"] if row["rank"] is not None else ""),

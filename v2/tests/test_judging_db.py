@@ -159,6 +159,8 @@ def test_list_judges(conn):
     judges = jdb.list_judges(conn, eid)
     assert len(judges) == 2
     assert all(not j["authenticated"] for j in judges)
+    assert all(j["has_pin"] for j in judges)
+    assert "pin" not in judges[0]  # C1: PIN hash never returned
 
 
 def test_load_presenters_csv_with_header(conn):

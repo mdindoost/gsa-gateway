@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import time
 from dataclasses import dataclass, field
 
 from v2.core.judging import db as jdb
@@ -25,12 +26,14 @@ class _JudgeSession:
     presenter_name: str | None = None
     presenter_dept: str | None = None
     collected_scores: list[int] = field(default_factory=list)
-    is_presenter_mode: bool = False
     # audience mode
     pending_vote_number: int | None = None
     pending_vote_name: str | None = None
     pending_vote_dept: str | None = None
     pre_audience_state: str | None = None  # state to restore after voting
+    # H3: PIN brute-force protection
+    pin_attempts: int = 0
+    pin_locked_until: float = 0.0  # epoch seconds
 
 
 _RE_JUDGE_TRIGGER     = re.compile(r"judge\s+mode", re.IGNORECASE)
@@ -39,6 +42,7 @@ _RE_AUDIENCE_TRIGGER  = re.compile(r"audience\s+mode", re.IGNORECASE)
 _RE_LOGOUT            = re.compile(r"exit\s+(judge|presenter|audience)\s+mode|logout", re.IGNORECASE)
 _RE_MY_SCORES         = re.compile(r"my\s+scores?", re.IGNORECASE)
 _RE_NUMBER            = re.compile(r"\b(\d+)\b")
+_RE_PURE_NUMBER       = re.compile(r"^\d+$")   # M5: bare number only, not "104 yes"
 _RE_YES               = re.compile(r"^yes$", re.IGNORECASE)
 _RE_REDO              = re.compile(r"^redo$", re.IGNORECASE)
 
@@ -84,6 +88,14 @@ class JudgingSessionManager:
 
         # logout from any active state
         if _RE_LOGOUT.search(t) and sess.state != "idle":
+            # H1: warn if mid-scoring so judge knows their in-progress answers are lost
+            if sess.state in ("scoring", "confirming"):
+                self._sessions.pop(user_id, None)
+                return (
+                    f"Your in-progress scores for *#{sess.presenter_number} — "
+                    f"{sess.presenter_name}* were NOT saved.\n\n"
+                    "You have exited judge mode."
+                ), True
             self._sessions.pop(user_id, None)
             return "You have exited. I'll answer GSA questions normally now.", True
 
@@ -200,7 +212,6 @@ class JudgingSessionManager:
         sess.state = "presenter_awaiting_number"
         sess.event_id = event["id"]
         sess.event_name = event["name"]
-        sess.is_presenter_mode = True
         return (
             f"*Presenter Mode* — {event['name']}\n\n"
             "Please enter your participant number:"
@@ -243,15 +254,32 @@ class JudgingSessionManager:
     # ── AWAITING_PIN ────────────────────────────────────────────────────────
 
     def _handle_pin(self, user_id: str, sess: _JudgeSession, t: str) -> tuple[str, bool]:
+        # H3: enforce lockout before attempting any DB check
+        now = time.time()
+        if sess.pin_locked_until > now:
+            remaining = int((sess.pin_locked_until - now) / 60) + 1
+            return (
+                f"Too many failed attempts. Try again in {remaining} minute(s)."
+            ), True
+
         conn = self._conn()
         try:
             judge = jdb.authenticate_judge(conn, sess.event_id, t, user_id)
             if judge is None:
+                sess.pin_attempts += 1
+                if sess.pin_attempts >= 5:
+                    sess.pin_locked_until = now + 600  # 10-minute lockout
+                    sess.pin_attempts = 0
+                    return (
+                        "Too many failed attempts. "
+                        "Please wait 10 minutes before trying again."
+                    ), True
                 return "Invalid PIN or this PIN is already in use. Contact the admin.", True
             conn.commit()
         finally:
             conn.close()
 
+        sess.pin_attempts = 0
         sess.state = "ready"
         sess.judge_id = judge["id"]
         sess.judge_name = judge["name"]
@@ -455,10 +483,10 @@ class JudgingSessionManager:
 
     def _handle_audience_confirming(self, user_id: str, sess: _JudgeSession,
                                      t: str) -> tuple[str, bool]:
-        # A new number = change selection without re-confirming
-        m = _RE_NUMBER.search(t)
-        if m and not _RE_YES.match(t):
-            number = int(m.group(1))
+        # M5: only treat as a number change if the message is a bare digit string,
+        # so "104 yes" doesn't shadow the "yes" confirmation path
+        if _RE_PURE_NUMBER.match(t):
+            number = int(t)
             conn = self._conn()
             try:
                 presenter = jdb.get_presenter(conn, sess.event_id, number)
@@ -480,6 +508,12 @@ class JudgingSessionManager:
             try:
                 jdb.cast_vote(conn, sess.event_id, user_id, sess.pending_vote_number)
                 conn.commit()
+            except Exception:
+                # M4: DB write failed — inform user, stay in confirming so they can retry
+                return (
+                    "Something went wrong recording your vote. "
+                    "Please type *yes* again to retry."
+                ), True
             finally:
                 conn.close()
 
@@ -536,6 +570,25 @@ class JudgingSessionManager:
                     sess.collected_scores,
                 )
                 conn.commit()
+            except sqlite3.IntegrityError:
+                # C2: duplicate submit (double-tap / retry) — score already saved
+                pnum = sess.presenter_number
+                sess.state = "ready"
+                sess.presenter_number = None
+                sess.presenter_name = None
+                sess.presenter_dept = None
+                sess.collected_scores = []
+                return (
+                    f"Your scores for Participant #{pnum} were already saved "
+                    "(looks like a duplicate send). "
+                    "Contact the admin if you need a correction."
+                ), True
+            except Exception:
+                # M4: DB write failed — don't leave judge stuck in confirming
+                return (
+                    "Something went wrong saving your scores. "
+                    "Please type *yes* again or contact the admin."
+                ), True
             finally:
                 conn.close()
 

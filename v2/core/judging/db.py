@@ -117,7 +117,7 @@ def set_audience_voting(conn: sqlite3.Connection, event_id: int, status: str) ->
 def add_judge(conn: sqlite3.Connection, event_id: int, name: str, pin: str) -> int:
     cur = conn.execute(
         "INSERT INTO judging_judges(event_id, name, pin) VALUES (?, ?, ?)",
-        (event_id, name, pin),
+        (event_id, name, _hash(pin)),  # C1: store hash, never plaintext
     )
     return cur.lastrowid
 
@@ -127,7 +127,7 @@ def authenticate_judge(conn: sqlite3.Connection, event_id: int,
     """Verify PIN. Records telegram_id_hash on first use. Returns judge dict or None."""
     row = conn.execute(
         "SELECT id, name, telegram_id_hash FROM judging_judges WHERE event_id=? AND pin=?",
-        (event_id, pin),
+        (event_id, _hash(pin)),  # C1: compare against stored hash
     ).fetchone()
     if row is None:
         return None
@@ -155,11 +155,12 @@ def get_judge_by_telegram_hash(conn: sqlite3.Connection,
 
 def list_judges(conn: sqlite3.Connection, event_id: int) -> list[dict]:
     rows = conn.execute(
-        "SELECT id, name, pin, telegram_id_hash FROM judging_judges "
+        "SELECT id, name, telegram_id_hash FROM judging_judges "
         "WHERE event_id=? ORDER BY id",
         (event_id,),
     ).fetchall()
-    return [{"id": r[0], "name": r[1], "pin": r[2], "authenticated": r[3] is not None}
+    # C1: never return the pin hash — callers only need to know a PIN is set
+    return [{"id": r[0], "name": r[1], "has_pin": True, "authenticated": r[2] is not None}
             for r in rows]
 
 
@@ -186,12 +187,14 @@ def load_presenters_csv(conn: sqlite3.Connection, event_id: int, csv_text: str) 
             continue
         name = parts[1].strip()
         dept = parts[2].strip() if len(parts) > 2 else ""
-        conn.execute(
-            "INSERT OR REPLACE INTO judging_presenters(event_id, number, name, department) "
+        # M2: INSERT OR IGNORE — never overwrite a row that may already have scores.
+        # Re-uploading CSV cannot reassign a number to a different person mid-event.
+        cur2 = conn.execute(
+            "INSERT OR IGNORE INTO judging_presenters(event_id, number, name, department) "
             "VALUES (?,?,?,?)",
             (event_id, number, name, dept),
         )
-        count += 1
+        count += cur2.rowcount
     return count
 
 
@@ -311,6 +314,11 @@ def get_presenter_scores_detail(conn: sqlite3.Connection,
 
 def submit_score(conn: sqlite3.Connection, event_id: int, judge_id: int,
                  presenter_number: int, criteria: list[str], scores: list[int]) -> None:
+    # H2: guard against empty or mismatched arrays
+    if not scores or len(scores) != len(criteria):
+        raise ValueError(
+            f"scores length {len(scores)} must match criteria length {len(criteria)}"
+        )
     scores_json = json.dumps(dict(zip(criteria, scores)))
     final = sum(scores) / len(scores)
     conn.execute(
@@ -393,6 +401,8 @@ def get_audience_results(conn: sqlite3.Connection, event_id: int) -> list[dict]:
             "department": r[2],
             "vote_count": count,
         })
+        # H5: standard rank — next rank skips all tied positions
+        # e.g. two-way tie at rank 1 → next entry gets rank 3, not rank 2
         if count > 0:
-            rank += 1
+            rank = i + 2
     return results

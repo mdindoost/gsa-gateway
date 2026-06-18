@@ -334,7 +334,7 @@ JUDGING_SCORES = """
 CREATE TABLE IF NOT EXISTS judging_scores (
     id               INTEGER PRIMARY KEY,
     event_id         INTEGER NOT NULL REFERENCES judging_events(id) ON DELETE CASCADE,
-    judge_id         INTEGER NOT NULL REFERENCES judging_judges(id),
+    judge_id         INTEGER NOT NULL REFERENCES judging_judges(id) ON DELETE CASCADE,
     presenter_number INTEGER NOT NULL,
     scores_json      TEXT NOT NULL,
     final_score      REAL NOT NULL,
@@ -397,6 +397,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_jpresenters_event  ON judging_presenters(event_id);",
     "CREATE INDEX IF NOT EXISTS idx_jvotes_event       ON judging_audience_votes(event_id);",
     "CREATE INDEX IF NOT EXISTS idx_jvotes_presenter   ON judging_audience_votes(event_id, presenter_number);",
+    # L4: enforce at most one open event at a time
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_judging_one_open ON judging_events(status) WHERE status='open';",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
