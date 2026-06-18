@@ -327,11 +327,12 @@ def format_event(ev: dict) -> str:
         head = f"⚽ **KICK-OFF!**\n{team_label(match['homeTeam'])} vs {team_label(match['awayTeam'])}"
         return f"{head}\nThe match is underway! 🌍" + (f"\n_{ctx}_" if ctx else "")
     if etype == "goal":
+        tail = f"\n_{ev['half_label']}_" if ev.get("half_label") else ""
         if ev.get("scorer"):
             minute = f" {ev['minute']}'" if ev.get("minute") else ""
-            return f"🥅 **GOAL!** {flag(ev.get('team',''))} {ev['scorer']}{minute}\n{_score_line(match)}"
+            return f"🥅 **GOAL!** {flag(ev.get('team',''))} {ev['scorer']}{minute}\n{_score_line(match)}{tail}"
         scorer_team = ev.get("scoring_team", {})
-        return f"🥅 **GOAL!** {team_label(scorer_team)}\n{_score_line(match)}"
+        return f"🥅 **GOAL!** {team_label(scorer_team)}\n{_score_line(match)}{tail}"
     if etype == "halftime":
         return f"⏸️ **HALF-TIME**\n{_score_line(match)}"
     if etype == "second_half":

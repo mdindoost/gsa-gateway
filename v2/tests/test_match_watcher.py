@@ -121,6 +121,50 @@ def test_dedup_keys():
     assert MatchWatcher._dedup_key(42, {"type": "fulltime"}) == "42:fulltime:"
 
 
+# ── half labelling (derive the half from the PAUSED transitions, no minute) ──────
+def test_goal_in_first_half_labeled_first_half():
+    st = {"started": True, "score": (0, 0), "finished": False}
+    evs = w()._process(mk("IN_PLAY", 1, 0), st)
+    assert evs[0]["half_label"] == "First Half"
+
+
+def test_goal_after_pause_labeled_second_half():
+    st = {"started": True, "score": (1, 0), "finished": False}
+    wt = w()
+    wt._process(mk("PAUSED", 1, 0), st)            # half-time break, no goal
+    evs = wt._process(mk("IN_PLAY", 2, 0), st)     # second-half goal
+    assert [e["type"] for e in evs] == ["goal"]
+    assert evs[0]["half_label"] == "Second Half"
+
+
+def test_goals_revealed_at_pause_labeled_first_half():
+    # API hid the goals during play; the PAUSED read reveals 3-0 → all first-half goals
+    # (the score was scored before the break, so the half-time read belongs to the 1st half).
+    st = {"started": True, "score": (0, 0), "finished": False}
+    evs = w()._process(mk("PAUSED", 3, 0), st)
+    assert [e["half_label"] for e in evs] == ["First Half", "First Half", "First Half"]
+
+
+def test_third_period_after_second_pause_labeled_extra_time():
+    # Knockout: PAUSED happens again at 90' before extra time. Anything past the 2nd resume
+    # is beyond regulation → "Extra Time" until we observe a real ET match's API behaviour.
+    st = {"started": True, "score": (1, 1), "finished": False}
+    wt = w()
+    wt._process(mk("PAUSED", 1, 1), st)            # half-time
+    wt._process(mk("IN_PLAY", 1, 1), st)           # second half
+    wt._process(mk("PAUSED", 1, 1), st)            # end of 90', before extra time
+    evs = wt._process(mk("IN_PLAY", 2, 1), st)     # extra-time goal
+    assert evs[0]["half_label"] == "Extra Time"
+
+
+def test_format_event_goal_includes_half_label():
+    from v2.integration.worldcup_tracker import format_event
+    ev = {"type": "goal", "scoring_team": {"name": "Mexico"},
+          "match": mk("IN_PLAY", 2, 0), "half_label": "Second Half"}
+    out = format_event(ev)
+    assert "Second Half" in out
+
+
 # ── schedule ─────────────────────────────────────────────────────────────────
 def test_next_kickoff_picks_soonest_unfinished():
     now = datetime.datetime(2026, 6, 11, 18, 0, 0)

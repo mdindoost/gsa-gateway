@@ -55,6 +55,12 @@ def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
+def _half_label(half: int) -> str:
+    """Map the running half number to a goal-line label. 3+ is beyond regulation
+    (knockout extra time) — a safe catch-all until we observe a real ET match's API."""
+    return {1: "First Half", 2: "Second Half"}.get(half, "Extra Time")
+
+
 class MatchWatcher:
     def __init__(self, keys, db_path: str, org_slug: str = "gsa",
                  channel: str = "world-cup-2026"):
@@ -146,6 +152,20 @@ class MatchWatcher:
                                "match": self._with_score(match, final)})
             return events
         if status in LIVE:
+            # Half tracking — derived purely from the PAUSED→IN_PLAY transitions (the free
+            # tier's `minute` is unreliable, so we never trust it). PAUSED is a break, so the
+            # first IN_PLAY read AFTER one advances the half; goals revealed AT a PAUSED read
+            # still belong to the half just played. Flag-gated, so a missed read can't corrupt
+            # it. Each goal stamps the current half — we no longer post a separate half-time msg.
+            state.setdefault("half", 1)
+            state.setdefault("pending_half", False)
+            if status == "PAUSED":
+                state["pending_half"] = True
+            elif state["pending_half"]:
+                state["half"] += 1
+                state["pending_half"] = False
+            half_label = _half_label(state["half"])
+
             if not state["started"]:
                 state["started"] = True
                 if (h, a) != (0, 0):
@@ -171,10 +191,12 @@ class MatchWatcher:
                 for _ in range(nh - ph):
                     cur_h += 1
                     events.append({"type": "goal", "scoring_team": match["homeTeam"],
+                                   "half_label": half_label,
                                    "match": self._with_score(match, (cur_h, cur_a))})
                 for _ in range(na - pa):
                     cur_a += 1
                     events.append({"type": "goal", "scoring_team": match["awayTeam"],
+                                   "half_label": half_label,
                                    "match": self._with_score(match, (cur_h, cur_a))})
                 state["score"] = (nh, na)
         return events
@@ -226,7 +248,8 @@ class MatchWatcher:
         if wait > 0:
             logger.info("MatchWatcher: sleeping %.0fs until match %s window", wait, match_id)
             await asyncio.sleep(wait)
-        state = {"started": False, "score": (0, 0), "finished": False}
+        state = {"started": False, "score": (0, 0), "finished": False,
+                 "half": 1, "pending_half": False}
         deadline = kickoff_utc + MATCH_MAX
         logger.info("MatchWatcher: watching match %s", match_id)
         while self._running and not state["finished"] and _utcnow() < deadline:
