@@ -18,7 +18,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 
-from v2.core.retrieval import skills
+from v2.core.retrieval import entity, skills
 
 # Verb phrases that introduce a research area ("who WORKS ON graph"). Deliberately
 # specific — bare "research"/"on" must NOT trigger (e.g. "what research does X involve").
@@ -60,6 +60,42 @@ _OFFICER_PROCESS = re.compile(
 _PEOPLE = re.compile(
     r"\b(who works?\b|works? (?:at|in|for)\b|people (?:in|at|of)\b|"
     r"staff (?:of|at|in)\b|team (?:of|at|in)\b|members? of\b)")
+
+# ── person-/role-centric (Phase 1+2) ────────────────────────────────────────────
+# Academic-leadership role HEADS that exist as has_role edge titles. president/vice-
+# president/chief/provost are deliberately excluded (officer-handled, or absent as a
+# standalone title). Order longest-first so "associate dean" beats "dean".
+_ROLE_HEAD = (r"associate\s+dean|assistant\s+dean|associate\s+chair|"
+              r"dean|chair|director|coordinator|head")
+_ROLE_OF_ORG = re.compile(r"\b(" + _ROLE_HEAD + r")\s+(?:of|at|for|in)\b")
+# Duties/process/eligibility => NOT an identity ask (mirrors _OFFICER_PROCESS).
+_LEADERSHIP_PROCESS = re.compile(
+    r"\b(do(?:es)?|responsib|dut(?:y|ies)|how\s+(?:to|do)|become|elect|appoint|"
+    r"eligib|qualif|nominat|remov|why|what'?s?\s+the\s+role)\b")
+_ENUM_TRIGGER = re.compile(r"\b(?:list|name|show|all|every|any|are\s+there|is\s+there|do\s+we\s+have)\b")
+_RESEARCH_CUE = re.compile(r"\b(research|works?\s+on|working\s+on|studies|studying|specializ|expert)\b")
+_PERSON_INTENT = re.compile(
+    r"\b(who(?:'s|\s+is|\s+are)|tell\s+me\s+about|info(?:rmation)?\s+on|"
+    r"profile\s+of|contact\s+(?:for|info)|reach)\b")
+_PERSON_ATTR = re.compile(r"\b(e-?mail|office|phone|number|title|position|bio)\b")
+_NAME_PREFIX = re.compile(r"\b(?:professor|prof\.?|dr\.?|mr\.?|ms\.?|mrs\.?)\b")
+_STOP_FOR_ENUM = {
+    "list", "name", "names", "show", "all", "every", "any", "are", "there", "is",
+    "do", "we", "have", "the", "a", "an", "of", "in", "at", "please", "me", "us",
+    "people", "person", "persons", "named", "called", "who", "anyone", "someone"}
+
+
+def _qtokens(text: str) -> list[str]:
+    return [t for t in re.findall(r"[a-z]+", text.lower()) if len(t) > 1]
+
+
+def _is_bare_name(q: str, person: dict) -> bool:
+    """True when the (prefix-stripped) query is essentially just this person's name —
+    every query token is one of the person's name tokens. 'guiling wang' -> True;
+    'guiling wang research' -> False."""
+    ptoks = set(_qtokens(person["name"]))
+    qtoks = _qtokens(q)
+    return bool(qtoks) and all(t in ptoks for t in qtoks)
 
 
 @dataclass
@@ -165,4 +201,53 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         return Route("org_departments", {"org_id": org_id})
     if ("faculty" in q or "professor" in q) and org_id is not None:
         return Route("faculty_in_department", {"org_id": org_id})
+
+    # ── role-in-org: "the <role> of <org>" (academic leadership) ────────────────
+    # Empty result (e.g. no 'Chair' title for Informatics) renders "" → falls through
+    # to RAG; never names an associate/assistant holder as "the <role>".
+    if org_id is not None and not _LEADERSHIP_PROCESS.search(q):
+        rm = _ROLE_OF_ORG.search(q)
+        if rm:
+            return Route("role_in_org", {"org_id": org_id, "role_head": rm.group(1)})
+
+    # ── person-centric branches (entity layer) ─────────────────────────────────
+    named = entity.persons_in_query(conn, q)   # people whose FULL name is in the query
+
+    # name enumeration: "list all the Michaels" / "the Michaels at NJIT"
+    if _ENUM_TRIGGER.search(q):
+        cand_toks = [t for t in _qtokens(q) if t not in _STOP_FOR_ENUM]
+        if org_phrase:                                    # drop org-name tokens ("…at NJIT")
+            org_toks = set(_qtokens(org_phrase))
+            cand_toks = [t for t in cand_toks if t not in org_toks]
+        cand = re.sub(r"s\b", "", " ".join(cand_toks)).strip()   # singularize: michaels→michael
+        if cand and 1 <= len(cand.split()) <= 3 and entity.resolve_people(conn, cand):
+            return Route("people_by_name", {"name": cand})
+
+    # person → research: "<full name> research / works on / studies"
+    if _RESEARCH_CUE.search(q):
+        if len(named) == 1:
+            return Route("research_of_person",
+                         {"entity_id": named[0]["entity_id"], "name": named[0]["name"]})
+        if len(named) > 1:
+            return Route("person_disambig", {"candidates": named})
+
+    # entity card: a specific named person (who-is / tell-me-about / "<name>'s email" /
+    # bare name). LAST + most-guarded so it never hijacks a "who works on X" ask.
+    qn = _NAME_PREFIX.sub("", q).strip()
+    if len(named) == 1 and (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q)
+                            or _is_bare_name(qn, named[0])):
+        return Route("entity_card",
+                     {"entity_id": named[0]["entity_id"], "name": named[0]["name"]})
+    if len(named) > 1 and (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q)):
+        return Route("person_disambig", {"candidates": named})
+
+    # surname-only disambiguation: "professor Wang" / "who is Wang" → list the Wangs.
+    if _PERSON_INTENT.search(q) or _NAME_PREFIX.search(q):
+        for tok in _qtokens(qn):
+            cands = entity.persons_by_lastname(conn, tok)
+            if len(cands) >= 2:
+                return Route("person_disambig", {"candidates": cands})
+            if len(cands) == 1:
+                return Route("entity_card",
+                             {"entity_id": cands[0]["entity_id"], "name": cands[0]["name"]})
     return None

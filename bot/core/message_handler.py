@@ -255,12 +255,18 @@ class MessageHandler:
         db_path = getattr(self.db, "db_path", None) if self.db else None
         if not db_path:
             return None
-        # cheap pre-gate: only structured-looking questions open a connection
+        # cheap pre-gate: open a connection only for structured-/person-looking questions.
+        # Long messages with none of these cues skip it; short ones (<=4 words, likely a
+        # name like "Guiling Wang") always pass so the entity layer can resolve them.
         low = text.lower()
-        if not any(c in low for c in (
-                "who ", "which ", "list ", " all ", "how many", "department",
-                "faculty", "professor", "works on", "work on", "working on",
-                "research", "area", "studies", "studying", "specializ", "expert")):
+        cues = (
+            "who ", "who'", "which ", "list ", " all ", "how many", "department",
+            "faculty", "professor", "prof", "works on", "work on", "working on",
+            "research", "area", "studies", "studying", "specializ", "expert",
+            "tell me about", "about ", "e-mail", "email", "office", "phone",
+            "title", "dean", "chair", "director", "head of", "name", "show",
+            "every", "any ", "contact", "reach")
+        if not any(c in low for c in cues) and len(low.split()) > 4:
             return None
 
         def _run() -> Optional[str]:

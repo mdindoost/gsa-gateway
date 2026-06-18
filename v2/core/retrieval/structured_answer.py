@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from v2.core.retrieval import skills
+from v2.core.retrieval import entity, skills
 from v2.core.retrieval.router import Route
 
 
@@ -22,6 +22,21 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         org_name = r[0] if r else None
 
     skill = route.skill
+
+    # ── entity-layer skills (Phase 1+2) ────────────────────────────────────────
+    if skill == "role_in_org":
+        return {"skill": skill, "org_name": org_name, "role_head": a["role_head"],
+                "rows": entity.role_in_org(conn, a["org_id"], a["role_head"])}
+    if skill == "people_by_name":
+        return {"skill": skill, "name": a["name"],
+                "rows": entity.people_by_name(conn, a["name"])}
+    if skill == "research_of_person":
+        return {"skill": skill, "research": entity.research_of_person(conn, a["entity_id"])}
+    if skill == "entity_card":
+        return {"skill": skill, "name": a.get("name"),
+                "card": entity.entity_card(conn, a["entity_id"])}
+    if skill == "person_disambig":
+        return {"skill": skill, "candidates": a["candidates"]}
     if skill == "org_departments":
         rows = skills.org_departments(conn, a["org_id"])
     elif skill == "faculty_in_department":
@@ -50,8 +65,47 @@ def _join(names: list[str]) -> str:
 
 
 def format_answer(result: dict) -> str:
-    skill, org, area, rows = (result["skill"], result["org_name"],
-                              result["area"], result["rows"])
+    skill = result["skill"]
+
+    # ── entity-layer skills. Empty → "" so _try_structured falls through to RAG. ──
+    if skill == "role_in_org":
+        rows = result["rows"]
+        if not rows:                       # exact role absent → let RAG try the prose
+            return ""
+        listed = "; ".join(
+            f"{title} — {name}" + (f" ({email})" if email else "")
+            for name, title, email in rows)
+        return f"{result['org_name']}: {listed}."
+
+    if skill == "people_by_name":
+        rows = result["rows"]
+        if not rows:
+            return ""
+        listed = "; ".join(
+            h["name"] + (f" — {h['title']}" if h.get("title") else "")
+            + (f" ({h['org']})" if h.get("org") else "")
+            for h in rows)
+        return (f"{len(rows)} person(s) with \"{result['name']}\" in their name: {listed}.")
+
+    if skill == "research_of_person":
+        rp = result["research"]
+        if not rp["areas"] and not rp["statement"]:
+            return ""                      # honest empty (e.g. no research card) → RAG
+        if rp["areas"]:
+            return f"{rp['name']}'s research areas: {', '.join(rp['areas'])}."
+        return f"{rp['name']}'s research: {rp['statement']}"
+
+    if skill == "entity_card":
+        return result["card"] or ""        # the card is the grounding + offline fallback
+
+    if skill == "person_disambig":
+        cands = result["candidates"]
+        listed = "; ".join(
+            c["name"] + (f" ({c['org']})" if c.get("org") else "") for c in cands)
+        return (f"There are {len(cands)} people that could match — which one did you mean? "
+                f"{listed}.")
+
+    org, area, rows = result["org_name"], result["area"], result["rows"]
     scope = f" in {org}" if org else ""
 
     if skill == "org_departments":
