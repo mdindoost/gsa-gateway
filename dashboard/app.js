@@ -2101,7 +2101,23 @@ function _judgingRender(events) {
       <h3 style="margin-top:24px">Create New Event</h3>
       <div style="display:grid;gap:8px;max-width:480px">
         <input id="j-ev-name" placeholder="Event name (e.g. 3MRP 2026)" style="padding:6px">
-        <input id="j-ev-topn" type="number" value="3" min="1" placeholder="Top N winners" style="padding:6px;width:120px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label style="font-size:12px">Top N winners<br>
+            <input id="j-ev-topn" type="number" value="3" min="1" style="padding:6px;width:100px">
+          </label>
+          <label style="font-size:12px">Score min<br>
+            <input id="j-ev-scoremin" type="number" value="1" min="1" style="padding:6px;width:80px">
+          </label>
+          <label style="font-size:12px">Score max<br>
+            <input id="j-ev-scoremax" type="number" value="5" min="2" style="padding:6px;width:80px">
+          </label>
+          <label style="font-size:12px">Min judge coverage<br>
+            <input id="j-ev-mincov" type="number" value="3" min="1" style="padding:6px;width:100px">
+          </label>
+          <label style="font-size:12px">Audience top N<br>
+            <input id="j-ev-audtopn" type="number" value="1" min="1" style="padding:6px;width:100px">
+          </label>
+        </div>
         <label>Scoring criteria (one per line):</label>
         <textarea id="j-ev-criteria" rows="7" style="padding:6px;font-size:13px">${jdb_DEFAULT_CRITERIA().join("\n")}</textarea>
         <button class="btn-primary" onclick="_judgingCreate()">Create Event</button>
@@ -2173,6 +2189,10 @@ function _judgingManageSection(eventId) {
     <button class="btn-sm" onclick="_judgingExport(${eventId})" style="margin-left:8px">Export CSV</button>
     <div id="j-results" style="margin-top:8px">Click Refresh Results to load.</div>
 
+    <hr style="margin:24px 0">
+    <h3>Audience Voting</h3>
+    <div id="j-audience-ctrl">Loading…</div>
+
     <h3 style="margin-top:20px">Admin: Delete a Score</h3>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select id="j-del-judge" style="padding:6px">
@@ -2192,13 +2212,18 @@ function _judgingSelect(eventId) {
 function _judgingCreate() {
   const name = document.getElementById("j-ev-name").value.trim();
   const topN = parseInt(document.getElementById("j-ev-topn").value, 10) || 3;
+  const scoreMin = parseInt(document.getElementById("j-ev-scoremin").value, 10) || 1;
+  const scoreMax = parseInt(document.getElementById("j-ev-scoremax").value, 10) || 5;
+  const minCov = parseInt(document.getElementById("j-ev-mincov").value, 10) || 3;
+  const audTopN = parseInt(document.getElementById("j-ev-audtopn").value, 10) || 1;
   const criteriaRaw = document.getElementById("j-ev-criteria").value;
   const criteria = criteriaRaw.split("\n").map((l) => l.trim()).filter(Boolean);
   if (!name) { toast("Event name required", false); return; }
+  if (scoreMin >= scoreMax) { toast("Score min must be less than score max", false); return; }
   fetch(SERVER_URL + "/judging/events", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, top_n: topN, criteria }),
+    body: JSON.stringify({ name, top_n: topN, criteria, score_min: scoreMin, score_max: scoreMax, min_coverage: minCov, audience_top_n: audTopN }),
   }).then((r) => r.json()).then((d) => {
     toast("Event created: " + d.name);
     JUDGING_SELECTED_EVENT = d.id;
@@ -2294,15 +2319,82 @@ function _judgingRefreshProgress(eventId) {
           if (!plist) return;
           if (!ps.length) { plist.innerHTML = "<p>No presenters loaded yet.</p>"; return; }
           plist.innerHTML = `<table class="data-table"><thead><tr>
-            <th>#</th><th>Name</th><th>Department</th>
+            <th>#</th><th>Name</th><th>Department</th><th>Present</th><th>Scores</th>
           </tr></thead><tbody>` +
             ps.map((p) => `<tr>
-              <td>${p.number}</td><td>${p.name}</td><td>${p.department}</td>
+              <td>${p.number}</td>
+              <td>${p.name}</td>
+              <td>${p.department || "—"}</td>
+              <td>${p.is_present
+                ? (p.has_telegram ? "✅ (Telegram)" : "✅ (Manual)")
+                : `<button class="btn-sm" onclick="_judgingMarkPresent(${eventId},${p.number})">Mark Present</button>`}
+              </td>
+              <td><button class="btn-sm" onclick="_judgingPresenterScores(${eventId},${p.number},'${p.name.replace(/'/g,"\\'")}')">View</button></td>
             </tr>`).join("") +
           "</tbody></table>";
         });
     })
     .catch(() => {});
+
+  _judgingRefreshAudience(eventId);
+}
+
+function _judgingRefreshAudience(eventId) {
+  fetch(SERVER_URL + `/judging/events/${eventId}/audience-results`)
+    .then((r) => r.json())
+    .then((d) => {
+      const ctrl = document.getElementById("j-audience-ctrl");
+      if (!ctrl) return;
+      const ev = d.event;
+      const isOpen = ev && ev.audience_voting === "open";
+      const topN = ev ? ev.audience_top_n : 1;
+      const totalVotes = d.results ? d.results.reduce((s, r) => s + r.vote_count, 0) : 0;
+
+      const openBtn = isOpen
+        ? `<button class="btn-sm btn-danger" onclick="_judgingAudienceClose(${eventId})">Close Audience Voting</button>`
+        : `<button class="btn-sm btn-primary" onclick="_judgingAudienceOpen(${eventId})">Open Audience Voting</button>`;
+
+      let resultsHtml = "<p>No votes yet.</p>";
+      if (d.results && d.results.some((r) => r.vote_count > 0)) {
+        const winners = d.results.filter((r) => r.rank !== null && r.rank <= topN);
+        resultsHtml = `
+          <p style="font-size:12px;color:#666">Top ${topN} audience winner(s) · ${totalVotes} total vote(s)</p>
+          <table class="data-table"><thead><tr>
+            <th>Rank</th><th>#</th><th>Name</th><th>Department</th><th>Votes</th>
+          </tr></thead><tbody>` +
+          d.results.filter((r) => r.vote_count > 0).map((r) => `<tr style="${winners.some(w => w.number === r.number) ? 'font-weight:bold' : ''}">
+            <td>${r.rank !== null ? r.rank : "—"}</td>
+            <td>${r.number}</td>
+            <td>${r.name}${winners.some(w => w.number === r.number) ? " 🏆" : ""}</td>
+            <td>${r.department || "—"}</td>
+            <td>${r.vote_count}</td>
+          </tr>`).join("") +
+          "</tbody></table>";
+      }
+
+      ctrl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <span>Status: <strong>${isOpen ? "🟢 Open" : "🔴 Closed"}</strong></span>
+          ${openBtn}
+        </div>
+        ${resultsHtml}`;
+    })
+    .catch(() => {});
+}
+
+function _judgingAudienceOpen(eventId) {
+  fetch(SERVER_URL + `/judging/events/${eventId}/audience-open`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+  }).then(() => { toast("Audience voting opened"); _judgingRefreshAudience(eventId); })
+    .catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingAudienceClose(eventId) {
+  if (!confirm("Close audience voting?")) return;
+  fetch(SERVER_URL + `/judging/events/${eventId}/audience-close`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+  }).then(() => { toast("Audience voting closed"); _judgingRefreshAudience(eventId); })
+    .catch((e) => toast("Error: " + e.message, false));
 }
 
 function _judgingLoadResults(eventId) {
@@ -2311,19 +2403,59 @@ function _judgingLoadResults(eventId) {
     .then((d) => {
       const div = document.getElementById("j-results");
       if (!d.leaderboard.length) { div.innerHTML = "<p>No scores yet.</p>"; return; }
-      div.innerHTML = `<table class="data-table"><thead><tr>
+      const minCov = d.event ? d.event.min_coverage : 0;
+      div.innerHTML = `<p style="font-size:12px;color:#666">⚠️ = fewer than ${minCov} judges (low coverage)</p>
+        <table class="data-table"><thead><tr>
         <th>Rank</th><th>#</th><th>Name</th><th>Department</th>
         <th>Avg Score</th><th>Judges</th>
       </tr></thead><tbody>` +
-        d.leaderboard.map((r) => `<tr>
+        d.leaderboard.map((r) => `<tr style="${r.low_coverage ? 'opacity:0.65' : ''}">
           <td>${r.rank !== null ? r.rank : "—"}</td>
           <td>${r.number}</td>
-          <td>${r.name}</td>
+          <td>${r.name}${r.low_coverage ? ' ⚠️' : ''}</td>
           <td>${r.department}</td>
           <td>${r.avg_score !== null ? r.avg_score.toFixed(3) : "—"}</td>
           <td>${r.judge_count}</td>
         </tr>`).join("") +
       "</tbody></table>";
+    })
+    .catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingMarkPresent(eventId, presenterNumber) {
+  fetch(SERVER_URL + `/judging/events/${eventId}/present`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ presenter_number: presenterNumber }),
+  }).then(() => { toast("Marked present"); _judgingRefreshProgress(eventId); })
+    .catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingPresenterScores(eventId, presenterNumber, presenterName) {
+  fetch(SERVER_URL + `/judging/events/${eventId}/presenters/${presenterNumber}/scores`)
+    .then((r) => r.json())
+    .then((rows) => {
+      const bodyEl = document.getElementById("modal-body");
+      if (!rows.length) {
+        bodyEl.innerHTML = `<h2>#${presenterNumber} — ${presenterName}</h2><p>No scores submitted yet.</p>
+          <div class="modal-actions"><button class="btn btn-primary" onclick="closeModal()">Close</button></div>`;
+        document.getElementById("modal").hidden = false;
+        return;
+      }
+      const header = Object.keys(rows[0].scores);
+      const tableRows = rows.map((r) =>
+        `<tr><td>${r.judge_name}</td>` +
+        header.map((c) => `<td>${r.scores[c] ?? "—"}</td>`).join("") +
+        `<td><strong>${r.final_score.toFixed(2)}</strong></td><td style="font-size:11px;color:#888">${r.submitted_at || ""}</td></tr>`
+      ).join("");
+      bodyEl.innerHTML = `
+        <h2>#${presenterNumber} — ${presenterName}</h2>
+        <table class="data-table">
+          <thead><tr><th>Judge</th>${header.map((c) => `<th>${c}</th>`).join("")}<th>Avg</th><th>Submitted</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+        <div class="modal-actions"><button class="btn btn-primary" onclick="closeModal()">Close</button></div>`;
+      document.getElementById("modal").hidden = false;
     })
     .catch((e) => toast("Error: " + e.message, false));
 }

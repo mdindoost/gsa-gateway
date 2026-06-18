@@ -231,12 +231,12 @@ class GatewayHandler(BaseHTTPRequestHandler):
     # ── judging helpers ────────────────────────────────────────────────────────
 
     def _judging_get(self, path: str):
-        """Handle GET /judging/events/<id>/<action>"""
+        """Handle GET /judging/events/<id>/<action>[/<sub>/<action2>]"""
         from v2.core.judging import db as jdb
         from v2.core.judging.calculator import export_csv, get_event_progress, get_leaderboard
 
         parts = path.strip("/").split("/")
-        # parts: ['judging', 'events', '<id>', '<action>']
+        # parts: ['judging', 'events', '<id>', '<action>', ...]
         try:
             event_id = int(parts[2])
         except (IndexError, ValueError):
@@ -252,9 +252,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     "judges": jdb.list_judges(conn, event_id),
                 })
             if action == "results":
+                event = jdb.get_event(conn, event_id)
+                min_cov = event["min_coverage"] if event else None
                 return self._json({
-                    "event": jdb.get_event(conn, event_id),
-                    "leaderboard": get_leaderboard(conn, event_id),
+                    "event": event,
+                    "leaderboard": get_leaderboard(conn, event_id, min_coverage=min_cov),
                 })
             if action == "export":
                 csv_text = export_csv(conn, event_id)
@@ -272,7 +274,21 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 return
             if action == "judges":
                 return self._json(jdb.list_judges(conn, event_id))
+            if action == "audience-results":
+                return self._json({
+                    "event": jdb.get_event(conn, event_id),
+                    "results": jdb.get_audience_results(conn, event_id),
+                })
             if action == "presenters":
+                # /judging/events/<id>/presenters/<number>/scores — admin drill-down
+                if len(parts) >= 6 and parts[5] == "scores":
+                    try:
+                        presenter_number = int(parts[4])
+                    except (IndexError, ValueError):
+                        return self._error("invalid presenter number", 400)
+                    return self._json(
+                        jdb.get_presenter_scores_detail(conn, event_id, presenter_number)
+                    )
                 return self._json(jdb.list_presenters(conn, event_id))
         finally:
             conn.close()
@@ -287,11 +303,23 @@ class GatewayHandler(BaseHTTPRequestHandler):
             raise ValueError("name required")
         criteria = body.get("criteria") or None
         top_n = int(body.get("top_n", 3))
+        score_min = int(body.get("score_min", 1))
+        score_max = int(body.get("score_max", 5))
+        min_coverage = int(body.get("min_coverage", 3))
+        audience_top_n = int(body.get("audience_top_n", 1))
         conn = self._conn()
         try:
-            event_id = jdb.create_event(conn, name, criteria, top_n)
+            event_id = jdb.create_event(
+                conn, name, criteria, top_n,
+                score_min=score_min, score_max=score_max,
+                min_coverage=min_coverage, audience_top_n=audience_top_n,
+            )
             conn.commit()
-            return self._json({"id": event_id, "name": name, "top_n": top_n})
+            return self._json({
+                "id": event_id, "name": name, "top_n": top_n,
+                "score_min": score_min, "score_max": score_max,
+                "min_coverage": min_coverage, "audience_top_n": audience_top_n,
+            })
         finally:
             conn.close()
 
@@ -340,15 +368,36 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 deleted = jdb.delete_score(conn, event_id, judge_id, presenter_number)
                 conn.commit()
                 return self._json({"deleted": deleted})
+            if action == "present":
+                presenter_number = int(body.get("presenter_number", 0))
+                jdb.mark_presenter_present(conn, event_id, presenter_number)
+                conn.commit()
+                return self._json({"success": True})
+            if action == "audience-open":
+                jdb.set_audience_voting(conn, event_id, "open")
+                conn.commit()
+                return self._json({"success": True, "audience_voting": "open"})
+            if action == "audience-close":
+                jdb.set_audience_voting(conn, event_id, "closed")
+                conn.commit()
+                return self._json({"success": True, "audience_voting": "closed"})
             if action == "update":
                 name = body.get("name")
                 criteria = body.get("criteria")
                 top_n = body.get("top_n")
+                score_min = body.get("score_min")
+                score_max = body.get("score_max")
+                min_coverage = body.get("min_coverage")
+                audience_top_n = body.get("audience_top_n")
                 jdb.update_event(
                     conn, event_id,
                     name=name,
                     criteria=criteria,
                     top_n=int(top_n) if top_n is not None else None,
+                    score_min=int(score_min) if score_min is not None else None,
+                    score_max=int(score_max) if score_max is not None else None,
+                    min_coverage=int(min_coverage) if min_coverage is not None else None,
+                    audience_top_n=int(audience_top_n) if audience_top_n is not None else None,
                 )
                 conn.commit()
                 return self._json({"success": True})

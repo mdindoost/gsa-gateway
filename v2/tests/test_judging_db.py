@@ -19,14 +19,21 @@ def test_create_event_defaults(conn):
     assert ev["status"] == "setup"
     assert ev["criteria"] == jdb.DEFAULT_CRITERIA
     assert ev["top_n"] == 3
+    assert ev["score_min"] == 1
+    assert ev["score_max"] == 5
+    assert ev["min_coverage"] == 3
 
 
-def test_create_event_custom_criteria(conn):
-    eid = jdb.create_event(conn, "Research Day", criteria=["Q1", "Q2"], top_n=1)
+def test_create_event_custom_params(conn):
+    eid = jdb.create_event(conn, "Research Day", criteria=["Q1", "Q2"],
+                            top_n=1, score_min=0, score_max=10, min_coverage=5)
     conn.commit()
     ev = jdb.get_event(conn, eid)
     assert ev["criteria"] == ["Q1", "Q2"]
     assert ev["top_n"] == 1
+    assert ev["score_min"] == 0
+    assert ev["score_max"] == 10
+    assert ev["min_coverage"] == 5
 
 
 def test_get_open_event_none_while_setup(conn):
@@ -45,6 +52,27 @@ def test_open_event_visible(conn):
     assert ev["status"] == "open"
 
 
+def test_get_any_event_setup(conn):
+    eid = jdb.create_event(conn, "Not Yet Open")
+    conn.commit()
+    ev = jdb.get_any_event(conn)
+    assert ev is not None
+    assert ev["id"] == eid
+    assert ev["status"] == "setup"
+
+
+def test_get_any_event_returns_latest(conn):
+    jdb.create_event(conn, "Old")
+    eid2 = jdb.create_event(conn, "New")
+    conn.commit()
+    ev = jdb.get_any_event(conn)
+    assert ev["id"] == eid2
+
+
+def test_get_any_event_none_if_no_events(conn):
+    assert jdb.get_any_event(conn) is None
+
+
 def test_list_events(conn):
     jdb.create_event(conn, "A")
     jdb.create_event(conn, "B")
@@ -53,14 +81,18 @@ def test_list_events(conn):
     assert len(events) == 2
 
 
-def test_update_event(conn):
+def test_update_event_all_fields(conn):
     eid = jdb.create_event(conn, "Old")
     conn.commit()
-    jdb.update_event(conn, eid, name="New", top_n=5)
+    jdb.update_event(conn, eid, name="New", top_n=5,
+                     score_min=0, score_max=10, min_coverage=6)
     conn.commit()
     ev = jdb.get_event(conn, eid)
     assert ev["name"] == "New"
     assert ev["top_n"] == 5
+    assert ev["score_min"] == 0
+    assert ev["score_max"] == 10
+    assert ev["min_coverage"] == 6
 
 
 def test_add_and_authenticate_judge(conn):
@@ -139,6 +171,7 @@ def test_load_presenters_csv_with_header(conn):
     p = jdb.get_presenter(conn, eid, 100)
     assert p["name"] == "Jane Smith"
     assert p["department"] == "CS"
+    assert p["is_present"] is False
 
 
 def test_load_presenters_csv_no_header(conn):
@@ -159,6 +192,46 @@ def test_load_presenters_csv_no_department(conn):
     assert p["department"] == ""
 
 
+def test_register_presenter(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS")
+    conn.commit()
+    ok = jdb.register_presenter(conn, eid, 100, "tg_presenter_1")
+    conn.commit()
+    assert ok is True
+    p = jdb.get_presenter(conn, eid, 100)
+    assert p["is_present"] is True
+    assert p["has_telegram"] is True
+
+
+def test_register_presenter_wrong_number(conn):
+    eid = jdb.create_event(conn, "Test")
+    conn.commit()
+    ok = jdb.register_presenter(conn, eid, 999, "tg1")
+    assert ok is False
+
+
+def test_register_presenter_already_taken_by_other(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS")
+    conn.commit()
+    jdb.register_presenter(conn, eid, 100, "tg_user_a")
+    conn.commit()
+    ok = jdb.register_presenter(conn, eid, 100, "tg_user_b")
+    assert ok is False
+
+
+def test_mark_presenter_present(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS")
+    conn.commit()
+    jdb.mark_presenter_present(conn, eid, 100)
+    conn.commit()
+    p = jdb.get_presenter(conn, eid, 100)
+    assert p["is_present"] is True
+    assert p["has_telegram"] is False
+
+
 def test_has_scored_false_initially(conn):
     eid = jdb.create_event(conn, "Test")
     jid = jdb.add_judge(conn, eid, "Judge", "P1")
@@ -174,6 +247,55 @@ def test_submit_and_has_scored(conn):
     jdb.submit_score(conn, eid, jid, 100, ["Q1", "Q2"], [4, 5])
     conn.commit()
     assert jdb.has_scored(conn, eid, jid, 100) is True
+
+
+def test_get_score_returns_scores(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS")
+    jid = jdb.add_judge(conn, eid, "Judge", "P1")
+    conn.commit()
+    jdb.submit_score(conn, eid, jid, 100, ["Q1", "Q2"], [4, 5])
+    conn.commit()
+    result = jdb.get_score(conn, eid, jid, 100)
+    assert result is not None
+    assert result["scores"]["Q1"] == 4
+    assert result["scores"]["Q2"] == 5
+
+
+def test_get_score_none_before_submit(conn):
+    eid = jdb.create_event(conn, "Test")
+    jid = jdb.add_judge(conn, eid, "Judge", "P1")
+    conn.commit()
+    assert jdb.get_score(conn, eid, jid, 100) is None
+
+
+def test_get_all_scores_by_judge(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS\n101,Ali,EE")
+    jid = jdb.add_judge(conn, eid, "Judge", "P1")
+    conn.commit()
+    jdb.submit_score(conn, eid, jid, 100, ["Q1"], [4])
+    jdb.submit_score(conn, eid, jid, 101, ["Q1"], [3])
+    conn.commit()
+    scored = jdb.get_all_scores_by_judge(conn, eid, jid)
+    assert len(scored) == 2
+    assert scored[0]["number"] == 100
+    assert scored[1]["number"] == 101
+
+
+def test_get_presenter_scores_detail(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS")
+    jid1 = jdb.add_judge(conn, eid, "Judge A", "P1")
+    jid2 = jdb.add_judge(conn, eid, "Judge B", "P2")
+    conn.commit()
+    jdb.submit_score(conn, eid, jid1, 100, ["Q1"], [4])
+    jdb.submit_score(conn, eid, jid2, 100, ["Q1"], [5])
+    conn.commit()
+    detail = jdb.get_presenter_scores_detail(conn, eid, 100)
+    assert len(detail) == 2
+    names = {d["judge_name"] for d in detail}
+    assert names == {"Judge A", "Judge B"}
 
 
 def test_delete_score_allows_rescore(conn):
@@ -193,3 +315,97 @@ def test_delete_score_nonexistent_returns_false(conn):
     jid = jdb.add_judge(conn, eid, "Judge", "P1")
     conn.commit()
     assert jdb.delete_score(conn, eid, jid, 999) is False
+
+
+# ── Audience votes ─────────────────────────────────────────────────────────────
+
+def test_cast_vote_and_get_vote(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS")
+    conn.commit()
+    jdb.cast_vote(conn, eid, "tg_voter_1", 100)
+    conn.commit()
+    v = jdb.get_vote(conn, eid, "tg_voter_1")
+    assert v is not None
+    assert v["presenter_number"] == 100
+    assert v["name"] == "Jane"
+
+
+def test_cast_vote_replaces_previous(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS\n101,Ali,EE")
+    conn.commit()
+    jdb.cast_vote(conn, eid, "tg_voter_1", 100)
+    conn.commit()
+    jdb.cast_vote(conn, eid, "tg_voter_1", 101)
+    conn.commit()
+    v = jdb.get_vote(conn, eid, "tg_voter_1")
+    assert v["presenter_number"] == 101
+
+
+def test_get_vote_none_before_voting(conn):
+    eid = jdb.create_event(conn, "Test")
+    conn.commit()
+    assert jdb.get_vote(conn, eid, "nobody") is None
+
+
+def test_audience_results_sorted(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS\n101,Ali,EE\n102,Maria,Bio")
+    conn.commit()
+    jdb.cast_vote(conn, eid, "voter1", 101)
+    jdb.cast_vote(conn, eid, "voter2", 101)
+    jdb.cast_vote(conn, eid, "voter3", 100)
+    conn.commit()
+    results = jdb.get_audience_results(conn, eid)
+    assert results[0]["number"] == 101
+    assert results[0]["vote_count"] == 2
+    assert results[0]["rank"] == 1
+    assert results[1]["number"] == 100
+    assert results[1]["vote_count"] == 1
+    assert results[1]["rank"] == 2
+
+
+def test_audience_results_ties_share_rank(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS\n101,Ali,EE")
+    conn.commit()
+    jdb.cast_vote(conn, eid, "voter1", 100)
+    jdb.cast_vote(conn, eid, "voter2", 101)
+    conn.commit()
+    results = jdb.get_audience_results(conn, eid)
+    assert results[0]["rank"] == results[1]["rank"] == 1
+
+
+def test_audience_results_zero_votes_no_rank(conn):
+    eid = jdb.create_event(conn, "Test")
+    jdb.load_presenters_csv(conn, eid, "100,Jane,CS")
+    conn.commit()
+    results = jdb.get_audience_results(conn, eid)
+    assert results[0]["rank"] is None
+    assert results[0]["vote_count"] == 0
+
+
+def test_set_audience_voting(conn):
+    eid = jdb.create_event(conn, "Test")
+    conn.commit()
+    ev = jdb.get_event(conn, eid)
+    assert ev["audience_voting"] == "closed"
+    jdb.set_audience_voting(conn, eid, "open")
+    conn.commit()
+    ev = jdb.get_event(conn, eid)
+    assert ev["audience_voting"] == "open"
+
+
+def test_audience_top_n_default(conn):
+    eid = jdb.create_event(conn, "Test")
+    conn.commit()
+    ev = jdb.get_event(conn, eid)
+    assert ev["audience_top_n"] == 1
+
+
+def test_audience_top_n_custom(conn):
+    eid = jdb.create_event(conn, "Test", audience_top_n=3)
+    conn.commit()
+    ev = jdb.get_event(conn, eid)
+    assert ev["audience_top_n"] == 3

@@ -67,8 +67,10 @@ a separate live-scores integration.
 **Dashboard** — `dashboard/` (vanilla JS + sql.js, loads the whole DB via `/db`) served by
 `v2/local_server.py` (HTTP on `127.0.0.1:5555`). Tabs: Overview, Posts, KB, **People (KG)**
 (add/edit/remove people + roles + clubs), Analytics, Settings, **Jobs** (control plane: run
-the crawler / refresh / embed as subprocess jobs). Writes go through `POST` endpoints
-(`/orgs /knowledge /people /people/remove /settings /posts`) or an offline `changes.sql`.
+the crawler / refresh / embed as subprocess jobs), **Judging** (create events, load presenter
+CSV, manage judges + PINs, open/close, live progress, leaderboard, score drill-down, export).
+Writes go through `POST` endpoints (`/orgs /knowledge /people /people/remove /settings /posts`)
+or an offline `changes.sql`. Judging writes go through `/judging/events/…` (live API, not sql.js).
 
 ## File Map (v2)
 
@@ -98,6 +100,7 @@ gsa-gateway/
 │   │   │                        roster.py (roster->KG), gsa_docs.py (doc->KB),
 │   │   │                        people_editor.py (dashboard add/edit/remove person+role+bio)
 │   │   └── retrieval/           router.py, skills.py, structured_answer.py, retriever.py, embedder.py
+│   ├── core/judging/           db.py (CRUD), session.py (state machine), calculator.py (leaderboard/export)
 │   ├── integration/            retriever_shim.py, scheduler_runner.py, match_watcher.py, telegram_client.py
 │   ├── publishing/             publisher.py, connectors/ (registry + discord/telegram/stub)
 │   ├── scripts/                embed_all.py (resumable embed), rebuild_index.py
@@ -171,6 +174,14 @@ add questions. `--limit N` for a quick subset.
 ### Debug a single query (pipeline X-ray)
 `bash scripts/ask.sh "<question>" [--verbose] [--answer]` — shows router decision, fused pool,
 reranker CE scores, final top-5, heads-up, and (verbose) the exact LLM prompt / (answer) the real answer.
+
+### Run / test the judging system
+Dashboard → Judging tab (requires server mode). Create event → load CSV → add judges → Open.
+Telegram: `judge mode` → PIN → participant number → score each criterion → `yes`.
+Presenter: `presenter mode` → participant number → confirms name (marks present).
+Tests: `python3 -m pytest v2/tests/test_judging_db.py v2/tests/test_judging_calculator.py v2/tests/test_judging_session.py -q` (69 tests).
+Judging tables: `judging_events`, `judging_judges`, `judging_presenters`, `judging_scores`.
+Schema migrations are idempotent — `create_all()` on startup applies new columns safely.
 
 ### Crawl NJIT pages → KB (grounded, pipeline built; mass-crawl deferred)
 `scripts/_crawl_stage.py --bucket <url-substr> --prefix <p>` (sitemap discovery + fetch + clean to

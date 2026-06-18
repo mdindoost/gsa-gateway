@@ -343,6 +343,17 @@ CREATE TABLE IF NOT EXISTS judging_scores (
 ) STRICT;
 """
 
+JUDGING_AUDIENCE_VOTES = """
+CREATE TABLE IF NOT EXISTS judging_audience_votes (
+    id               INTEGER PRIMARY KEY,
+    event_id         INTEGER NOT NULL REFERENCES judging_events(id) ON DELETE CASCADE,
+    voter_hash       TEXT NOT NULL,
+    presenter_number INTEGER NOT NULL,
+    voted_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(event_id, voter_hash)
+) STRICT;
+"""
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Indexes
 # ─────────────────────────────────────────────────────────────────────────────
@@ -384,6 +395,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_jscores_presenter  ON judging_scores(event_id, presenter_number);",
     "CREATE INDEX IF NOT EXISTS idx_judges_event       ON judging_judges(event_id);",
     "CREATE INDEX IF NOT EXISTS idx_jpresenters_event  ON judging_presenters(event_id);",
+    "CREATE INDEX IF NOT EXISTS idx_jvotes_event       ON judging_audience_votes(event_id);",
+    "CREATE INDEX IF NOT EXISTS idx_jvotes_presenter   ON judging_audience_votes(event_id, presenter_number);",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -453,6 +466,7 @@ _TABLE_DDL = [
     JUDGING_JUDGES,
     JUDGING_PRESENTERS,
     JUDGING_SCORES,
+    JUDGING_AUDIENCE_VOTES,
 ]
 
 _TRIGGER_DDL = [
@@ -465,7 +479,17 @@ _TRIGGER_DDL = [
 # Additive column migrations for already-created v2 tables (ALTER ... ADD COLUMN is
 # idempotent here via try/except — SQLite has no "ADD COLUMN IF NOT EXISTS").
 _COLUMN_MIGRATIONS = [
-    ("frontier", "error", "TEXT"),
+    ("frontier",           "error",           "TEXT"),
+    # judging_events — new fields (safe to add on existing DBs)
+    ("judging_events",     "score_min",        "INTEGER NOT NULL DEFAULT 1"),
+    ("judging_events",     "score_max",        "INTEGER NOT NULL DEFAULT 5"),
+    ("judging_events",     "min_coverage",     "INTEGER NOT NULL DEFAULT 3"),
+    # judging_presenters — presence tracking
+    ("judging_presenters", "telegram_id_hash", "TEXT"),
+    ("judging_presenters", "is_present",       "INTEGER NOT NULL DEFAULT 0"),
+    # judging_events — audience voting
+    ("judging_events",     "audience_voting",  "TEXT NOT NULL DEFAULT 'closed'"),
+    ("judging_events",     "audience_top_n",   "INTEGER NOT NULL DEFAULT 1"),
 ]
 
 
