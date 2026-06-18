@@ -356,6 +356,28 @@ CREATE TABLE IF NOT EXISTS judging_audience_votes (
 ) STRICT;
 """
 
+# Append-only audit log of EVERY score mutation (judge submit / admin enter / admin
+# edit / admin delete). judging_scores keeps only the current value; this is the
+# permanent trail "in case needed" — written in the SAME transaction as the mutation
+# so the two can never disagree. No FK to judging_presenters on purpose: the audit
+# must survive a presenter delete. actor_label carries NO Telegram IDs (judge name/id
+# or 'admin' only) — consistent with the hash-before-write rule.
+JUDGING_SCORE_AUDIT = """
+CREATE TABLE IF NOT EXISTS judging_score_audit (
+    id               INTEGER PRIMARY KEY,
+    event_id         INTEGER NOT NULL REFERENCES judging_events(id) ON DELETE CASCADE,
+    judge_id         INTEGER NOT NULL REFERENCES judging_judges(id) ON DELETE CASCADE,
+    presenter_number INTEGER NOT NULL,
+    action           TEXT NOT NULL
+                       CHECK (action IN ('submit','admin_enter','admin_edit','admin_delete')),
+    actor            TEXT NOT NULL CHECK (actor IN ('judge','admin')),
+    actor_label      TEXT NOT NULL DEFAULT '',
+    scores_json      TEXT,            -- new state after the mutation; NULL for a delete
+    final_score      REAL,            -- mean, mirrors judging_scores.final_score; NULL for delete
+    created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+) STRICT;
+"""
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Indexes
 # ─────────────────────────────────────────────────────────────────────────────
@@ -399,6 +421,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_jpresenters_event  ON judging_presenters(event_id);",
     "CREATE INDEX IF NOT EXISTS idx_jvotes_event       ON judging_audience_votes(event_id);",
     "CREATE INDEX IF NOT EXISTS idx_jvotes_presenter   ON judging_audience_votes(event_id, presenter_number);",
+    "CREATE INDEX IF NOT EXISTS idx_jaudit_event       ON judging_score_audit(event_id);",
+    "CREATE INDEX IF NOT EXISTS idx_jaudit_cell        ON judging_score_audit(event_id, judge_id, presenter_number);",
     # L4: enforce at most one open event at a time
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_judging_one_open ON judging_events(status) WHERE status='open';",
 ]
@@ -471,6 +495,7 @@ _TABLE_DDL = [
     JUDGING_PRESENTERS,
     JUDGING_SCORES,
     JUDGING_AUDIENCE_VOTES,
+    JUDGING_SCORE_AUDIT,
 ]
 
 _TRIGGER_DDL = [

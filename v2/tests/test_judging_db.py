@@ -324,6 +324,91 @@ def test_delete_score_nonexistent_returns_false(conn):
     assert jdb.delete_score(conn, eid, jid, 999) is False
 
 
+# ── admin upsert + score audit (Task #4) ────────────────────────────────────────
+
+def _score_setup(conn):
+    eid = jdb.create_event(conn, "Test", criteria=["Q1", "Q2"], score_min=1, score_max=5)
+    jid = jdb.add_judge(conn, eid, "Judge", "PIN123")
+    jdb.load_presenters_csv(conn, eid, "100,Jane Smith,CS")
+    conn.commit()
+    return eid, jid
+
+
+def test_submit_score_returns_json_and_final(conn):
+    eid, jid = _score_setup(conn)
+    scores_json, final = jdb.submit_score(conn, eid, jid, 100, ["Q1", "Q2"], [4, 5])
+    conn.commit()
+    assert final == 4.5                       # mean, not sum
+    assert '"Q1": 4' in scores_json and '"Q2": 5' in scores_json
+
+
+def test_upsert_score_insert_then_edit(conn):
+    eid, jid = _score_setup(conn)
+    existed, _, final = jdb.upsert_score(conn, eid, jid, 100, ["Q1", "Q2"], [2, 2])
+    conn.commit()
+    assert existed is False and final == 2.0  # first time → enter
+    existed, _, final = jdb.upsert_score(conn, eid, jid, 100, ["Q1", "Q2"], [5, 5])
+    conn.commit()
+    assert existed is True and final == 5.0   # second time → edit (overwrite)
+    assert jdb.get_score(conn, eid, jid, 100)["scores"] == {"Q1": 5, "Q2": 5}
+
+
+def test_upsert_score_rejects_out_of_range(conn):
+    eid, jid = _score_setup(conn)
+    with pytest.raises(ValueError):
+        jdb.upsert_score(conn, eid, jid, 100, ["Q1", "Q2"], [9, 1])  # 9 > max 5
+
+
+def test_submit_score_duplicate_still_raises(conn):
+    # The judge path's INSERT-only behavior (C2 guard) must survive the refactor.
+    import sqlite3
+    eid, jid = _score_setup(conn)
+    jdb.submit_score(conn, eid, jid, 100, ["Q1", "Q2"], [4, 5])
+    conn.commit()
+    with pytest.raises(sqlite3.IntegrityError):
+        jdb.submit_score(conn, eid, jid, 100, ["Q1", "Q2"], [3, 3])
+
+
+def test_log_and_get_score_audit(conn):
+    eid, jid = _score_setup(conn)
+    jdb.log_score_audit(conn, eid, jid, 100, action="submit", actor="judge",
+                        actor_label="Judge", scores_json='{"Q1": 4}', final_score=4.0)
+    jdb.log_score_audit(conn, eid, jid, 100, action="admin_edit", actor="admin",
+                        actor_label="admin", scores_json='{"Q1": 5}', final_score=5.0)
+    conn.commit()
+    trail = jdb.get_score_audit(conn, eid)
+    assert len(trail) == 2
+    assert trail[0]["action"] == "admin_edit"   # newest first
+    assert trail[0]["actor"] == "admin"
+    assert trail[1]["action"] == "submit"
+    assert trail[0]["judge_name"] == "Judge"
+
+
+def test_audit_atomic_with_score(conn):
+    # A failed score write in the same transaction must leave NO audit row.
+    import sqlite3
+    eid, jid = _score_setup(conn)
+    jdb.submit_score(conn, eid, jid, 100, ["Q1", "Q2"], [4, 5])
+    conn.commit()
+    try:
+        jdb.submit_score(conn, eid, jid, 100, ["Q1", "Q2"], [3, 3])   # duplicate → raises
+        jdb.log_score_audit(conn, eid, jid, 100, action="submit", actor="judge")
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+    assert jdb.get_score_audit(conn, eid) == []   # rolled back, no orphan audit row
+
+
+def test_audit_delete_has_null_scores(conn):
+    eid, jid = _score_setup(conn)
+    jdb.submit_score(conn, eid, jid, 100, ["Q1", "Q2"], [4, 5])
+    jdb.log_score_audit(conn, eid, jid, 100, action="admin_delete", actor="admin")
+    conn.commit()
+    trail = jdb.get_score_audit(conn, eid)
+    assert trail[0]["action"] == "admin_delete"
+    assert trail[0]["scores"] is None and trail[0]["final_score"] is None
+
+
 # ── Audience votes ─────────────────────────────────────────────────────────────
 
 def test_cast_vote_and_get_vote(conn):

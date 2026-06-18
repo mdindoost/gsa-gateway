@@ -329,14 +329,15 @@ def get_presenter_scores_detail(conn: sqlite3.Connection,
             for r in rows]
 
 
-def submit_score(conn: sqlite3.Connection, event_id: int, judge_id: int,
-                 presenter_number: int, criteria: list[str], scores: list[int]) -> None:
-    # H2: guard against empty or mismatched arrays
+def _validate_and_compute(conn: sqlite3.Connection, event_id: int,
+                          criteria: list[str], scores: list[int]) -> tuple[str, float]:
+    """Shared score validation + (scores_json, final_score) computation for both the judge
+    submit path and the admin upsert path. final_score is the MEAN (sum/len). Raises
+    ValueError on empty/mismatched arrays (H2) or out-of-range values (M-new-5)."""
     if not scores or len(scores) != len(criteria):
         raise ValueError(
             f"scores length {len(scores)} must match criteria length {len(criteria)}"
         )
-    # M-new-5: validate score range at DB layer (session validates too, but this is the last gate)
     event = conn.execute(
         "SELECT score_min, score_max FROM judging_events WHERE id=?", (event_id,)
     ).fetchone()
@@ -345,14 +346,46 @@ def submit_score(conn: sqlite3.Connection, event_id: int, judge_id: int,
         for s in scores:
             if not score_min <= s <= score_max:
                 raise ValueError(f"Score {s} out of allowed range [{score_min}, {score_max}]")
-    scores_json = json.dumps(dict(zip(criteria, scores)))
-    final = sum(scores) / len(scores)
+    return json.dumps(dict(zip(criteria, scores))), sum(scores) / len(scores)
+
+
+def submit_score(conn: sqlite3.Connection, event_id: int, judge_id: int,
+                 presenter_number: int, criteria: list[str], scores: list[int]) -> tuple[str, float]:
+    """Judge submit path. INSERT-only ON PURPOSE: a duplicate (event,judge,presenter) raises
+    IntegrityError, which is the C2 duplicate-submit guard the session relies on. For admin
+    corrections use upsert_score instead. Returns (scores_json, final_score) for audit logging."""
+    scores_json, final = _validate_and_compute(conn, event_id, criteria, scores)
     conn.execute(
         "INSERT INTO judging_scores"
         "(event_id, judge_id, presenter_number, scores_json, final_score) "
         "VALUES (?,?,?,?,?)",
         (event_id, judge_id, presenter_number, scores_json, final),
     )
+    return scores_json, final
+
+
+def upsert_score(conn: sqlite3.Connection, event_id: int, judge_id: int,
+                 presenter_number: int, criteria: list[str],
+                 scores: list[int]) -> tuple[bool, str, float]:
+    """Admin enter/edit path: insert OR overwrite the current score for (event,judge,presenter).
+    Same validation + mean as submit_score, but never raises on an existing row. Returns
+    (existed, scores_json, final_score) — `existed` lets the caller log 'admin_edit' vs
+    'admin_enter'. Does NOT commit (caller owns the transaction)."""
+    scores_json, final = _validate_and_compute(conn, event_id, criteria, scores)
+    existed = conn.execute(
+        "SELECT 1 FROM judging_scores WHERE event_id=? AND judge_id=? AND presenter_number=?",
+        (event_id, judge_id, presenter_number),
+    ).fetchone() is not None
+    conn.execute(
+        "INSERT INTO judging_scores"
+        "(event_id, judge_id, presenter_number, scores_json, final_score) "
+        "VALUES (?,?,?,?,?) "
+        "ON CONFLICT(event_id, judge_id, presenter_number) DO UPDATE SET "
+        "scores_json=excluded.scores_json, final_score=excluded.final_score, "
+        "submitted_at=datetime('now')",
+        (event_id, judge_id, presenter_number, scores_json, final),
+    )
+    return existed, scores_json, final
 
 
 def delete_score(conn: sqlite3.Connection, event_id: int,
@@ -362,6 +395,46 @@ def delete_score(conn: sqlite3.Connection, event_id: int,
         (event_id, judge_id, presenter_number),
     )
     return cur.rowcount > 0
+
+
+def log_score_audit(conn: sqlite3.Connection, event_id: int, judge_id: int,
+                    presenter_number: int, action: str, actor: str,
+                    actor_label: str = "", scores_json: str | None = None,
+                    final_score: float | None = None) -> None:
+    """Append one row to the permanent score-audit log. MUST be called inside the SAME
+    transaction as the score mutation it records (caller commits) so the two can never
+    disagree. action: submit|admin_enter|admin_edit|admin_delete. actor: judge|admin.
+    actor_label carries NO Telegram IDs — a judge name/id or 'admin'. scores_json/final_score
+    are the NEW state (NULL for a delete)."""
+    conn.execute(
+        "INSERT INTO judging_score_audit"
+        "(event_id, judge_id, presenter_number, action, actor, actor_label, scores_json, final_score) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (event_id, judge_id, presenter_number, action, actor, actor_label, scores_json, final_score),
+    )
+
+
+def get_score_audit(conn: sqlite3.Connection, event_id: int,
+                    judge_id: int | None = None,
+                    presenter_number: int | None = None) -> list[dict]:
+    """The audit trail for an event (optionally filtered to one judge and/or presenter),
+    newest first. For the dashboard history view + dispute resolution."""
+    clauses, params = ["a.event_id=?"], [event_id]
+    if judge_id is not None:
+        clauses.append("a.judge_id=?"); params.append(judge_id)
+    if presenter_number is not None:
+        clauses.append("a.presenter_number=?"); params.append(presenter_number)
+    rows = conn.execute(
+        "SELECT a.id, a.judge_id, j.name AS judge_name, a.presenter_number, a.action, "
+        "a.actor, a.actor_label, a.scores_json, a.final_score, a.created_at "
+        "FROM judging_score_audit a LEFT JOIN judging_judges j ON j.id=a.judge_id "
+        f"WHERE {' AND '.join(clauses)} ORDER BY a.id DESC",
+        params,
+    ).fetchall()
+    return [{"id": r[0], "judge_id": r[1], "judge_name": r[2], "presenter_number": r[3],
+             "action": r[4], "actor": r[5], "actor_label": r[6],
+             "scores": json.loads(r[7]) if r[7] else None,
+             "final_score": r[8], "created_at": r[9]} for r in rows]
 
 
 # ── Audience votes ─────────────────────────────────────────────────────────────

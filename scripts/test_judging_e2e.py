@@ -516,6 +516,34 @@ def _simulate(db_path: str) -> None:
     check("export_csv includes presenter 100",
           any("100" in line for line in csv_out.splitlines()))
 
+    # ── AUDIT TRAIL (Task #4) — judge submits were logged via the session layer ──
+    section("AUDIT TRAIL — judge submits recorded")
+
+    conn = db_conn(db_path)
+    trail = jdb.get_score_audit(conn, eid)
+    # Admin enter + edit on top of the judge submits, then verify it all logs.
+    amira = jdb.get_judge_by_telegram_hash(conn, eid, "tg_amira")
+    existed, _, final = jdb.upsert_score(conn, eid, amira["id"], 103, ["Clarity", "Content"], [5, 5])
+    jdb.log_score_audit(conn, eid, amira["id"], 103,
+                        action="admin_edit" if existed else "admin_enter",
+                        actor="admin", actor_label="admin", scores_json='{"Clarity": 5, "Content": 5}',
+                        final_score=final)
+    conn.commit()
+    trail2 = jdb.get_score_audit(conn, eid)
+    conn.close()
+
+    submit_rows = [a for a in trail if a["action"] == "submit"]
+    check("judge submits were audited (>=4 submit rows)", len(submit_rows) >= 4,
+          f"{len(submit_rows)} submit rows")
+    check("audit actor is 'judge' for submits", all(a["actor"] == "judge" for a in submit_rows),
+          submit_rows[:1])
+    check("admin proxy entry for #103 logged as admin_enter",
+          any(a["action"] == "admin_enter" and a["presenter_number"] == 103 for a in trail2),
+          [a["action"] for a in trail2[:3]])
+    check("admin entry actor is 'admin'",
+          any(a["actor"] == "admin" for a in trail2))
+    check("audit newest-first ordering", trail2[0]["created_at"] >= trail2[-1]["created_at"])
+
 
 # ── entry point ────────────────────────────────────────────────────────────────
 

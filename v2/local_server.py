@@ -285,6 +285,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     "event": jdb.get_event(conn, event_id),
                     "results": jdb.get_audience_results(conn, event_id),
                 })
+            if action == "audit":
+                # Full score-change history for the event, newest first.
+                return self._json({"audit": jdb.get_score_audit(conn, event_id)})
             if action == "presenters":
                 # /judging/events/<id>/presenters/<number>/scores — admin drill-down
                 if len(parts) >= 6 and parts[5] == "scores":
@@ -388,8 +391,41 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 judge_id = int(body.get("judge_id", 0))
                 presenter_number = int(body.get("presenter_number", 0))
                 deleted = jdb.delete_score(conn, event_id, judge_id, presenter_number)
+                if deleted:
+                    # Audit the delete in the same transaction (no scores_json → NULL).
+                    jdb.log_score_audit(
+                        conn, event_id, judge_id, presenter_number,
+                        action="admin_delete", actor="admin", actor_label="admin")
                 conn.commit()
                 return self._json({"deleted": deleted})
+            if action == "scores-set":
+                # Admin proxy entry (device-less judge) AND correction (overwrite an existing
+                # score). Deliberately NOT gated on event status — corrections often happen
+                # after the event closes. Upsert + audit in one transaction.
+                judge_id = int(body.get("judge_id", 0))
+                presenter_number = int(body.get("presenter_number", 0))
+                raw_scores = body.get("scores") or []
+                if not judge_id or not presenter_number:
+                    raise ValueError("judge_id and presenter_number required")
+                ev = jdb.get_event(conn, event_id)
+                if ev is None:
+                    raise ValueError("event not found")
+                if jdb.get_presenter(conn, event_id, presenter_number) is None:
+                    raise ValueError(f"Participant #{presenter_number} not found")
+                try:
+                    scores = [int(s) for s in raw_scores]
+                except (TypeError, ValueError):
+                    raise ValueError("scores must be a list of integers")
+                # upsert_score validates length + range (raises ValueError → 400)
+                existed, scores_json, final = jdb.upsert_score(
+                    conn, event_id, judge_id, presenter_number, ev["criteria"], scores)
+                jdb.log_score_audit(
+                    conn, event_id, judge_id, presenter_number,
+                    action="admin_edit" if existed else "admin_enter",
+                    actor="admin", actor_label="admin",
+                    scores_json=scores_json, final_score=final)
+                conn.commit()
+                return self._json({"success": True, "edited": existed, "final_score": final})
             if action == "present":
                 presenter_number = int(body.get("presenter_number", 0))
                 jdb.mark_presenter_present(conn, event_id, presenter_number)
@@ -740,6 +776,10 @@ def main():
     if not DB_PATH.exists():
         logger.error("Database not found: %s", DB_PATH)
         sys.exit(1)
+    # Self-heal the schema: apply any new tables/indexes idempotently (e.g. the judging
+    # audit table) so a standalone server stays in sync even when the bot hasn't restarted.
+    from v2.core.database.schema import create_all as _create_all
+    _create_all(str(DB_PATH)).close()
     JOBS.ensure_schema()       # create the jobs table if missing (backend owns it)
     JOBS.reconcile_startup()   # any 'running' row from a prior process → interrupted
     server = ThreadingHTTPServer((HOST, PORT), GatewayHandler)

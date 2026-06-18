@@ -647,13 +647,19 @@ class JudgingSessionManager:
                         f"Judging for *{sess.event_name}* is now closed. "
                         "Your scores were NOT saved."
                     ), True
-                jdb.submit_score(
+                scores_json, final = jdb.submit_score(
                     conn,
                     sess.event_id,
                     sess.judge_id,
                     sess.presenter_number,
                     sess.criteria,
                     sess.collected_scores,
+                )
+                # Audit in the SAME transaction as the score (atomic — can't diverge).
+                jdb.log_score_audit(
+                    conn, sess.event_id, sess.judge_id, sess.presenter_number,
+                    action="submit", actor="judge", actor_label=sess.judge_name or "",
+                    scores_json=scores_json, final_score=final,
                 )
                 conn.commit()
             except sqlite3.IntegrityError:

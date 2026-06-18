@@ -2212,6 +2212,18 @@ function _judgingManageSection(eventId) {
     <h3>Audience Voting</h3>
     <div id="j-audience-ctrl">Loading…</div>
 
+    <hr style="margin:24px 0">
+    <h3>Admin: Enter / Edit a Score</h3>
+    <p style="font-size:12px;color:#666">For a judge who can't use a device, or to correct a mistake.
+      Overwrites the judge's current score and is recorded in the history below. Works even after the event is closed.</p>
+    <div style="display:grid;gap:8px;max-width:440px">
+      <select id="j-set-judge" style="padding:6px"><option value="">Select judge…</option></select>
+      <input id="j-set-pnum" type="number" placeholder="Participant #" style="padding:6px">
+      <div id="j-set-criteria" class="muted" style="font-size:13px">Loading criteria…</div>
+      <button class="btn-primary" onclick="_judgingSetScore(${eventId})">Save score</button>
+    </div>
+    <div id="j-set-result" style="margin-top:6px;font-size:13px"></div>
+
     <h3 style="margin-top:20px">Admin: Delete a Score</h3>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select id="j-del-judge" style="padding:6px">
@@ -2220,7 +2232,13 @@ function _judgingManageSection(eventId) {
       <input id="j-del-pnum" type="number" placeholder="Participant #" style="padding:6px;width:140px">
       <button class="btn-sm btn-danger" onclick="_judgingDeleteScore(${eventId})">Delete Score</button>
     </div>
-    <div id="j-del-result" style="margin-top:6px;font-size:13px"></div>`;
+    <div id="j-del-result" style="margin-top:6px;font-size:13px"></div>
+
+    <hr style="margin:24px 0">
+    <h3>Score Change History (audit)</h3>
+    <p style="font-size:12px;color:#666">Every submit, admin entry, edit, and delete — newest first.</p>
+    <button class="btn-sm" onclick="_judgingLoadAudit(${eventId})">Show history</button>
+    <div id="j-audit" style="margin-top:8px"></div>`;
 }
 
 function _judgingSelect(eventId) {
@@ -2314,10 +2332,24 @@ function _judgingRefreshProgress(eventId) {
             <td><button class="btn-sm btn-danger" onclick="_judgingDeleteJudge(${eventId},${j.id})">Remove</button></td>
           </tr>`).join("") +
         "</tbody></table>";
-        if (delSel) {
-          delSel.innerHTML = '<option value="">Select judge…</option>' +
-            d.judges.map((j) => `<option value="${j.id}">${j.name}</option>`).join("");
-        }
+        const judgeOpts = '<option value="">Select judge…</option>' +
+          d.judges.map((j) => `<option value="${j.id}">${j.name}</option>`).join("");
+        if (delSel) delSel.innerHTML = judgeOpts;
+        const setSel = document.getElementById("j-set-judge");
+        if (setSel) setSel.innerHTML = judgeOpts;
+      }
+
+      // Admin enter/edit score: render one input per criterion from the event config.
+      const critBox = document.getElementById("j-set-criteria");
+      if (critBox && d.event && Array.isArray(d.event.criteria)) {
+        const lo = d.event.score_min, hi = d.event.score_max;
+        critBox.dataset.min = lo; critBox.dataset.max = hi;
+        critBox.innerHTML = d.event.criteria.map((c, i) =>
+          `<label style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin:2px 0">
+             <span>${esc(c)}</span>
+             <input class="j-set-score" data-idx="${i}" type="number" min="${lo}" max="${hi}"
+                    style="padding:4px;width:80px" placeholder="${lo}–${hi}">
+           </label>`).join("");
       }
 
       // Presenters table
@@ -2489,4 +2521,53 @@ function _judgingDeleteJudge(eventId, judgeId) {
       else toast("Error: " + (d.error || "unknown"), false);
     })
     .catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingSetScore(eventId) {
+  const judgeId = document.getElementById("j-set-judge").value;
+  const pnum    = document.getElementById("j-set-pnum").value;
+  if (!judgeId || !pnum) { toast("Select a judge and enter participant number", false); return; }
+  const box = document.getElementById("j-set-criteria");
+  const lo = Number(box.dataset.min), hi = Number(box.dataset.max);
+  const inputs = Array.from(box.querySelectorAll(".j-set-score"))
+    .sort((a, b) => Number(a.dataset.idx) - Number(b.dataset.idx));
+  const scores = [];
+  for (const inp of inputs) {
+    if (inp.value === "") { toast("Fill in every criterion score", false); return; }
+    const v = parseInt(inp.value, 10);
+    if (Number.isNaN(v) || v < lo || v > hi) { toast(`Each score must be ${lo}–${hi}`, false); return; }
+    scores.push(v);
+  }
+  _jPost(`/judging/events/${eventId}/scores-set`,
+         { judge_id: parseInt(judgeId), presenter_number: parseInt(pnum), scores })
+  .then((r) => r.json()).then((d) => {
+    if (d.error) { toast("Error: " + d.error, false); return; }
+    document.getElementById("j-set-result").textContent =
+      (d.edited ? "Score updated" : "Score entered") + ` (final ${d.final_score.toFixed(2)}).`;
+    inputs.forEach((i) => { i.value = ""; });
+    _judgingRefreshProgress(eventId);
+  }).catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingLoadAudit(eventId) {
+  fetch(SERVER_URL + `/judging/events/${eventId}/audit`)
+    .then((r) => r.json()).then((d) => {
+      const box = document.getElementById("j-audit");
+      if (!box) return;
+      const rows = (d.audit || []);
+      if (!rows.length) { box.innerHTML = "<p>No score changes recorded yet.</p>"; return; }
+      box.innerHTML = `<table class="data-table"><thead><tr>
+        <th>When</th><th>Action</th><th>By</th><th>Judge</th><th>#</th><th>Scores</th><th>Final</th>
+      </tr></thead><tbody>` +
+        rows.map((a) => `<tr>
+          <td>${esc(a.created_at)}</td>
+          <td>${esc(a.action)}</td>
+          <td>${esc(a.actor)}${a.actor_label && a.actor_label !== a.actor ? " (" + esc(a.actor_label) + ")" : ""}</td>
+          <td>${esc(a.judge_name || ("#" + a.judge_id))}</td>
+          <td>${a.presenter_number}</td>
+          <td>${a.scores ? esc(Object.values(a.scores).join(", ")) : "—"}</td>
+          <td>${a.final_score != null ? a.final_score.toFixed(2) : "—"}</td>
+        </tr>`).join("") +
+      "</tbody></table>";
+    }).catch((e) => toast("Error: " + e.message, false));
 }
