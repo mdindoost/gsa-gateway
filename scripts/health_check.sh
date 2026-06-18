@@ -183,7 +183,56 @@ else
     info "GROUPME_ENABLED is not true — conversational GroupMe bot skipped"
 fi
 
-# ── 5. Log checks (since last startup) ───────────────────────────────────────
+# ── 5. Dashboard server (local_server.py on :5555) ───────────────────────────
+echo ""
+echo "[ Dashboard Server ]"
+
+DASH_PORT=$(grep -E '^GSA_SERVER_PORT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)
+DASH_PORT="${DASH_PORT:-5555}"
+DASH_PID=$(pgrep -f "python.*local_server" 2>/dev/null | head -1 || true)
+
+if [[ -n "$DASH_PID" ]]; then
+    ok "Dashboard server running (PID $DASH_PID)"
+    # Health endpoint: confirms it answers AND surfaces what the crawler covers.
+    HEALTH=$(curl -sf --max-time 5 "http://127.0.0.1:${DASH_PORT}/api/health" 2>/dev/null || true)
+    if [[ -n "$HEALTH" ]]; then
+        ok "Dashboard API responding on :${DASH_PORT}"
+        # Ollama-up flag the server itself reports
+        echo "$HEALTH" | grep -q '"ollama": *true' && ok "  server sees Ollama up" \
+            || warn "  server reports Ollama down (overviews/embeds will fail)"
+        # KG-gather coverage (the colleges the crawler walks) — so it's visible at a glance
+        SCOPE=$(echo "$HEALTH" | grep -o '"college": *"[^"]*"' | cut -d'"' -f4 | paste -sd', ' - 2>/dev/null || true)
+        [[ -n "$SCOPE" ]] && info "  KG gather covers: $SCOPE"
+        # A running job, if any
+        echo "$HEALTH" | grep -q '"running_job": *{' && warn "  a job is currently running" \
+            || ok "  no job stuck running"
+    else
+        fail "Dashboard API NOT responding on :${DASH_PORT}"
+        if $FIX; then
+            info "Restarting dashboard server..."
+            pkill -f "python.*local_server" 2>/dev/null || true; sleep 2
+            nohup .venv/bin/python v2/local_server.py > logs/local_server.out 2>&1 &
+            sleep 3
+            curl -sf --max-time 5 "http://127.0.0.1:${DASH_PORT}/api/health" >/dev/null 2>&1 \
+                && ok "Dashboard server restarted" || fail "Dashboard server failed to restart"
+        else
+            info "Fix: pkill -f local_server; nohup .venv/bin/python v2/local_server.py &"
+        fi
+    fi
+else
+    warn "Dashboard server is NOT running (normally a child of the Discord bot)"
+    if $FIX; then
+        info "Starting dashboard server..."
+        nohup .venv/bin/python v2/local_server.py > logs/local_server.out 2>&1 &
+        sleep 3
+        NEW=$(pgrep -f "python.*local_server" 2>/dev/null | head -1 || true)
+        [[ -n "$NEW" ]] && ok "Dashboard server started (PID $NEW)" || fail "Dashboard failed to start"
+    else
+        info "Fix: bash scripts/restart.sh (bot supervises it) or run v2/local_server.py"
+    fi
+fi
+
+# ── 6. Log checks (since last startup) ───────────────────────────────────────
 echo ""
 echo "[ Log & Activity ]"
 
