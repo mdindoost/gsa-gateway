@@ -2106,6 +2106,7 @@ function _judgingRender(events) {
         ${ev.status === "closed" ? `<button class="btn-sm" onclick="_judgingReopen(${ev.id})">Re-open</button>` : ""}
         ${ev.status === "open"   ? `<button class="btn-sm btn-danger" onclick="_judgingClose(${ev.id})">Close</button>` : ""}
         <button class="btn-sm" onclick="_judgingSelect(${ev.id})">Manage</button>
+        <button class="btn-sm btn-danger" onclick="_judgingDeleteEvent(${ev.id}, ${JSON.stringify(ev.name)}, ${JSON.stringify(ev.status)})">Delete</button>
       </td>
     </tr>`).join("");
 
@@ -2280,6 +2281,21 @@ function _judgingReopen(eventId) {
   if (!confirm("Re-open this closed event? Judges will be able to submit scores again. "
              + "Only one event can be open at a time.")) return;
   _judgingOpen(eventId, true);
+}
+
+function _judgingDeleteEvent(eventId, name, status) {
+  const warn = status === "open" ? "\n\n⚠️ This event is currently OPEN." : "";
+  if (!confirm(`Permanently DELETE event "${name}" (#${eventId}) and ALL its data — `
+             + `judges, presenters, scores, audience votes, and score history?`
+             + `\n\nThis CANNOT be undone.${warn}`)) return;
+  _jPost(`/judging/events/${eventId}/delete-event`)
+    .then((r) => r.json().catch(() => ({})).then((d) => {
+      if (d && d.error) { toast("Error: " + d.error, false); return; }
+      if (JUDGING_SELECTED_EVENT === eventId) JUDGING_SELECTED_EVENT = null;  // clear Manage view
+      toast("Event deleted");
+      _judgingLoadEvents();
+    }))
+    .catch((e) => toast("Error: " + e.message, false));
 }
 
 function _judgingClose(eventId) {

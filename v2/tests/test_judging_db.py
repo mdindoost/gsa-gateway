@@ -399,6 +399,30 @@ def test_audit_atomic_with_score(conn):
     assert jdb.get_score_audit(conn, eid) == []   # rolled back, no orphan audit row
 
 
+def test_delete_event_cascades_everything(conn):
+    eid, jid = _score_setup(conn)
+    jdb.submit_score(conn, eid, jid, 100, ["Q1", "Q2"], [4, 5])
+    jdb.log_score_audit(conn, eid, jid, 100, action="submit", actor="judge")
+    jdb.cast_vote(conn, eid, "voter_x", 100)
+    conn.commit()
+    # sanity: children exist
+    assert conn.execute("SELECT COUNT(*) FROM judging_judges WHERE event_id=?", (eid,)).fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM judging_scores WHERE event_id=?", (eid,)).fetchone()[0] == 1
+    deleted = jdb.delete_event(conn, eid)
+    conn.commit()
+    assert deleted is True
+    # event + ALL children gone (ON DELETE CASCADE)
+    for tbl in ("judging_events", "judging_judges", "judging_presenters",
+                "judging_scores", "judging_audience_votes", "judging_score_audit"):
+        n = conn.execute(f"SELECT COUNT(*) FROM {tbl} WHERE "
+                         f"{'id' if tbl=='judging_events' else 'event_id'}=?", (eid,)).fetchone()[0]
+        assert n == 0, f"{tbl} still has {n} rows after delete_event"
+
+
+def test_delete_event_nonexistent_returns_false(conn):
+    assert jdb.delete_event(conn, 99999) is False
+
+
 def test_audit_delete_has_null_scores(conn):
     eid, jid = _score_setup(conn)
     jdb.submit_score(conn, eid, jid, 100, ["Q1", "Q2"], [4, 5])

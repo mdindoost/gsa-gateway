@@ -127,6 +127,15 @@ def set_audience_voting(conn: sqlite3.Connection, event_id: int, status: str) ->
     )
 
 
+def delete_event(conn: sqlite3.Connection, event_id: int) -> bool:
+    """Hard-delete an event and ALL of its data — judges, presenters, scores, audience
+    votes, and the score audit — via ON DELETE CASCADE. Irreversible. Requires the
+    connection to have PRAGMA foreign_keys=ON (the standard connection does). Returns
+    True if an event row was removed. Does NOT commit (caller owns the transaction)."""
+    cur = conn.execute("DELETE FROM judging_events WHERE id=?", (event_id,))
+    return cur.rowcount > 0
+
+
 # ── Judges ────────────────────────────────────────────────────────────────────
 
 def add_judge(conn: sqlite3.Connection, event_id: int, name: str, pin: str) -> int:

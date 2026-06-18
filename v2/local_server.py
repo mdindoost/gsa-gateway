@@ -357,6 +357,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 jdb.set_event_status(conn, event_id, "closed")
                 conn.commit()
                 return self._json({"success": True, "status": "closed"})
+            if action == "delete-event":
+                # Hard-delete the event + ALL its data (cascade). Irreversible.
+                deleted = jdb.delete_event(conn, event_id)
+                conn.commit()
+                return self._json({"deleted": deleted})
             if action == "judges":
                 name = (body.get("name") or "").strip()
                 pin = (body.get("pin") or "").strip()
