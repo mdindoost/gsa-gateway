@@ -60,6 +60,9 @@ DEFAULT_EXCLUDE_TYPES = frozenset({"publication", "webpage"})
 # below MIN_POOL_SIZE regardless of the settings value or limit.
 MIN_POOL_SIZE = 40
 DEFAULT_POOL_SIZE = 40
+# sqlite-vec vec0 hard cap on KNN `k` (LIMIT) per query. Fetching more raises
+# "k value in knn query too large". We cap the semantic leg's fetch at this.
+_VEC_KNN_MAX = 4096
 _TOKEN = re.compile(r"\w+", re.UNICODE)
 
 # Pure function words dropped from the FTS keyword leg so BM25 ranks on content
@@ -297,10 +300,12 @@ class V2Retriever:
             "SELECT COUNT(*) FROM knowledge_items WHERE is_active=1"
         ).fetchone()[0]
         # Fusion pool is a FIXED width (not tied to `limit`). When filtering, fetch
-        # the whole corpus from the KNN leg so filtering is exact. Trivial at this
-        # scale; for a large corpus use a vec0 partition.
+        # the whole corpus from each leg so filtering is exact — BUT sqlite-vec's vec0
+        # KNN caps k at 4096 (_VEC_KNN_MAX). Past that we fetch the 4096 nearest and
+        # filter; that's the top ~83% of the corpus by distance, far more than enough to
+        # contain the handful of allowed hits the fusion needs. (FTS bm25 has no such cap.)
         pool = self.pool_size
-        sem_fetch = total_active if allowed is not None else pool
+        sem_fetch = min(total_active, _VEC_KNN_MAX) if allowed is not None else min(pool, _VEC_KNN_MAX)
 
         qvec = self.embedder.embed_query(query)
         sem = self._semantic(qvec, sem_fetch, allowed) if qvec else []
