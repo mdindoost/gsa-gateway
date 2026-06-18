@@ -176,11 +176,13 @@ add questions. `--limit N` for a quick subset.
 reranker CE scores, final top-5, heads-up, and (verbose) the exact LLM prompt / (answer) the real answer.
 
 ### Run / test the judging system
+Full manual: `docs/judging_system.md` (admin guide, all flows, API reference, run checklist).
 Dashboard → Judging tab (requires server mode). Create event → load CSV → add judges → Open.
-Telegram: `judge mode` → PIN → participant number → score each criterion → `yes`.
-Presenter: `presenter mode` → participant number → confirms name (marks present).
-Tests: `python3 -m pytest v2/tests/test_judging_db.py v2/tests/test_judging_calculator.py v2/tests/test_judging_session.py -q` (69 tests).
-Judging tables: `judging_events`, `judging_judges`, `judging_presenters`, `judging_scores`.
+Telegram flows: `judge mode` (PIN → score), `presenter mode` (register attendance),
+`audience mode` (anyone votes once; judges auto-return to judge mode after voting).
+Admin controls audience voting independently (Open/Close Audience Voting on dashboard).
+Tests: `python3 -m pytest v2/tests/test_judging_db.py v2/tests/test_judging_calculator.py v2/tests/test_judging_session.py -q` (86 tests).
+Tables: `judging_events`, `judging_judges`, `judging_presenters`, `judging_scores`, `judging_audience_votes`.
 Schema migrations are idempotent — `create_all()` on startup applies new columns safely.
 
 ### Crawl NJIT pages → KB (grounded, pipeline built; mass-crawl deferred)
