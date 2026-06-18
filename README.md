@@ -83,7 +83,7 @@ Just type it like you'd text a friend. No commands to memorize.
 | **GSA** | Officers, executive board, registered clubs & RGOs, funding, events, and policies |
 | **YWCC** | Ying Wu College of Computing — faculty, staff, and research areas, kept current automatically |
 | **Martin Tuchman School of Management** | Faculty, administration, and graduate programs (MSM, TECH MBA, Ph.D. in Business Data Science) |
-| **The wider NJIT web** | A live fallback can pull verified answers straight from njit.edu *(optional — off by default)* |
+| **The wider NJIT web** | A live fallback (via the **Brave Search API**) can pull a verified answer straight from njit.edu **with a clickable source link** *(optional — off by default)* |
 
 When something falls outside what it knows for certain, it doesn't bluff — it tells the student and routes them to the office that owns the answer. Sensitive topics like immigration, billing, and funding always come with a "confirm with the official office" note.
 
@@ -170,7 +170,7 @@ The same people and orgs as **typed entities and relationships**: `Person`, `Org
 
 **3 — Hybrid semantic RAG** (`retriever.py`): the fallback for open prose. The query is embedded and run through **sqlite-vec KNN** (semantic) *and* **FTS5 bm25** (keyword); the two rankings are fused with **Reciprocal Rank Fusion**, reranked by a **cross-encoder**, and the top context is handed to **Ollama `llama3.1:8b`**, which generates an answer **grounded strictly in the retrieved rows** — with an *entity-grounding* rule that forbids attributing one person's facts to another and requires honest "I couldn't find that" over invention.
 
-**4 — Live fallback** (extractive, optional): on a KB miss the bot can search njit.edu, fetch the top page, and answer from **verbatim page-grounded spans + a source link** — never paraphrased into a hallucination. Currently dormant (no search key); degrades silently to a "contact the office" deflection.
+**4 — Live njit.edu fallback** (extractive, optional): on a KB miss the bot searches njit.edu via the **Brave Search API**, fetches the top page, and answers from **verbatim, page-grounded spans plus the real source link** — so the student gets a clickable njit.edu URL to verify, and the bot never paraphrases into a hallucination (a span that isn't literally on the page is dropped). The search provider is isolated/swappable (Brave today, any provider tomorrow). Currently dormant (`LIVE_ENABLED=0`, no active search key); when off it degrades silently to a "contact the office" deflection.
 
 **Safety rails throughout:** high-stakes topics (immigration, billing, funding) append a "confirm with the official office" heads-up; user IDs are hashed before any write; answers cite their source document.
 
@@ -190,6 +190,7 @@ The same people and orgs as **typed entities and relationships**: `Person`, `Org
 | Fusion / rerank | **Reciprocal Rank Fusion** + **cross-encoder** reranker |
 | Generation | **Ollama** · `llama3.1:8b` (local) |
 | Embeddings | **`nomic-embed-text`** (local) |
+| Live web fallback | **Brave Search API** → njit.edu, extractive (verbatim spans + source link); provider-isolated/swappable |
 | Chat platforms | **discord.py** · **python-telegram-bot** · **GroupMe** (one shared brain, connector pattern) |
 | Dashboard | dependency-free HTML/JS + **sql.js**, served by a stdlib HTTP backend |
 | Hosting | **100% self-hosted**, local models — no cloud inference, $0 per-query |
