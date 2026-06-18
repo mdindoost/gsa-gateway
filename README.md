@@ -111,16 +111,19 @@ Full setup and operations guide: [**docs/PROJECT_STATUS.md**](docs/PROJECT_STATU
 
 GSA Gateway is **not** "another RAG chatbot." Its core idea is **gated structured retrieval**: a question is answered by a *deterministic, complete* path whenever possible, and only falls through to probabilistic semantic search for the open-ended long tail. That gate is what makes the answers trustworthy enough to put in front of students.
 
-### Two knowledge layers, one database
+### Two knowledge stores: a Knowledge Base + a Knowledge Graph
 
-Everything lives in a single self-hosted SQLite file (`gsa_gateway.db`) with two complementary representations of the same knowledge:
+The same knowledge is stored two complementary ways, in one self-hosted SQLite file (`gsa_gateway.db`). This dual representation is what lets the bot be both *fluent* (prose) and *exact* (facts).
 
-| Layer | Tables | Powers |
-|---|---|---|
-| **Text / semantic** | `knowledge_items` (decomposed prose chunks, **FTS5** full-text) + `knowledge_vectors` (**sqlite-vec** `vec0`, `nomic-embed-text` 768-d, L2-normalized) | semantic RAG over unstructured prose |
-| **Graph / structured** | `nodes` (Person · Org · ResearchArea) + `edges` (`has_role` w/ titles+category · `researches` · `part_of`) | precise, complete relational answers |
+**📚 Knowledge Base (KB) — the text/semantic store.**
+Unstructured prose, **decomposed** into small focused items — each person becomes separate `profile`, `research_areas`, `education`, `teaching`, `about` chunks rather than one blob; policies/FAQs/event info are chunked too. Every chunk is indexed two ways: **FTS5** (keyword/bm25) and a **sqlite-vec** `vec0` embedding (`nomic-embed-text`, 768-d, L2-normalized). The KB answers *"what is written about X"* — fuzzy, semantic, open-ended questions.
+> Tables: `knowledge_items` (chunks + FTS5) · `knowledge_vectors` (vectors).
 
-A person isn't one blob — they're decomposed into discrete items (profile, research areas, education, roles, …) and graph edges, so the system can answer *facets* precisely.
+**🕸️ Knowledge Graph (KG) — the structured/relational store.**
+The same people and orgs as **typed entities and relationships**: `Person`, `Org`, `ResearchArea` nodes joined by `has_role` (with title + category), `researches`, and `part_of` edges. The KG answers *"what are the exact facts and relationships of X"* — who is the dean, every faculty member in a department, what someone researches, the org hierarchy — **completely and deterministically**, things a text search structurally can't (enumerate all, traverse, see a role that lives only as an edge).
+> Tables: `nodes` (entities) · `edges` (typed relationships, with `category`/`attrs.titles`).
+
+**Why both:** decomposing a person across KB chunks + KG edges means the system can answer a precise *facet* ("X's research areas") from the graph, fall back to prose ("X's bio") from the KB, and never has to cram an entire person into one retrieved blob. The retrieval gate below uses the **KG for relational/precise** asks and the **KB for semantic** ones.
 
 ### The retrieval pipeline (the gate)
 
