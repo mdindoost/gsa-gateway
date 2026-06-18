@@ -291,6 +291,59 @@ CREATE TABLE IF NOT EXISTS page_nodes (
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Group D — judging system (STRICT)
+# ─────────────────────────────────────────────────────────────────────────────
+
+JUDGING_EVENTS = """
+CREATE TABLE IF NOT EXISTS judging_events (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'setup'
+                CHECK (status IN ('setup', 'open', 'closed')),
+    criteria    TEXT NOT NULL,
+    top_n       INTEGER NOT NULL DEFAULT 3,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+) STRICT;
+"""
+
+JUDGING_JUDGES = """
+CREATE TABLE IF NOT EXISTS judging_judges (
+    id               INTEGER PRIMARY KEY,
+    event_id         INTEGER NOT NULL REFERENCES judging_events(id) ON DELETE CASCADE,
+    name             TEXT NOT NULL,
+    pin              TEXT NOT NULL,
+    telegram_id_hash TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(event_id, pin)
+) STRICT;
+"""
+
+JUDGING_PRESENTERS = """
+CREATE TABLE IF NOT EXISTS judging_presenters (
+    id          INTEGER PRIMARY KEY,
+    event_id    INTEGER NOT NULL REFERENCES judging_events(id) ON DELETE CASCADE,
+    number      INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    department  TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(event_id, number)
+) STRICT;
+"""
+
+JUDGING_SCORES = """
+CREATE TABLE IF NOT EXISTS judging_scores (
+    id               INTEGER PRIMARY KEY,
+    event_id         INTEGER NOT NULL REFERENCES judging_events(id) ON DELETE CASCADE,
+    judge_id         INTEGER NOT NULL REFERENCES judging_judges(id),
+    presenter_number INTEGER NOT NULL,
+    scores_json      TEXT NOT NULL,
+    final_score      REAL NOT NULL,
+    submitted_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(event_id, judge_id, presenter_number)
+) STRICT;
+"""
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Indexes
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -327,6 +380,10 @@ INDEXES = [
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_frontier_root ON frontier(url) WHERE from_node_id IS NULL;",
     "CREATE INDEX        IF NOT EXISTS idx_frontier_status ON frontier(status);",
     "CREATE INDEX        IF NOT EXISTS idx_page_nodes_node ON page_nodes(node_id);",
+    "CREATE INDEX IF NOT EXISTS idx_jscores_event      ON judging_scores(event_id);",
+    "CREATE INDEX IF NOT EXISTS idx_jscores_presenter  ON judging_scores(event_id, presenter_number);",
+    "CREATE INDEX IF NOT EXISTS idx_judges_event       ON judging_judges(event_id);",
+    "CREATE INDEX IF NOT EXISTS idx_jpresenters_event  ON judging_presenters(event_id);",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -392,6 +449,10 @@ _TABLE_DDL = [
     EDGES,
     FRONTIER,
     PAGE_NODES,
+    JUDGING_EVENTS,
+    JUDGING_JUDGES,
+    JUDGING_PRESENTERS,
+    JUDGING_SCORES,
 ]
 
 _TRIGGER_DDL = [

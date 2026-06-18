@@ -56,8 +56,12 @@ async def main() -> None:
     handler = asst.message_handler
     logger.info("Assistant wired (Telegram)")
 
+    from v2.core.judging.session import JudgingSessionManager
+    judging_manager = JudgingSessionManager(db_path=str(config.database_path))
+
     connector = TelegramConnector(
-        token=config.telegram_token, handler=handler, kb=kb
+        token=config.telegram_token, handler=handler, kb=kb,
+        judging_manager=judging_manager,
     )
     await connector.setup_services()
 

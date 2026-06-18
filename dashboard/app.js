@@ -261,7 +261,7 @@ function onDbLoaded(name) {
 // ───────── tab nav ─────────
 const TITLES = { overview: "Overview", posts: "Posts", kb: "Knowledge Base",
   org: "Organization", people: "People (Knowledge Graph)", analytics: "Analytics",
-  settings: "Settings", jobs: "Jobs" };
+  settings: "Settings", jobs: "Jobs", judging: "Judging" };
 
 document.querySelectorAll(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => switchTab(btn.dataset.tab));
@@ -282,6 +282,7 @@ function switchTab(tab) {
   if (tab === "analytics") renderAnalytics();
   if (tab === "settings") renderSettings();
   if (tab === "jobs") renderJobs();
+  if (tab === "judging") renderJudging();
 }
 
 // ───────── Tab: People (Knowledge Graph) ─────────
@@ -2048,4 +2049,311 @@ function renderPlatformSettings(host) {
       changes.map((ch) => settingUpdateStmt(ch.org_id, ch.key, ch.value)).join("\n"),
       "Platform settings ready to apply", { type: "settings" });
   };
+}
+
+// ───────── Tab: Judging ─────────────────────────────────────────────────────
+
+let JUDGING_SELECTED_EVENT = null;  // currently selected event id
+let JUDGING_POLL = null;            // interval id for live progress
+
+function renderJudging() {
+  if (!SERVER_URL) {
+    document.getElementById("tab-judging").innerHTML =
+      '<p class="placeholder-msg">Judging requires server mode. Open the dashboard via <code>?server=http://localhost:5555</code>.</p>';
+    return;
+  }
+  _judgingLoadEvents();
+}
+
+function _judgingLoadEvents() {
+  fetch(SERVER_URL + "/judging/events")
+    .then((r) => r.json())
+    .then((events) => _judgingRender(events))
+    .catch((e) => { document.getElementById("tab-judging").innerHTML = "<p>Error: " + e.message + "</p>"; });
+}
+
+function _judgingRender(events) {
+  const tab = document.getElementById("tab-judging");
+  const sel = JUDGING_SELECTED_EVENT;
+
+  const evRows = events.map((ev) => `
+    <tr>
+      <td>${ev.id}</td>
+      <td><strong>${ev.name}</strong></td>
+      <td><span class="badge badge-${ev.status}">${ev.status}</span></td>
+      <td>Top ${ev.top_n}</td>
+      <td>${ev.created_at}</td>
+      <td>
+        ${ev.status === "setup" ? `<button class="btn-sm" onclick="_judgingOpen(${ev.id})">Open</button>` : ""}
+        ${ev.status === "open"  ? `<button class="btn-sm btn-danger" onclick="_judgingClose(${ev.id})">Close</button>` : ""}
+        <button class="btn-sm" onclick="_judgingSelect(${ev.id})">Manage</button>
+      </td>
+    </tr>`).join("");
+
+  tab.innerHTML = `
+    <div style="padding:16px">
+
+      <h2>Events</h2>
+      ${events.length ? `<table class="data-table"><thead><tr>
+        <th>ID</th><th>Name</th><th>Status</th><th>Winners</th><th>Created</th><th>Actions</th>
+      </tr></thead><tbody>${evRows}</tbody></table>` : "<p>No events yet.</p>"}
+
+      <h3 style="margin-top:24px">Create New Event</h3>
+      <div style="display:grid;gap:8px;max-width:480px">
+        <input id="j-ev-name" placeholder="Event name (e.g. 3MRP 2026)" style="padding:6px">
+        <input id="j-ev-topn" type="number" value="3" min="1" placeholder="Top N winners" style="padding:6px;width:120px">
+        <label>Scoring criteria (one per line):</label>
+        <textarea id="j-ev-criteria" rows="7" style="padding:6px;font-size:13px">${jdb_DEFAULT_CRITERIA().join("\n")}</textarea>
+        <button class="btn-primary" onclick="_judgingCreate()">Create Event</button>
+      </div>
+
+      ${sel ? _judgingManageSection(sel) : ""}
+    </div>`;
+
+  // Restart live-progress poll if an open event is selected
+  if (JUDGING_POLL) { clearInterval(JUDGING_POLL); JUDGING_POLL = null; }
+  if (sel) {
+    const ev = events.find((e) => e.id === sel);
+    if (ev && ev.status === "open") {
+      JUDGING_POLL = setInterval(() => _judgingRefreshProgress(sel), 10000);
+      _judgingRefreshProgress(sel);
+    } else {
+      _judgingRefreshProgress(sel);
+    }
+  }
+}
+
+function jdb_DEFAULT_CRITERIA() {
+  return [
+    "Communication & Clarity",
+    "Research Content",
+    "Delivery & Engagement",
+    "Organization & Timing",
+    "Visual Slide Effectiveness",
+    "Overall Impression",
+  ];
+}
+
+function _judgingManageSection(eventId) {
+  return `
+    <hr style="margin:24px 0">
+    <h2>Managing Event #${eventId}</h2>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:12px">
+
+      <div>
+        <h3>Load Presenters (CSV)</h3>
+        <p style="font-size:12px;color:#666">Format: number,name,department (header optional)</p>
+        <textarea id="j-csv" rows="6" style="width:100%;padding:6px;font-size:12px"
+          placeholder="100,Jane Smith,Computer Science&#10;101,Ali Hassan,EE"></textarea>
+        <button class="btn-primary" style="margin-top:6px" onclick="_judgingLoadCSV(${eventId})">Load Presenters</button>
+        <div id="j-csv-result" style="margin-top:6px;font-size:13px"></div>
+
+        <h3 style="margin-top:20px">Presenters</h3>
+        <div id="j-presenters-list">Loading…</div>
+      </div>
+
+      <div>
+        <h3>Add Judge</h3>
+        <div style="display:grid;gap:6px;max-width:320px">
+          <input id="j-judge-name" placeholder="Judge name" style="padding:6px">
+          <input id="j-judge-pin" placeholder="PIN (unique, you choose)" style="padding:6px">
+          <button class="btn-primary" onclick="_judgingAddJudge(${eventId})">Add Judge</button>
+        </div>
+        <div id="j-judges-list" style="margin-top:12px">Loading…</div>
+      </div>
+    </div>
+
+    <hr style="margin:24px 0">
+    <h3>Live Progress</h3>
+    <div id="j-progress">Loading…</div>
+
+    <h3 style="margin-top:20px">Results / Leaderboard</h3>
+    <button class="btn-sm" onclick="_judgingLoadResults(${eventId})">Refresh Results</button>
+    <button class="btn-sm" onclick="_judgingExport(${eventId})" style="margin-left:8px">Export CSV</button>
+    <div id="j-results" style="margin-top:8px">Click Refresh Results to load.</div>
+
+    <h3 style="margin-top:20px">Admin: Delete a Score</h3>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="j-del-judge" style="padding:6px">
+        <option value="">Select judge…</option>
+      </select>
+      <input id="j-del-pnum" type="number" placeholder="Participant #" style="padding:6px;width:140px">
+      <button class="btn-sm btn-danger" onclick="_judgingDeleteScore(${eventId})">Delete Score</button>
+    </div>
+    <div id="j-del-result" style="margin-top:6px;font-size:13px"></div>`;
+}
+
+function _judgingSelect(eventId) {
+  JUDGING_SELECTED_EVENT = eventId;
+  _judgingLoadEvents();
+}
+
+function _judgingCreate() {
+  const name = document.getElementById("j-ev-name").value.trim();
+  const topN = parseInt(document.getElementById("j-ev-topn").value, 10) || 3;
+  const criteriaRaw = document.getElementById("j-ev-criteria").value;
+  const criteria = criteriaRaw.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!name) { toast("Event name required", false); return; }
+  fetch(SERVER_URL + "/judging/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, top_n: topN, criteria }),
+  }).then((r) => r.json()).then((d) => {
+    toast("Event created: " + d.name);
+    JUDGING_SELECTED_EVENT = d.id;
+    _judgingLoadEvents();
+  }).catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingOpen(eventId) {
+  fetch(SERVER_URL + `/judging/events/${eventId}/open`, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: "{}" })
+    .then(() => { toast("Judging opened"); _judgingLoadEvents(); })
+    .catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingClose(eventId) {
+  if (!confirm("Close judging? Judges will no longer be able to submit scores.")) return;
+  fetch(SERVER_URL + `/judging/events/${eventId}/close`, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: "{}" })
+    .then(() => { toast("Judging closed");
+      if (JUDGING_POLL) { clearInterval(JUDGING_POLL); JUDGING_POLL = null; }
+      _judgingLoadEvents(); })
+    .catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingLoadCSV(eventId) {
+  const csv = document.getElementById("j-csv").value;
+  if (!csv.trim()) { toast("Paste CSV first", false); return; }
+  fetch(SERVER_URL + `/judging/events/${eventId}/presenters`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ csv }),
+  }).then((r) => r.json()).then((d) => {
+    document.getElementById("j-csv-result").textContent = `Loaded ${d.loaded} presenter(s).`;
+    _judgingRefreshProgress(eventId);
+  }).catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingAddJudge(eventId) {
+  const name = document.getElementById("j-judge-name").value.trim();
+  const pin  = document.getElementById("j-judge-pin").value.trim();
+  if (!name || !pin) { toast("Name and PIN required", false); return; }
+  fetch(SERVER_URL + `/judging/events/${eventId}/judges`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, pin }),
+  }).then((r) => r.json()).then(() => {
+    document.getElementById("j-judge-name").value = "";
+    document.getElementById("j-judge-pin").value = "";
+    toast("Judge added");
+    _judgingRefreshProgress(eventId);
+  }).catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingRefreshProgress(eventId) {
+  fetch(SERVER_URL + `/judging/events/${eventId}/status`)
+    .then((r) => r.json())
+    .then((d) => {
+      const p = d.progress;
+      const prog = document.getElementById("j-progress");
+      if (prog) prog.innerHTML = `
+        <table class="data-table" style="max-width:400px">
+          <tr><td>Judges authenticated</td><td><strong>${p.authenticated_judges} / ${p.total_judges}</strong></td></tr>
+          <tr><td>Presenters loaded</td><td><strong>${p.total_presenters}</strong></td></tr>
+          <tr><td>Scores submitted</td><td><strong>${p.scores_submitted} / ${p.max_possible}</strong></td></tr>
+          <tr><td>Coverage</td><td><strong>${p.coverage_pct}%</strong></td></tr>
+        </table>`;
+
+      // Judges table
+      const jlist = document.getElementById("j-judges-list");
+      const delSel = document.getElementById("j-del-judge");
+      if (jlist && d.judges) {
+        jlist.innerHTML = `<table class="data-table"><thead><tr>
+          <th>Name</th><th>PIN</th><th>Auth'd</th><th></th>
+        </tr></thead><tbody>` +
+          d.judges.map((j) => `<tr>
+            <td>${j.name}</td>
+            <td><code>${j.pin}</code></td>
+            <td>${j.authenticated ? "✅" : "—"}</td>
+            <td><button class="btn-sm btn-danger" onclick="_judgingDeleteJudge(${eventId},${j.id})">Remove</button></td>
+          </tr>`).join("") +
+        "</tbody></table>";
+        if (delSel) {
+          delSel.innerHTML = '<option value="">Select judge…</option>' +
+            d.judges.map((j) => `<option value="${j.id}">${j.name}</option>`).join("");
+        }
+      }
+
+      // Presenters table
+      fetch(SERVER_URL + `/judging/events/${eventId}/presenters`)
+        .then((r) => r.json())
+        .then((ps) => {
+          const plist = document.getElementById("j-presenters-list");
+          if (!plist) return;
+          if (!ps.length) { plist.innerHTML = "<p>No presenters loaded yet.</p>"; return; }
+          plist.innerHTML = `<table class="data-table"><thead><tr>
+            <th>#</th><th>Name</th><th>Department</th>
+          </tr></thead><tbody>` +
+            ps.map((p) => `<tr>
+              <td>${p.number}</td><td>${p.name}</td><td>${p.department}</td>
+            </tr>`).join("") +
+          "</tbody></table>";
+        });
+    })
+    .catch(() => {});
+}
+
+function _judgingLoadResults(eventId) {
+  fetch(SERVER_URL + `/judging/events/${eventId}/results`)
+    .then((r) => r.json())
+    .then((d) => {
+      const div = document.getElementById("j-results");
+      if (!d.leaderboard.length) { div.innerHTML = "<p>No scores yet.</p>"; return; }
+      div.innerHTML = `<table class="data-table"><thead><tr>
+        <th>Rank</th><th>#</th><th>Name</th><th>Department</th>
+        <th>Avg Score</th><th>Judges</th>
+      </tr></thead><tbody>` +
+        d.leaderboard.map((r) => `<tr>
+          <td>${r.rank !== null ? r.rank : "—"}</td>
+          <td>${r.number}</td>
+          <td>${r.name}</td>
+          <td>${r.department}</td>
+          <td>${r.avg_score !== null ? r.avg_score.toFixed(3) : "—"}</td>
+          <td>${r.judge_count}</td>
+        </tr>`).join("") +
+      "</tbody></table>";
+    })
+    .catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingExport(eventId) {
+  window.open(SERVER_URL + `/judging/events/${eventId}/export`, "_blank");
+}
+
+function _judgingDeleteScore(eventId) {
+  const judgeId = document.getElementById("j-del-judge").value;
+  const pnum    = document.getElementById("j-del-pnum").value;
+  if (!judgeId || !pnum) { toast("Select a judge and enter participant number", false); return; }
+  if (!confirm(`Delete score for participant #${pnum} by this judge?`)) return;
+  fetch(SERVER_URL + `/judging/events/${eventId}/scores-delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ judge_id: parseInt(judgeId), presenter_number: parseInt(pnum) }),
+  }).then((r) => r.json()).then((d) => {
+    document.getElementById("j-del-result").textContent =
+      d.deleted ? "Score deleted. Judge can re-score." : "Score not found.";
+    _judgingRefreshProgress(eventId);
+  }).catch((e) => toast("Error: " + e.message, false));
+}
+
+function _judgingDeleteJudge(eventId, judgeId) {
+  if (!confirm("Remove this judge and all their scores?")) return;
+  fetch(SERVER_URL + `/judging/events/${eventId}/judges-delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ judge_id: judgeId }),
+  }).then(() => { toast("Judge removed"); _judgingRefreshProgress(eventId); })
+    .catch((e) => toast("Error: " + e.message, false));
 }

@@ -164,6 +164,16 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     return self._json(self._get_analytics(conn, qs))
             finally:
                 conn.close()
+            # ── judging endpoints (live API, not sql.js) ──────────────────
+            if path == "/judging/events":
+                from v2.core.judging import db as jdb
+                conn = self._conn()
+                try:
+                    return self._json(jdb.list_events(conn))
+                finally:
+                    conn.close()
+            if path.startswith("/judging/events/"):
+                return self._judging_get(path)
             self._error("Not found", 404)
         except Exception as exc:  # noqa: BLE001
             logger.exception("GET %s failed", path)
@@ -206,12 +216,145 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     return self._json(self._post_person_remove(conn, body))
             finally:
                 conn.close()
+            # ── judging write endpoints ───────────────────────────────────
+            if path == "/judging/events":
+                return self._judging_post_events(body)
+            if path.startswith("/judging/events/"):
+                return self._judging_post_event(path, body)
             self._error("Not found", 404)
         except ValueError as exc:
             self._error(str(exc), 400)
         except Exception as exc:  # noqa: BLE001
             logger.exception("POST %s failed", path)
             self._error(str(exc), 500)
+
+    # ── judging helpers ────────────────────────────────────────────────────────
+
+    def _judging_get(self, path: str):
+        """Handle GET /judging/events/<id>/<action>"""
+        from v2.core.judging import db as jdb
+        from v2.core.judging.calculator import export_csv, get_event_progress, get_leaderboard
+
+        parts = path.strip("/").split("/")
+        # parts: ['judging', 'events', '<id>', '<action>']
+        try:
+            event_id = int(parts[2])
+        except (IndexError, ValueError):
+            return self._error("invalid event id", 400)
+        action = parts[3] if len(parts) > 3 else None
+
+        conn = self._conn()
+        try:
+            if action == "status":
+                return self._json({
+                    "event": jdb.get_event(conn, event_id),
+                    "progress": get_event_progress(conn, event_id),
+                    "judges": jdb.list_judges(conn, event_id),
+                })
+            if action == "results":
+                return self._json({
+                    "event": jdb.get_event(conn, event_id),
+                    "leaderboard": get_leaderboard(conn, event_id),
+                })
+            if action == "export":
+                csv_text = export_csv(conn, event_id)
+                body = csv_text.encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv")
+                self.send_header(
+                    "Content-Disposition",
+                    f'attachment; filename="judging_{event_id}.csv"',
+                )
+                self.send_header("Content-Length", str(len(body)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if action == "judges":
+                return self._json(jdb.list_judges(conn, event_id))
+            if action == "presenters":
+                return self._json(jdb.list_presenters(conn, event_id))
+        finally:
+            conn.close()
+        self._error("Not found", 404)
+
+    def _judging_post_events(self, body: dict):
+        """Handle POST /judging/events — create a new event."""
+        from v2.core.judging import db as jdb
+
+        name = (body.get("name") or "").strip()
+        if not name:
+            raise ValueError("name required")
+        criteria = body.get("criteria") or None
+        top_n = int(body.get("top_n", 3))
+        conn = self._conn()
+        try:
+            event_id = jdb.create_event(conn, name, criteria, top_n)
+            conn.commit()
+            return self._json({"id": event_id, "name": name, "top_n": top_n})
+        finally:
+            conn.close()
+
+    def _judging_post_event(self, path: str, body: dict):
+        """Handle POST /judging/events/<id>/<action>"""
+        from v2.core.judging import db as jdb
+
+        parts = path.strip("/").split("/")
+        try:
+            event_id = int(parts[2])
+        except (IndexError, ValueError):
+            return self._error("invalid event id", 400)
+        action = parts[3] if len(parts) > 3 else None
+
+        conn = self._conn()
+        try:
+            if action == "open":
+                jdb.set_event_status(conn, event_id, "open")
+                conn.commit()
+                return self._json({"success": True, "status": "open"})
+            if action == "close":
+                jdb.set_event_status(conn, event_id, "closed")
+                conn.commit()
+                return self._json({"success": True, "status": "closed"})
+            if action == "judges":
+                name = (body.get("name") or "").strip()
+                pin = (body.get("pin") or "").strip()
+                if not name or not pin:
+                    raise ValueError("name and pin required")
+                judge_id = jdb.add_judge(conn, event_id, name, pin)
+                conn.commit()
+                return self._json({"id": judge_id, "name": name, "pin": pin})
+            if action == "judges-delete":
+                judge_id = int(body.get("judge_id", 0))
+                jdb.delete_judge(conn, judge_id)
+                conn.commit()
+                return self._json({"success": True})
+            if action == "presenters":
+                csv_text = body.get("csv", "")
+                count = jdb.load_presenters_csv(conn, event_id, csv_text)
+                conn.commit()
+                return self._json({"loaded": count})
+            if action == "scores-delete":
+                judge_id = int(body.get("judge_id", 0))
+                presenter_number = int(body.get("presenter_number", 0))
+                deleted = jdb.delete_score(conn, event_id, judge_id, presenter_number)
+                conn.commit()
+                return self._json({"deleted": deleted})
+            if action == "update":
+                name = body.get("name")
+                criteria = body.get("criteria")
+                top_n = body.get("top_n")
+                jdb.update_event(
+                    conn, event_id,
+                    name=name,
+                    criteria=criteria,
+                    top_n=int(top_n) if top_n is not None else None,
+                )
+                conn.commit()
+                return self._json({"success": True})
+        finally:
+            conn.close()
+        self._error("Not found", 404)
 
     # ── DELETE ─────────────────────────────────────────────────────────────---
     def do_DELETE(self):

@@ -17,6 +17,7 @@ from telegram.ext import filters
 from bot.connectors.base import BasePlatform
 from bot.core.message_handler import MessageHandler, MessageRequest
 from bot.services.knowledge_base import KnowledgeBase
+from v2.core.judging.session import JudgingSessionManager
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +27,13 @@ _FEEDBACK_TTL = 259200  # 72 hours in seconds
 
 class TelegramConnector(BasePlatform):
     def __init__(
-        self, token: str, handler: MessageHandler, kb: KnowledgeBase
+        self, token: str, handler: MessageHandler, kb: KnowledgeBase,
+        judging_manager: Optional[JudgingSessionManager] = None,
     ) -> None:
         self.token = token
         self.handler = handler
         self.kb = kb
+        self.judging_manager = judging_manager
         self.app: Optional[Application] = None
         self._stop_event: Optional[asyncio.Event] = None
         # {question_id: {"user_id": int, "timestamp": float,
@@ -149,6 +152,20 @@ class TelegramConnector(BasePlatform):
     async def _on_message(self, update: Update, context) -> None:
         if not update.message or not update.message.text or not update.effective_user:
             return
+
+        # Judging intercept — fires before normal RAG so judge messages never
+        # reach the knowledge-base handler.
+        if self.judging_manager:
+            response_text, consumed = self.judging_manager.handle(
+                str(update.effective_user.id), update.message.text
+            )
+            if consumed:
+                if response_text:
+                    try:
+                        await update.message.reply_text(response_text, parse_mode="Markdown")
+                    except Exception:  # noqa: BLE001
+                        await update.message.reply_text(response_text)
+                return
 
         req = MessageRequest(
             user_id=str(update.effective_user.id),
