@@ -99,6 +99,16 @@ def test_finished_uses_stored_score_not_the_empty_read():
     assert st["finished"] is True
 
 
+def test_finished_uses_payload_score_when_higher_than_tracked():
+    # Real bug (2026-06-18): free API lagged at 1-0 during play, then FINISHED carried the
+    # true 4-1. Full-time must announce 4-1, not the stale tracked 1-0.
+    st = {"started": True, "score": (1, 0), "finished": False}
+    evs = w()._process(mk("FINISHED", 4, 1), st)
+    assert [e["type"] for e in evs] == ["fulltime"]
+    assert evs[0]["match"]["score"]["fullTime"] == {"home": 4, "away": 1}
+    assert st["score"] == (4, 1)
+
+
 def test_finished_twice_no_duplicate():
     st = {"started": True, "score": (2, 0), "finished": True}
     assert w()._process(mk("FINISHED", None, None), st) == []

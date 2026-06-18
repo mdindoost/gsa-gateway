@@ -33,7 +33,7 @@ from v2.integration.worldcup_tracker import BASE_URL, DEBUG_FILE, format_event
 logger = logging.getLogger(__name__)
 
 LIVE = {"IN_PLAY", "PAUSED"}      # carries the live score
-DONE = {"FINISHED"}               # end-of-game signal (no score!)
+DONE = {"FINISHED"}               # end-of-game signal (may or may not carry the final score)
 CATCHABLE = LIVE | DONE
 
 PRE_KICKOFF_LEAD = datetime.timedelta(minutes=5)
@@ -134,9 +134,16 @@ class MatchWatcher:
         if status in DONE:
             if not state["finished"]:
                 state["finished"] = True
-                # FINISHED carries no score — use what we stored during the match
+                # The FINISHED payload OFTEN carries the true final score — the free API can
+                # lag during play and only reveal it at full-time (e.g. we only ever saw 1-0
+                # live but the match ended 4-1). Reconcile: per-side MAX of what we tracked
+                # and what FINISHED reports. If FINISHED has an empty (0-0) score, our tracked
+                # score wins; if it has the real final, that wins. Either way the announced
+                # full-time is correct.
+                final = (max(h, state["score"][0]), max(a, state["score"][1]))
+                state["score"] = final
                 events.append({"type": "fulltime",
-                               "match": self._with_score(match, state["score"])})
+                               "match": self._with_score(match, final)})
             return events
         if status in LIVE:
             if not state["started"]:
