@@ -5,6 +5,8 @@ import tempfile
 
 import pytest
 
+os.environ.setdefault("GSA_JUDGING_SCRYPT_N", "64")  # fast scrypt for tests
+
 from v2.core.database.schema import create_all
 from v2.core.judging import db as jdb
 from v2.core.judging.session import JudgingSessionManager

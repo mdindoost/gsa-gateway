@@ -506,6 +506,14 @@ class JudgingSessionManager:
         if _RE_YES.match(t):
             conn = self._conn()
             try:
+                # H-new-1: re-check audience voting is still open at cast time
+                ev = jdb.get_event(conn, sess.event_id)
+                if ev is None or ev.get("audience_voting") != "open":
+                    self._sessions.pop(user_id, None)
+                    return (
+                        f"Audience voting for *{sess.event_name}* has closed. "
+                        "Your vote was NOT recorded."
+                    ), True
                 jdb.cast_vote(conn, sess.event_id, user_id, sess.pending_vote_number)
                 conn.commit()
             except Exception:
@@ -561,6 +569,18 @@ class JudgingSessionManager:
         if _RE_YES.match(t):
             conn = self._conn()
             try:
+                # H-new-2: re-check event is still open at submit time
+                ev = jdb.get_open_event(conn)
+                if ev is None or ev["id"] != sess.event_id:
+                    sess.state = "ready"
+                    sess.presenter_number = None
+                    sess.presenter_name = None
+                    sess.presenter_dept = None
+                    sess.collected_scores = []
+                    return (
+                        f"Judging for *{sess.event_name}* is now closed. "
+                        "Your scores were NOT saved."
+                    ), True
                 jdb.submit_score(
                     conn,
                     sess.event_id,

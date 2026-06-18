@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
+
+# Allow tests to lower the scrypt work factor for speed (default is production-strength).
+_SCRYPT_N = int(os.environ.get("GSA_JUDGING_SCRYPT_N", str(2 ** 14)))
 
 DEFAULT_CRITERIA = [
     "Communication & Clarity",
@@ -17,6 +21,17 @@ DEFAULT_CRITERIA = [
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _hash_pin(pin: str, event_id: int) -> str:
+    """scrypt PIN hash with per-event salt.
+
+    Per-event salt means a rainbow table for event A doesn't help against event B.
+    scrypt makes brute-forcing the PIN space (~10k short PINs) take seconds, not
+    microseconds, even if the attacker has the DB file.
+    """
+    salt = hashlib.sha256(f"gsa-judging-event-{event_id}".encode()).digest()
+    return hashlib.scrypt(pin.encode(), salt=salt, n=_SCRYPT_N, r=8, p=1).hex()
 
 
 # ── Events ────────────────────────────────────────────────────────────────────
@@ -117,7 +132,7 @@ def set_audience_voting(conn: sqlite3.Connection, event_id: int, status: str) ->
 def add_judge(conn: sqlite3.Connection, event_id: int, name: str, pin: str) -> int:
     cur = conn.execute(
         "INSERT INTO judging_judges(event_id, name, pin) VALUES (?, ?, ?)",
-        (event_id, name, _hash(pin)),  # C1: store hash, never plaintext
+        (event_id, name, _hash_pin(pin, event_id)),  # H-new-3: scrypt with per-event salt
     )
     return cur.lastrowid
 
@@ -127,7 +142,7 @@ def authenticate_judge(conn: sqlite3.Connection, event_id: int,
     """Verify PIN. Records telegram_id_hash on first use. Returns judge dict or None."""
     row = conn.execute(
         "SELECT id, name, telegram_id_hash FROM judging_judges WHERE event_id=? AND pin=?",
-        (event_id, _hash(pin)),  # C1: compare against stored hash
+        (event_id, _hash_pin(pin, event_id)),
     ).fetchone()
     if row is None:
         return None
@@ -175,6 +190,8 @@ def load_presenters_csv(conn: sqlite3.Connection, event_id: int, csv_text: str) 
     lines = [ln.strip() for ln in csv_text.strip().splitlines() if ln.strip()]
     if not lines:
         return 0
+    if len(lines) > 500:
+        raise ValueError(f"CSV too large: {len(lines)} rows (max 500)")
     start = 1 if lines[0].lower().startswith("number") else 0
     count = 0
     for line in lines[start:]:
@@ -319,6 +336,15 @@ def submit_score(conn: sqlite3.Connection, event_id: int, judge_id: int,
         raise ValueError(
             f"scores length {len(scores)} must match criteria length {len(criteria)}"
         )
+    # M-new-5: validate score range at DB layer (session validates too, but this is the last gate)
+    event = conn.execute(
+        "SELECT score_min, score_max FROM judging_events WHERE id=?", (event_id,)
+    ).fetchone()
+    if event:
+        score_min, score_max = event[0], event[1]
+        for s in scores:
+            if not score_min <= s <= score_max:
+                raise ValueError(f"Score {s} out of allowed range [{score_min}, {score_max}]")
     scores_json = json.dumps(dict(zip(criteria, scores)))
     final = sum(scores) / len(scores)
     conn.execute(

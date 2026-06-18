@@ -339,7 +339,9 @@ CREATE TABLE IF NOT EXISTS judging_scores (
     scores_json      TEXT NOT NULL,
     final_score      REAL NOT NULL,
     submitted_at     TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(event_id, judge_id, presenter_number)
+    UNIQUE(event_id, judge_id, presenter_number),
+    FOREIGN KEY (event_id, presenter_number)
+        REFERENCES judging_presenters(event_id, number) ON DELETE CASCADE
 ) STRICT;
 """
 

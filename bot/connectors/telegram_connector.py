@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import hashlib
 import io
 import logging
 import time
@@ -72,6 +73,10 @@ class TelegramConnector(BasePlatform):
             InlineKeyboardButton("Off topic",   callback_data=f"fbd:{question_id}:off_topic"),
         ]])
 
+    @staticmethod
+    def _hash_uid(user_id: int) -> str:
+        return hashlib.sha256(str(user_id).encode()).hexdigest()
+
     def _register_pending(
         self,
         question_id: int,
@@ -80,7 +85,7 @@ class TelegramConnector(BasePlatform):
         answer_text: str,
     ) -> None:
         self._pending_feedback[question_id] = {
-            "user_id": user_id,
+            "user_id_hash": self._hash_uid(user_id),  # L-new-2: never store raw Telegram IDs
             "timestamp": time.monotonic(),
             "question_text": question_text,
             "answer_text": answer_text,
@@ -218,9 +223,9 @@ class TelegramConnector(BasePlatform):
             await query.answer()
             return
 
-        # Ownership check
+        # Ownership check (compare hashes — raw IDs are never stored)
         pending = self._pending_feedback.get(question_id)
-        if pending is None or pending["user_id"] != query.from_user.id:
+        if pending is None or pending["user_id_hash"] != self._hash_uid(query.from_user.id):
             await query.answer(
                 "These buttons are for the person who asked the question.",
                 show_alert=True,

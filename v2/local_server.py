@@ -104,6 +104,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0) or 0)
         if not length:
             return {}
+        if length > 10 * 1024 * 1024:  # M-new-3: 10 MB cap
+            raise ValueError("Request body too large (max 10 MB)")
         return json.loads(self.rfile.read(length).decode() or "{}")
 
     def log_message(self, fmt, *args):
@@ -199,6 +201,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 logger.exception("POST %s failed", path)
                 return self._error(str(exc), 500)
         try:
+            # C-new-1: CSRF guard for all non-/api/* writes
+            if not self._csrf_ok():
+                return self._error("forbidden", 403)
             body = self._body()
             conn = self._conn()
             try:
@@ -217,12 +222,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
             # ── judging write endpoints ───────────────────────────────────
-            # M6: same CSRF guard as /api/* — require X-GSA-Dashboard header
-            if path in ("/judging/events",) or path.startswith("/judging/events/"):
-                if not self._csrf_ok():
-                    return self._error("forbidden", 403)
-                if path == "/judging/events":
-                    return self._judging_post_events(body)
+            if path == "/judging/events":
+                return self._judging_post_events(body)
+            if path.startswith("/judging/events/"):
                 return self._judging_post_event(path, body)
             self._error("Not found", 404)
         except ValueError as exc:
@@ -340,8 +342,12 @@ class GatewayHandler(BaseHTTPRequestHandler):
         conn = self._conn()
         try:
             if action == "open":
-                jdb.set_event_status(conn, event_id, "open")
-                conn.commit()
+                try:
+                    jdb.set_event_status(conn, event_id, "open")
+                    conn.commit()
+                except sqlite3.IntegrityError:
+                    # L-new-1: partial unique index blocks two simultaneous open events
+                    raise ValueError("Another event is already open. Close it first.")
                 return self._json({"success": True, "status": "open"})
             if action == "close":
                 jdb.set_event_status(conn, event_id, "closed")
@@ -352,6 +358,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 pin = (body.get("pin") or "").strip()
                 if not name or not pin:
                     raise ValueError("name and pin required")
+                if len(pin) < 6:
+                    raise ValueError("PIN must be at least 6 characters")
                 judge_id = jdb.add_judge(conn, event_id, name, pin)
                 conn.commit()
                 # C1: never echo the PIN back after creation — admin already knows it
@@ -422,6 +430,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         if not self._host_ok():
             return self._error("forbidden host", 403)
+        if not self._csrf_ok():  # M-new-1
+            return self._error("forbidden", 403)
         path = urlparse(self.path).path
         parts = path.strip("/").split("/")
         try:

@@ -1,5 +1,9 @@
 """Tests for v2/core/judging/db.py — all run against an in-memory SQLite DB."""
+import os
 import pytest
+
+os.environ.setdefault("GSA_JUDGING_SCRYPT_N", "64")  # fast scrypt for tests
+
 from v2.core.database.schema import create_all
 from v2.core.judging import db as jdb
 
@@ -303,6 +307,7 @@ def test_get_presenter_scores_detail(conn):
 def test_delete_score_allows_rescore(conn):
     eid = jdb.create_event(conn, "Test")
     jid = jdb.add_judge(conn, eid, "Judge", "P1")
+    jdb.load_presenters_csv(conn, eid, "100,Jane Smith,CS")  # M-new-2: presenter must exist
     conn.commit()
     jdb.submit_score(conn, eid, jid, 100, ["Q1"], [3])
     conn.commit()
