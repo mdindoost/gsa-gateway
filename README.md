@@ -21,11 +21,11 @@
 
 <br/>
 
-[**🌐 Website**](https://mdindoost.github.io/gsa-gateway/) ·
-[**💬 Discord**](https://discord.gg/a4mvbEmSAq) ·
-[**✈️ Telegram Bot**](https://t.me/njit_gsa_bot) ·
-[**👥 Telegram Group**](https://t.me/GSAGateWayNJIT) ·
-[**💬 GroupMe**](https://groupme.com/join_group/115501633/qd1TpFHa)
+[![Website](https://img.shields.io/badge/Website-1a73e8?style=for-the-badge&logo=googlechrome&logoColor=white)](https://mdindoost.github.io/gsa-gateway/)
+[![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/a4mvbEmSAq)
+[![Telegram Bot](https://img.shields.io/badge/Telegram_Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/njit_gsa_bot)
+[![Telegram Group](https://img.shields.io/badge/Telegram_Group-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/GSAGateWayNJIT)
+[![GroupMe](https://img.shields.io/badge/GroupMe-00AFF0?style=for-the-badge&logo=groupme&logoColor=white)](https://groupme.com/join_group/115501633/qd1TpFHa)
 
 </div>
 
