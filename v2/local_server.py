@@ -39,6 +39,7 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 from bot.services.jobs import JobBusyError, JobManager, JobNotFoundError  # noqa: E402
 from v2.core.ingestion.departments import DEPARTMENTS as DEPT_REGISTRY  # noqa: E402
 from v2.core.ingestion.departments import supported as supported_depts  # noqa: E402
+from v2.core.ingestion.entry_points import crawl_scope as _crawl_scope  # noqa: E402
 
 # Control-plane job runner (faculty refresh, …). Same DB the bot/dashboard use.
 JOBS = JobManager(db_path=DB_PATH, repo_root=REPO_ROOT, python_bin=sys.executable)
@@ -473,6 +474,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
             "status": "ok", "db": str(DB_PATH), "db_exists": DB_PATH.exists(),
             "ollama": _ollama_up(), "running_job": dict(row) if row else None,
             "departments": departments, "last_refresh_all": last_refresh_all,
+            "crawl_scope": _crawl_scope(),  # what the KG gather (explore) covers, by college
             "timestamp": utc_now(),
         })
 

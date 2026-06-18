@@ -64,13 +64,34 @@ def main() -> int:
               conn.execute("SELECT COUNT(*) FROM frontier WHERE status='pending'").fetchone()[0])
         return 0
 
-    st = explore(conn, http_fetch, depth=args.depth)
-    print(f"\nexplore stats: {st}")
-
+    # Walk EVERY anchored root (YWCC hub + MTSM listings). One explore() per entry point,
+    # each with its own BFS + per-listing M3 deactivation (org-scoped, so colleges never
+    # touch each other's people). reconcile_departures MUST run ONCE, AFTER the whole loop —
+    # never inside it: a person who moved to faculty-only would have zero appointments after
+    # their admin listing re-crawls and get falsely retired before the faculty listing runs
+    # (H1 in the design review).
+    from v2.core.ingestion.entry_points import ALL_ENTRY_POINTS
     from v2.core.ingestion.explore import reconcile_departures
-    dep = reconcile_departures(conn)        # M3: retire people who left / clean moved KB
-    print(f"departures (M3): appointments retired={st.departed}, "
+    total_departed = 0
+    total_errors = 0
+    for entry in ALL_ENTRY_POINTS:
+        st = explore(conn, http_fetch, start=entry, depth=args.depth)
+        total_departed += st.departed
+        total_errors += st.errors
+        print(f"explore[{entry.org_slug:20}] {entry.url}\n   {st}")
+
+    dep = reconcile_departures(conn)        # M3: retire people who left / clean moved KB — ONCE
+    print(f"\ndepartures (M3): appointments retired={total_departed}, "
           f"people removed={dep['departed_people']}, stale items retired={dep['items_retired']}")
+
+    # C2 guard: --reset is destructive-first (it cleared all crawler rows before crawling).
+    # If any entry point errored, the DB may be missing people that were not re-created —
+    # warn loudly to restore the pre-run backup rather than embed/serve a truncated KG.
+    if args.reset and total_errors:
+        print(f"\n*** WARNING: {total_errors} fetch error(s) during a --reset run. The reset "
+              "cleared crawler data BEFORE crawling, so some people may be MISSING and were "
+              "not re-created. Restore the pre-run backup and re-run when all pages are "
+              "reachable — do NOT embed/serve this state. ***")
 
     print("\n=== graph summary ===")
     for typ, n in conn.execute(

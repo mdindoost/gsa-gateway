@@ -121,7 +121,8 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                         _record_frontier(conn, None, curl, aspect, d - 1)
                         st.frontier_added += 1
             elif node.kind == "listing":
-                org_id = ensure_org(conn, node.org_slug, node.org_name, node.parent_slug)
+                org_id = ensure_org(conn, node.org_slug, node.org_name, node.parent_slug,
+                                    type=node.org_type)
                 present: set[str] = set()
                 for p in parse_listing(html):
                     purl = "https://people.njit.edu/profile/" + p.slug
@@ -135,7 +136,13 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                     else:
                         # Option A: a college's Dean / Associate Deans lead the COLLEGE, so
                         # appoint them to the parent org (YWCC), not the admin sub-unit; all
-                        # other roles (staff, faculty, …) stay on the listing's own org.
+                        # other roles (staff, faculty, …) stay on the listing's own org. This
+                        # is keyed on YWCC's 'Dean'/'Associate Deans' sections. NOTE: MTSM is
+                        # deliberately NOT reappointed — MTSM has no departments, so its faculty
+                        # live on the `mtsm` college itself; reappointing an MTSM 'Leadership'
+                        # person to `mtsm` would COLLIDE with their faculty@mtsm edge (one
+                        # has_role per person+org). MTSM leadership stays admin@mtsm-administration
+                        # plus faculty@mtsm — two clean edges.
                         appt_org = org_id
                         if node.parent_slug and "dean" in p.section.lower():
                             prow = conn.execute("SELECT id FROM organizations WHERE slug=?",
@@ -186,7 +193,8 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                 prow = conn.execute("SELECT id FROM nodes WHERE type='Person' AND key=?",
                                     (rec.entity_id,)).fetchone()
                 home = _home_dept_org_id(conn, prow[0]) if prow else None
-                ki_org = home or ensure_org(conn, node.org_slug, node.org_name, node.parent_slug)
+                ki_org = home or ensure_org(conn, node.org_slug, node.org_name,
+                                            node.parent_slug, type=node.org_type)
                 reconcile_entity(conn, ki_org, rec.entity_id, decompose(rec),
                                  created_by="crawler", rec=rec, home_appointment=False)
                 pid = conn.execute("SELECT id FROM nodes WHERE type='Person' AND key=?",

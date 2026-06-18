@@ -50,9 +50,21 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
    `LIVE_ENABLED=1`. Spec: `docs/superpowers/specs/2026-06-17-live-search-fallback-design.md`.
 
 **Knowledge sources:**
-- **YWCC / NJIT** — gathered by the `explore()` crawler (`v2/core/ingestion/explore.py`)
-  over server-rendered NJIT pages (`computing.njit.edu/people`, etc.). Builds people/roles/
-  orgs/research-areas. `source='crawler'`. Re-crawl + M3 reconcile handles turnover.
+- **YWCC + MTSM / NJIT** — gathered by the `explore()` crawler (`v2/core/ingestion/explore.py`)
+  over server-rendered NJIT pages. Builds people/roles/orgs/research-areas. `source='crawler'`.
+  **Multi-college:** the crawler walks every anchored root in
+  `entry_points.ALL_ENTRY_POINTS` — YWCC (`computing.njit.edu/people` hub) **and** MTSM
+  (`management.njit.edu/faculty` → `mtsm`, `/administration` → `mtsm-administration`). All NJIT
+  people use the same `people.njit.edu/profile/<slug>` template, so one parser serves all
+  colleges; **adding a college = add its `EntryPoint`(s)** (see the MTSM design doc). Order:
+  a sub-unit listing must follow the listing that creates its parent org (ensure_org resolves
+  parent by slug; MTSM_FACULTY creates `mtsm` before MTSM_ADMIN creates `mtsm-administration`).
+  **Re-crawl is a first-class, repeatable op:** `python scripts/run_explore.py --commit` re-walks
+  all roots; M3 reconcile (once, after the whole loop) retires departures and re-files moves;
+  `--reset` re-derives from scratch (crawler rows only). Invariant: **MTSM has no
+  `type='department'` children** (its faculty file under the `mtsm` college itself) — `verify_kg`
+  enforces it. MTSM "Leadership" people are NOT reappointed to the college (would collide with
+  their faculty@mtsm edge); they stay `admin@mtsm-administration` + `faculty@mtsm`.
 - **GSA + RGOs/clubs** — **manual**, `source='dashboard'`. gsanjit.com is Wix and not
   crawlable (see `docs/superpowers/findings/2026-06-15-gsa-wix-extraction.md`). Officers/
   clubs are authored via the dashboard People editor (or a small backend create); prose
@@ -108,7 +120,7 @@ gsa-gateway/
 ├── dashboard/                  app.js + index.html + style.css (sql.js in-browser)
 ├── scripts/
 │   ├── run_bot.sh              Starts Telegram + Discord bots
-│   ├── run_explore.py          Run the YWCC crawler (explore()) — --depth/--reset/--frontier
+│   ├── run_explore.py          Run the NJIT crawler (explore(), YWCC + MTSM) — --depth/--reset/--frontier
 │   ├── verify_kg.py            Alignment checks: verify_kg() + verify_gsa()
 │   ├── _area_tag_migrate.py    hardened_backup() lives here (used by every gated write)
 │   ├── gsa_ingest_people.py    Roster YAML -> KG (gated)
@@ -150,9 +162,15 @@ then `python v2/scripts/embed_all.py`. Verify: `who are the <X> officers` / `wha
 Dashboard KB tab (or drop a `.md` in `bot/data/sources/gsa/` → `scripts/gsa_ingest_docs.py
 --commit`), then `python v2/scripts/embed_all.py`.
 
-### (Re)gather YWCC people
-`python scripts/run_explore.py --commit` (or the dashboard Jobs tab). Then `embed_all.py`.
-Always followed by `scripts/verify_kg.py`.
+### (Re)gather crawler people (YWCC + MTSM) — repeatable refresh
+`python scripts/run_explore.py` walks ALL colleges in `ALL_ENTRY_POINTS` and refreshes the KG
+(people/roles/research-areas) + crawler KB. **This is the recurring update path** — re-run it
+whenever NJIT pages change (new hires, departures, role/research changes); M3 reconciles
+turnover automatically. Gated workflow: dev copy first (`cp gsa_gateway.db /tmp/dev.db;
+run_explore.py --db /tmp/dev.db`), inspect + `scripts/verify_kg.py`, then live, then
+`v2/scripts/embed_all.py`. `--reset` re-derives crawler data from scratch (manual/dashboard
+content untouched). MTSM program/PhD/FAQ **prose** is separate + manual: `scripts/mtsm_ingest.py
+--commit` (`source='dashboard'`, idempotent on `natural_key`) — re-run when those pages change.
 
 ### Embed new/changed knowledge
 `python v2/scripts/embed_all.py` (resumable — only embeds items missing a vector).

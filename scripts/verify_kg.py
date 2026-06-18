@@ -44,7 +44,25 @@ def verify_kg(conn: sqlite3.Connection) -> list[str]:
                           f"not in dept appointment(s) {sorted(dept)}")
         if dept and not kb:
             issues.append(f"no KB content: {p[2]} has a department appointment but no items")
+    issues.extend(_verify_mtsm_no_departments(conn))
     return issues
+
+
+def _verify_mtsm_no_departments(conn: sqlite3.Connection) -> list[str]:
+    """Invariant: MTSM must have ZERO type='department' children. MTSM files faculty KB under
+    the college org (mtsm) because it has no departments; if a department child ever appears,
+    `_home_dept_org_id` would start filing faculty KB under it while appointments stay on the
+    college, silently desyncing 'MTSM faculty' queries (C1 in the design review)."""
+    row = conn.execute("SELECT id FROM organizations WHERE slug='mtsm' AND is_active=1").fetchone()
+    if not row:
+        return []
+    depts = [r[0] for r in conn.execute(
+        "SELECT name FROM organizations WHERE parent_id=? AND is_active=1 AND type='department'",
+        (row[0],))]
+    if depts:
+        return [f"MTSM invariant violated: mtsm has type='department' child(ren) {depts} — "
+                "faculty KB will desync from appointments. Re-file them as 'program'/'unit'."]
+    return []
 
 
 def verify_gsa(conn: sqlite3.Connection) -> list[str]:

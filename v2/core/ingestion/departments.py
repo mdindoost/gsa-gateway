@@ -45,12 +45,19 @@ DEPARTMENTS: dict[str, Department] = {
              "DS contains only real DS faculty. Verified 2026-06-13 (32 profiles)."),
     "informatics": Department(
         key="informatics", name="Informatics",
-        faculty_list="https://informatics.njit.edu/faculty", default_org_id=7,
-        discovery="static", verified=False,
-        note="Aspirational registry entry — org node exists but has NEVER been "
-             "crawled (0 KB items). Static discovery should work (same NJIT "
-             "template), but set verified=True only after a confirmed test run."),
+        faculty_list="https://informatics.njit.edu/people", default_org_id=7,
+        discovery="static", verified=True,
+        note="Faculty list is /people (NOT /faculty — that URL 404s). Static discovery "
+             "confirmed 2026-06-18 (59 people parsed). Also covered by the explore() KG "
+             "gather via the computing.njit.edu hub."),
 }
+
+# Multi-college coverage: this registry powers the per-department 'Refresh NJIT KB' button
+# only. The canonical, multi-college crawler is explore() over entry_points.ALL_ENTRY_POINTS —
+# it covers ALL of YWCC (CS, DS, Informatics, College Admin) AND the Martin Tuchman School of
+# Management (MTSM: mtsm + mtsm-administration). MTSM is a COLLEGE with a two-org split, not a
+# department, so it lives in entry_points.py, not here. Add a department here only to include
+# it in the legacy per-dept refresh path.
 
 
 def get(key: str) -> Department:

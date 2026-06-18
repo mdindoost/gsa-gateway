@@ -31,6 +31,7 @@ _SECTION_RULES = [
     (re.compile(r"advis", re.I), "advisor"),
     (re.compile(r"joint", re.I), "joint"),
     (re.compile(r"dean", re.I), "admin"),
+    (re.compile(r"leadership", re.I), "admin"),   # MTSM 'Leadership' section (Dean + Assoc. Deans)
     (re.compile(r"chair", re.I), "admin"),
     (re.compile(r"professor|lecturer|faculty", re.I), "faculty"),
     (re.compile(r"staff|administrativ|director|coordinator|assistant|designer", re.I), "staff"),

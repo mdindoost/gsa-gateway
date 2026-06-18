@@ -589,6 +589,7 @@ function renderJobs() {
         <button class="btn btn-primary" id="job-explore">🕸 Gather KG (people + roles + research)</button>
         <button class="btn btn-ghost" id="job-frontier">🔗 Process frontier sites</button>
       </div>
+      <div id="jobs-kg-scope" class="jobs-scope"></div>
       <div id="jobs-scope" class="jobs-scope"></div>
       <div id="jobs-eta" class="jobs-eta"></div>
       <div id="job-active"></div>
@@ -631,6 +632,14 @@ function refreshJobsHealth() {
     h.innerHTML = "Ollama: " + (ok
       ? '<span style="color:#7ee2a8">● up</span>'
       : '<span style="color:#ff8a8a">● down — overviews & embeddings will fail</span>');
+
+    // What the "Gather KG" (explore) crawler covers — every college in ALL_ENTRY_POINTS.
+    const kgScope = document.getElementById("jobs-kg-scope");
+    if (kgScope && body.crawl_scope) {
+      kgScope.innerHTML = "🕸 KG gather covers: " + body.crawl_scope.map((c) =>
+        `<strong>${esc(c.college)}</strong> <span class="muted">(${(c.areas || []).map(esc).join(", ")})</span>`
+      ).join(" &nbsp;·&nbsp; ");
+    }
 
     // What "Refresh NJIT KB" will run + what's coming.
     const scope = document.getElementById("jobs-scope");

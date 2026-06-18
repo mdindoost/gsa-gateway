@@ -110,9 +110,12 @@ def org_descendants(conn: sqlite3.Connection, org_id: int) -> set[int]:
 
 
 def org_departments(conn: sqlite3.Connection, org_id: int) -> list[str]:
-    """Immediate child org names (e.g. YWCC → Computer Science, Data Science, …)."""
+    """Immediate child org names that are actual departments (e.g. YWCC → Computer Science,
+    Data Science, …). Filters on type='department' so non-department children — e.g. MTSM's
+    'Business Data Science' program or an admin sub-unit — are not reported as departments."""
     return [r[0] for r in conn.execute(
-        "SELECT name FROM organizations WHERE parent_id=? AND is_active=1 ORDER BY name",
+        "SELECT name FROM organizations WHERE parent_id=? AND is_active=1 "
+        "AND type='department' ORDER BY name",
         (org_id,))]
 
 
