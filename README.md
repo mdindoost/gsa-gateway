@@ -1,194 +1,127 @@
 <div align="center">
 
+<!-- Drop a logo or hero banner here when ready: <img src="docs/assets/banner.png" width="640"/> -->
+
 # GSA Gateway
 
-**A Discord + Telegram assistant and admin platform for NJIT's Graduate Student Association.**
+### The AI assistant for graduate life at NJIT — on every app you already use.
 
-GSA Gateway answers graduate students' questions about events, funding, policies, and
-campus resources through free-form chat — grounded in a curated knowledge base via a
-local Retrieval-Augmented Generation (RAG) pipeline, so it never makes things up.
+*Ask anything about your Graduate Student Association — officers, funding, events, deadlines, faculty, research — and get an instant, trustworthy answer on Discord, Telegram, or GroupMe. It never makes things up, because every answer is grounded in verified GSA and NJIT information.*
 
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![discord.py](https://img.shields.io/badge/discord.py-2.x-5865F2.svg)](https://discordpy.readthedocs.io/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#testing)
+<br/>
+
+![Discord](https://img.shields.io/badge/Discord-live-5865F2?logo=discord&logoColor=white)
+![Telegram](https://img.shields.io/badge/Telegram-live-26A5E4?logo=telegram&logoColor=white)
+![GroupMe](https://img.shields.io/badge/GroupMe-live-00AFF0?logoColor=white)
+![Self-hosted](https://img.shields.io/badge/100%25-self--hosted-success)
+![No cloud bill](https://img.shields.io/badge/cloud%20cost-%240-22c55e)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+<br/>
 
 [**🌐 Website**](https://mdindoost.github.io/gsa-gateway/) ·
-[**💬 Discord**](https://discord.gg/a4mvbEmSAq) ·
-[**✈️ Telegram**](https://t.me/njit_gsa_bot) ·
-[**📖 Docs**](docs/)
+[**💬 Add on Discord**](https://discord.gg/a4mvbEmSAq) ·
+[**✈️ Chat on Telegram**](https://t.me/njit_gsa_bot)
 
 </div>
 
 ---
 
-## What it does
+## Why GSA Gateway
 
-- **Conversational Q&A** on Discord (`#ask-gsa` and DMs) and Telegram — ask anything about
-  the GSA in plain language and get answers grounded in the official knowledge base.
-- **Slash commands** for events, funding, resources, contacts, feedback, and more.
-- **Scheduled & broadcast posts** to both platforms from one place (announcements, events,
-  reminders, a live World Cup match tracker).
-- **A local admin dashboard** to manage the knowledge base, posts, organizations, and
-  settings — no SQL required.
-- **Privacy-first:** user IDs are hashed before storage; feedback is anonymous by default.
+Grad students have questions all the time — *When's the next travel award deadline? Who do I email about my stipend? Which professor works on machine learning? Is there free food this week?* The answers exist, but they're scattered across websites, PDFs, group chats, and people's memory.
 
-## Student commands
+GSA Gateway puts all of it one message away. Students ask in plain language on whatever app they already have open, and get a clear, accurate answer in seconds — no menus, no commands, no digging.
 
-### Discord
+It's built on three principles:
 
-| Command | What it does |
-|---|---|
-| `/ask` | AI-powered Q&A from the GSA knowledge base (RAG, with conversation memory) |
-| `/events` · `/event [name]` | List upcoming events, or full detail for one |
-| `/resources [category]` | Browse curated student resources |
-| `/contact [role]` | Look up GSA officers and key NJIT offices |
-| `/initiative` | Submit a student idea or initiative (anonymous by default) |
-| `/feedback` | Send a private, anonymous note to GSA officers |
-| `/worldcup` | World Cup 2026 schedule and info |
-| `/qrcode` | Generate a QR code (e.g. for event sign-ups) |
-| `/help` | Full command reference |
+1. **Grounded — never invented.** Every answer is drawn from verified GSA documents and official NJIT pages. If the assistant doesn't know, it says so and points to the right office. It will not guess.
 
-Plus **free-form chat** in `#ask-gsa` and direct messages.
+2. **Meet students where they are.** One assistant, one brain, three platforms — Discord, Telegram, and GroupMe — all answering identically. No new app to install.
 
-### Telegram
-The same knowledge-base Q&A is available by chatting with [**@njit_gsa_bot**](https://t.me/njit_gsa_bot).
-
-### Admin (officers only, ephemeral)
-`/admin_stats` · `/admin_summary` · `/admin_export` · `/admin_announce` · `/admin_add_event` · `/admin_rebuild_index`
+3. **Self-hosted and private.** Runs entirely on one machine with a local AI model. No cloud subscription, no per-question bill, and no student's identity ever stored in the clear.
 
 ---
 
-## Architecture
+## What it does
 
-GSA Gateway runs as a single bot process with a layered design:
+✅ &nbsp;**Answers grad-life questions** in plain language — officers, funding, events, policies, deadlines, campus resources, plus YWCC faculty and their research.
 
-- **The bot (`bot/`)** — the running Discord + Telegram application: commands, free-form
-  chat, intent routing, reminders, daily digest, and the World Cup tracker.
-- **The retrieval pipeline** — documents are chunked, embedded (`nomic-embed-text` via
-  Ollama), and stored in a vector index. Each question is embedded, matched against the
-  index, reranked, and answered by a local LLM (`llama3.1:8b`) **grounded only in the
-  retrieved context**. If the LLM is unavailable, it degrades gracefully to fuzzy search.
-- **The v2 platform (`v2/`)** — a database-first core that everything is converging on:
-  a single SQLite database (with `sqlite-vec` + FTS5 hybrid retrieval), an organization
-  hierarchy, versioned knowledge items, a universal *posts* model, and a **connector
-  pattern** that fans one message out to every platform in parallel. Feature-flagged so it
-  can be toggled on per capability with instant rollback. The World Cup tracker
-  (`v2/integration/worldcup_runner.py`) is the reference *content generator*: it polls
-  live match data and enqueues posts through the standard `enqueue_post` contract, which
-  the scheduler then delivers.
-- **The dashboard (`dashboard/`)** — a dependency-free admin UI (see below).
-- **The website (`website/`)** — a static, GitHub Pages–ready info site.
+✅ &nbsp;**Works across Discord, Telegram, and GroupMe** from a single source of truth, so every student gets the same answer everywhere.
 
-> A deeper write-up lives in [`docs/architecture.md`](docs/architecture.md).
+✅ &nbsp;**Runs the 3-Minute Research Pitch competition end to end** — judges score from their phones, the audience votes, and the leaderboard is live and exportable.
 
-## Tech stack
+✅ &nbsp;**Gives officers a no-code dashboard** to update knowledge, manage clubs and people, post announcements, and watch what students are asking.
 
-Python 3.11+ · [discord.py](https://discordpy.readthedocs.io/) 2.x ·
-[python-telegram-bot](https://python-telegram-bot.org/) · SQLite ·
-[sqlite-vec](https://github.com/asg017/sqlite-vec) + FTS5 ·
-[Ollama](https://ollama.com/) (local LLM + embeddings) ·
-[rapidfuzz](https://github.com/rapidfuzz/RapidFuzz) · pytest.
-The dashboard is pure HTML/CSS/JS (sql.js, Chart.js via CDN).
+✅ &nbsp;**Handy extras** — generates branded GSA QR codes for flyers, broadcasts announcements to every platform at once, and posts live World Cup scores.
+
+---
+
+## Ask it anything
+
+> *"Who are the GSA officers?"*
+> *"When is the next travel award deadline?"*
+> *"Which CS professors work on machine learning?"*
+> *"How do I start a new graduate club?"*
+> *"Is there any free food on campus this week?"*
+> *"Who do I contact about my stipend?"*
+
+Just type it like you'd text a friend. No commands to memorize.
+
+---
+
+## What it knows
+
+| Area | Coverage |
+|---|---|
+| **GSA** | Officers, executive board, registered clubs & RGOs, funding, events, and policies |
+| **YWCC** | Ying Wu College of Computing faculty, staff, and research areas — kept current automatically |
+| **The wider NJIT web** | A live fallback can pull verified answers straight from njit.edu *(optional — off by default)* |
+
+When something falls outside what it knows for certain, it doesn't bluff — it tells the student and routes them to the office that owns the answer. Sensitive topics like immigration, billing, and funding always come with a "confirm with the official office" note.
+
+---
+
+## For GSA officers
+
+Everything is managed from a private, local **admin dashboard** — no code, no spreadsheets, no SQL:
+
+- ✏️ **Knowledge & people** — add or update clubs, officers, faculty, policies, and FAQs
+- 📣 **Announcements** — write once, publish to Discord, Telegram, and GroupMe together
+- 🏆 **Judging** — create an event, load presenters, hand out judge PINs, open voting, watch results live
+- 📊 **Insights** — see what students are asking and where the knowledge has gaps
 
 ---
 
 ## Quick start
 
-**Prerequisites:** Python 3.11+, a Discord bot token, and (optional but recommended)
-[Ollama](https://ollama.com/) running locally for AI answers.
-
 ```bash
 git clone https://github.com/mdindoost/gsa-gateway.git
 cd gsa-gateway
 
-# one-time setup: venv, dependencies, database, tests
-bash scripts/setup.sh
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 
-# configure secrets
-cp .env.example .env        # then edit: DISCORD_TOKEN, etc.
-
-# pull the local models (if using Ollama)
-ollama pull llama3.1:8b
-ollama pull nomic-embed-text
-
-# build the search index, then start the bot
-python scripts/build_index.py --reset
-bash scripts/restart.sh                 # add --no-llm to run without Ollama
+cp .env.example .env        # add your Discord / Telegram tokens
+bash scripts/run_bot.sh     # start the assistant on every platform
 ```
 
-Watch it come up with `tail -f gsa_gateway.log`.
-
-## Admin dashboard
-
-A local, serverless admin UI for managing posts, the knowledge base, organizations, and
-settings. Two ways to use it:
-
-- **Server mode (recommended):** run `python v2/local_server.py` on the host, open an SSH
-  tunnel (`ssh -L 5555:localhost:5555 user@host`), and visit **`http://localhost:5555/`** —
-  it hosts the dashboard and reads/writes the live database directly.
-- **File mode:** open `dashboard/index.html` and load a database copy; changes are exported
-  as SQL patches you apply manually.
-
-Full guide: [`docs/LOCAL_SERVER.md`](docs/LOCAL_SERVER.md) and [`docs/DASHBOARD.md`](docs/DASHBOARD.md).
+The admin dashboard comes up alongside the bot at `http://localhost:5555`.
+Full setup and operations guide: [**docs/PROJECT_STATUS.md**](docs/PROJECT_STATUS.md).
 
 ---
 
-## Project structure
+## Under the hood
 
-```
-gsa-gateway/
-├── bot/            Discord + Telegram bot — commands, services (RAG, search, DB), data
-├── v2/             Database-first platform — schema, retrieval, publishing, connectors,
-│                   integration shims, local admin server, tests
-├── dashboard/      Serverless admin UI (HTML/CSS/JS)
-├── website/        Static GitHub Pages site
-├── scripts/        setup.sh, restart.sh, build_index.py, exports, migrations
-└── docs/           Architecture, deployment, admin & student guides, privacy policy
-```
+GSA Gateway is a v2, database-first rewrite: a knowledge graph plus a retrieval pipeline that combines structured lookups with grounded AI generation, served to three chat platforms from one shared brain — all running locally on open-source models.
 
-## Configuration
-
-All configuration is via `.env` (see `.env.example`). Key settings:
-
-| Variable | Purpose |
-|---|---|
-| `DISCORD_TOKEN`, `TELEGRAM_BOT_TOKEN` | Platform credentials |
-| `ADMIN_ROLE_NAME` | Discord role allowed to run admin commands |
-| `ALLOWED_CHANNELS` | Comma-separated channel names the bot listens in |
-| `OLLAMA_ENABLED`, `OLLAMA_MODEL` | Local LLM for AI answers |
-| `V2_RETRIEVER_ENABLED`, `V2_SCHEDULER_ENABLED`, `V2_WORLDCUP_ENABLED` | Feature flags for the v2 platform (instant rollback) |
-
-## Testing
-
-```bash
-pytest                  # full suite
-pytest v2/tests/ -v     # v2 platform
-```
-
-## Documentation
-
-| Doc | For |
-|---|---|
-| [`docs/MANUAL.md`](docs/MANUAL.md) | Running, maintaining, and extending the project |
-| [`docs/architecture.md`](docs/architecture.md) | System design |
-| [`docs/admin_guide.md`](docs/admin_guide.md) | Officer / admin operations |
-| [`docs/student_usage_guide.md`](docs/student_usage_guide.md) | Student-facing how-to |
-| [`docs/deployment.md`](docs/deployment.md) | Deployment & server migration |
-| [`docs/DASHBOARD.md`](docs/DASHBOARD.md) · [`docs/LOCAL_SERVER.md`](docs/LOCAL_SERVER.md) | Admin dashboard |
-| [`docs/privacy_policy.md`](docs/privacy_policy.md) | Data & privacy |
+*A full technical breakdown (architecture, retrieval pipeline, data model) is coming in a dedicated technical README. For now, see [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) and [`CLAUDE.md`](CLAUDE.md).*
 
 ---
-
-## Contributing
-
-Issues and pull requests are welcome. Please run `pytest` before submitting, and keep new
-code consistent with the surrounding style. For larger changes, open an issue first to
-discuss the approach.
 
 ## Maintainer
 
-Built and maintained by **Mohammad Dindoost** (VP Academic Affairs, NJIT GSA).
+Built and maintained by **Mohammad Dindoost** — VP Academic Affairs, NJIT Graduate Student Association.
 
 ## License
 
