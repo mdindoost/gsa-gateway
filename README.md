@@ -115,11 +115,91 @@ Full setup and operations guide: [**docs/PROJECT_STATUS.md**](docs/PROJECT_STATU
 
 ---
 
-## Under the hood
+## Architecture — how it actually works
 
-GSA Gateway is a v2, database-first rewrite: a knowledge graph plus a retrieval pipeline that combines structured lookups with grounded AI generation, served to three chat platforms from one shared brain — all running locally on open-source models.
+GSA Gateway is **not** "another RAG chatbot." Its core idea is **gated structured retrieval**: a question is answered by a *deterministic, complete* path whenever possible, and only falls through to probabilistic semantic search for the open-ended long tail. That gate is what makes the answers trustworthy enough to put in front of students.
 
-*A full technical breakdown (architecture, retrieval pipeline, data model) is coming in a dedicated technical README. For now, see [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) and [`CLAUDE.md`](CLAUDE.md).*
+### Two knowledge layers, one database
+
+Everything lives in a single self-hosted SQLite file (`gsa_gateway.db`) with two complementary representations of the same knowledge:
+
+| Layer | Tables | Powers |
+|---|---|---|
+| **Text / semantic** | `knowledge_items` (decomposed prose chunks, **FTS5** full-text) + `knowledge_vectors` (**sqlite-vec** `vec0`, `nomic-embed-text` 768-d, L2-normalized) | semantic RAG over unstructured prose |
+| **Graph / structured** | `nodes` (Person · Org · ResearchArea) + `edges` (`has_role` w/ titles+category · `researches` · `part_of`) | precise, complete relational answers |
+
+A person isn't one blob — they're decomposed into discrete items (profile, research areas, education, roles, …) and graph edges, so the system can answer *facets* precisely.
+
+### The retrieval pipeline (the gate)
+
+```
+                       ┌─────────────────────────────────────────────┐
+   user question  ───▶ │  1. STRUCTURED ROUTER  (rule-based, no LLM) │
+                       │     enumerate? filter? count? role? entity? │
+                       └───────────────┬──────────────┬──────────────┘
+                              matches  │              │ no clear match
+                       ┌───────────────▼───┐          │
+                       │ 2. SQL SKILLS     │          │
+                       │ + ENTITY LAYER    │          │
+                       │ complete &        │          │
+                       │ deterministic:    │          │
+                       │ • faculty in X    │          │
+                       │ • dean of Y       │          │
+                       │ • all "Michaels"  │          │
+                       │ • X's research    │          │
+                       │ • entity card     │          │
+                       │ • disambiguate    │          │
+                       └─────┬─────────────┘          │
+                  empty/none │  answer                │
+                             ▼                         ▼
+                       ┌──────────────────────────────────────────────┐
+                       │ 3. HYBRID SEMANTIC RAG (fallback, long tail)  │
+                       │   sqlite-vec KNN  +  FTS5 BM25                 │
+                       │        └──── Reciprocal Rank Fusion ────┐      │
+                       │                                cross-encoder   │
+                       │                                  rerank        │
+                       │                                    │           │
+                       │            Ollama llama3.1:8b  ◀────┘           │
+                       │        grounded ONLY in retrieved context      │
+                       └───────────────┬───────────────────────────────┘
+                                       │ KB miss
+                       ┌───────────────▼───────────────────────────────┐
+                       │ 4. LIVE njit.edu FALLBACK (optional, dormant)  │
+                       │    fetch page → answer from VERBATIM spans     │
+                       └────────────────────────────────────────────────┘
+```
+
+**1 — Structured router** (`v2/core/retrieval/router.py`): pure rule-based slot extraction (no LLM — a small local model is unreliable at orchestration). It maps a question to a parameterized skill *only* when the shape is unambiguous; otherwise it returns `None` and stays out of the way. Conservative by design — a descriptive question wrongly forced into a skill is the dangerous failure.
+
+**2 — SQL skills + entity layer** (`skills.py`, `entity.py`): parameterized SQL over the graph/relational data returning **complete sets**, not a top-K sample — "who is the dean of YWCC", "list *all* the Michaels", "what does Guiling Wang research", "who works on graph neural networks". Named people resolve to a full **entity card** (roles, research, education, contact); ambiguous names (5 "Wang"s) **disambiguate instead of guessing**. Empty results fall through to RAG rather than dead-ending — so a missing structured fact never blocks the prose path.
+
+**3 — Hybrid semantic RAG** (`retriever.py`): the fallback for open prose. The query is embedded and run through **sqlite-vec KNN** (semantic) *and* **FTS5 bm25** (keyword); the two rankings are fused with **Reciprocal Rank Fusion**, reranked by a **cross-encoder**, and the top context is handed to **Ollama `llama3.1:8b`**, which generates an answer **grounded strictly in the retrieved rows** — with an *entity-grounding* rule that forbids attributing one person's facts to another and requires honest "I couldn't find that" over invention.
+
+**4 — Live fallback** (extractive, optional): on a KB miss the bot can search njit.edu, fetch the top page, and answer from **verbatim page-grounded spans + a source link** — never paraphrased into a hallucination. Currently dormant (no search key); degrades silently to a "contact the office" deflection.
+
+**Safety rails throughout:** high-stakes topics (immigration, billing, funding) append a "confirm with the official office" heads-up; user IDs are hashed before any write; answers cite their source document.
+
+### Knowledge ingestion
+
+- **Crawler** (`v2/core/ingestion/explore.py`) — a bounded BFS over server-rendered NJIT pages builds the people/roles/orgs/research-areas graph + KB. **Multi-college** (YWCC + Martin Tuchman, same NJIT profile template, one parser) and **re-runnable**: a re-crawl reconciles departures/moves/new hires automatically (the "M3" reconcile). Adding a college = one entry point.
+- **Manual** — GSA officers, clubs/RGOs, and policy prose are authored through the dashboard (gsanjit.com is Wix and not crawlable). Every row is tagged by `source` (`crawler` vs `dashboard`) so an automated re-crawl never clobbers hand-curated data.
+
+### Stack
+
+| Concern | Technology |
+|---|---|
+| Language / runtime | **Python 3.11+**, asyncio |
+| Datastore | **SQLite** (single file, STRICT tables, WAL) |
+| Vector search | **sqlite-vec** (`vec0`), 768-d, L2-normalized |
+| Keyword search | **SQLite FTS5** + bm25 |
+| Fusion / rerank | **Reciprocal Rank Fusion** + **cross-encoder** reranker |
+| Generation | **Ollama** · `llama3.1:8b` (local) |
+| Embeddings | **`nomic-embed-text`** (local) |
+| Chat platforms | **discord.py** · **python-telegram-bot** · **GroupMe** (one shared brain, connector pattern) |
+| Dashboard | dependency-free HTML/JS + **sql.js**, served by a stdlib HTTP backend |
+| Hosting | **100% self-hosted**, local models — no cloud inference, $0 per-query |
+
+> Deeper design docs live in [`docs/superpowers/specs/`](docs/superpowers/); current state + handover in [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md); conventions in [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
