@@ -2064,6 +2064,7 @@ function renderPlatformSettings(host) {
 
 let JUDGING_SELECTED_EVENT = null;  // currently selected event id
 let JUDGING_POLL = null;            // interval id for live progress
+let JUDGING_EVENTS = [];            // last-rendered events (for handlers that need name/status)
 
 function renderJudging() {
   if (!SERVER_URL) {
@@ -2091,6 +2092,7 @@ function _judgingLoadEvents() {
 }
 
 function _judgingRender(events) {
+  JUDGING_EVENTS = events || [];     // cache for handlers (delete needs name/status)
   const tab = document.getElementById("tab-judging");
   const sel = JUDGING_SELECTED_EVENT;
 
@@ -2106,7 +2108,7 @@ function _judgingRender(events) {
         ${ev.status === "closed" ? `<button class="btn-sm" onclick="_judgingReopen(${ev.id})">Re-open</button>` : ""}
         ${ev.status === "open"   ? `<button class="btn-sm btn-danger" onclick="_judgingClose(${ev.id})">Close</button>` : ""}
         <button class="btn-sm" onclick="_judgingSelect(${ev.id})">Manage</button>
-        <button class="btn-sm btn-danger" onclick="_judgingDeleteEvent(${ev.id}, ${JSON.stringify(ev.name)}, ${JSON.stringify(ev.status)})">Delete</button>
+        <button class="btn-sm btn-danger" onclick="_judgingDeleteEvent(${ev.id})">Delete</button>
       </td>
     </tr>`).join("");
 
@@ -2283,8 +2285,10 @@ function _judgingReopen(eventId) {
   _judgingOpen(eventId, true);
 }
 
-function _judgingDeleteEvent(eventId, name, status) {
-  const warn = status === "open" ? "\n\n⚠️ This event is currently OPEN." : "";
+function _judgingDeleteEvent(eventId) {
+  const ev = JUDGING_EVENTS.find((e) => e.id === eventId) || {};
+  const name = ev.name || ("#" + eventId);
+  const warn = ev.status === "open" ? "\n\n⚠️ This event is currently OPEN." : "";
   if (!confirm(`Permanently DELETE event "${name}" (#${eventId}) and ALL its data — `
              + `judges, presenters, scores, audience votes, and score history?`
              + `\n\nThis CANNOT be undone.${warn}`)) return;
