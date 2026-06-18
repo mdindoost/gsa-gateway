@@ -69,7 +69,16 @@ BASE_SYSTEM_PROMPT = (
     "11. When asked to list, count, or enumerate items that match criteria (e.g. 'which "
     "speakers from X', 'how many Y', 'all talks about Z'), scan EVERY provided document "
     "systematically before answering. Do not stop at the first match. Report the complete "
-    "set of matching items."
+    "set of matching items.\n"
+    "12. ENTITY GROUNDING (critical): When a question is about a specific named person or "
+    "organization (e.g. 'what is Hai Phan's research area', 'who is X', 'X's email'), answer "
+    "ONLY from documents that are about THAT EXACT person or organization. If the context "
+    "contains documents about a DIFFERENT person, those documents are NOT relevant — do not "
+    "use them and do not mention that other person's details. If no document is about the "
+    "named person, say plainly that you couldn't find that specific information for them and "
+    "point the student to the source — NEVER substitute, guess, or volunteer a different "
+    "individual's information as if it were theirs. Attributing one person's facts to another "
+    "is a serious error."
 )
 
 _EXPAND_SYSTEM = (
@@ -199,7 +208,10 @@ class OllamaClient:
             f"Student question: {question}\n\n"
             "Instructions: Answer the student's question using ONLY the documents above. "
             "Cite which document you used. If the documents don't contain the answer, say so "
-            "and direct them to a GSA officer."
+            "and direct them to a GSA officer. If the question names a specific person or "
+            "organization, answer ONLY from documents about that exact person/organization — "
+            "if none of the documents are about them, say you couldn't find that information "
+            "for them and stop; do not report a different person's details."
         )
         return system_prompt, user_prompt
 
