@@ -123,6 +123,17 @@ Unstructured prose, **decomposed** into small focused items — each person beco
 The same people and orgs as **typed entities and relationships**: `Person`, `Org`, `ResearchArea` nodes joined by `has_role` (with title + category), `researches`, and `part_of` edges. The KG answers *"what are the exact facts and relationships of X"* — who is the dean, every faculty member in a department, what someone researches, the org hierarchy — **completely and deterministically**, things a text search structurally can't (enumerate all, traverse, see a role that lives only as an edge).
 > Tables: `nodes` (entities) · `edges` (typed relationships, with `category`/`attrs.titles`).
 
+The graph is small and explicit — three node types and four edge types:
+
+| Edge (relation) | From → To | Captures | Powers queries like |
+|---|---|---|---|
+| **`has_role`** | Person → Org | a role: `category` (officer · faculty · admin · staff · advisor · emeritus) + free-text `attrs.titles` | "who is the dean of YWCC", "GSA officers", "everyone in Informatics" |
+| **`researches`** | Person → ResearchArea | a research interest | "who works on graph neural networks", "what does X research" |
+| **`part_of`** | Org → Org | the org hierarchy | "departments in YWCC", subtree scoping ("…in the whole college") |
+| **`has_source`** | node → doc | provenance — which crawled page/doc a fact came from | re-crawl reconciliation, traceability |
+
+Roles being *edges* (not text) is what lets the bot answer "who is the dean" exactly — and distinguish "Dean" from "Associate Dean" — which a text search can't.
+
 **Why both:** decomposing a person across KB chunks + KG edges means the system can answer a precise *facet* ("X's research areas") from the graph, fall back to prose ("X's bio") from the KB, and never has to cram an entire person into one retrieved blob. The retrieval gate below uses the **KG for relational/precise** asks and the **KB for semantic** ones.
 
 ### The retrieval pipeline (the gate)
