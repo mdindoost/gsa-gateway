@@ -63,12 +63,14 @@ It's built on three principles:
 
 ## Ask it anything
 
+> *"Which CS professors work on machine learning?"*
+> *"Who is the dean of YWCC?"*
+> *"What is the Business Data Science PhD application deadline?"*
+> *"Who do I contact about my stipend?"*
 > *"Who are the GSA officers?"*
 > *"When is the next travel award deadline?"*
-> *"Which CS professors work on machine learning?"*
 > *"How do I start a new graduate club?"*
 > *"Is there any free food on campus this week?"*
-> *"Who do I contact about my stipend?"*
 
 Just type it like you'd text a friend. No commands to memorize.
 
@@ -79,21 +81,11 @@ Just type it like you'd text a friend. No commands to memorize.
 | Area | Coverage |
 |---|---|
 | **GSA** | Officers, executive board, registered clubs & RGOs, funding, events, and policies |
-| **YWCC** | Ying Wu College of Computing faculty, staff, and research areas — kept current automatically |
+| **YWCC** | Ying Wu College of Computing — faculty, staff, and research areas, kept current automatically |
+| **Martin Tuchman School of Management** | Faculty, administration, and graduate programs (MSM, TECH MBA, Ph.D. in Business Data Science) |
 | **The wider NJIT web** | A live fallback can pull verified answers straight from njit.edu *(optional — off by default)* |
 
 When something falls outside what it knows for certain, it doesn't bluff — it tells the student and routes them to the office that owns the answer. Sensitive topics like immigration, billing, and funding always come with a "confirm with the official office" note.
-
----
-
-## For GSA officers
-
-Everything is managed from a private, local **admin dashboard** — no code, no spreadsheets, no SQL:
-
-- ✏️ **Knowledge & people** — add or update clubs, officers, faculty, policies, and FAQs
-- 📣 **Announcements** — write once, publish to Discord, Telegram, and GroupMe together
-- 🏆 **Judging** — create an event, load presenters, hand out judge PINs, open voting, watch results live
-- 📊 **Insights** — see what students are asking and where the knowledge has gaps
 
 ---
 
