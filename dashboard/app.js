@@ -2191,7 +2191,8 @@ function _judgingManageSection(eventId) {
         <h3>Add Judge</h3>
         <div style="display:grid;gap:6px;max-width:320px">
           <input id="j-judge-name" placeholder="Judge name" style="padding:6px">
-          <input id="j-judge-pin" placeholder="PIN (unique, you choose)" style="padding:6px">
+          <input id="j-judge-pin" placeholder="PIN — at least 6 characters, unique" minlength="6" style="padding:6px">
+          <div class="muted" style="font-size:0.8em">PIN must be at least 6 characters and unique within this event. It's stored hashed — note it down now, it can't be shown later.</div>
           <button class="btn-primary" onclick="_judgingAddJudge(${eventId})">Add Judge</button>
         </div>
         <div id="j-judges-list" style="margin-top:12px">Loading…</div>
@@ -2275,6 +2276,7 @@ function _judgingAddJudge(eventId) {
   const name = document.getElementById("j-judge-name").value.trim();
   const pin  = document.getElementById("j-judge-pin").value.trim();
   if (!name || !pin) { toast("Name and PIN required", false); return; }
+  if (pin.length < 6) { toast("PIN must be at least 6 characters", false); return; }
   _jPost(`/judging/events/${eventId}/judges`, { name, pin })
   .then((r) => r.json()).then(() => {
     document.getElementById("j-judge-name").value = "";
