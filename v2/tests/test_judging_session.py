@@ -117,7 +117,8 @@ def test_full_scoring_flow(setup):
     manager, eid, db_path = setup
     _auth(manager)
     resp, _ = manager.handle("user1", "100")
-    assert "Jane Smith" in resp
+    assert "Jane Smith" in resp          # confirmation shows name/dept first
+    resp, _ = manager.handle("user1", "yes")   # confirm → start scoring
     assert "Q1" in resp
     manager.handle("user1", "4")
     resp, _ = manager.handle("user1", "5")
@@ -133,10 +134,52 @@ def test_full_scoring_flow(setup):
     conn.close()
 
 
+# ── confirm presenter before scoring ────────────────────────────────────────────
+
+def test_confirm_presenter_shows_name_then_yes_scores(setup):
+    manager, *_ = setup
+    _auth(manager)
+    resp, _ = manager.handle("user1", "100")
+    assert "Jane Smith" in resp and "correct" in resp.lower()  # confirmation, not scoring
+    assert "Q1" not in resp
+    resp, _ = manager.handle("user1", "yes")
+    assert "Q1" in resp                                         # now scoring
+
+
+def test_confirm_presenter_no_asks_for_number(setup):
+    manager, *_ = setup
+    _auth(manager)
+    manager.handle("user1", "100")
+    resp, _ = manager.handle("user1", "no")
+    assert "enter" in resp.lower() and "number" in resp.lower()
+    # back in ready — a fresh number re-confirms
+    resp, _ = manager.handle("user1", "101")
+    assert "Ali Hassan" in resp
+
+
+def test_confirm_presenter_wrong_number_corrects(setup):
+    manager, *_ = setup
+    _auth(manager)
+    manager.handle("user1", "100")            # confirm Jane (wrong)
+    resp, _ = manager.handle("user1", "101")  # "I meant 101" → re-confirm
+    assert "Ali Hassan" in resp
+    resp, _ = manager.handle("user1", "yes")
+    assert "Q1" in resp
+
+
+def test_confirm_presenter_unknown_correction(setup):
+    manager, *_ = setup
+    _auth(manager)
+    manager.handle("user1", "100")
+    resp, _ = manager.handle("user1", "999")  # correction to a non-existent number
+    assert "not found" in resp.lower()
+
+
 def test_confirmation_shows_total_not_average(setup):
     manager, *_ = setup
     _auth(manager)
     manager.handle("user1", "100")
+    manager.handle("user1", "yes")
     manager.handle("user1", "3")
     resp, _ = manager.handle("user1", "4")
     assert "Total:" in resp
@@ -147,6 +190,7 @@ def test_redo_during_scoring(setup):
     manager, *_ = setup
     _auth(manager)
     manager.handle("user1", "100")
+    manager.handle("user1", "yes")
     manager.handle("user1", "1")
     resp, _ = manager.handle("user1", "redo")
     assert "Q1" in resp
@@ -156,6 +200,7 @@ def test_redo_during_confirmation(setup):
     manager, *_ = setup
     _auth(manager)
     manager.handle("user1", "100")
+    manager.handle("user1", "yes")
     manager.handle("user1", "3")
     manager.handle("user1", "4")
     resp, _ = manager.handle("user1", "redo")
@@ -168,6 +213,7 @@ def test_invalid_score_non_numeric(setup):
     manager, *_ = setup
     _auth(manager)
     manager.handle("user1", "100")
+    manager.handle("user1", "yes")
     resp, consumed = manager.handle("user1", "great")
     assert consumed is True
     assert "1" in resp and "5" in resp
@@ -177,6 +223,7 @@ def test_score_out_of_range(setup):
     manager, *_ = setup
     _auth(manager)
     manager.handle("user1", "100")
+    manager.handle("user1", "yes")
     resp, consumed = manager.handle("user1", "9")
     assert consumed is True
     assert "5" in resp
@@ -194,9 +241,10 @@ def test_already_scored_shows_previous_scores(setup):
     manager, *_ = setup
     _auth(manager)
     manager.handle("user1", "100")
+    manager.handle("user1", "yes")        # confirm presenter
     manager.handle("user1", "4")
     manager.handle("user1", "5")
-    manager.handle("user1", "yes")
+    manager.handle("user1", "yes")        # submit scores
     resp, consumed = manager.handle("user1", "100")
     assert consumed is True
     assert "already" in resp.lower()
@@ -219,9 +267,10 @@ def test_my_scores_after_submitting(setup):
     manager, *_ = setup
     _auth(manager)
     manager.handle("user1", "100")
+    manager.handle("user1", "yes")        # confirm presenter
     manager.handle("user1", "4")
     manager.handle("user1", "5")
-    manager.handle("user1", "yes")
+    manager.handle("user1", "yes")        # submit scores
     resp, consumed = manager.handle("user1", "my scores")
     assert consumed is True
     assert "100" in resp

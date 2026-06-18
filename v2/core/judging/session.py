@@ -12,7 +12,7 @@ from v2.core.judging import db as jdb
 @dataclass
 class _JudgeSession:
     state: str = "idle"
-    # idle | awaiting_pin | ready | scoring | confirming
+    # idle | awaiting_pin | ready | confirming_presenter | scoring | confirming
     # | presenter_awaiting_number
     # | audience_ready | audience_confirming
     judge_id: int | None = None
@@ -44,6 +44,7 @@ _RE_MY_SCORES         = re.compile(r"my\s+scores?", re.IGNORECASE)
 _RE_NUMBER            = re.compile(r"\b(\d+)\b")
 _RE_PURE_NUMBER       = re.compile(r"^\d+$")   # M5: bare number only, not "104 yes"
 _RE_YES               = re.compile(r"^yes$", re.IGNORECASE)
+_RE_NO                = re.compile(r"^no$", re.IGNORECASE)
 _RE_REDO              = re.compile(r"^redo$", re.IGNORECASE)
 
 
@@ -124,6 +125,10 @@ class JudgingSessionManager:
             if _RE_MY_SCORES.search(t):
                 return self._show_my_scores(sess)
             return self._handle_ready(sess, t)
+
+        # ── CONFIRMING_PRESENTER (verify name/dept before scoring) ─────────
+        if sess.state == "confirming_presenter":
+            return self._handle_confirming_presenter(sess, t)
 
         # ── SCORING ───────────────────────────────────────────────────────
         if sess.state == "scoring":
@@ -326,17 +331,78 @@ class JudgingSessionManager:
                 "Say another participant number to continue."
             ), True
 
-        sess.state = "scoring"
+        # Confirm the presenter's identity BEFORE scoring, so a mistyped number is
+        # caught here instead of after scoring the wrong student.
+        sess.state = "confirming_presenter"
         sess.presenter_number = number
         sess.presenter_name = presenter["name"]
         sess.presenter_dept = presenter["department"]
         sess.collected_scores = []
+        return self._confirm_presenter_prompt(sess), True
 
-        dept_str = f" ({presenter['department']})" if presenter["department"] else ""
+    def _confirm_presenter_prompt(self, sess: _JudgeSession) -> str:
+        dept_str = f", {sess.presenter_dept}" if sess.presenter_dept else ""
+        return (
+            f"Participant *#{sess.presenter_number}* is *{sess.presenter_name}*{dept_str}.\n\n"
+            "Is this correct? Reply *yes* to start scoring, *no* to enter a different number "
+            "(or just send the correct number)."
+        )
+
+    def _begin_scoring(self, sess: _JudgeSession) -> tuple[str, bool]:
+        sess.state = "scoring"
+        sess.collected_scores = []
+        dept_str = f" ({sess.presenter_dept})" if sess.presenter_dept else ""
         rng = _score_range_str(sess.score_min, sess.score_max)
         return (
-            f"Scoring *#{number} — {presenter['name']}*{dept_str}\n\n"
+            f"Scoring *#{sess.presenter_number} — {sess.presenter_name}*{dept_str}\n\n"
             f"*Q1/{len(sess.criteria)} — {sess.criteria[0]}* ({rng}):"
+        ), True
+
+    # ── CONFIRMING_PRESENTER ─────────────────────────────────────────────────
+    def _handle_confirming_presenter(self, sess: _JudgeSession, t: str) -> tuple[str, bool]:
+        # A bare number = "wrong one, here's the right number" → re-confirm it.
+        if _RE_PURE_NUMBER.match(t):
+            number = int(t)
+            conn = self._conn()
+            try:
+                presenter = jdb.get_presenter(conn, sess.event_id, number)
+                existing = (jdb.get_score(conn, sess.event_id, sess.judge_id, number)
+                            if presenter else None)
+            finally:
+                conn.close()
+            if presenter is None:
+                return (
+                    f"Participant #{number} not found. Please enter the correct number."
+                ), True
+            if existing:
+                sess.state = "ready"
+                lines = [f"{c}: *{v}*" for c, v in existing["scores"].items()]
+                total = sum(existing["scores"].values())
+                denom = len(sess.criteria) * sess.score_max
+                return (
+                    f"You already scored *#{number} — {presenter['name']}*:\n"
+                    + "\n".join(lines)
+                    + f"\n\n*Total: {total}/{denom}*\n\n"
+                    "Say another participant number to continue."
+                ), True
+            sess.presenter_number = number
+            sess.presenter_name = presenter["name"]
+            sess.presenter_dept = presenter["department"]
+            return self._confirm_presenter_prompt(sess), True
+
+        if _RE_YES.match(t):
+            return self._begin_scoring(sess)
+
+        if _RE_NO.match(t):
+            sess.state = "ready"
+            sess.presenter_number = None
+            sess.presenter_name = None
+            sess.presenter_dept = None
+            return "No problem — please enter the correct participant number.", True
+
+        return (
+            "Reply *yes* to start scoring, *no* to enter a different number, "
+            "or send the correct participant number."
         ), True
 
     def _show_my_scores(self, sess: _JudgeSession) -> tuple[str, bool]:

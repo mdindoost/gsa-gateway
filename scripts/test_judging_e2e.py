@@ -180,7 +180,9 @@ def _simulate(db_path: str) -> None:
 
     # Score presenter 100
     r, _ = mgr.handle("tg_amira", "100")
-    check("starts scoring #100 (Alice Chen)", "Alice Chen" in r, r)
+    check("confirm prompt for #100 (Alice Chen)", "Alice Chen" in r and "correct" in r.lower(), r)
+    r, _ = mgr.handle("tg_amira", "yes")
+    check("yes starts scoring #100", "Q1" in r, r)
     mgr.handle("tg_amira", "4")
     r, _ = mgr.handle("tg_amira", "5")
     check("confirmation shows Total: 9/10", "9/10" in r, r)
@@ -189,7 +191,8 @@ def _simulate(db_path: str) -> None:
 
     # Score presenter 101
     r, _ = mgr.handle("tg_amira", "101")
-    check("starts scoring #101 (Bob Kumar)", "Bob Kumar" in r, r)
+    check("confirm prompt for #101 (Bob Kumar)", "Bob Kumar" in r, r)
+    mgr.handle("tg_amira", "yes")
     mgr.handle("tg_amira", "3")
     mgr.handle("tg_amira", "4")
     r, _ = mgr.handle("tg_amira", "yes")
@@ -215,6 +218,7 @@ def _simulate(db_path: str) -> None:
     check("Bob authenticated", "Bob Chen" in r, r)
 
     mgr.handle("tg_bob_j", "100")
+    mgr.handle("tg_bob_j", "yes")        # confirm presenter
     mgr.handle("tg_bob_j", "5")
     mgr.handle("tg_bob_j", "5")
     r, _ = mgr.handle("tg_bob_j", "yes")
@@ -238,6 +242,7 @@ def _simulate(db_path: str) -> None:
     # Bob can continue scoring after C2 recovery
     r, _ = mgr.handle("tg_bob_j", "101")
     check("Bob continues scoring after C2 recovery (#101 shown)", "Bob Kumar" in r, r)
+    mgr.handle("tg_bob_j", "yes")        # confirm presenter
     mgr.handle("tg_bob_j", "4")
     mgr.handle("tg_bob_j", "4")
     r, _ = mgr.handle("tg_bob_j", "yes")
@@ -270,7 +275,8 @@ def _simulate(db_path: str) -> None:
     check("H3: correct PIN accepted after lockout expires", "Carlos Vera" in r, r)
 
     r, _ = mgr.handle("tg_carlos", "102")
-    check("Carlos scores #102 (Carol Diaz)", "Carol Diaz" in r, r)
+    check("Carlos confirm prompt #102 (Carol Diaz)", "Carol Diaz" in r, r)
+    mgr.handle("tg_carlos", "yes")       # confirm presenter
     mgr.handle("tg_carlos", "3")
     mgr.handle("tg_carlos", "4")
     r, _ = mgr.handle("tg_carlos", "yes")
@@ -285,8 +291,8 @@ def _simulate(db_path: str) -> None:
     check("Amira still in ready state (no re-auth needed)", amira_in_ready, mgr._sessions.get("tg_amira"))
 
     r, _ = mgr.handle("tg_amira", "102")
-    check("Amira starts scoring #102 (Carol Diaz)", "Carol Diaz" in r, r)
-
+    check("Amira confirm prompt #102 (Carol Diaz)", "Carol Diaz" in r, r)
+    mgr.handle("tg_amira", "yes")        # confirm presenter → scoring
     r, _ = mgr.handle("tg_amira", "4")
     check("Q1 accepted, Q2 prompt shown", "Q2" in r or "Content" in r, r)
 
@@ -381,8 +387,8 @@ def _simulate(db_path: str) -> None:
     check("Amira re-enters judge mode (welcome back)", "Welcome back" in r, r)
 
     r, _ = mgr.handle("tg_amira", "103")
-    check("Amira starts scoring #103 (Dave Park)", "Dave Park" in r, r)
-
+    check("Amira confirm prompt #103 (Dave Park)", "Dave Park" in r, r)
+    mgr.handle("tg_amira", "yes")        # confirm presenter → scoring
     mgr.handle("tg_amira", "4")
     r, _ = mgr.handle("tg_amira", "5")
     check("all criteria answered — confirmation shown", "Total:" in r and "yes" in r.lower(), r)
