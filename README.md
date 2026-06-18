@@ -24,7 +24,7 @@
 [**🌐 Website**](https://mdindoost.github.io/gsa-gateway/) ·
 [**💬 Add on Discord**](https://discord.gg/a4mvbEmSAq) ·
 [**✈️ Chat on Telegram**](https://t.me/njit_gsa_bot) ·
-[**👥 GroupMe**](https://groupme.com/)
+[**👥 Join on GroupMe**](https://groupme.com/join_group/115501633/qd1TpFHa)
 
 </div>
 
