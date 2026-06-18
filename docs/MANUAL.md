@@ -655,7 +655,7 @@ gsa-gateway/
 │   ├── export_weekly_summary.py  Print or save the 7-day summary
 │   ├── init_db.py                Create SQLite tables (safe to re-run)
 │   ├── gsa-gateway.service       systemd unit file (copy to /etc/systemd/system/)
-│   └── run_bot.sh                Manual start script (alternative to systemd)
+│   └── restart.sh               Manual start/restart script (alternative to systemd)
 │
 └── docs/
     ├── architecture.md           How the pieces fit together

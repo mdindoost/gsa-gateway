@@ -14,7 +14,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env       # then edit .env
 python scripts/init_db.py
-bash scripts/run_bot.sh
+bash scripts/restart.sh
 ```
 
 The bot runs until the terminal is closed or Ctrl+C. For persistence, wrap in `screen`, `tmux`, or systemd.

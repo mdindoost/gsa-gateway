@@ -119,7 +119,7 @@ gsa-gateway/
 │   └── local_server.py         Dashboard HTTP backend (GatewayHandler) on :5555
 ├── dashboard/                  app.js + index.html + style.css (sql.js in-browser)
 ├── scripts/
-│   ├── run_bot.sh              Starts Telegram + Discord bots
+│   ├── restart.sh              Stop+start ALL services (Discord+Telegram+GroupMe, Ollama, dashboard)
 │   ├── run_explore.py          Run the NJIT crawler (explore(), YWCC + MTSM) — --depth/--reset/--frontier
 │   ├── verify_kg.py            Alignment checks: verify_kg() + verify_gsa()
 │   ├── _area_tag_migrate.py    hardened_backup() lives here (used by every gated write)
@@ -176,8 +176,10 @@ content untouched). MTSM program/PhD/FAQ **prose** is separate + manual: `script
 `python v2/scripts/embed_all.py` (resumable — only embeds items missing a vector).
 
 ### Restart the bots
-`bash scripts/run_bot.sh` (Telegram + Discord). DB-only changes need no restart (bots read
-live); code changes do. Discord re-syncs slash commands on startup.
+`bash scripts/restart.sh` (stops + restarts Discord + Telegram + GroupMe, manages Ollama, and
+relaunches/verifies the dashboard; kills duplicates first; `--no-llm` to run without Ollama).
+DB-only changes need no restart (bots read live); code changes do. Discord re-syncs slash
+commands on startup.
 
 ### Add a structured-retrieval skill
 Add to `v2/core/retrieval/skills.py`, wire it into `structured_answer.run/format_answer`,

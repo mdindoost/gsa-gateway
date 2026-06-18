@@ -77,7 +77,7 @@ editor. A dashboard (`v2/local_server.py` + `dashboard/`) is the admin control p
 - **Gather YWCC** → `python scripts/run_explore.py --commit` then `embed_all.py` then
   `scripts/verify_kg.py`.
 - **Gated live write** → scripts take a `hardened_backup`, default dry-run, need `--commit`.
-- **Restart bots** → `bash scripts/run_bot.sh`. DB changes need no restart; code changes do.
+- **Restart bots** → `bash scripts/restart.sh`. DB changes need no restart; code changes do.
 
 ## Design-doc index (`docs/superpowers/`)
 
@@ -120,7 +120,7 @@ Status legend: **SHIPPED** (built & live) · **HISTORICAL** (one-time, done) ·
    `llama3.1:8b`).
 3. `pip install -r requirements.txt` (incl. `sqlite-vec`, `tiktoken`, `pyyaml`, `discord.py`,
    `python-telegram-bot`, `qrcode`, `Pillow`).
-4. `bash scripts/run_bot.sh` (bots) — the dashboard server is launched as a child; reach it
+4. `bash scripts/restart.sh` (bots) — the dashboard server is launched as a child; reach it
    via an SSH tunnel to `localhost:5555`.
 5. Tests: `python -m pytest v2/tests/ -q` (note: ~7 pre-existing `local_server` auth /
    departments failures are unrelated and predate current work).
