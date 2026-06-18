@@ -38,6 +38,16 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
    (admin-tunable via `retriever.exclude_types`). `event_info` gets a small boost. (The old
    `contact` boost was removed.)
 5. Generation: Ollama `llama3.1:8b`, grounded in the retrieved rows/chunks.
+6. **High-stakes heads-up** (`bot/core/headsup.py`): immigration/billing/funding answers get a
+   "confirm with <office>" line appended.
+7. **Live njit.edu fallback** (`bot/core/live_fallback.py` + `v2/integration/njit_search.py` +
+   `v2/core/ingestion/grounded_extract.py`): on a KB miss (top rerank relevance < `LIVE_THRESHOLD`
+   or no chunk), search njit.edu (Brave Search API), fetch the top page, and answer from **verbatim,
+   page-grounded spans + source link** (extractive — no hallucination; spans must appear literally
+   on the page or are dropped). Gated by `LIVE_ENABLED`. **Currently OFF (`LIVE_ENABLED=0`, Brave
+   subscription cancelled) → dormant, degrades silently to the "contact the office" deflection.**
+   Re-enable: add a search key (Brave or swap provider — `njit_search` is provider-isolated) +
+   `LIVE_ENABLED=1`. Spec: `docs/superpowers/specs/2026-06-17-live-search-fallback-design.md`.
 
 **Knowledge sources:**
 - **YWCC / NJIT** — gathered by the `explore()` crawler (`v2/core/ingestion/explore.py`)
@@ -151,3 +161,20 @@ live); code changes do. Discord re-syncs slash commands on startup.
 ### Add a structured-retrieval skill
 Add to `v2/core/retrieval/skills.py`, wire it into `structured_answer.run/format_answer`,
 and add a route in `router.py`. (See `officers_in_org` / `people_in_org` as the pattern.)
+
+### Evaluate the bot (coverage + accuracy)
+`bash scripts/eval.sh` — runs `eval/questions.txt` through the REAL pipeline (KB + live), classifies
+each kb/live/deflect, auto-judges accuracy (local model), removes its own analytics rows, and prints
+coverage + accuracy + the gap list. Edit `eval/questions.txt` (one Q/line, `# category` headers) to
+add questions. `--limit N` for a quick subset.
+
+### Debug a single query (pipeline X-ray)
+`bash scripts/ask.sh "<question>" [--verbose] [--answer]` — shows router decision, fused pool,
+reranker CE scores, final top-5, heads-up, and (verbose) the exact LLM prompt / (answer) the real answer.
+
+### Crawl NJIT pages → KB (grounded, pipeline built; mass-crawl deferred)
+`scripts/_crawl_stage.py --bucket <url-substr> --prefix <p>` (sitemap discovery + fetch + clean to
+`/tmp/njit_crawl/`) → a Haiku subagent extracts VERBATIM facts to `bot/data/sources/njit-web/*.md`
+→ `scripts/_crawl_ground_filter.py --apply` (keeps only lines literally on the page) →
+`scripts/_crawl_ingest.py --commit` (gated, `source='crawler'`) → `embed_all.py`. Use selectively;
+the live fallback covers the long tail on demand.
