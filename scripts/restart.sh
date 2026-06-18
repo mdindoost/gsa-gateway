@@ -182,16 +182,47 @@ else
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
+# Re-derive the ACTUAL running state (pgrep / curl) instead of trusting the steps
+# above — so the final verdict reflects reality even if a service died after start.
 echo ""
 echo "══════════════════════════════════════════════"
+echo "  Service status"
+echo "══════════════════════════════════════════════"
+DOWN=0
+status_line() {  # name, pattern  (or name, "curl", url)
+    local name="$1"
+    if [ "$2" = "curl" ]; then
+        if curl -sf --max-time 3 "$3" > /dev/null 2>&1; then ok "$name: UP"; else fail "$name: DOWN"; DOWN=$((DOWN+1)); fi
+    else
+        if pgrep -f "$2" > /dev/null 2>&1; then ok "$name: UP"; else fail "$name: DOWN"; DOWN=$((DOWN+1)); fi
+    fi
+}
+
 if [ "$NO_LLM" = true ]; then
-    echo -e "  ${YELLOW}LLM: OFF${NC}  (started with --no-llm — search uses fuzzy/keyword)"
+    warn "Ollama (LLM): OFF — started with --no-llm (search uses fuzzy/keyword)"
 else
-    echo -e "  ${GREEN}LLM: ON${NC}"
+    status_line "Ollama (LLM)" curl "http://localhost:11434/api/tags"
 fi
-echo -e "  ${GREEN}Done.${NC} To watch live logs:"
-echo "  tail -f gsa_gateway.log        (Discord)"
-echo "  tail -f telegram_bot.log       (Telegram)"
-echo "  tail -f groupme_bot.log        (GroupMe, if enabled)"
+status_line "Discord bot"  "python.*bot\.main"
+status_line "Telegram bot" "python.*run_telegram"
+if grep -qi '^GROUPME_ENABLED=true' .env 2>/dev/null; then
+    status_line "GroupMe bot" "python.*run_groupme"
+else
+    info "GroupMe bot: not enabled (GROUPME_ENABLED != true)"
+fi
+if grep -qi '^DASHBOARD_SERVER_ENABLED=true' .env 2>/dev/null; then
+    status_line "Dashboard" curl "http://127.0.0.1:5555/api/health"
+fi
+
+echo ""
+if (( DOWN == 0 )); then
+    echo -e "  ${GREEN}✓ All services UP.${NC}"
+else
+    echo -e "  ${RED}✗ ${DOWN} service(s) DOWN — check the logs below.${NC}"
+fi
+echo "  Watch live logs:"
+echo "    tail -f gsa_gateway.log     (Discord + dashboard)"
+echo "    tail -f telegram_bot.log    (Telegram)"
+grep -qi '^GROUPME_ENABLED=true' .env 2>/dev/null && echo "    tail -f groupme_bot.log     (GroupMe)"
 echo "══════════════════════════════════════════════"
 echo ""
