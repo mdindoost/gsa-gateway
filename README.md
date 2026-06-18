@@ -4,6 +4,8 @@
 
 # GSA Gateway
 
+![Version](https://img.shields.io/badge/version-2.0-blueviolet?style=for-the-badge)
+
 ### The AI assistant for graduate life at NJIT — on every app you already use.
 
 *Ask anything about your Graduate Student Association — officers, funding, events, deadlines, faculty, research — and get an instant, trustworthy answer on Discord, Telegram, or GroupMe. It never makes things up, because every answer is grounded in verified GSA and NJIT information.*
@@ -21,7 +23,8 @@
 
 [**🌐 Website**](https://mdindoost.github.io/gsa-gateway/) ·
 [**💬 Add on Discord**](https://discord.gg/a4mvbEmSAq) ·
-[**✈️ Chat on Telegram**](https://t.me/njit_gsa_bot)
+[**✈️ Chat on Telegram**](https://t.me/njit_gsa_bot) ·
+[**👥 GroupMe**](https://groupme.com/)
 
 </div>
 
