@@ -255,6 +255,23 @@ incoming text ──> ModeDispatcher.dispatch(uid, text)
    the top-level enum would create a new divergence (persisted enum vs. ephemeral
    sub-state). Flagged as a conscious decision.
 
+## Implementation senior review — outcomes
+
+A second senior review of the diff (correctness + efficiency) found **no blockers** in the
+mode logic and confirmed: `_STATE_TO_MODE` covers all 8 non-idle states; `mode_of` uses
+`_sessions.get` (no phantom session on read); the dispatcher routes every message identically
+to the old "judging-first" ordering (the idle branch only ever consumed the same 3 triggers
+`is_trigger` wraps); one `ModeRegistry.get` + at most 3 regexes per message, **zero added DB
+hits** on the hot path; the store lock is correct/deadlock-free and `mode_of`/`_sessions` are
+touched only from the PTB event-loop thread. Resolved findings:
+- **#1 (red baseline) — FIXED.** Removed 8 stale `_cmd_events/_contact/_resources/_help`
+  tests (v1 commands deleted in the all-conversational migration; failing on base too).
+  `test_telegram_connector.py` is now fully green.
+- **#2 (test read retired field) — FIXED.** `test_session_default_mode_is_gsa` →
+  `test_default_mode_is_gsa`, asserting via `get_mode` (the real source of truth).
+- **#5 gap — CLOSED.** Added `test_toggle_phrase_midjudging_owned_by_judging_not_store`:
+  a judge typing "free mode" stays owned by judging and does NOT flip the conversation store.
+
 ## What this explicitly does NOT change
 
 - Judging sub-state machine internals (PIN lockout, scoring, confirm, audience return).

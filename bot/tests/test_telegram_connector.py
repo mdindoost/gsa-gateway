@@ -98,7 +98,7 @@ async def test_on_message_skips_empty_response(connector):
 @pytest.fixture
 def judging_setup():
     """A real JudgingSessionManager wired into a connector through a ModeDispatcher that
-    shares the conversation ModeStore — the production wiring."""
+    shares the conversation ModeStore — the production wiring. Yields the shared store too."""
     import os
     import tempfile
     os.environ.setdefault("GSA_JUDGING_SCRYPT_N", "64")
@@ -126,13 +126,13 @@ def judging_setup():
         token="fake", handler=handler, kb=MagicMock(),
         judging_manager=judging, dispatcher=dispatcher,
     )
-    yield connector, handler
+    yield connector, handler, store
     os.unlink(db_path)
 
 
 @pytest.mark.asyncio
 async def test_judging_trigger_routes_to_judging_not_handler(judging_setup):
-    connector, handler = judging_setup
+    connector, handler, _store = judging_setup
     update, context = _make_update_context("judge mode")
     await connector._on_message(update, context)
     handler.handle.assert_not_called()                 # judging owned it
@@ -142,7 +142,7 @@ async def test_judging_trigger_routes_to_judging_not_handler(judging_setup):
 
 @pytest.mark.asyncio
 async def test_idle_normal_message_routes_to_handler(judging_setup):
-    connector, handler = judging_setup
+    connector, handler, _store = judging_setup
     update, context = _make_update_context("what is gsa?")
     await connector._on_message(update, context)
     handler.handle.assert_called_once()                # conversation owned it
@@ -152,7 +152,7 @@ async def test_idle_normal_message_routes_to_handler(judging_setup):
 
 @pytest.mark.asyncio
 async def test_judge_midflow_number_stays_in_judging(judging_setup):
-    connector, handler = judging_setup
+    connector, handler, _store = judging_setup
     for text in ("judge mode", "J-001"):              # authenticate -> ready
         u, c = _make_update_context(text)
         await connector._on_message(u, c)
@@ -164,69 +164,21 @@ async def test_judge_midflow_number_stays_in_judging(judging_setup):
 
 
 @pytest.mark.asyncio
-async def test_cmd_events_lists_event_name(connector):
-    update, context = _make_update_context("/events")
-    await connector._cmd_events(update, context)
-    update.message.reply_text.assert_called_once()
-    reply_text = update.message.reply_text.call_args[0][0]
-    assert "gsa mixer" in reply_text.lower()
+async def test_toggle_phrase_midjudging_owned_by_judging_not_store(judging_setup):
+    # A judge mid-flow typing "free mode" must stay owned by judging (already in a judging
+    # mode) and must NOT flip the shared conversation store to FREE behind their back.
+    from bot.core.modes import Mode
+    connector, handler, store = judging_setup
+    for text in ("judge mode", "J-001"):              # -> ready (JUDGE)
+        u, c = _make_update_context(text)
+        await connector._on_message(u, c)
+    handler.handle.reset_mock()
+    u, c = _make_update_context("free mode")
+    await connector._on_message(u, c)
+    handler.handle.assert_not_called()                # judging owned it
+    assert store.get("12345") == Mode.GSA             # conversation store untouched
 
 
-@pytest.mark.asyncio
-async def test_cmd_events_no_events(connector):
-    connector.kb.events = []
-    update, context = _make_update_context("/events")
-    await connector._cmd_events(update, context)
-    reply_text = update.message.reply_text.call_args[0][0]
-    assert "no upcoming events" in reply_text.lower()
-
-
-@pytest.mark.asyncio
-async def test_cmd_contact_no_args_lists_all(connector):
-    update, context = _make_update_context("/contact")
-    await connector._cmd_contact(update, context)
-    reply_text = update.message.reply_text.call_args[0][0]
-    assert "fernando vera" in reply_text.lower()
-    assert "gsa-pres@njit.edu" in reply_text.lower()
-
-
-@pytest.mark.asyncio
-async def test_cmd_contact_with_arg_filters(connector):
-    update, context = _make_update_context("/contact president", args=["president"])
-    await connector._cmd_contact(update, context)
-    reply_text = update.message.reply_text.call_args[0][0]
-    assert "gsa president" in reply_text.lower()
-
-
-@pytest.mark.asyncio
-async def test_cmd_contact_no_match(connector):
-    update, context = _make_update_context("/contact zzz", args=["zzz"])
-    await connector._cmd_contact(update, context)
-    reply_text = update.message.reply_text.call_args[0][0]
-    assert "no matching" in reply_text.lower()
-
-
-@pytest.mark.asyncio
-async def test_cmd_resources_no_args_lists_categories(connector):
-    update, context = _make_update_context("/resources")
-    await connector._cmd_resources(update, context)
-    reply_text = update.message.reply_text.call_args[0][0]
-    assert "njit library" in reply_text.lower()
-
-
-@pytest.mark.asyncio
-async def test_cmd_resources_with_category(connector):
-    update, context = _make_update_context("/resources academic", args=["academic"])
-    await connector._cmd_resources(update, context)
-    reply_text = update.message.reply_text.call_args[0][0]
-    assert "njit library" in reply_text.lower()
-
-
-@pytest.mark.asyncio
-async def test_cmd_help_returns_intro(connector):
-    update, context = _make_update_context("/help")
-    await connector._cmd_help(update, context)
-    update.message.reply_text.assert_called_once()
-    reply_text = update.message.reply_text.call_args[0][0]
-    assert "gsa gateway" in reply_text.lower()
-    assert "/events" in reply_text
+# NOTE: tests for /events /contact /resources /help were removed — those v1 command
+# handlers no longer exist on TelegramConnector (all-conversational migration; only
+# /start + /qrcode remain). They were already failing on the base branch.
