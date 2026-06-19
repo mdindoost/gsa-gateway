@@ -666,7 +666,8 @@ function refreshBackups() {
 
 function restoreBackup(file) {
   if (!window.confirm(`Restore this backup?\n\n${file}\n\nThis REPLACES ALL current data with that `
-      + "snapshot. Your current state is backed up first, so it's reversible. Continue?")) return;
+      + "snapshot. Your current state is backed up first (reversible), and it's blocked while a "
+      + "refresh is running. Best done when the bots are idle. Continue?")) return;
   jobsApi("/api/backups/restore", { method: "POST", body: { file } })
     .then(({ status, body }) => {
       if (status !== 200) { toast((body && body.error) || "Restore failed", false); return; }

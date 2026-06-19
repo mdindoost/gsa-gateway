@@ -621,10 +621,29 @@ class GatewayHandler(BaseHTTPRequestHandler):
                             .strftime("%Y-%m-%d %H:%M")})
         return self._json({"backups": out})
 
+    @staticmethod
+    def _copy_db(src_path, dst_path):
+        """Overwrite dst with src via the SQLite backup API, then TRUNCATE the dst WAL so no
+        stale frames from a prior connection can replay over the restored content."""
+        import sqlite3
+        s = sqlite3.connect(str(src_path))
+        d = sqlite3.connect(str(dst_path))
+        try:
+            with d:
+                s.backup(d)
+            d.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            d.close()
+            s.close()
+
     def _api_restore_backup(self):
-        """Restore a chosen backup over the live DB. Snapshots the CURRENT state first (so a
-        restore is itself reversible), then copies the backup in via the SQLite backup API
-        (WAL-safe while the bot holds the DB open). File must live in .backups (no traversal)."""
+        """Restore a chosen backup over the live DB — gated + verified + reversible. Refuses while
+        a refresh is running (would race a live writer); snapshots the CURRENT state first; flushes
+        the live WAL; copies the backup in; then re-checks integrity + that vec0 is queryable, and
+        rolls back to the just-taken snapshot if either fails. File must live in .backups (no traversal).
+        Best run when the bots are idle — they read per-query, so a brief read could overlap the copy."""
+        if JOBS.is_running():
+            return self._error("a refresh is running — wait for it to finish before restoring", 409)
         body = self._body()
         fname = str(body.get("file", ""))
         src = (self._BACKUP_DIR / fname).resolve()
@@ -632,15 +651,30 @@ class GatewayHandler(BaseHTTPRequestHandler):
             return self._error("unknown backup file", 400)
         import sqlite3
         from scripts._area_tag_migrate import hardened_backup
-        pre = hardened_backup(str(DB_PATH), "pre-restore")     # current state, reversible
-        s = sqlite3.connect(str(src))
-        d = sqlite3.connect(str(DB_PATH))
+        from v2.core.database.schema import get_connection
         try:
-            with d:
-                s.backup(d)                                    # overwrite live DB with the backup
+            pre = hardened_backup(str(DB_PATH), "pre-restore")   # current state, reversible
+        except Exception as exc:  # noqa: BLE001 (disk full etc.) — abort before touching the live DB
+            return self._error(f"could not snapshot current state ({exc}); restore aborted", 500)
+        # Flush the live WAL so old frames can't replay over the restore, then copy the backup in.
+        live = sqlite3.connect(str(DB_PATH))
+        try:
+            live.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         finally:
-            d.close()
-            s.close()
+            live.close()
+        self._copy_db(src, DB_PATH)
+        # Verify the restored DB: integrity + vec0 queryable. On failure, roll back from `pre`.
+        try:
+            c = get_connection(str(DB_PATH))
+            ok = c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            c.execute("SELECT COUNT(*) FROM knowledge_vectors").fetchone()   # vec0 smoke test
+            c.close()
+            if not ok:
+                raise RuntimeError("integrity_check failed")
+        except Exception as exc:  # noqa: BLE001
+            self._copy_db(pre, DB_PATH)                           # roll back to prior state
+            logger.exception("restore verification failed; rolled back to %s", pre.name)
+            return self._error(f"restored DB failed verification ({exc}); rolled back to prior state", 500)
         logger.info("restored backup %s (prior state saved to %s)", fname, pre.name)
         return self._json({"restored": fname, "current_saved_to": pre.name})
 

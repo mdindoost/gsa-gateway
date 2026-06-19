@@ -51,6 +51,13 @@ def hardened_backup(db_path: str, label: str, keep: int = 10) -> Path:
         src.close()
     for old in sorted(bdir.glob(f"gsa_gateway.*.{label}.db"))[:-keep]:
         old.unlink(missing_ok=True)
+    # Global cap across ALL labels (per-label rotation alone is unbounded in number of labels).
+    # Keep the newest KEEP_TOTAL snapshots overall; never delete the one just written.
+    KEEP_TOTAL = 40
+    allb = sorted(bdir.glob("gsa_gateway.*.db"), key=lambda f: f.stat().st_mtime, reverse=True)
+    for old in allb[KEEP_TOTAL:]:
+        if old != dst:
+            old.unlink(missing_ok=True)
     return dst
 
 

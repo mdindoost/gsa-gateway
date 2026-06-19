@@ -278,6 +278,12 @@ class JobManager:
                 break
         return match or fallback
 
+    def is_running(self) -> bool:
+        """True if a refresh subprocess is currently running (used to block a restore
+        from racing a live write — the restore is not a job, so it bypasses the start lock)."""
+        with self._lock:
+            return self._current_proc is not None and self._current_proc.poll() is None
+
     def _start(self, job_type, args) -> dict:
         with self._lock:
             if self._current_proc is not None and self._current_proc.poll() is None:

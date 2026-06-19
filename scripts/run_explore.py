@@ -159,6 +159,7 @@ def main() -> int:
         r = subprocess.run([sys.executable, str(REPO / "v2" / "scripts" / "embed_all.py")],
                            cwd=str(REPO))
         print(f"  [embed] exit {r.returncode}")
+        return r.returncode    # surface embed failure as job failure (new prose would be unsearchable)
     return 0
 
 
