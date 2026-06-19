@@ -105,3 +105,10 @@ def test_person_without_profiles_has_no_suffix(conn):
 def test_list_skill_has_no_suffix(conn):
     skill, facts, suffix = _suffix(conn, "who are the faculty in computer science")
     assert suffix is None
+
+
+def test_surname_only_research_resolves_unambiguous_person(conn):
+    # "what does Koutis work on" — surname only, one Koutis → research_of_person + metrics
+    skill, facts, suffix = _suffix(conn, "what does Koutis work on")
+    assert skill == "research_of_person"
+    assert suffix == "Google Scholar: 5,021 citations, h-index 30, i10-index 62 — as of 2026-06"

@@ -259,6 +259,16 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
                          {"entity_id": named[0]["entity_id"], "name": named[0]["name"]})
         if len(named) > 1:
             return Route("person_disambig", {"candidates": named})
+        # surname-only: "what does Koutis work on" / "Koutis's research" — resolve an
+        # UNAMBIGUOUS last name (the same fallback the entity card uses below), so a research
+        # ask by surname reaches the person instead of falling through to RAG.
+        for tok in _qtokens(_NAME_PREFIX.sub("", q)):
+            cands = entity.persons_by_lastname(conn, tok)
+            if len(cands) >= 2:
+                return Route("person_disambig", {"candidates": cands})
+            if len(cands) == 1:
+                return Route("research_of_person",
+                             {"entity_id": cands[0]["entity_id"], "name": cands[0]["name"]})
 
     # entity card: a specific named person (who-is / tell-me-about / "<name>'s email" /
     # bare name). LAST + most-guarded so it never hijacks a "who works on X" ask.
