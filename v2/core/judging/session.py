@@ -52,6 +52,22 @@ def _score_range_str(mn: int, mx: int) -> str:
     return f"{mn}–{mx}"
 
 
+# Projection of the internal state-machine state to the unified top-level mode string. Used
+# by the ModeRegistry to DERIVE the judging mode (never mirror it), so every state transition
+# — every _sessions.pop and every state reassignment — is reflected automatically with no
+# extra code. "idle" and any unknown/absent state -> None (not in a judging mode).
+_STATE_TO_MODE = {
+    "awaiting_pin": "judge",
+    "ready": "judge",
+    "confirming_presenter": "judge",
+    "scoring": "judge",
+    "confirming": "judge",
+    "presenter_awaiting_number": "presenter",
+    "audience_ready": "audience",
+    "audience_confirming": "audience",
+}
+
+
 class JudgingSessionManager:
     """Per-user Telegram session state for judging and presenter registration.
 
@@ -75,6 +91,35 @@ class JudgingSessionManager:
         if user_id not in self._sessions:
             self._sessions[user_id] = _JudgeSession()
         return self._sessions[user_id]
+
+    # ── unified-mode projection (read-only; consumed by ModeRegistry) ─────────
+
+    def is_trigger(self, text: str) -> bool:
+        """True iff *text* is a judge/presenter/audience entry trigger.
+
+        Wraps the existing _RE_*_TRIGGER regexes (re.search, so the loose semantics that
+        already let an incidental 'judge mode' phrase enter judging are preserved exactly —
+        no behavior change vs. the old 'judging intercepts first' ordering)."""
+        return bool(
+            _RE_JUDGE_TRIGGER.search(text)
+            or _RE_PRESENTER_TRIGGER.search(text)
+            or _RE_AUDIENCE_TRIGGER.search(text)
+        )
+
+    def mode_of(self, user_id: str):
+        """The effective judging Mode for *user_id*, DERIVED from the live session state, or
+        None if the user is not in any judging mode (idle / never seen).
+
+        This is the single read the ModeRegistry uses — there is no mirrored enum to drift,
+        so every _sessions.pop / state change is reflected automatically."""
+        sess = self._sessions.get(user_id)
+        if sess is None:
+            return None
+        mode_str = _STATE_TO_MODE.get(sess.state)
+        if mode_str is None:
+            return None
+        from bot.core.modes import Mode  # lazy: keep v2.judging import-decoupled from bot
+        return Mode(mode_str)
 
     # ── public entry point ──────────────────────────────────────────────────
 
