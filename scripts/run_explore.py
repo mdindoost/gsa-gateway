@@ -93,6 +93,13 @@ def main() -> int:
         total_errors += st.errors
         print(f"explore[{entry.org_slug:20}] {entry.url}\n   {st}")
 
+    # Aliases so common short names route to the right org ("civil engineering" ->
+    # civil-environmental-engineering). Idempotent; re-applied every crawl.
+    from v2.core.ingestion.entry_points import apply_org_aliases
+    na = apply_org_aliases(conn)
+    conn.commit()
+    print(f"org aliases applied/updated: {na}")
+
     dep = reconcile_departures(conn)        # M3: retire people who left / clean moved KB — ONCE
     print(f"\ndepartures (M3): appointments retired={total_departed}, "
           f"people removed={dep['departed_people']}, stale items retired={dep['items_retired']}, "

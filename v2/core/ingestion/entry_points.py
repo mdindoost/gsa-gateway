@@ -1,5 +1,7 @@
 """Anchored entry points: a seed URL + prior knowledge (which org it maps to) + kind."""
 from __future__ import annotations
+import json
+import sqlite3
 from dataclasses import dataclass
 
 @dataclass(frozen=True)
@@ -102,6 +104,62 @@ ALL_ENTRY_POINTS = [
     *CSLA_DEPTS,
     HCAD_COLLEGE,
 ]
+
+# Common short names users actually type → resolved to the right org via metadata.aliases.
+# Department official names carry "&"/"and" + extra words ("Civil & Environmental Engineering"),
+# so "civil engineering" / "civil and environmental engineering" don't match the name or slug.
+# These aliases make the structured router resolve the org (else it falls through to partial RAG).
+# Applied by apply_org_aliases() after a crawl, and idempotent. Avoid over-broad single words.
+ORG_ALIASES: dict[str, list[str]] = {
+    # colleges / schools
+    "nce": ["newark college of engineering", "college of engineering", "nce"],
+    "csla": ["college of science and liberal arts", "science and liberal arts", "csla"],
+    "hcad": ["hillier college of architecture and design", "hillier college",
+             "architecture and design", "hcad"],
+    "njsoa": ["new jersey school of architecture", "school of architecture", "architecture", "njsoa"],
+    "art-design": ["school of art and design", "art and design", "art + design", "art design"],
+    # NCE departments
+    "biomedical-engineering": ["biomedical engineering", "biomedical", "bme"],
+    "chemical-materials-engineering": ["chemical and materials engineering", "chemical engineering",
+                                       "materials engineering", "cme"],
+    "civil-environmental-engineering": ["civil and environmental engineering", "civil engineering",
+                                        "environmental engineering", "cee"],
+    "electrical-computer-engineering": ["electrical and computer engineering", "electrical engineering",
+                                        "computer engineering", "ece"],
+    "mechanical-industrial-engineering": ["mechanical and industrial engineering",
+                                          "mechanical engineering", "industrial engineering", "mie"],
+    "applied-engineering-technology": ["school of applied engineering and technology",
+                                       "applied engineering and technology", "applied engineering",
+                                       "engineering technology"],
+    # CSLA departments
+    "biological-sciences": ["biological sciences", "biology"],
+    "chemistry-environmental-science": ["chemistry and environmental science", "chemistry",
+                                        "environmental science"],
+    "mathematical-sciences": ["mathematical sciences", "mathematics", "math"],
+    "humanities-social-sciences": ["humanities and social sciences", "humanities",
+                                   "social sciences", "hss"],
+    "physics": ["physics"],
+}
+
+
+def apply_org_aliases(conn: sqlite3.Connection) -> int:
+    """Write metadata.aliases for known colleges/departments (ORG_ALIASES) so common short names
+    route to the right org. Merges into existing metadata (never clobbers other keys). Idempotent;
+    only touches orgs that exist. Returns how many orgs were updated."""
+    n = 0
+    for slug, aliases in ORG_ALIASES.items():
+        row = conn.execute("SELECT id, metadata FROM organizations WHERE slug=?", (slug,)).fetchone()
+        if not row:
+            continue
+        meta = json.loads(row[1]) if row[1] else {}
+        merged = sorted(set(meta.get("aliases") or []) | set(aliases))
+        if merged != (meta.get("aliases") or []):
+            meta["aliases"] = merged
+            conn.execute("UPDATE organizations SET metadata=? WHERE id=?",
+                         (json.dumps(meta), row[0]))
+            n += 1
+    return n
+
 
 # hub child label (lowercased substring) -> (org_slug, org_name, parent_slug)
 _CHILDREN = {
