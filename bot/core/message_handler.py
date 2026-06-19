@@ -282,22 +282,32 @@ class MessageHandler:
                 rt = srouter.route(conn, text)
                 if rt is None:
                     return None
-                return structured_answer.format_answer(structured_answer.run(conn, rt))
+                result = structured_answer.run(conn, rt)
+                facts = structured_answer.format_answer(result)
+                if not facts:
+                    return None
+                # A deterministic line (profile links / Scholar metrics) appended to the
+                # FINAL answer verbatim — never handed to the LLM to restate.
+                return facts, structured_answer.deterministic_suffix(result)
             finally:
                 conn.close()
 
         try:
-            facts = await asyncio.to_thread(_run)
+            ran = await asyncio.to_thread(_run)
         except Exception as exc:  # noqa: BLE001 - never break the message path; fall to RAG
             logger.warning("Structured retrieval errored, falling back to RAG: %s", exc)
             return None
-        if not facts:
+        if not ran:
             return None
+        facts, suffix = ran
+        out = facts
         if self.ollama:
             composed = await self.ollama.compose_from_rows(text, facts)
             if composed:
-                return composed
-        return facts
+                out = composed
+        if suffix:
+            out = f"{out}\n\n{suffix}"
+        return out
 
     async def retry_question(self, req: MessageRequest) -> MessageResponse:
         """Re-run RAG at temperature=0.7 for the 🔄 retry button.

@@ -7,10 +7,24 @@ as a correct, complete answer. Empty results are stated honestly, never guessed.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
+from v2.core.people import profile_fields
 from v2.core.retrieval import entity, skills
 from v2.core.retrieval.router import Route
+
+
+def _person_attrs(conn: sqlite3.Connection, entity_id: str) -> dict:
+    row = conn.execute(
+        "SELECT attrs FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+        (entity_id,)).fetchone()
+    if not row or not row[0]:
+        return {}
+    try:
+        return json.loads(row[0])
+    except (TypeError, ValueError):
+        return {}
 
 
 def run(conn: sqlite3.Connection, route: Route) -> dict:
@@ -34,10 +48,12 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         return {"skill": skill, "name": a["name"],
                 "rows": entity.people_by_name(conn, a["name"])}
     if skill == "research_of_person":
-        return {"skill": skill, "research": entity.research_of_person(conn, a["entity_id"])}
+        return {"skill": skill, "research": entity.research_of_person(conn, a["entity_id"]),
+                "metrics": profile_fields.render_metrics(_person_attrs(conn, a["entity_id"]))}
     if skill == "entity_card":
         return {"skill": skill, "name": a.get("name"),
-                "card": entity.entity_card(conn, a["entity_id"])}
+                "card": entity.entity_card(conn, a["entity_id"]),
+                "links": profile_fields.render_links(_person_attrs(conn, a["entity_id"]))}
     if skill == "person_disambig":
         return {"skill": skill, "candidates": a["candidates"]}
     if skill == "org_departments":
@@ -179,3 +195,21 @@ def format_answer(result: dict) -> str:
         return f"{org} has {len(rows)} people: {listed}."
 
     return ""  # pragma: no cover
+
+
+def deterministic_suffix(result: dict) -> str | None:
+    """A line to append to the FINAL answer VERBATIM (after LLM composition), so external-
+    profile links/metrics are never rephrased or hallucinated. Mirrors the heads-up pattern.
+
+    Surfacing is encoded by the skill: links on the entity card (identity questions),
+    metrics on the research-of-person answer — and only when that structured answer actually
+    stood (a card / research present); otherwise the query fell through to RAG and we add
+    nothing. Roster/list skills add nothing."""
+    skill = result.get("skill")
+    if skill == "entity_card" and result.get("card"):
+        return result.get("links")
+    if skill == "research_of_person":
+        rp = result.get("research") or {}
+        if rp.get("areas") or rp.get("statement"):
+            return result.get("metrics")
+    return None
