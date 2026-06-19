@@ -33,7 +33,11 @@ def test_people_in_org_returns_all_role_types(conn):
     nt = [(n, t) for n, t, _ in people_in_org(conn, gs)]
     assert ("Sotirios Ziavras", "Dean of Graduate Studies") in nt
     assert ("Ester Flaim", "Assistant Director") in nt
-    assert officers_in_org(conn, gs) == []   # neither is officer/deprep
+    # officers_in_org now also surfaces 'admin' leadership (President/Provost/Dean) — so the Dean
+    # appears, but a plain 'staff' member does not.
+    offs = [(n, t) for n, t, _ in officers_in_org(conn, gs)]
+    assert ("Sotirios Ziavras", "Dean of Graduate Studies") in offs
+    assert ("Ester Flaim", "Assistant Director") not in offs
 
 
 def test_people_in_org_excludes_inactive(conn):

@@ -59,7 +59,8 @@ _OFFICER_PROCESS = re.compile(
 # "who works at/in <org>", "people in <org>", "<org> staff/team" -> the full roster.
 _PEOPLE = re.compile(
     r"\b(who works?\b|works? (?:at|in|for)\b|people (?:in|at|of)\b|"
-    r"staff (?:of|at|in)\b|team (?:of|at|in)\b|members? of\b)")
+    r"staff (?:of|at|in)\b|team (?:of|at|in)\b|members? of\b|"
+    r"administrat(?:or|ors|ion)\b|leadership\b|cabinet\b)")
 
 # ── person-/role-centric (Phase 1+2) ────────────────────────────────────────────
 # Academic-leadership role HEADS that exist as has_role edge titles. president/vice-

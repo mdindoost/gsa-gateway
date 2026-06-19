@@ -184,19 +184,21 @@ def faculty_in_department(conn: sqlite3.Connection, org_id: int) -> list[tuple[s
 
 
 def officers_in_org(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, str, str | None]]:
-    """(name, title, email) for every active officer/DepRep appointed directly to this org.
+    """(name, title, email) for every active officer/DepRep/administrator appointed directly to
+    this org.
 
-    Queries the graph `has_role` edges (category 'officer'/'deprep') whose target Org node
-    bridges this exact ``org_id`` (NOT descendants — GSA officers are distinct from an RGO's
-    officers; resolve the RGO's id to list its officers). Title is the first entry in the
-    edge's ``attrs.titles`` (falls back to the category); email comes from the Person node's
-    attrs, so the answer carries contact info without a separate contact card. Sorted by name."""
+    Queries the graph `has_role` edges (category 'officer'/'deprep' for GSA/clubs, or 'admin' for
+    university/college leadership — President, Provost, Deans) whose target Org node bridges this
+    exact ``org_id`` (NOT descendants — GSA officers are distinct from an RGO's officers; the NJIT
+    President sits on the `njit` root while the rest of the cabinet sits on `njit-administration`).
+    Title is the first entry in the edge's ``attrs.titles`` (falls back to the category); email from
+    the Person node's attrs. Sorted by name."""
     rows = conn.execute(
         "SELECT p.name, e.attrs, e.category, p.attrs FROM edges e "
         "JOIN nodes p ON p.id=e.src_id "
         "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
         "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1 "
-        "AND e.category IN ('officer','deprep') "
+        "AND e.category IN ('officer','deprep','admin') "
         "AND json_extract(o.attrs,'$.org_id')=?",
         (org_id,)).fetchall()
     out: list[tuple[str, str, str | None]] = []

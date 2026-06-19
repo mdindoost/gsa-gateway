@@ -141,6 +141,9 @@ ORG_ALIASES: dict[str, list[str]] = {
     "physics": ["physics"],
     "theater-arts-technology": ["theater arts and technology", "theatre arts and technology",
                                 "theatre arts", "theater arts", "theatre", "theater"],
+    "njit-administration": ["njit administration", "senior administration", "senior administrators",
+                            "university administration", "njit leadership", "senior leadership",
+                            "njit cabinet", "njit senior administration"],
 }
 
 
