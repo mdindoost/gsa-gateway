@@ -139,6 +139,8 @@ ORG_ALIASES: dict[str, list[str]] = {
     "humanities-social-sciences": ["humanities and social sciences", "humanities",
                                    "social sciences", "hss"],
     "physics": ["physics"],
+    "theater-arts-technology": ["theater arts and technology", "theatre arts and technology",
+                                "theatre arts", "theater arts", "theatre", "theater"],
 }
 
 

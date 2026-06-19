@@ -138,6 +138,15 @@ def _display_names(conn: sqlite3.Connection,
             if eid in resolved:
                 continue
             resolved[eid] = title if typ == "profile" else title.split("—")[0].strip()
+        # Fall back to the Person node's name for ids with no KB title (manually-seeded people,
+        # e.g. Theatre, have a graph node but no profile knowledge_item).
+        missing = [e for e in ids if e not in resolved]
+        if missing:
+            ph2 = ",".join("?" * len(missing))
+            for key, name in conn.execute(
+                    f"SELECT key, name FROM nodes WHERE type='Person' AND key IN ({ph2})", missing):
+                if name:
+                    resolved.setdefault(key, name)
     return {e: resolved.get(e, e.rsplit("/", 1)[-1]) for e in ids}
 
 
@@ -154,12 +163,24 @@ def _named_rows(conn: sqlite3.Connection,
 
 
 def faculty_in_department(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, str]]:
-    """All faculty (name, entity_id) filed under a department, sorted by name."""
-    rows = conn.execute(
+    """All faculty (name, entity_id) under a department, sorted by name.
+
+    Union of two sources so it works for BOTH crawled and manually-seeded people:
+      • KB-derived — entity_ids with an active knowledge_item filed under this dept (crawled
+        profiles); and
+      • graph-derived — person keys with a faculty `has_role` edge to this org (covers people
+        seeded with no KB items, e.g. Theatre, whose page lacks the profile template).
+    """
+    kb = {e for (e,) in conn.execute(
         "SELECT DISTINCT json_extract(metadata,'$.entity_id') FROM knowledge_items "
         "WHERE is_active=1 AND org_id=? AND json_extract(metadata,'$.entity_id') IS NOT NULL",
-        (org_id,)).fetchall()
-    return _named_rows(conn, [e for (e,) in rows])
+        (org_id,)).fetchall()}
+    edges = {k for (k,) in conn.execute(
+        "SELECT DISTINCT p.key FROM edges e JOIN nodes p ON p.id=e.src_id "
+        "JOIN nodes o ON o.id=e.dst_id "
+        "WHERE json_extract(o.attrs,'$.org_id')=? AND e.type='has_role' AND e.is_active=1 "
+        "AND e.category='faculty'", (org_id,)).fetchall()}
+    return _named_rows(conn, list(kb | edges))
 
 
 def officers_in_org(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, str, str | None]]:
