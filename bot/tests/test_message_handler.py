@@ -273,6 +273,22 @@ async def test_free_mode_skips_rag_and_calls_generate(mock_services):
 
 
 @pytest.mark.asyncio
+async def test_free_mode_skips_structured_answer(mock_services):
+    # Regression: a STRUCTURED-looking query ("who is the provost") must NOT return the GSA
+    # structured answer in free mode — it goes to the general LLM. (Bug: _try_structured ran
+    # before the free-mode check, so free mode behaved like GSA mode for structured queries.)
+    mock_services["ollama"] = AsyncMock()
+    mock_services["ollama"].model = "llama3.1:8b"
+    mock_services["ollama"].generate = AsyncMock(return_value="A provost is a senior academic officer.")
+    mock_services["conversation_manager"].get_mode.return_value = "free"
+    mock_services["intent_detector"].detect.return_value = (INTENT_QUESTION, 0.9)
+    h = MessageHandler(**mock_services)
+    resp = await h.handle(MessageRequest(user_id="u1", text="who is the provost", platform="discord"))
+    assert resp.source_note == "General Chat Mode"        # answered by the free LLM, not structured
+    mock_services["ollama"].generate.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_free_mode_ollama_failure_returns_error_message(mock_services):
     mock_services["ollama"] = AsyncMock()
     mock_services["ollama"].model = "llama3.1:8b"

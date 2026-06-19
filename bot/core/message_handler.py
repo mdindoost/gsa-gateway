@@ -122,9 +122,13 @@ class MessageHandler:
         # faculty" or "who works on social network analysis" otherwise mis-classify
         # as statement/food/social. Returns None for anything not clearly structured,
         # so descriptive questions fall straight through to the unchanged RAG path.
-        structured = await self._try_structured(clean_text)
-        if structured is not None:
-            return MessageResponse(text=structured)
+        # GSA-MODE ONLY: in free (general chat) mode the user wants the general LLM,
+        # NOT a GSA structured answer — skip structured so free mode isn't identical to GSA.
+        mode = self.conversation_manager.get_mode(user_id) if self.conversation_manager else "gsa"
+        if mode != "free":
+            structured = await self._try_structured(clean_text)
+            if structured is not None:
+                return MessageResponse(text=structured)
 
         # Detect intent
         if self.intent_detector:
