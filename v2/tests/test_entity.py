@@ -155,7 +155,8 @@ def _route(conn, q):
     return rt.skill if rt else None
 
 def test_router_dean_of_org(conn):
-    assert _route(conn, "who is the dean of ywcc") == "role_in_org"
+    # "the <role> of <org>" now routes to the unified role-lookup skill (org-scoped).
+    assert _route(conn, "who is the dean of ywcc") == "people_by_role"
 
 def test_router_name_enumeration(conn):
     assert _route(conn, "list all the michaels") == "people_by_name"
@@ -173,8 +174,8 @@ def test_router_surname_disambiguation(conn):
 
 def test_router_chair_routes_but_renders_empty(conn):
     rt = router.route(conn, "who is the chair of informatics")
-    assert rt.skill == "role_in_org"
-    assert SA.format_answer(SA.run(conn, rt)) == ""     # empty → falls through to RAG
+    assert rt.skill == "people_by_role"
+    assert SA.format_answer(SA.run(conn, rt)) == ""     # no chair → empty → falls through to RAG
 
 def test_router_hai_phan_research_empty(conn):
     rt = router.route(conn, "what does hai phan research")

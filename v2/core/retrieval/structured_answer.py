@@ -27,6 +27,9 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
     if skill == "role_in_org":
         return {"skill": skill, "org_name": org_name, "role_head": a["role_head"],
                 "rows": entity.role_in_org(conn, a["org_id"], a["role_head"])}
+    if skill == "people_by_role":
+        return {"skill": skill, "org_name": org_name, "role_head": a["role_head"],
+                "rows": entity.people_by_role(conn, a["role_head"], a.get("org_id"))}
     if skill == "people_by_name":
         return {"skill": skill, "name": a["name"],
                 "rows": entity.people_by_name(conn, a["name"])}
@@ -76,6 +79,22 @@ def format_answer(result: dict) -> str:
             f"{title} — {name}" + (f" ({email})" if email else "")
             for name, title, email in rows)
         return f"{result['org_name']}: {listed}."
+
+    if skill == "people_by_role":
+        rows = result["rows"]                # (name, title, org_name, contact)
+        if not rows:                         # nobody holds that role → RAG tries the prose
+            return ""
+        role = result["role_head"]
+        scope = f" in {result['org_name']}" if result.get("org_name") else " at NJIT"
+        if len(rows) > 25:                   # too many to name — ask to narrow by org
+            orgs = sorted({o for _n, _t, o, _c in rows})
+            return (f"{len(rows)} people hold a \"{role}\" title{scope}. Narrow it by org — e.g. "
+                    + ", ".join(orgs[:6]) + ("…" if len(orgs) > 6 else "") + ".")
+        if len(rows) == 1:
+            name, title, oname, contact = rows[0]
+            return f"{name} — {title} ({oname})" + (f". {contact}" if contact else ".")
+        listed = "; ".join(f"{name} — {title} ({oname})" for name, title, oname, _c in rows)
+        return f"{len(rows)} hold a \"{role}\" title{scope}: {listed}."
 
     if skill == "people_by_name":
         rows = result["rows"]

@@ -128,25 +128,64 @@ def persons_by_lastname(conn: sqlite3.Connection, token: str) -> list[dict]:
     return sorted(out, key=lambda d: d["name"])
 
 
+# A title segment whose LEAD role is support staff — so a trailing role in their title is a
+# SCOPE descriptor, not their role (e.g. "Executive Assistant, Dean of Students" is an assistant,
+# not the dean). Used to avoid naming support staff as the role-holder.
+_SUPPORT_LEAD = re.compile(
+    r"^(?:executive\s+|administrative\s+|senior\s+)?"
+    r"(?:assistant|aide|secretary|coordinator|specialist)\b", re.I)
+
+
+def people_by_role(conn: sqlite3.Connection, role_head: str,
+                   org_id: int | None = None) -> list[tuple[str, str, str, str | None]]:
+    """(name, title, org_name, contact) for everyone whose has_role title carries ``role_head``
+    as the head of a title SEGMENT — across the whole graph, or within ONE org if ``org_id`` is
+    given. This is the single role-lookup path (org-agnostic by design): you find the provost,
+    a dean, a chair, etc. by their ROLE, not by where they're filed.
+
+    Matching rules (the real correctness content):
+      • Exact head match per segment: 'provost' matches a segment starting 'Provost' but NOT
+        'Vice Provost' / 'Associate Provost'.
+      • Compound titles are split on ',' and ' and ', so 'Senior VP of Student Affairs and Dean
+        of Students' matches 'dean of students'.
+      • If the matching segment is NOT the lead and the lead is a SUPPORT role, skip — an
+        'Executive Assistant, Dean of Students' is not the dean.
+    Empty list → caller falls through to RAG (never invents)."""
+    rx = re.compile(r"^" + re.escape(role_head.strip().lower()) + r"\b")
+    # A leading SCOPE word ("Department Chair", "Departmental Chair") is not a rank modifier — strip
+    # it so "chair" matches "Department Chair", while a RANK modifier (Vice/Associate Chair) still
+    # won't match (it isn't a scope word).
+    _scope = re.compile(r"^(?:departmental|department)\s+", re.I)
+    sql = ("SELECT p.name, e.attrs, p.attrs, o.name FROM edges e JOIN nodes p ON p.id=e.src_id "
+           "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
+           "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1")
+    params: list = []
+    if org_id is not None:
+        sql += " AND json_extract(o.attrs,'$.org_id')=?"
+        params.append(org_id)
+    out: list[tuple[str, str, str, str | None]] = []
+    for raw, eattrs, pattrs, oname in conn.execute(sql, params):
+        titles = (json.loads(eattrs) if eattrs else {}).get("titles") or []
+        pa = json.loads(pattrs) if pattrs else {}
+        contact = pa.get("email") or pa.get("phone")
+        for title in titles:
+            segs = [s.strip() for s in re.split(r",|\s+and\s+", title) if s.strip()]
+            idx = next((i for i, s in enumerate(segs)
+                        if rx.match(s.lower()) or rx.match(_scope.sub("", s.lower()))), None)
+            if idx is None:
+                continue
+            if idx > 0 and segs and _SUPPORT_LEAD.match(segs[0]):
+                continue   # support-staff lead → the role is just a scope descriptor
+            out.append((normalize_person_name(raw), title, oname, contact))
+            break
+    return sorted(set(out), key=lambda r: (r[0], r[2]))
+
+
 def role_in_org(conn: sqlite3.Connection, org_id: int,
                 role_head: str) -> list[tuple[str, str, str | None]]:
-    """(name, title, email) for people appointed to THIS org whose has_role title HEAD is
-    exactly ``role_head`` — 'dean' matches 'Dean, YWCC' but NOT 'Associate Dean …'.
-    Returns [] when the exact role is absent (caller falls through to RAG). Org-scoped
-    (a chair/dean is org-specific), not descendants."""
-    rx = re.compile(r"^" + re.escape(role_head.strip().lower()) + r"\b")
-    out: list[tuple[str, str, str | None]] = []
-    for raw, eattrs, pattrs in conn.execute(
-            "SELECT p.name, e.attrs, p.attrs FROM edges e JOIN nodes p ON p.id=e.src_id "
-            "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
-            "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1 "
-            "AND json_extract(o.attrs,'$.org_id')=?", (org_id,)):
-        titles = (json.loads(eattrs) if eattrs else {}).get("titles") or []
-        match = next((t for t in titles if rx.match(t.strip().lower())), None)
-        if match:
-            email = (json.loads(pattrs) if pattrs else {}).get("email")
-            out.append((normalize_person_name(raw), match, email))
-    return sorted(set(out), key=lambda r: r[0])
+    """(name, title, email) for people in THIS org whose has_role title head is ``role_head``.
+    Thin org-scoped wrapper over people_by_role (drops the org column). Empty → RAG."""
+    return [(n, t, c) for (n, t, _o, c) in people_by_role(conn, role_head, org_id=org_id)]
 
 
 def research_of_person(conn: sqlite3.Connection, entity_id: str) -> dict:

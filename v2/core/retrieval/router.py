@@ -69,6 +69,20 @@ _PEOPLE = re.compile(
 _ROLE_HEAD = (r"associate\s+dean|assistant\s+dean|associate\s+chair|"
               r"dean|chair|director|coordinator|head")
 _ROLE_OF_ORG = re.compile(r"\b(" + _ROLE_HEAD + r")\s+(?:of|at|for|in)\b")
+
+# Role-identity vocabulary for "who is the <role>" / "the <role> of <org>" / "who are the <role>s".
+# Longest-first so multi-word roles win ("dean of students" before "dean"). Officer titles
+# (president/vice president/treasurer/secretary) are handled by the OFFICER branch above and are
+# deliberately excluded here. Synonyms map to how the title actually reads on the edge.
+_ROLE_VOCAB = ["associate dean", "assistant dean", "associate chair", "vice provost",
+               "associate provost", "dean of students", "general counsel",
+               "chief financial officer", "athletic director", "director of athletics",
+               "chief of staff", "provost", "chancellor", "dean", "chair", "director",
+               "coordinator", "cfo"]
+_ROLE_VOCAB_RX = re.compile(
+    r"\b(" + "|".join(re.escape(r) for r in sorted(_ROLE_VOCAB, key=len, reverse=True)) + r")s?\b",
+    re.I)
+_ROLE_SYNONYM = {"cfo": "chief financial officer", "athletic director": "director of athletics"}
 # Duties/process/eligibility => NOT an identity ask (mirrors _OFFICER_PROCESS).
 _LEADERSHIP_PROCESS = re.compile(
     r"\b(do(?:es)?|responsib|dut(?:y|ies)|how\s+(?:to|do)|become|elect|appoint|"
@@ -213,13 +227,16 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     if org_id is not None and _PEOPLE.search(q):
         return Route("people_in_org", {"org_id": org_id})
 
-    # ── role-in-org: "the <role> of <org>" (academic leadership) ────────────────
-    # Empty result (e.g. no 'Chair' title for Informatics) renders "" → falls through
-    # to RAG; never names an associate/assistant holder as "the <role>".
-    if org_id is not None and not _LEADERSHIP_PROCESS.search(q):
-        rm = _ROLE_OF_ORG.search(q)
-        if rm:
-            return Route("role_in_org", {"org_id": org_id, "role_head": rm.group(1)})
+    # ── role lookup: find a person BY THEIR ROLE ("who is the provost", "the dean of NCE",
+    # "who are the deans") — across the graph, or scoped to an org if one was named. Names ALL
+    # holders (the skill narrows if there are too many). Officer titles stay with the officer
+    # branch above; process/eligibility shapes ("how to become a dean") fall through to RAG.
+    if not _LEADERSHIP_PROCESS.search(q):
+        rm = _ROLE_VOCAB_RX.search(q)
+        if rm and (_PERSON_INTENT.search(q) or _ENUM_TRIGGER.search(q)
+                   or _ROLE_OF_ORG.search(q) or org_id is not None):
+            role = _ROLE_SYNONYM.get(rm.group(1).lower(), rm.group(1).lower())
+            return Route("people_by_role", {"role_head": role, "org_id": org_id})
 
     # ── person-centric branches (entity layer) ─────────────────────────────────
     named = entity.persons_in_query(conn, q)   # people whose FULL name is in the query
