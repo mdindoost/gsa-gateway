@@ -107,6 +107,20 @@ def test_list_skill_has_no_suffix(conn):
     assert suffix is None
 
 
+@pytest.mark.parametrize("q", [
+    "Koutis's email", "koutis info", "koutis all info", "koutis", "koutis details",
+])
+def test_surname_attribute_and_info_route_to_entity_card_with_links(conn, q):
+    skill, facts, suffix = _suffix(conn, q)
+    assert skill == "entity_card"
+    assert suffix is not None and "Google Scholar" in suffix and "LinkedIn" in suffix
+
+
+def test_bare_nonperson_word_does_not_misroute(conn):
+    # a lone non-surname word must NOT hit the entity card
+    assert router.route(conn, "funding") is None or router.route(conn, "funding").skill != "entity_card"
+
+
 def test_surname_only_research_resolves_unambiguous_person(conn):
     # "what does Koutis work on" — surname only, one Koutis → research_of_person + metrics
     skill, facts, suffix = _suffix(conn, "what does Koutis work on")

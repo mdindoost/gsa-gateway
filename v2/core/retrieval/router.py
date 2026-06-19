@@ -100,6 +100,9 @@ _PERSON_INTENT = re.compile(
     r"\b(who(?:'s|\s+is|\s+are)|tell\s+me\s+about|info(?:rmation)?\s+on|"
     r"profile\s+of|contact\s+(?:for|info)|reach)\b")
 _PERSON_ATTR = re.compile(r"\b(e-?mail|office|phone|number|title|position|bio)\b")
+# Looser "more about this person" cues that FOLLOW a bare surname ("koutis info",
+# "koutis all info", "koutis details") — distinct from _PERSON_INTENT's "info ON <name>".
+_INFO_CUE = re.compile(r"\b(info|information|details|profile|bio|background|everything)\b")
 _NAME_PREFIX = re.compile(r"\b(?:professor|prof\.?|dr\.?|mr\.?|ms\.?|mrs\.?)\b")
 _STOP_FOR_ENUM = {
     "list", "name", "names", "show", "all", "every", "any", "are", "there", "is",
@@ -280,9 +283,14 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     if len(named) > 1 and (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q)):
         return Route("person_disambig", {"candidates": named})
 
-    # surname-only disambiguation: "professor Wang" / "who is Wang" → list the Wangs.
-    if _PERSON_INTENT.search(q) or _NAME_PREFIX.search(q):
-        for tok in _qtokens(qn):
+    # surname-only: "professor Wang" / "who is Wang" / "Koutis's email" / "koutis info" /
+    # bare "koutis". The trigger is person-directed (intent / attribute / title prefix / an
+    # info cue) OR the whole query is just one token (a lone surname). Resolution is by real
+    # last name, so a non-person single word ("events") simply finds nothing and falls to RAG.
+    qn_toks = _qtokens(qn)
+    if (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q) or _NAME_PREFIX.search(q)
+            or _INFO_CUE.search(q) or len(qn_toks) == 1):
+        for tok in qn_toks:
             cands = entity.persons_by_lastname(conn, tok)
             if len(cands) >= 2:
                 return Route("person_disambig", {"candidates": cands})
