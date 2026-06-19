@@ -127,6 +127,7 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
     # frontier instead. So depth=2 walks hub->listing and defers the profiles.
     q: deque = deque([(start, None, depth)])
     visited: set[str] = set()
+    done_final: set[str] = set()        # post-redirect URLs processed this call (dedup /people↔/our-people)
     while q:
         node, from_node, d = q.popleft()
         if node.url in visited:
@@ -135,11 +136,14 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
         final_url, html, status = fetch(node.url)
         if delay:
             time.sleep(delay)           # politeness between requests on a full multi-college crawl
+        if status == "ok" and final_url in done_final:
+            continue                    # two paths redirected to the same page — process once
         if status != "ok":
             conn.execute("UPDATE frontier SET status='error', error=? WHERE url=?",
                          (status, node.url))
             st.errors += 1
             continue
+        done_final.add(final_url)
         unchanged = _unchanged(conn, final_url, html)
         save_raw_page(conn, final_url, html, status)
         st.fetched += 1
@@ -225,6 +229,25 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                     else:
                         _record_frontier(conn, pid, purl, aspect, d - 1)
                         st.frontier_added += 1
+                # Adaptive discovery: a plain (no-policy) department on a SINGLE-UNIT host also gets
+                # its OTHER people pages crawled (/administration, /joint-faculty, …) — same anchored
+                # org, shared acc (merge + M3 union + roll-up skip apply). Skip shared hosts (would
+                # bleed another unit's roster into this org) and pages already anchored as entry
+                # points. Enqueued AFTER the main page is parsed, so /faculty sets the canonical
+                # (faculty) edge first and the supplementary pages merge. 404/empty probes are
+                # harmless (skipped / contribute nothing to the M3 union).
+                if node.policy is None and ep.discoverable_host(final_url):
+                    from urllib.parse import urlsplit
+                    sp = urlsplit(final_url)
+                    here = sp.path.rstrip("/")
+                    for path in ep.SUPPLEMENTARY_PATHS:
+                        if path == here:
+                            continue
+                        cand = f"{sp.scheme}://{sp.netloc}{path}"
+                        if cand in visited or ep.is_entry_point_url(cand):
+                            continue
+                        q.append((ep.EntryPoint(cand, node.org_slug, node.org_name, "listing",
+                                                node.parent_slug, org_type=node.org_type), None, d))
                 # M3 sweep is deferred — done once per owning-org (union of feeders) after the whole
                 # run, via _m3_sweep(acc). A standalone explore() call sweeps itself below.
             elif node.kind == "profile":

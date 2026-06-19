@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 @dataclass(frozen=True)
 class EntryPoint:
@@ -98,24 +99,49 @@ SEED_ORGS = [
 # org. SEED_ORGS guarantees the colleges exist, so department order within a college is free,
 # but we keep college-before-departments for readability. reconcile_departures still runs ONCE
 # after the whole loop (in run_explore.py), so cross-listing ordering never causes false retirement.
-# Computer Science exposes its administration + joint faculty on SEPARATE pages the YWCC hub does
-# NOT link (the hub's only CS child is cs.njit.edu/faculty). Anchor them as their own listings so we
-# capture the admin staff / associate chairs / program directors / joint faculty we'd otherwise miss.
-# They feed the SAME `computer-science` org as the hub's /faculty crawl; run_explore's shared M3
-# accumulator merges titles into one edge and unions all feeders for the sweep (no cross-delete).
-# Placed AFTER ROOT so the hub's /faculty crawl sets the canonical faculty edge first.
-CS_ADMIN = EntryPoint("https://cs.njit.edu/administration", "computer-science",
-                      "Computer Science", "listing", parent_slug="ywcc", org_type="department")
-CS_JOINT = EntryPoint("https://cs.njit.edu/joint-faculty", "computer-science",
-                      "Computer Science", "listing", parent_slug="ywcc", org_type="department")
-
 ALL_ENTRY_POINTS = [
     ROOT, MTSM_FACULTY, MTSM_ADMIN,
     NCE_COLLEGE, *NCE_DEPTS,
     *CSLA_DEPTS,
     HCAD_COLLEGE,
-    CS_ADMIN, CS_JOINT,
 ]
+
+# ── adaptive supplementary-page discovery ───────────────────────────────────────────────────
+# For a plain (no-policy) department on a SINGLE-UNIT host, the crawler also crawls these standard
+# people pages (whichever exist) so we don't miss admin staff / associate chairs / program directors
+# / joint faculty (e.g. CS only links /faculty from the hub, but has /administration + /joint-faculty).
+# They feed the SAME anchored org; the shared M3 accumulator merges titles + unions feeders, and
+# section_policy skips roll-up sections. Replaces the old hardcoded CS_ADMIN/CS_JOINT entries.
+SUPPLEMENTARY_PATHS = ("/administration", "/administration-and-faculty", "/joint-faculty",
+                       "/our-people", "/people", "/faculty", "/staff", "/leadership")
+
+
+def _host(url: str) -> str:
+    return urlsplit(url).netloc.lower().removeprefix("www.")
+
+
+def _norm_url(url: str) -> str:
+    p = urlsplit(url)
+    return (p.netloc.lower().removeprefix("www.") + p.path.rstrip("/")).lower()
+
+
+def discoverable_host(url: str) -> bool:
+    """True if ``url``'s host serves exactly ONE anchored org — safe to probe for supplementary
+    pages. Shared hosts (the hub's computing.njit.edu, which also serves college-administration/
+    advising; management.njit.edu, which serves mtsm AND mtsm-administration) are refused, since a
+    probe there would feed one unit's roster into another unit's org."""
+    by_host: dict[str, set[str]] = {}
+    for e in ALL_ENTRY_POINTS:
+        by_host.setdefault(_host(e.url), set()).add(e.org_slug)
+    shared = {h for h, orgs in by_host.items() if len(orgs) > 1}
+    shared.add(_host(ROOT.url))
+    return _host(url) not in shared
+
+
+def is_entry_point_url(url: str) -> bool:
+    """True if ``url`` is already an explicit anchored entry point (normalized compare) — discovery
+    must skip it so it doesn't re-crawl a curated page under the wrong org (e.g. MTSM /administration)."""
+    return _norm_url(url) in {_norm_url(e.url) for e in ALL_ENTRY_POINTS}
 
 # Common short names users actually type → resolved to the right org via metadata.aliases.
 # Department official names carry "&"/"and" + extra words ("Civil & Environmental Engineering"),
