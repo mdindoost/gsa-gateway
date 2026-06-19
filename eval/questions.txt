@@ -119,3 +119,23 @@ How do I contact the Dean of Students?
 What does the Office of Global Initiatives do for international students?
 How do I set up eRefund direct deposit with the Bursar?
 What are the Bursar's office hours?
+
+# role lookup (who holds a role — by title, across the graph)
+Who is the NJIT president?
+Who is the provost?
+Who is the general counsel?
+Who is the dean of students?
+Who is the dean of NCE?
+Who is the chair of the CS department?
+Who is the chair of physics?
+Who are the deans?
+
+# people & org rosters (graph-backed, incl. manually-seeded people)
+Who are the NJIT senior administrators?
+Tell me about Blake Haggerty
+Who are the faculty in civil engineering?
+Who teaches in mechanical engineering?
+Who are the faculty in physics?
+Who are the faculty in theatre arts?
+Who is in the New Jersey School of Architecture?
+Who works in the CS department administration?
