@@ -36,7 +36,7 @@ Enter or update the bank account information where refunds should be deposited.
 NJIT eRefunds Transition Sweepstakes
 (For the current figure, see the live page: https://www.njit.edu/bursar/touchnet-erefund)
 Entry Deadline:
-April 20, 2026 at 11:59 PM ET
+(For the current figure, see the live page: https://www.njit.edu/bursar/touchnet-erefund)
 Students can enter using either method below:
 Automatic Entry
 Students are automatically entered when they successfully enroll in eRefunds through the TouchNet system by the deadline.
@@ -57,7 +57,7 @@ Deadline:
 Entries may be submitted beginning on
 <date/time>
 and must be received by
-April 20, 2026, at 11:59 PM (ET)
+(For the current figure, see the live page: https://www.njit.edu/bursar/touchnet-erefund)
 .
 Eligible Students:
 This Sweepstakes is open only to individuals who are 18 years or older and a full- or part-time student enrolled at NJIT. By participating in the Sweepstakes, participants agree to be bound by these Official Rules, including all eligibility requirements and the decisions of NJIT, which are final and binding in all matters. Except as noted above, employees of NJIT and members of their immediate family (e.g., spouses, domestic partners, parents, children, siblings) are not eligible to win. Entries that are incomplete or corrupted are void and will not be eligible. Any effort by a person to misrepresent himself or herself using aliases or multiple e-mail addresses will disqualify all entries of such individual. NJIT reserves the right to verify eligibility qualifications of any winner. Failure to comply with these Official Rules as determined in the sole discretion of the NJIT may result in disqualification from the Sweepstakes. This Sweepstakes is subject to all applicable federal, state, and local laws and regulations.
@@ -68,12 +68,12 @@ Students are automatically entered upon successfully establishing Direct Deposit
 Method 2: Alternative Method of Entry (AMOE).
 No purchase or enrollment in eRefunds is necessary to enter or win. Students may enter by visiting the Bursar’s Office
 during normal business hours and complete a "Sweepstakes Entry Form" including their name and UCID. All paper entries must be submitted by the close of business on
-April 20, 2026
+(For the current figure, see the live page: https://www.njit.edu/bursar/touchnet-erefund)
 .
 4. Winner Selection & Validation
 Selection:
 Three (3) winners will be selected via a random drawing from the pool of all eligible entries on
-April 22, 2026
+(For the current figure, see the live page: https://www.njit.edu/bursar/touchnet-erefund)
 .
 Validation:
 For electronic entries, enrollment data will be validated via

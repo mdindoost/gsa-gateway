@@ -33,6 +33,9 @@ _MONEY   = re.compile(r"(\$\s?\d[\d,]*(?:\.\d+)?|\bUSD\s?\d[\d,]*)", re.I)
 _PERCENT = re.compile(r"\b\d{1,3}(?:\.\d+)?\s?%")
 _MONTHS  = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
 _DATE    = re.compile(rf"\b{_MONTHS}\s+\d{{1,2}}(?:st|nd|rd|th)?\b|\b\d{{1,2}}/\d{{1,2}}(?:/\d{{2,4}})?\b", re.I)
+# A specific DATED timestamp ("April 20, 2026", "9/15/2026") is always volatile — a deadline
+# or event that goes stale — even without a "deadline" word nearby (it may be on another line).
+_DATED   = re.compile(rf"\b{_MONTHS}\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+20\d\d\b|\b\d{{1,2}}/\d{{1,2}}/20\d\d\b", re.I)
 _DEADLINE_CTX = re.compile(r"\b(deadline|due|by|last\s+day|no\s+later|before|on\s+or\s+after)\b", re.I)
 
 
@@ -51,6 +54,7 @@ def redact_volatile(text: str, source_url: str) -> tuple[str, int]:
     for line in (text or "").splitlines():
         volatile = bool(
             _MONEY.search(line) or _PERCENT.search(line)
+            or _DATED.search(line)                               # dated timestamp → always
             or (_DATE.search(line) and _DEADLINE_CTX.search(line)))
         if volatile:
             out.append(pointer)

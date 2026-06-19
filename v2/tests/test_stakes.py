@@ -37,6 +37,11 @@ def test_deadline_date_redacted_but_plain_date_kept():
     assert "September 15" not in clean       # deadline date → redacted
     assert "1881" in clean                   # non-deadline number → kept
 
+def test_dated_timestamp_redacted_without_context_word():
+    # "April 20, 2026" is a specific dated deadline/event — redact even with no "deadline" word
+    clean, n = S.redact_volatile("Entry deadline\nApril 20, 2026 at 11:59 PM ET", URL_BURSAR)
+    assert n == 1 and "2026" not in clean
+
 def test_stable_text_untouched():
     txt = "Pay online through the Highlander Pipeline portal under Student Accounts."
     clean, n = S.redact_volatile(txt, URL_BURSAR)
