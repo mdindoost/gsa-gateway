@@ -216,6 +216,18 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
             and not _OFFICER_PROCESS.search(q)):
         return Route("officers_in_org", {"org_id": org_id})
 
+    # ── role lookup: find a person BY THEIR ROLE ("who is the provost", "the chair of cs",
+    # "who are the deans"). Comes BEFORE the department/faculty/people branches so a NAMED role
+    # wins over "list <org>'s departments" (e.g. "chair of cs department" is a role ask, not a
+    # department list). Officer titles stay with the officer branch above; process/eligibility
+    # shapes ("how to become a dean") fall through to RAG. Empty result → RAG.
+    if not _LEADERSHIP_PROCESS.search(q):
+        rm = _ROLE_VOCAB_RX.search(q)
+        if rm and (_PERSON_INTENT.search(q) or _ENUM_TRIGGER.search(q)
+                   or _ROLE_OF_ORG.search(q) or org_id is not None):
+            role = _ROLE_SYNONYM.get(rm.group(1).lower(), rm.group(1).lower())
+            return Route("people_by_role", {"role_head": role, "org_id": org_id})
+
     # Faculty roster is MORE SPECIFIC than the generic people list, so it wins first — e.g.
     # "academic staff in biology" is a faculty ask even though it contains 'staff' (which the
     # generic _PEOPLE cue also matches).
@@ -226,17 +238,6 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
 
     if org_id is not None and _PEOPLE.search(q):
         return Route("people_in_org", {"org_id": org_id})
-
-    # ── role lookup: find a person BY THEIR ROLE ("who is the provost", "the dean of NCE",
-    # "who are the deans") — across the graph, or scoped to an org if one was named. Names ALL
-    # holders (the skill narrows if there are too many). Officer titles stay with the officer
-    # branch above; process/eligibility shapes ("how to become a dean") fall through to RAG.
-    if not _LEADERSHIP_PROCESS.search(q):
-        rm = _ROLE_VOCAB_RX.search(q)
-        if rm and (_PERSON_INTENT.search(q) or _ENUM_TRIGGER.search(q)
-                   or _ROLE_OF_ORG.search(q) or org_id is not None):
-            role = _ROLE_SYNONYM.get(rm.group(1).lower(), rm.group(1).lower())
-            return Route("people_by_role", {"role_head": role, "org_id": org_id})
 
     # ── person-centric branches (entity layer) ─────────────────────────────────
     named = entity.persons_in_query(conn, q)   # people whose FULL name is in the query
