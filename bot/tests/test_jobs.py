@@ -21,6 +21,7 @@ from bot.services.jobs import (
     build_crawl_section_command,
     build_refresh_all_command,
     build_refresh_command,
+    build_seed_roster_command,
 )
 
 
@@ -261,6 +262,23 @@ def test_start_crawl_section_runs_to_done(tmp_path):
     row = mgr.get_job(job["job_id"])
     assert row["type"] == "crawl_section"
     assert "crawl-ran" in row["log_tail"]
+
+
+def test_build_seed_roster_command_maps_roster_to_script():
+    cmd = build_seed_roster_command(
+        python_bin="/venv/python", repo_root="/repo", db_path="/repo/g.db",
+        roster="senior-administration")
+    assert cmd[:2] == ["/venv/python", "/repo/scripts/ingest_njit_administration.py"]
+    assert "--commit" in cmd and "/repo/g.db" in cmd
+
+
+def test_start_seed_roster_runs_to_done(tmp_path):
+    mgr = _make_manager(tmp_path, build_cmd=_fast_ok_builder("roster-ran"))
+    job = mgr.start_seed_roster(roster="theatre")
+    assert _wait_until(lambda: mgr.get_job(job["job_id"])["status"] == "done")
+    row = mgr.get_job(job["job_id"])
+    assert row["type"] == "seed_roster"
+    assert "roster-ran" in row["log_tail"]
 
 
 # ── duration ──────────────────────────────────────────────────────────────────

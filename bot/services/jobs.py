@@ -107,6 +107,21 @@ def build_crawl_section_command(*, python_bin, repo_root, db_path, section) -> l
     return [python_bin, script, str(section), "--refresh"]
 
 
+# Curated manual rosters (non-template / JS-rendered pages the crawler can't reach) — each is a
+# small gated seed script. roster key → script filename.
+ROSTER_SCRIPTS = {
+    "theatre": "ingest_theatre_people.py",
+    "senior-administration": "ingest_njit_administration.py",
+}
+
+
+def build_seed_roster_command(*, python_bin, repo_root, db_path, roster) -> list[str]:
+    """Build a curated-roster seed command (gated, source='dashboard'): re-seed Theatre or the
+    NJIT Senior Administration from the maintainer-curated list. ``roster`` is a ROSTER_SCRIPTS key."""
+    script = str(Path(repo_root) / "scripts" / ROSTER_SCRIPTS[roster])
+    return [python_bin, script, "--db", str(db_path), "--commit"]
+
+
 def _duration_seconds(started_at, finished_at):
     """Wall-clock seconds between two UTC 'YYYY-MM-DD HH:MM:SS' strings, or None."""
     if not started_at or not finished_at:
@@ -150,6 +165,10 @@ class JobManager:
             return build_crawl_section_command(
                 python_bin=self.python_bin, repo_root=self.repo_root,
                 db_path=self.db_path, section=args.get("section", "all"))
+        if job_type == "seed_roster":
+            return build_seed_roster_command(
+                python_bin=self.python_bin, repo_root=self.repo_root,
+                db_path=self.db_path, roster=args.get("roster", "theatre"))
         return build_refresh_command(
             python_bin=self.python_bin, repo_root=self.repo_root,
             db_path=self.db_path, department=args.get("department", "cs"),
@@ -220,6 +239,10 @@ class JobManager:
     def start_crawl_section(self, section="all") -> dict:
         """Refresh one NJIT office (or 'all') from njit.edu: fetch + ingest live + embed."""
         return self._start("crawl_section", {"section": section})
+
+    def start_seed_roster(self, roster="theatre") -> dict:
+        """Re-seed a curated manual roster (Theatre / Senior Administration) — gated, source='dashboard'."""
+        return self._start("seed_roster", {"roster": roster})
 
     def estimate_refresh_all(self, web=False) -> dict | None:
         """Duration estimate for an all-departments run, from the last completed one.

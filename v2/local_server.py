@@ -197,6 +197,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     return self._api_explore()
                 if path == "/api/jobs/crawl-section":
                     return self._api_crawl_section()
+                if path == "/api/jobs/seed-roster":
+                    return self._api_seed_roster()
                 if path.startswith("/api/jobs/") and path.endswith("/cancel"):
                     return self._api_cancel(path[len("/api/jobs/"):-len("/cancel")])
                 return self._error("Not found", 404)
@@ -579,6 +581,20 @@ class GatewayHandler(BaseHTTPRequestHandler):
             return self._error(f"unknown section: {section}", 400)
         try:
             res = JOBS.start_crawl_section(section=section)
+        except JobBusyError:
+            return self._error("a job is already running", 409)
+        return self._json(res, 201)
+
+    # Curated manual rosters the crawler can't reach (JS-rendered / non-profile-template pages).
+    _ROSTERS = ("theatre", "senior-administration")
+
+    def _api_seed_roster(self):
+        body = self._body()
+        roster = str(body.get("roster", "theatre"))
+        if roster not in self._ROSTERS:
+            return self._error(f"unknown roster: {roster}", 400)
+        try:
+            res = JOBS.start_seed_roster(roster=roster)
         except JobBusyError:
             return self._error("a job is already running", 409)
         return self._json(res, 201)

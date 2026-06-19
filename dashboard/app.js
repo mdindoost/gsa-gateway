@@ -573,59 +573,79 @@ function jobBadge(status) {
 function renderJobs() {
   const el = document.getElementById("tab-jobs");
   if (!isServerMode()) {
-    el.innerHTML = emptyMsg("Jobs run on the live server. Connect via the server URL "
-      + "(not a loaded file) to trigger a faculty refresh.");
+    el.innerHTML = emptyMsg("Data-source refreshes run on the live server. Connect via the "
+      + "server URL (not a loaded file) to trigger a refresh.");
     return;
   }
   el.innerHTML = `
     <div class="panel">
       <div id="jobs-health" class="jobs-health">Checking server…</div>
       <div class="jobs-actions">
-        <button class="btn btn-primary" id="job-refresh-all">↻ Refresh NJIT KB</button>
-        <label class="jobs-web"><input type="checkbox" id="job-web" />
-          include personal websites (slower)</label>
-      </div>
-      <div class="jobs-actions" style="margin-top:8px">
-        <button class="btn btn-primary" id="job-explore">🕸 Gather KG (people + roles + research)</button>
-        <button class="btn btn-ghost" id="job-frontier">🔗 Process frontier sites</button>
-      </div>
-      <div class="jobs-actions" style="margin-top:8px">
-        <select id="job-crawl-section" class="btn btn-ghost" style="padding:6px 10px">
-          <option value="all">All offices</option>
-          <option value="registrar">Registrar</option>
-          <option value="financialaid">Financial Aid</option>
-          <option value="graduatestudies">Graduate Studies</option>
-          <option value="counseling">Counseling (C-CAPS)</option>
-          <option value="careerservices">Career Development</option>
-          <option value="dos">Dean of Students</option>
-          <option value="global">Global Initiatives (OGI)</option>
-          <option value="bursar">Bursar</option>
+        <label class="muted" style="margin-right:6px">Refresh:</label>
+        <select id="refresh-what" class="btn btn-ghost" style="padding:6px 10px">
+          <option value="explore">NJIT people &amp; colleges (faculty, roles, research)</option>
+          <option value="office">A specific NJIT office</option>
+          <option value="roster">A manual roster</option>
+          <option value="frontier">Personal / lab websites</option>
         </select>
-        <button class="btn btn-primary" id="job-crawl">🏛 Refresh NJIT office (fetch + ingest + embed)</button>
+        <select id="refresh-target" class="btn btn-ghost" style="padding:6px 10px;display:none"></select>
+        <button class="btn btn-primary" id="refresh-run">Run refresh</button>
       </div>
       <div id="jobs-kg-scope" class="jobs-scope"></div>
-      <div id="jobs-scope" class="jobs-scope"></div>
-      <div id="jobs-eta" class="jobs-eta"></div>
       <div id="job-active"></div>
-      <h3 style="margin-top:18px">Recent jobs</h3>
+      <h3 style="margin-top:18px">Recent runs</h3>
       <div id="jobs-recent">Loading…</div>
     </div>`;
-  document.getElementById("job-refresh-all").addEventListener("click", startRefreshAll);
-  document.getElementById("job-explore").addEventListener("click", () => startExplore({}));
-  document.getElementById("job-frontier").addEventListener("click", () => startExplore({ frontier: true }));
-  document.getElementById("job-crawl").addEventListener("click", startCrawlSection);
-  document.getElementById("job-web").addEventListener("change", refreshJobsHealth);
+
+  const OFFICE_OPTS = [
+    ["all", "All offices"], ["registrar", "Registrar"], ["financialaid", "Financial Aid"],
+    ["graduatestudies", "Graduate Studies"], ["counseling", "Counseling (C-CAPS)"],
+    ["careerservices", "Career Development"], ["dos", "Dean of Students"],
+    ["global", "Global Initiatives (OGI)"], ["bursar", "Bursar"]];
+  const ROSTER_OPTS = [
+    ["theatre", "Theatre Arts & Technology"], ["senior-administration", "NJIT Senior Administration"]];
+
+  const what = document.getElementById("refresh-what");
+  const target = document.getElementById("refresh-target");
+  const fillTarget = () => {
+    const opts = what.value === "office" ? OFFICE_OPTS
+      : what.value === "roster" ? ROSTER_OPTS : null;
+    if (!opts) { target.style.display = "none"; target.innerHTML = ""; return; }
+    target.innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+    target.style.display = "";
+  };
+  what.addEventListener("change", fillTarget);
+  fillTarget();
+
+  document.getElementById("refresh-run").addEventListener("click", () => {
+    if (what.value === "explore") startExplore({});
+    else if (what.value === "frontier") startExplore({ frontier: true });
+    else if (what.value === "office") startCrawlSection(target.value);
+    else if (what.value === "roster") startSeedRoster(target.value);
+  });
   refreshJobsHealth();
   refreshJobsList();
 }
 
-function startCrawlSection() {
-  const section = document.getElementById("job-crawl-section").value;
+function startCrawlSection(section) {
   jobsApi("/api/jobs/crawl-section", { method: "POST", body: { section } })
     .then(({ status, body }) => {
       if (status === 409) { toast("A job is already running", false); return; }
       if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
       toast(`Refreshing ${section} from njit.edu ✅`);
+      pollJob(body.job_id);
+      refreshJobsList();
+      refreshJobsHealth();
+    })
+    .catch((e) => toast("Server error: " + e.message, false));
+}
+
+function startSeedRoster(roster) {
+  jobsApi("/api/jobs/seed-roster", { method: "POST", body: { roster } })
+    .then(({ status, body }) => {
+      if (status === 409) { toast("A job is already running", false); return; }
+      if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
+      toast(`Re-seeding ${roster} roster ✅`);
       pollJob(body.job_id);
       refreshJobsList();
       refreshJobsHealth();
@@ -670,53 +690,11 @@ function refreshJobsHealth() {
       ).join(" &nbsp;·&nbsp; ");
     }
 
-    // What "Refresh NJIT KB" will run + what's coming.
-    const scope = document.getElementById("jobs-scope");
-    if (scope && body.departments) {
-      const sup = (body.departments.supported || []).map((d) => esc(d.name));
-      const soon = (body.departments.unsupported || []).map((d) => esc(d.name));
-      scope.innerHTML = (sup.length
-        ? `Will refresh: <strong>${sup.join(", ")}</strong>`
-        : '<span style="color:#ff8a8a">No verified departments configured</span>')
-        + (soon.length ? ` &nbsp;·&nbsp; <span class="muted">coming soon: ${soon.join(", ")}</span>` : "");
-    }
-
-    // Expected duration from the last completed all-run.
-    const eta = document.getElementById("jobs-eta");
-    if (eta) {
-      const web = document.getElementById("job-web").checked;
-      const last = body.last_refresh_all;
-      if (!last) eta.textContent = "First run — no time estimate yet.";
-      else {
-        const note = last.web === web ? "" : last.web
-          ? " (last run included websites — this run is faster)"
-          : " (last run skipped websites — this run is slower)";
-        eta.innerHTML = `Expected <strong>${etaText(last.duration_seconds)}</strong>`
-          + ` — based on the last run${note}.`;
-      }
-    }
-
-    const btn = document.getElementById("job-refresh-all");
-    if (btn) {
-      const noDepts = !body.departments || !(body.departments.supported || []).length;
-      btn.disabled = !ok || !!body.running_job || noDepts;
-    }
+    // Disable Run while a job is in flight; keep polling it.
+    const runBtn = document.getElementById("refresh-run");
+    if (runBtn) runBtn.disabled = !ok || !!body.running_job;
     if (body.running_job) pollJob(body.running_job.id);
   }).catch(() => {});
-}
-
-function startRefreshAll() {
-  const web = document.getElementById("job-web").checked;
-  jobsApi("/api/jobs/refresh", { method: "POST", body: { scope: "all", web } })
-    .then(({ status, body }) => {
-      if (status === 409) { toast("A job is already running", false); return; }
-      if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
-      toast("Refresh started ✅");
-      pollJob(body.job_id);
-      refreshJobsList();
-      refreshJobsHealth();   // re-disable the button now that a job is running
-    })
-    .catch((e) => toast("Server error: " + e.message, false));
 }
 
 // Reload the in-browser DB copy from the server WITHOUT re-rendering (so the
