@@ -73,6 +73,13 @@ _LEADERSHIP_PROCESS = re.compile(
     r"\b(do(?:es)?|responsib|dut(?:y|ies)|how\s+(?:to|do)|become|elect|appoint|"
     r"eligib|qualif|nominat|remov|why|what'?s?\s+the\s+role)\b")
 _ENUM_TRIGGER = re.compile(r"\b(?:list|name|show|all|every|any|are\s+there|is\s+there|do\s+we\s+have)\b")
+# Faculty-roster cues: any of these + a resolved org → list that department's faculty. Broad on
+# purpose (people ask many ways). Deliberately EXCLUDES 'people/members/staff/works' (→
+# people_in_org) and 'researchers' (→ research-area queries), so it doesn't hijack those branches.
+_FACULTY_CUE = re.compile(
+    r"\b(?:faculty|professors?|lecturers?|instructors?|teachers?|academics|"
+    r"teaching\s+(?:staff|faculty)|academic\s+staff)\b"
+    r"|\bwho\s+teach(?:es)?\b|\bteach(?:es|ing)?\s+(?:in|at|for|within)\b", re.I)
 _RESEARCH_CUE = re.compile(r"\b(research|works?\s+on|working\s+on|studies|studying|specializ|expert)\b")
 _PERSON_INTENT = re.compile(
     r"\b(who(?:'s|\s+is|\s+are)|tell\s+me\s+about|info(?:rmation)?\s+on|"
@@ -184,23 +191,26 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     if org_id is not None and _ENUM_AREAS.search(q):
         if _RANK.search(q):
             return Route("area_counts", {"org_id": org_id})
-        # a 'faculty'/'professor' mention WITHOUT a ranking cue is a roster ask
-        # ("list faculty and their areas"), not area enumeration — fall through to the
-        # faculty branch instead of answering with a bare list of area names.
-        if "faculty" not in q and "professor" not in q:
+        # a faculty-roster cue WITHOUT a ranking cue is a roster ask ("list faculty and their
+        # areas" / "who teaches here and their areas"), not area enumeration — fall through to
+        # the faculty branch instead of answering with a bare list of area names.
+        if not _FACULTY_CUE.search(q):
             return Route("areas_in_org", {"org_id": org_id})
 
     if (org_id is not None and _OFFICER_IDENTITY.search(q)
             and not _OFFICER_PROCESS.search(q)):
         return Route("officers_in_org", {"org_id": org_id})
 
+    # Faculty roster is MORE SPECIFIC than the generic people list, so it wins first — e.g.
+    # "academic staff in biology" is a faculty ask even though it contains 'staff' (which the
+    # generic _PEOPLE cue also matches).
+    if "department" in q and org_id is not None and not _FACULTY_CUE.search(q):
+        return Route("org_departments", {"org_id": org_id})
+    if org_id is not None and _FACULTY_CUE.search(q):
+        return Route("faculty_in_department", {"org_id": org_id})
+
     if org_id is not None and _PEOPLE.search(q):
         return Route("people_in_org", {"org_id": org_id})
-
-    if "department" in q and org_id is not None and "faculty" not in q and "professor" not in q:
-        return Route("org_departments", {"org_id": org_id})
-    if ("faculty" in q or "professor" in q) and org_id is not None:
-        return Route("faculty_in_department", {"org_id": org_id})
 
     # ── role-in-org: "the <role> of <org>" (academic leadership) ────────────────
     # Empty result (e.g. no 'Chair' title for Informatics) renders "" → falls through
