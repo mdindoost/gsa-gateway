@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import logging
 import os
+from pathlib import Path
 
 import aiohttp
 
@@ -43,6 +45,7 @@ PRIMARY_TRIES = 6                 # primary-key reads (~1 min at 10s) before bur
 PRIMARY_INTERVAL = 10
 BURST_TRIES = 12                  # rapid reads across all keys
 BURST_INTERVAL = 2
+DEFAULT_STATE_FILE = Path(__file__).resolve().parent.parent / "data" / "match_watcher_state.json"
 MATCH_MAX = datetime.timedelta(hours=2, minutes=30)   # safety stop after kickoff
 KICKOFF_GRACE = datetime.timedelta(minutes=30)        # if the first live read is caught this
                                                       # soon after the scheduled kickoff it's
@@ -63,17 +66,69 @@ def _half_label(half: int) -> str:
 
 class MatchWatcher:
     def __init__(self, keys, db_path: str, org_slug: str = "gsa",
-                 channel: str = "world-cup-2026"):
+                 channel: str = "world-cup-2026", state_file=None):
         self.keys = keys if isinstance(keys, list) else \
             [k.strip() for k in (keys or "").split(",") if k.strip()]
         self.db_path = db_path
         self.org_slug = org_slug
         self.channel = channel
+        self.state_file = Path(state_file) if state_file else DEFAULT_STATE_FILE
+        self._states: dict[int, dict] = {}   # match_id -> ledger of what we've ANNOUNCED
         self._conn = None
         self.org_id = None
         self._task = None
         self._running = False
         self.debug_log = os.getenv("FOOTBALL_DEBUG_LOG", "false").lower() == "true"
+
+    # ── ledger persistence (the JSON book-keeping; the API is the truth) ─────────
+    @staticmethod
+    def _fresh_ledger() -> dict:
+        return {"started": False, "score": (0, 0), "finished": False,
+                "half": 1, "pending_half": False}
+
+    @staticmethod
+    def _normalize(st: dict) -> dict:
+        """Coerce a loaded record to the canonical shape (score→tuple, fill new keys)
+        so a file written by an older build never KeyErrors."""
+        return {"started": bool(st.get("started", False)),
+                "score": tuple(st.get("score") or (0, 0)),
+                "finished": bool(st.get("finished", False)),
+                "half": int(st.get("half", 1)),
+                "pending_half": bool(st.get("pending_half", False))}
+
+    def _match_state(self, match_id: int) -> dict:
+        """Resume the persisted ledger for a match, or register a fresh one. The same
+        dict is kept in ``self._states`` so a later ``save_states`` persists its mutations."""
+        st = self._states.get(match_id)
+        if st is None:
+            st = self._fresh_ledger()
+            self._states[match_id] = st
+        return st
+
+    def load_states(self) -> None:
+        if not self.state_file.exists():
+            return
+        try:
+            raw = json.loads(self.state_file.read_text(encoding="utf-8"))
+            # Drop already-finished matches — they never need resuming, and keeping them
+            # would feed the scheduler's "instant return" path (and grow the file unbounded).
+            self._states = {int(mid): n for mid, st in raw.items()
+                            if not (n := self._normalize(st))["finished"]}
+        except (json.JSONDecodeError, ValueError, TypeError, OSError) as exc:
+            logger.warning("MatchWatcher: could not load state (%s); starting fresh", exc)
+            self._states = {}
+
+    def save_states(self) -> None:
+        """Atomic write (temp + rename) so a crash mid-write can't corrupt the ledger."""
+        try:
+            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            data = {str(mid): {**st, "score": list(st["score"])}
+                    for mid, st in self._states.items()}
+            tmp = self.state_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp.replace(self.state_file)
+        except OSError as exc:
+            logger.warning("MatchWatcher: could not save state: %s", exc)
 
     # ── HTTP ──────────────────────────────────────────────────────────────────
     async def _get(self, key: str, url: str) -> dict | None:
@@ -248,16 +303,17 @@ class MatchWatcher:
         if wait > 0:
             logger.info("MatchWatcher: sleeping %.0fs until match %s window", wait, match_id)
             await asyncio.sleep(wait)
-        state = {"started": False, "score": (0, 0), "finished": False,
-                 "half": 1, "pending_half": False}
+        state = self._match_state(match_id)   # resume the ledger if we were mid-match
         deadline = kickoff_utc + MATCH_MAX
-        logger.info("MatchWatcher: watching match %s", match_id)
+        logger.info("MatchWatcher: watching match %s (resume score=%s half=%s)",
+                    match_id, state["score"], state["half"])
         while self._running and not state["finished"] and _utcnow() < deadline:
             m = await self._catch(match_id, et_day)
             if m:
                 near = _utcnow() < kickoff_utc + KICKOFF_GRACE
                 for ev in self._process(m, state, near):
                     self._post(match_id, ev)
+                self.save_states()                     # persist the ledger every catch
                 if state["finished"]:
                     break
                 await asyncio.sleep(REST_SECONDS)      # caught one → rest, then re-read
@@ -266,13 +322,16 @@ class MatchWatcher:
 
     # ── schedule + main loop ───────────────────────────────────────────────────
     @staticmethod
-    def _next_kickoff(matches: list, now: datetime.datetime):
-        """Pick the soonest not-yet-finished match. Returns (id, et_day, kickoff_utc)."""
+    def _next_kickoff(matches: list, now: datetime.datetime, finished_ids=frozenset()):
+        """Pick the soonest not-yet-finished match. Returns (id, et_day, kickoff_utc).
+
+        ``finished_ids`` are matches we've ALREADY wrapped up in our ledger — skip them even
+        if the (stale) API still reports them live, or _watch would instant-return and spin."""
         from v2.integration.wc_schedule import et_date
         cand = []
         for m in matches:
             ud = m.get("utcDate")
-            if not ud or m.get("status") in DONE:
+            if not ud or m.get("status") in DONE or m.get("id") in finished_ids:
                 continue
             try:
                 ko = datetime.datetime.fromisoformat(ud.replace("Z", "+00:00")).replace(tzinfo=None)
@@ -289,7 +348,8 @@ class MatchWatcher:
         while self._running:
             try:
                 data = await self._get(self.keys[0], f"{BASE_URL}/competitions/WC/matches")
-                nxt = self._next_kickoff(data.get("matches", []), _utcnow()) if data else None
+                fin = {mid for mid, st in self._states.items() if st["finished"]}
+                nxt = self._next_kickoff(data.get("matches", []), _utcnow(), fin) if data else None
                 if not nxt:
                     await asyncio.sleep(600)            # nothing upcoming; recheck in 10 min
                     continue
@@ -299,6 +359,7 @@ class MatchWatcher:
                 await asyncio.sleep(60)
 
     async def start(self) -> None:
+        self.load_states()        # resume any match that was in progress at shutdown
         self._conn = get_connection(self.db_path)
         try:
             row = self._conn.execute(

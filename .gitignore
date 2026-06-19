@@ -68,6 +68,7 @@ v2_test.db
 
 # Live tracker state (rewritten every poll)
 worldcup_state.json
+match_watcher_state.json
 
 # Crawler review output (regenerated each run)
 docs/faculty_review.txt

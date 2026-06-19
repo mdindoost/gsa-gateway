@@ -165,6 +165,91 @@ def test_format_event_goal_includes_half_label():
     assert "Second Half" in out
 
 
+# ── state persistence (the JSON ledger survives a restart) ───────────────────────
+def _w_with_state(tmp_path):
+    return MatchWatcher(["k1"], ":memory:", state_file=tmp_path / "mw_state.json")
+
+
+def test_save_then_load_roundtrips_ledger(tmp_path):
+    w1 = _w_with_state(tmp_path)
+    w1._states[537336] = {"started": True, "score": (4, 0), "finished": False,
+                          "half": 2, "pending_half": False}
+    w1.save_states()
+    w2 = _w_with_state(tmp_path)
+    w2.load_states()
+    assert w2._states[537336] == {"started": True, "score": (4, 0), "finished": False,
+                                  "half": 2, "pending_half": False}
+
+
+def test_match_state_returns_fresh_for_unknown_match(tmp_path):
+    w = _w_with_state(tmp_path)
+    st = w._match_state(99)
+    assert st == {"started": False, "score": (0, 0), "finished": False,
+                  "half": 1, "pending_half": False}
+    assert w._states[99] is st        # registered so a later save persists it
+
+
+def test_match_state_resumes_persisted_ledger(tmp_path):
+    w = _w_with_state(tmp_path)
+    w._states[42] = {"started": True, "score": (3, 0), "finished": False,
+                     "half": 2, "pending_half": False}
+    assert w._match_state(42)["score"] == (3, 0) and w._match_state(42)["half"] == 2
+
+
+def test_resumed_ledger_reconciles_missed_goal_with_correct_half(tmp_path):
+    # The whole point: after a restart we announced up to 4-0 in the 2nd half; the API now
+    # reports 5-0. We must announce 5-0 (NOT silent, NOT first half) from the restored ledger.
+    w = _w_with_state(tmp_path)
+    st = {"started": True, "score": (4, 0), "finished": False,
+          "half": 2, "pending_half": False}
+    evs = w._process(mk("IN_PLAY", 5, 0), st)
+    assert [e["type"] for e in evs] == ["goal"]
+    assert evs[0]["half_label"] == "Second Half"
+    assert st["score"] == (5, 0)
+
+
+def test_process_then_save_persists_updated_ledger(tmp_path):
+    w = _w_with_state(tmp_path)
+    st = w._match_state(42)
+    st["started"] = True
+    w._process(mk("IN_PLAY", 1, 0), st)   # 0-0 -> 1-0 goal
+    w.save_states()
+    w2 = _w_with_state(tmp_path); w2.load_states()
+    assert w2._states[42]["score"] == (1, 0)
+
+
+def test_load_prunes_finished_entries(tmp_path):
+    # A wrapped-up match must not linger in the ledger across a restart — it would feed the
+    # "instant return" path and (with API lag) spin the scheduler.
+    path = tmp_path / "mw_state.json"
+    path.write_text(
+        '{"1": {"started": true, "score": [2,0], "finished": true,  "half": 2, "pending_half": false},'
+        ' "2": {"started": true, "score": [1,0], "finished": false, "half": 1, "pending_half": false}}')
+    w = _w_with_state(tmp_path); w.load_states()
+    assert 1 not in w._states and 2 in w._states
+
+
+def test_next_kickoff_skips_ledger_finished_match():
+    # The API can still report a just-finished match as IN_PLAY (stale cache). If our ledger
+    # says it's done, the scheduler must NOT re-pick it (else _watch instant-returns and spins).
+    now = datetime.datetime(2026, 6, 18, 23, 0, 0)
+    matches = [
+        {"id": 537336, "utcDate": "2026-06-18T22:05:00Z", "status": "IN_PLAY"},  # stale-live
+        {"id": 99,     "utcDate": "2026-06-18T23:30:00Z", "status": "TIMED"},
+    ]
+    assert MatchWatcher._next_kickoff(matches, now)[0] == 537336              # soonest, no ledger
+    assert MatchWatcher._next_kickoff(matches, now, finished_ids={537336})[0] == 99  # skipped
+
+
+def test_load_normalizes_missing_half_keys(tmp_path):
+    # A ledger written before half-tracking existed must default cleanly, not KeyError.
+    path = tmp_path / "mw_state.json"
+    path.write_text('{"42": {"started": true, "score": [2, 0], "finished": false}}')
+    w = _w_with_state(tmp_path); w.load_states()
+    st = w._states[42]
+    assert st["score"] == (2, 0) and st["half"] == 1 and st["pending_half"] is False
+
+
 # ── schedule ─────────────────────────────────────────────────────────────────
 def test_next_kickoff_picks_soonest_unfinished():
     now = datetime.datetime(2026, 6, 11, 18, 0, 0)
