@@ -23,9 +23,54 @@ def _org_slug(conn: sqlite3.Connection, org_id: int) -> str:
     return row[0]
 
 
+def _coerce_profile_value(field_key: str, k: str, v):
+    """Keep metrics as JSON numbers (so a future 'most-cited' skill can ORDER BY them).
+    URLs and timestamps stay strings; an int-like string elsewhere becomes an int."""
+    if k in ("url", "updated_at") or not isinstance(v, str):
+        return v
+    s = v.strip().replace(",", "")
+    if s.lstrip("-").isdigit():
+        return int(s)
+    return v
+
+
+def set_person_profiles(conn: sqlite3.Connection, *, person_key: str,
+                        profiles: dict, replace: bool = False) -> dict:
+    """Merge external-profile data into a Person node's ``attrs.profiles``. Each key in
+    ``profiles`` (scholar/linkedin/orcid/website/…) maps to a dict like
+    ``{"url":…, "citations":…}``. Deep-merges per field by default (setting metrics keeps
+    the url); ``replace=True`` overwrites a field's dict wholesale; a field mapped to None
+    removes it. Metric strings are coerced to numbers. Does NOT commit (caller owns the txn).
+
+    Storage is a generic bag — any field key is accepted; the registry
+    (v2/core/people/profile_fields.py) governs *display*, not storage."""
+    row = conn.execute(
+        "SELECT id, attrs FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+        (person_key,)).fetchone()
+    if not row:
+        raise ValueError(f"no active Person with key {person_key!r}")
+    pid, raw = row
+    attrs = json.loads(raw) if raw else {}
+    bag = attrs.get("profiles") or {}
+    for fkey, data in (profiles or {}).items():
+        if data is None:
+            bag.pop(fkey, None)
+            continue
+        clean = {k: _coerce_profile_value(fkey, k, v) for k, v in dict(data).items()}
+        if replace or not isinstance(bag.get(fkey), dict):
+            bag[fkey] = clean
+        else:
+            bag[fkey].update(clean)
+    attrs["profiles"] = bag
+    conn.execute("UPDATE nodes SET attrs=?, updated_at=datetime('now') WHERE id=?",
+                 (json.dumps(attrs), pid))
+    return {"person_key": person_key, "profiles": bag}
+
+
 def add_or_edit_person(conn: sqlite3.Connection, *, org_id: int, name: str, title: str,
                        category: str, email: str | None = None,
-                       about: str | None = None, source: str = "dashboard") -> dict:
+                       about: str | None = None, source: str = "dashboard",
+                       profiles: dict | None = None) -> dict:
     """Upsert a Person + one has_role edge (free-text title, category) under org_id, merge
     email into the node attrs, and (re)write an optional bio knowledge_item. Idempotent on
     the person key. Returns {person_key, bio_item_id|None}. Does NOT commit."""
@@ -41,6 +86,8 @@ def add_or_edit_person(conn: sqlite3.Connection, *, org_id: int, name: str, titl
         attrs["email"] = email
         conn.execute("UPDATE nodes SET attrs=?, updated_at=datetime('now') WHERE id=?",
                      (json.dumps(attrs), pid))
+    if profiles:
+        set_person_profiles(conn, person_key=key, profiles=profiles)
     bio_id = None
     conn.execute("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
                  "WHERE is_active=1 AND json_extract(metadata,'$.entity_id')=? "

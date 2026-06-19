@@ -896,8 +896,12 @@ class GatewayHandler(BaseHTTPRequestHandler):
             raise ValueError("org_id, name and title are required")
         from v2.core.ingestion.people_editor import add_or_edit_person
         category = GatewayHandler._ROLE_TYPE_TO_CATEGORY.get(str(b.get("role_type", "officer")).lower(), "officer")
+        profiles = b.get("profiles")
+        if profiles is not None and not isinstance(profiles, dict):
+            raise ValueError("profiles must be an object of {field: {url, …}}")
         res = add_or_edit_person(conn, org_id=b["org_id"], name=b["name"], title=b["title"],
-                                 category=category, email=b.get("email"), about=b.get("about"))
+                                 category=category, email=b.get("email"), about=b.get("about"),
+                                 profiles=profiles)
         conn.commit()
         return {"success": True, "needs_reindex": bool(b.get("about")), **res}
 
