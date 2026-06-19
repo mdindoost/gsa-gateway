@@ -261,7 +261,7 @@ function onDbLoaded(name) {
 // ───────── tab nav ─────────
 const TITLES = { overview: "Overview", posts: "Posts", kb: "Knowledge Base",
   org: "Organization", people: "People (Knowledge Graph)", analytics: "Analytics",
-  settings: "Settings", jobs: "Jobs", judging: "Judging" };
+  settings: "Settings", jobs: "Data Sources", judging: "Judging" };
 
 document.querySelectorAll(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => switchTab(btn.dataset.tab));
@@ -682,12 +682,18 @@ function refreshJobsHealth() {
       ? '<span style="color:#7ee2a8">● up</span>'
       : '<span style="color:#ff8a8a">● down — overviews & embeddings will fail</span>');
 
-    // What the "Gather KG" (explore) crawler covers — every college in ALL_ENTRY_POINTS.
+    // Compact coverage hint for the "NJIT people & colleges" refresh — colleges only (the full
+    // department list was a wall of text); the acronym in parentheses, or the college name.
     const kgScope = document.getElementById("jobs-kg-scope");
     if (kgScope && body.crawl_scope) {
-      kgScope.innerHTML = "🕸 KG gather covers: " + body.crawl_scope.map((c) =>
-        `<strong>${esc(c.college)}</strong> <span class="muted">(${(c.areas || []).map(esc).join(", ")})</span>`
-      ).join(" &nbsp;·&nbsp; ");
+      const acronym = (name) => {
+        const m = name.match(/\(([^)]+)\)/);
+        return m ? m[1] : name;
+      };
+      const n = body.crawl_scope.reduce((s, c) => s + (c.areas || []).length, 0);
+      kgScope.innerHTML = '<span class="muted">🕸 Covers '
+        + body.crawl_scope.map((c) => esc(acronym(c.college))).join(", ")
+        + ` — ${n} departments/units.</span>`;
     }
 
     // Disable Run while a job is in flight; keep polling it.
