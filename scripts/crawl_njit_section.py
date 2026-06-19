@@ -181,23 +181,23 @@ def cmd_commit(section: str, cfg: dict, do_commit: bool) -> None:
         oid = ensure_org(conn, slug=cfg["org_slug"], name=cfg["org_name"],
                          parent_slug=cfg["parent"], type=cfg["org_type"])
         sync_org_nodes(conn)
-        live = staged = 0
+        # Policy: NJIT-sourced content is authoritative → ingest LIVE. Staleness (the only
+        # real risk) is already handled by redact_volatile (volatile specifics → live link) +
+        # the high-stakes heads-up. The `stakes` tag is kept in metadata for traceability only.
+        n = 0
         for f in files:
             d = _parse_md(f.read_text(encoding="utf-8"))
-            stakes = d.get("stakes", "low")
-            is_active = 0 if stakes == "high" else 1
             upsert_doc_items(conn, org_id=oid, slug=f.stem, title=d.get("title", f.stem),
                              text=d["body"], source_url=d.get("source_url"),
                              doc_type="policy", source=SRC,
-                             is_active=is_active, stakes=(stakes if stakes == "high" else None))
-            staged += is_active == 0
-            live += is_active == 1
+                             is_active=1, stakes=d.get("stakes"))
+            n += 1
         if do_commit:
             conn.commit()
-            print(f"  [COMMITTED] {live} live, {staged} staged. Now run: python3 v2/scripts/embed_all.py")
+            print(f"  [COMMITTED] {n} doc(s) live. Now run: python3 v2/scripts/embed_all.py")
         else:
             conn.rollback()
-            print(f"  [DRY-RUN] would write {live} live + {staged} staged. --commit to apply.")
+            print(f"  [DRY-RUN] would write {n} doc(s) live. --commit to apply.")
     finally:
         conn.close()
 
