@@ -58,9 +58,23 @@ def test_routes_department_query_to_org_departments(conn):
 
 
 def test_naming_a_department_does_not_route_to_org_departments(conn):
-    # "the math department" / "how about in math department" NAMES the org — it must not be
-    # read as "enumerate its sub-departments" (which falsely deflects for a leaf dept).
-    for q in ("how about in YWCC department?", "the YWCC department"):
+    # NAMING the org ("how about in CS department", "the CS department") must not be read as
+    # "enumerate its sub-departments" (no enum verb → cue doesn't fire).
+    for q in ("how about in computer science department?", "the computer science department"):
+        r = route(conn, q)
+        assert r is None or r.skill != "org_departments", f"{q!r} -> {r}"
+
+
+def test_singular_enumeration_still_routes(conn):
+    # SHOULD #1: singular enumeration with a verb still reaches org_departments (YWCC has children).
+    r = route(conn, "what department does YWCC have?")
+    assert r is not None and r.skill == "org_departments" and r.args["org_id"] == 4
+
+
+def test_leaf_department_enumeration_does_not_deflect(conn):
+    # SHOULD #2 (defense in depth): even WITH an enumeration cue, a LEAF dept (CS has no
+    # type='department' children) must NOT route to org_departments → no false 'no info' deflect.
+    for q in ("what departments are in computer science?", "list the departments of computer science"):
         r = route(conn, q)
         assert r is None or r.skill != "org_departments", f"{q!r} -> {r}"
 

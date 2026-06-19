@@ -33,10 +33,14 @@ _ENUM_AREAS = re.compile(
     r"(?:what|which|list|all|show)\s+(?:research\s+)?areas?)\b")
 # Ranking/aggregation cue ("which areas have the MOST faculty").
 _RANK = re.compile(r"\b(?:most|top|popular|biggest|largest|ranked|by count|how many people)\b")
-# Enumerate an org's SUB-departments ("what departments are in YWCC"). Requires the plural /
-# an explicit count — so naming "the math department" (the org itself) does NOT get read as
-# "list math's sub-departments" (which, for a leaf dept, falsely deflects to 'no info').
-_DEPT_ENUM = re.compile(r"\bsub-?departments?\b|\bdepartments\b|\bhow\s+many\s+departments?\b")
+# Enumerate an org's SUB-departments ("what departments are in YWCC"). Requires the plural OR an
+# explicit enumeration verb ("what/which/how many/list department(s)") — so naming "the math
+# department" (the org itself) does NOT get read as "list math's sub-departments" (which, for a
+# leaf dept, falsely deflects to 'no info'). The singular enumeration form is included so
+# "what department does NCE have" still routes.
+_DEPT_ENUM = re.compile(
+    r"\bsub-?departments?\b|\bdepartments\b|"
+    r"\b(?:what|which|list|how\s+many)\s+(?:sub-?)?departments?\b")
 # "who LISTS X as a research area" -> precise tag match.
 _LISTS_AREA = re.compile(r"who\s+lists?\s+(.+?)\s+as\s+(?:an?\s+)?research\s+area")
 
@@ -116,6 +120,15 @@ _STOP_FOR_ENUM = {
 
 def _qtokens(text: str) -> list[str]:
     return [t for t in re.findall(r"[a-z]+", text.lower()) if len(t) > 1]
+
+
+def _has_child_departments(conn, org_id: int) -> bool:
+    """True iff this org has active child orgs that org_departments would list (type='department').
+    A leaf department (CS, Math) has none — so 'departments in math' must NOT route to
+    org_departments (which would emit the misleading 'I don't have department information')."""
+    return conn.execute(
+        "SELECT 1 FROM organizations WHERE parent_id=? AND is_active=1 AND type='department' LIMIT 1",
+        (org_id,)).fetchone() is not None
 
 
 def _is_bare_name(q: str, person: dict) -> bool:
@@ -238,7 +251,8 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     # Faculty roster is MORE SPECIFIC than the generic people list, so it wins first — e.g.
     # "academic staff in biology" is a faculty ask even though it contains 'staff' (which the
     # generic _PEOPLE cue also matches).
-    if _DEPT_ENUM.search(q) and org_id is not None and not _FACULTY_CUE.search(q):
+    if (_DEPT_ENUM.search(q) and org_id is not None and not _FACULTY_CUE.search(q)
+            and _has_child_departments(conn, org_id)):
         return Route("org_departments", {"org_id": org_id})
     if org_id is not None and _FACULTY_CUE.search(q):
         return Route("faculty_in_department", {"org_id": org_id})
