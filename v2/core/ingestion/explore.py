@@ -8,6 +8,7 @@ only (LLM-on-prose is Phase 2). Each page is processed in its own transaction.""
 from __future__ import annotations
 import json
 import sqlite3
+import time
 import urllib.error
 import urllib.request
 from collections import deque
@@ -21,6 +22,7 @@ from v2.core.ingestion.decompose import decompose
 from v2.core.ingestion.discovery import category_for_section, hub_children, parse_listing
 from v2.core.ingestion.njit_adapter import entity_id_from_url, parse_entity
 from v2.core.ingestion.reconcile import reconcile_entity
+from v2.core.ingestion import section_policy
 
 
 _UA = "GSA-Gateway-Bot/1.0 (+https://github.com/mdindoost/gsa-gateway)"
@@ -82,7 +84,7 @@ def _home_dept_org_id(conn, person_node_id) -> int | None:
 
 
 def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
-            depth: int = 2, aspect: str = "people") -> ExploreStats:
+            depth: int = 2, aspect: str = "people", delay: float = 0.0) -> ExploreStats:
     start = start or ep.ROOT
     st = ExploreStats()
     # queue items: (EntryPoint, from_node_id, depth_remaining). A child reached with a
@@ -96,6 +98,8 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
             continue
         visited.add(node.url)
         final_url, html, status = fetch(node.url)
+        if delay:
+            time.sleep(delay)           # politeness between requests on a full multi-college crawl
         if status != "ok":
             conn.execute("UPDATE frontier SET status='error', error=? WHERE url=?",
                          (status, node.url))
@@ -123,26 +127,52 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
             elif node.kind == "listing":
                 org_id = ensure_org(conn, node.org_slug, node.org_name, node.parent_slug,
                                     type=node.org_type)
-                present: set[str] = set()
+                # M3 present-set keyed by the org each person is ACTUALLY appointed to: a
+                # section policy can route one listing to several orgs (HCAD → its two schools)
+                # or skip rolled-up faculty entirely (a college page). Without a policy this
+                # collapses to {org_id: everyone} — identical to the legacy single-org sweep.
+                present_by_org: dict[int, set[str]] = {}
+
+                def _org_id_for(slug):
+                    if slug == node.org_slug:
+                        return org_id
+                    r = conn.execute("SELECT id FROM organizations WHERE slug=?",
+                                     (slug,)).fetchone()
+                    return r[0] if r else org_id
+
                 for p in parse_listing(html):
                     purl = "https://people.njit.edu/profile/" + p.slug
                     pkey = entity_id_from_url(purl)
-                    present.add(pkey)
+                    cat = category_for_section(p.section)
+                    # Section routing: which org (if any) this person is appointed to here.
+                    target_slug = section_policy.route(node.policy, p.section, cat, node.org_slug)
+                    if target_slug is None:
+                        # Rolled-up faculty / cross-listed section → their HOME appointment comes
+                        # from another listing; do not mint an edge here (also skips their profile
+                        # on this path — the home listing queues it).
+                        continue
                     if unchanged:
-                        pid = conn.execute(
+                        row = conn.execute(
                             "SELECT id FROM nodes WHERE type='Person' AND key=?",
                             (pkey,)).fetchone()
-                        pid = pid[0] if pid else None
+                        pid = row[0] if row else None
+                        appt_org = _org_id_for(target_slug)
+                    elif node.policy:
+                        appt_org = _org_id_for(target_slug)
+                        pid = project_appointment(
+                            conn, person_key=pkey, name=p.name, org_id=appt_org,
+                            category=cat, titles=p.titles, source_section=p.section)
+                        conn.execute(
+                            "INSERT OR IGNORE INTO page_nodes(raw_url,node_id) VALUES(?,?)",
+                            (final_url, pid))
+                        st.appointments += 1
                     else:
-                        # Option A: a college's Dean / Associate Deans lead the COLLEGE, so
-                        # appoint them to the parent org (YWCC), not the admin sub-unit; all
-                        # other roles (staff, faculty, …) stay on the listing's own org. This
-                        # is keyed on YWCC's 'Dean'/'Associate Deans' sections. NOTE: MTSM is
-                        # deliberately NOT reappointed — MTSM has no departments, so its faculty
-                        # live on the `mtsm` college itself; reappointing an MTSM 'Leadership'
-                        # person to `mtsm` would COLLIDE with their faculty@mtsm edge (one
-                        # has_role per person+org). MTSM leadership stays admin@mtsm-administration
-                        # plus faculty@mtsm — two clean edges.
+                        # Legacy (no policy): a college's Dean / Associate Deans lead the COLLEGE,
+                        # so appoint them to the parent org (YWCC), not the admin sub-unit; all
+                        # other roles stay on the listing's own org. Keyed on YWCC's 'Dean'/
+                        # 'Associate Deans' sections. MTSM is deliberately NOT reappointed (it has
+                        # no departments; reappointing 'Leadership' to `mtsm` would collide with
+                        # their faculty@mtsm edge) — it stays admin@mtsm-administration + faculty@mtsm.
                         appt_org = org_id
                         if node.parent_slug and "dean" in p.section.lower():
                             prow = conn.execute("SELECT id FROM organizations WHERE slug=?",
@@ -151,12 +181,12 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                                 appt_org = prow[0]
                         pid = project_appointment(
                             conn, person_key=pkey, name=p.name, org_id=appt_org,
-                            category=category_for_section(p.section),
-                            titles=p.titles, source_section=p.section)
+                            category=cat, titles=p.titles, source_section=p.section)
                         conn.execute(
                             "INSERT OR IGNORE INTO page_nodes(raw_url,node_id) VALUES(?,?)",
                             (final_url, pid))
                         st.appointments += 1
+                    present_by_org.setdefault(org_node_id(conn, appt_org), set()).add(pkey)
                     prof = ep.EntryPoint(purl, node.org_slug, node.org_name, "profile",
                                          node.parent_slug)
                     if d - 1 > 0:
@@ -164,21 +194,30 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                     else:
                         _record_frontier(conn, pid, purl, aspect, d - 1)
                         st.frontier_added += 1
-                # M3 — section-scoped deactivation: people who were on THIS listing before
-                # but aren't now (departed or moved to another dept) lose their appointment
-                # to THIS org. Scoped to this org + crawler-source, and only when we actually
-                # re-parsed a non-empty listing (a failed/empty fetch must never deactivate).
-                if not unchanged and present:
-                    ph = ",".join("?" * len(present))
-                    onode = org_node_id(conn, org_id)
-                    for (eid,) in conn.execute(
-                            f"SELECT e.id FROM edges e JOIN nodes p ON p.id=e.src_id "
-                            f"WHERE e.type='has_role' AND e.dst_id=? AND e.is_active=1 "
-                            f"AND e.source='crawler' AND p.key NOT IN ({ph})",
-                            [onode, *present]).fetchall():
-                        conn.execute("UPDATE edges SET is_active=0, "
-                                     "updated_at=datetime('now') WHERE id=?", (eid,))
-                        st.departed += 1
+                # M3 — section-scoped deactivation per org this listing OWNS: people on this org
+                # before but not now (departed / moved) lose their appointment to it. Skip the
+                # listing's PARENT org (shared across sibling listings — sweeping it from one
+                # listing would falsely retire people a sibling appointed). Only when we re-parsed
+                # a non-empty listing (a failed/empty fetch must never deactivate).
+                if not unchanged and present_by_org:
+                    parent_onode = None
+                    if node.parent_slug:
+                        prow = conn.execute("SELECT id FROM organizations WHERE slug=?",
+                                            (node.parent_slug,)).fetchone()
+                        if prow:
+                            parent_onode = org_node_id(conn, prow[0])
+                    for onode, pkeys in present_by_org.items():
+                        if onode == parent_onode:
+                            continue
+                        ph = ",".join("?" * len(pkeys))
+                        for (eid,) in conn.execute(
+                                f"SELECT e.id FROM edges e JOIN nodes p ON p.id=e.src_id "
+                                f"WHERE e.type='has_role' AND e.dst_id=? AND e.is_active=1 "
+                                f"AND e.source='crawler' AND p.key NOT IN ({ph})",
+                                [onode, *pkeys]).fetchall():
+                            conn.execute("UPDATE edges SET is_active=0, "
+                                         "updated_at=datetime('now') WHERE id=?", (eid,))
+                            st.departed += 1
             elif node.kind == "profile":
                 if unchanged:
                     continue
@@ -278,7 +317,7 @@ def reconcile_departures(conn: sqlite3.Connection) -> dict:
       * crawler knowledge_items filed under an org that is NOT their current home department
         -> stale from a move (the profile pass re-filed under the new dept): deactivate them.
     Returns counts. Idempotent — a no-departures run changes nothing."""
-    out = {"departed_people": 0, "items_retired": 0}
+    out = {"departed_people": 0, "items_retired": 0, "items_refiled": 0}
 
     def _drop_items(item_ids):
         if not item_ids:
@@ -304,7 +343,35 @@ def reconcile_departures(conn: sqlite3.Connection) -> dict:
                 conn.execute("UPDATE nodes SET is_active=0, updated_at=datetime('now') WHERE id=?", (pid,))
                 out["departed_people"] += 1
                 continue
-            home = _home_dept_org_id(conn, pid)              # moved: KB under a non-home dept is stale
+            # KB filed under a non-home-department org needs reconciling. Two causes:
+            #  (a) a genuine dept MOVE — the profile pass re-filed under the new dept, leaving a
+            #      stale duplicate (same natural_key) under the old org → retire it.
+            #  (b) college-first ORDERING — a dept chair / cross-appointed person reached via the
+            #      college roll-up page had their profile processed before their department
+            #      appointment existed, so KB landed under the college; their dept-page profile
+            #      was then skipped as unchanged, so no dept copy exists → RE-FILE it under the
+            #      home dept (retiring would wrongly leave them with zero KB).
+            home = _home_dept_org_id(conn, pid)
             if home is not None:
-                _drop_items([i for i, org in ki if org != home])
+                home_nks = {r[0] for r in conn.execute(
+                    "SELECT json_extract(metadata,'$.natural_key') FROM knowledge_items "
+                    "WHERE is_active=1 AND org_id=? AND json_extract(metadata,'$.entity_id')=?",
+                    (home, key)).fetchall()}
+                to_move, to_retire = [], []
+                for i, org in ki:
+                    if org == home:
+                        continue
+                    nk = conn.execute("SELECT json_extract(metadata,'$.natural_key') "
+                                      "FROM knowledge_items WHERE id=?", (i,)).fetchone()[0]
+                    if nk in home_nks:
+                        to_retire.append(i)            # (a) duplicate already correct under home
+                    else:
+                        to_move.append(i)
+                        home_nks.add(nk)
+                if to_move:
+                    conn.executemany("UPDATE knowledge_items SET org_id=?, "
+                                     "updated_at=datetime('now') WHERE id=?",
+                                     [(home, i) for i in to_move])
+                    out["items_refiled"] += len(to_move)
+                _drop_items(to_retire)
     return out

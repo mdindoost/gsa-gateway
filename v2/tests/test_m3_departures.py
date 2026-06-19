@@ -79,3 +79,23 @@ def test_reconcile_departures_clears_stale_dept_kb_after_move(conn):
     orgs = {r[0] for r in conn.execute("SELECT org_id FROM knowledge_items WHERE is_active=1 AND "
             "json_extract(metadata,'$.entity_id')='p/mv'")}
     assert orgs == {6}                              # stale CS item retired, DS kept
+
+
+def test_reconcile_refiles_college_filed_kb_to_home_department(conn):
+    # A department chair reached via the college roll-up page: appointed to the college (ywcc, 4)
+    # AND their department (CS, 5). Their profile was processed before the dept appointment
+    # existed, so KB landed under the COLLEGE and no dept copy exists. reconcile must RE-FILE it
+    # under the home department (not retire it, which would leave zero KB).
+    project_appointment(conn, person_key="p/chair", name="Chair", org_id=4, category="admin",
+                        titles=[], source_section="Department Chairs")   # college (ywcc)
+    project_appointment(conn, person_key="p/chair", name="Chair", org_id=5, category="faculty",
+                        titles=[], source_section="Professors")          # home department (CS)
+    conn.execute("INSERT INTO knowledge_items(org_id,type,content,metadata,created_by) "
+                 "VALUES(4,'profile','bio',?,'crawler')",
+                 (json.dumps({"entity_id": "p/chair", "natural_key": "profile:p/chair"}),))
+    conn.commit()
+    out = reconcile_departures(conn)
+    assert out["items_refiled"] == 1
+    orgs = {r[0] for r in conn.execute("SELECT org_id FROM knowledge_items WHERE is_active=1 AND "
+            "json_extract(metadata,'$.entity_id')='p/chair'")}
+    assert orgs == {5}                              # re-filed from college (4) → home dept CS (5)

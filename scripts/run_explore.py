@@ -29,6 +29,9 @@ def main() -> int:
     ap.add_argument("--frontier", action="store_true",
                     help="instead of a hub crawl, process pending frontier next-steps "
                          "(personal sites) into 'webpage' knowledge_items")
+    ap.add_argument("--delay", type=float, default=0.5,
+                    help="polite seconds between requests (a full multi-college crawl is "
+                         "~1400 fetches); 0 to disable")
     args = ap.parse_args()
 
     create_all(args.db)                       # ensure graph tables exist (idempotent)
@@ -70,19 +73,30 @@ def main() -> int:
     # never inside it: a person who moved to faculty-only would have zero appointments after
     # their admin listing re-crawls and get falsely retired before the faculty listing runs
     # (H1 in the design review).
-    from v2.core.ingestion.entry_points import ALL_ENTRY_POINTS
+    from v2.core.ingestion.entry_points import ALL_ENTRY_POINTS, SEED_ORGS
     from v2.core.ingestion.explore import reconcile_departures
+    from v2.core.graph.orgs import ensure_org, sync_org_nodes
+
+    # Seed the org tree top-down BEFORE crawling so colleges/departments never orphan, and so
+    # policy-target orgs that have no listing of their own (njit root, HCAD's two schools, the
+    # CSLA college) exist for parent resolution / section routing. ensure_org is idempotent.
+    for slug, name, parent, otype in SEED_ORGS:
+        ensure_org(conn, slug, name, parent, type=otype)
+    sync_org_nodes(conn)
+    conn.commit()
+
     total_departed = 0
     total_errors = 0
     for entry in ALL_ENTRY_POINTS:
-        st = explore(conn, http_fetch, start=entry, depth=args.depth)
+        st = explore(conn, http_fetch, start=entry, depth=args.depth, delay=args.delay)
         total_departed += st.departed
         total_errors += st.errors
         print(f"explore[{entry.org_slug:20}] {entry.url}\n   {st}")
 
     dep = reconcile_departures(conn)        # M3: retire people who left / clean moved KB — ONCE
     print(f"\ndepartures (M3): appointments retired={total_departed}, "
-          f"people removed={dep['departed_people']}, stale items retired={dep['items_retired']}")
+          f"people removed={dep['departed_people']}, stale items retired={dep['items_retired']}, "
+          f"KB re-filed to home dept={dep.get('items_refiled', 0)}")
 
     # C2 guard: --reset is destructive-first (it cleared all crawler rows before crawling).
     # If any entry point errored, the DB may be missing people that were not re-created —

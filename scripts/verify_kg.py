@@ -45,6 +45,27 @@ def verify_kg(conn: sqlite3.Connection) -> list[str]:
         if dept and not kb:
             issues.append(f"no KB content: {p[2]} has a department appointment but no items")
     issues.extend(_verify_mtsm_no_departments(conn))
+    issues.extend(_verify_org_tree(conn))
+    return issues
+
+
+def _verify_org_tree(conn: sqlite3.Connection) -> list[str]:
+    """Invariant (multi-college expansion): no college/department/school org is an orphan, and
+    every college sits under the `njit` root. An orphan (parent_id=NULL) means `ensure_org`
+    couldn't resolve a parent — a person filed there would be unreachable by college/department
+    traversal."""
+    issues: list[str] = []
+    njit = conn.execute("SELECT id FROM organizations WHERE slug='njit'").fetchone()
+    njit_id = njit[0] if njit else None
+    for slug in ("nce", "csla", "hcad", "mtsm"):
+        row = conn.execute("SELECT parent_id FROM organizations WHERE slug=? AND is_active=1",
+                           (slug,)).fetchone()
+        if row and njit_id and row[0] != njit_id:
+            issues.append(f"org tree: college '{slug}' parent_id={row[0]} is not njit ({njit_id})")
+    for slug, otype in conn.execute(
+            "SELECT slug, type FROM organizations WHERE is_active=1 "
+            "AND type IN ('college','department','school') AND parent_id IS NULL"):
+        issues.append(f"org tree: orphan org '{slug}' (type={otype}, parent_id=NULL)")
     return issues
 
 
