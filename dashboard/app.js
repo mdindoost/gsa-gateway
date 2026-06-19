@@ -595,6 +595,11 @@ function renderJobs() {
       <div id="job-active"></div>
       <h3 style="margin-top:18px">Recent runs</h3>
       <div id="jobs-recent">Loading…</div>
+      <h3 style="margin-top:18px">Restore from backup</h3>
+      <div class="muted" style="margin-bottom:6px">Every refresh snapshots the database first.
+        Restoring replaces <strong>all</strong> current data with a snapshot — your current state
+        is saved first, so it's reversible.</div>
+      <div id="jobs-backups">Loading…</div>
     </div>`;
 
   const OFFICE_OPTS = [
@@ -618,6 +623,20 @@ function renderJobs() {
   fillTarget();
 
   document.getElementById("refresh-run").addEventListener("click", () => {
+    const label = (sel) => sel.options[sel.selectedIndex].text;
+    let msg;
+    if (what.value === "explore")
+      msg = "Re-crawl ALL NJIT colleges & departments from njit.edu?\n\nA backup is taken first, "
+          + "then new bios/publications are embedded. This can take ~20–30 minutes.";
+    else if (what.value === "frontier")
+      msg = "Process pending personal / lab websites into the knowledge base?";
+    else if (what.value === "office")
+      msg = `Re-crawl the "${label(target)}" office pages from njit.edu?\n\nA backup is taken first, `
+          + "then the content is ingested and embedded (~a few minutes).";
+    else if (what.value === "roster")
+      msg = `Re-seed the "${label(target)}" roster from the curated list?\n\nA backup is taken first. `
+          + "This restores the curated people/titles (overwrites any drift).";
+    if (!window.confirm(msg)) return;
     if (what.value === "explore") startExplore({});
     else if (what.value === "frontier") startExplore({ frontier: true });
     else if (what.value === "office") startCrawlSection(target.value);
@@ -625,6 +644,36 @@ function renderJobs() {
   });
   refreshJobsHealth();
   refreshJobsList();
+  refreshBackups();
+}
+
+function refreshBackups() {
+  jobsApi("/api/backups").then(({ body }) => {
+    const el = document.getElementById("jobs-backups");
+    if (!el) return;
+    const b = (body && body.backups) || [];
+    if (!b.length) { el.innerHTML = '<span class="muted">No backups yet.</span>'; return; }
+    el.innerHTML = '<table class="data-table" style="width:100%;border-collapse:collapse">'
+      + b.slice(0, 15).map((x) =>
+        `<tr><td>${esc(x.mtime)}</td><td>${esc(x.label || "—")}</td>`
+        + `<td class="muted">${x.size_mb} MB</td>`
+        + `<td><button class="btn btn-ghost btn-sm restore-btn" data-file="${esc(x.file)}">Restore</button></td></tr>`
+      ).join("") + "</table>";
+    el.querySelectorAll(".restore-btn").forEach((btn) =>
+      btn.addEventListener("click", () => restoreBackup(btn.dataset.file)));
+  }).catch(() => {});
+}
+
+function restoreBackup(file) {
+  if (!window.confirm(`Restore this backup?\n\n${file}\n\nThis REPLACES ALL current data with that `
+      + "snapshot. Your current state is backed up first, so it's reversible. Continue?")) return;
+  jobsApi("/api/backups/restore", { method: "POST", body: { file } })
+    .then(({ status, body }) => {
+      if (status !== 200) { toast((body && body.error) || "Restore failed", false); return; }
+      toast("Restored ✅ — current state saved to " + (body.current_saved_to || "a backup"));
+      reloadDbQuietly().then(() => renderJobs());
+    })
+    .catch((e) => toast("Server error: " + e.message, false));
 }
 
 function startCrawlSection(section) {

@@ -144,6 +144,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 return self._api_health()
             if path == "/api/jobs":
                 return self._json({"jobs": JOBS.list_jobs(20)})
+            if path == "/api/backups":
+                return self._api_list_backups()
             if path.startswith("/api/jobs/"):
                 return self._api_get_job(path[len("/api/jobs/"):])
             if path == "/health":
@@ -199,6 +201,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     return self._api_crawl_section()
                 if path == "/api/jobs/seed-roster":
                     return self._api_seed_roster()
+                if path == "/api/backups/restore":
+                    return self._api_restore_backup()
                 if path.startswith("/api/jobs/") and path.endswith("/cancel"):
                     return self._api_cancel(path[len("/api/jobs/"):-len("/cancel")])
                 return self._error("Not found", 404)
@@ -598,6 +602,47 @@ class GatewayHandler(BaseHTTPRequestHandler):
         except JobBusyError:
             return self._error("a job is already running", 409)
         return self._json(res, 201)
+
+    # ── backups (safety net for refreshes) ─────────────────────────────────────
+    _BACKUP_DIR = REPO_ROOT / ".backups"
+
+    def _api_list_backups(self):
+        """List restore points (newest first): the snapshots every refresh takes."""
+        out = []
+        if self._BACKUP_DIR.exists():
+            for p in sorted(self._BACKUP_DIR.glob("gsa_gateway.*.db"),
+                            key=lambda f: f.stat().st_mtime, reverse=True):
+                parts = p.name.split(".")          # gsa_gateway.<ts>.<label>.db
+                label = parts[2] if len(parts) >= 4 else ""
+                st = p.stat()
+                out.append({"file": p.name, "label": label,
+                            "size_mb": round(st.st_size / 1e6, 1),
+                            "mtime": datetime.fromtimestamp(st.st_mtime, timezone.utc)
+                            .strftime("%Y-%m-%d %H:%M")})
+        return self._json({"backups": out})
+
+    def _api_restore_backup(self):
+        """Restore a chosen backup over the live DB. Snapshots the CURRENT state first (so a
+        restore is itself reversible), then copies the backup in via the SQLite backup API
+        (WAL-safe while the bot holds the DB open). File must live in .backups (no traversal)."""
+        body = self._body()
+        fname = str(body.get("file", ""))
+        src = (self._BACKUP_DIR / fname).resolve()
+        if src.parent != self._BACKUP_DIR.resolve() or not src.exists() or src.suffix != ".db":
+            return self._error("unknown backup file", 400)
+        import sqlite3
+        from scripts._area_tag_migrate import hardened_backup
+        pre = hardened_backup(str(DB_PATH), "pre-restore")     # current state, reversible
+        s = sqlite3.connect(str(src))
+        d = sqlite3.connect(str(DB_PATH))
+        try:
+            with d:
+                s.backup(d)                                    # overwrite live DB with the backup
+        finally:
+            d.close()
+            s.close()
+        logger.info("restored backup %s (prior state saved to %s)", fname, pre.name)
+        return self._json({"restored": fname, "current_saved_to": pre.name})
 
     def _api_cancel(self, raw_id):
         try:

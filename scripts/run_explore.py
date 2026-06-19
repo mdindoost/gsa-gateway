@@ -32,7 +32,15 @@ def main() -> int:
     ap.add_argument("--delay", type=float, default=0.5,
                     help="polite seconds between requests (a full multi-college crawl is "
                          "~1400 fetches); 0 to disable")
+    ap.add_argument("--backup", action="store_true",
+                    help="take a hardened pre-write backup before crawling (dashboard refreshes pass this)")
+    ap.add_argument("--embed", action="store_true",
+                    help="run embed_all at the end so new prose is searchable (dashboard refreshes pass this)")
     args = ap.parse_args()
+
+    if args.backup:
+        from scripts._area_tag_migrate import hardened_backup
+        print("backup:", hardened_backup(args.db, "pre-explore"))
 
     create_all(args.db)                       # ensure graph tables exist (idempotent)
     conn = get_connection(args.db)
@@ -141,6 +149,16 @@ def main() -> int:
             print("   -", i)
     else:
         print("  ✓ KG aligned with KB — no mis-filed or missing people")
+
+    # Embed new/changed prose so it's semantically searchable. Skipped on a --reset run that
+    # errored (the KG may be truncated — don't embed a bad state; restore the backup instead).
+    if args.embed and not (args.reset and total_errors):
+        conn.close()
+        print("\n=== embedding new/changed items ===")
+        import subprocess
+        r = subprocess.run([sys.executable, str(REPO / "v2" / "scripts" / "embed_all.py")],
+                           cwd=str(REPO))
+        print(f"  [embed] exit {r.returncode}")
     return 0
 
 

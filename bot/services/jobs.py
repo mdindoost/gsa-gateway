@@ -96,6 +96,9 @@ def build_explore_command(*, python_bin, repo_root, db_path, depth, frontier, re
         cmd.append("--frontier")
     if reset:
         cmd.append("--reset")
+    if not frontier and not reset:
+        # Normal dashboard hub crawl is one-and-done: snapshot first, then embed new prose.
+        cmd += ["--backup", "--embed"]
     return cmd
 
 
