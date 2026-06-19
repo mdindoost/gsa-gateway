@@ -192,6 +192,16 @@ Roles being *edges* (not text) is what lets the bot answer "who is the dean" exa
 - **Crawler** (`v2/core/ingestion/explore.py`) — a bounded BFS over server-rendered NJIT pages builds the people/roles/orgs/research-areas graph + KB. **Multi-college** (YWCC + Martin Tuchman, same NJIT profile template, one parser) and **re-runnable**: a re-crawl reconciles departures/moves/new hires automatically (the "M3" reconcile). Adding a college = one entry point.
 - **Manual** — GSA officers, clubs/RGOs, and policy prose are authored through the dashboard (gsanjit.com is Wix and not crawlable). Every row is tagged by `source` (`crawler` vs `dashboard`) so an automated re-crawl never clobbers hand-curated data.
 
+### Beyond retrieval
+
+**Conversation memory.** Each user has an in-memory session (last 5 turns, 60-minute TTL) that gives the generation step short-term context, so natural follow-ups resolve without re-stating the topic.
+
+**Multi-platform publishing.** A *content-generator → scheduler → connector-registry* pattern: any source enqueues a post and the scheduler fans it out to every enabled platform (Discord · Telegram · GroupMe) **in parallel**. The live **World Cup tracker** (a burst-and-rest poller with a fully-tested state machine) and a daily fixtures digest are the reference generators.
+
+**Feedback & analytics.** Answers carry 👍 / 👎 / 🔄 ("try again") controls; ratings and questions are logged and surfaced in the dashboard's analytics — what students actually ask, and where the knowledge has gaps.
+
+The platform also includes the **AVA Judging system**.
+
 ### Stack
 
 | Concern | Technology |
