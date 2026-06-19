@@ -129,8 +129,15 @@ def reconcile_entity(conn, org_id: int, entity_id: str, items: list[KItem],
                              parent_id=row["id"])
             result.superseded.append((row["id"], new_id))
 
-        # anything present before but absent now -> deactivate
-        for nk, (row, _meta) in existing.items():
+        # anything present before but absent now -> deactivate.
+        # GUARD: only run the deactivation sweep when we actually got a fresh,
+        # non-empty decomposition. An empty `items` for a person we just parsed is
+        # never a legitimate "their bio was emptied" — it's a transient partial
+        # fetch / parse anomaly (the page rendered to nothing). Retiring their whole
+        # KB on it silently drops a CURRENT person's bio while their listing
+        # appointment stays active (the Omar Woodruff case). Real departures are
+        # handled by reconcile_departures, not by an empty reconcile here.
+        for nk, (row, _meta) in (existing.items() if items else {}.items()):
             if nk not in seen:
                 conn.execute(
                     "UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') WHERE id=?",

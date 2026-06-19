@@ -108,6 +108,19 @@ def test_dropped_publication_is_deactivated(conn):
     assert res.vectors_to_drop == res.deactivated_ids
 
 
+def test_empty_items_does_not_deactivate_existing(conn):
+    # A freshly-parsed person whose decomposition comes back empty (transient partial
+    # fetch / parse anomaly) must NOT have their whole bio retired — they're still present.
+    ingest(conn, rec(["P1", "P2"]))
+    active_before = {r["id"] for r in _active(conn)}
+    assert active_before  # sanity
+
+    res = reconcile_entity(conn, 1, EID, [])  # empty decomposition
+    assert res.deactivated_ids == []
+    assert res.inserted_ids == [] and res.superseded == []
+    assert {r["id"] for r in _active(conn)} == active_before
+
+
 def test_natural_key_is_persisted(conn):
     ingest(conn, rec(["P1"]))
     for r in _active(conn):
