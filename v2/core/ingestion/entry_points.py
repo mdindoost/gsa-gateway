@@ -98,11 +98,23 @@ SEED_ORGS = [
 # org. SEED_ORGS guarantees the colleges exist, so department order within a college is free,
 # but we keep college-before-departments for readability. reconcile_departures still runs ONCE
 # after the whole loop (in run_explore.py), so cross-listing ordering never causes false retirement.
+# Computer Science exposes its administration + joint faculty on SEPARATE pages the YWCC hub does
+# NOT link (the hub's only CS child is cs.njit.edu/faculty). Anchor them as their own listings so we
+# capture the admin staff / associate chairs / program directors / joint faculty we'd otherwise miss.
+# They feed the SAME `computer-science` org as the hub's /faculty crawl; run_explore's shared M3
+# accumulator merges titles into one edge and unions all feeders for the sweep (no cross-delete).
+# Placed AFTER ROOT so the hub's /faculty crawl sets the canonical faculty edge first.
+CS_ADMIN = EntryPoint("https://cs.njit.edu/administration", "computer-science",
+                      "Computer Science", "listing", parent_slug="ywcc", org_type="department")
+CS_JOINT = EntryPoint("https://cs.njit.edu/joint-faculty", "computer-science",
+                      "Computer Science", "listing", parent_slug="ywcc", org_type="department")
+
 ALL_ENTRY_POINTS = [
     ROOT, MTSM_FACULTY, MTSM_ADMIN,
     NCE_COLLEGE, *NCE_DEPTS,
     *CSLA_DEPTS,
     HCAD_COLLEGE,
+    CS_ADMIN, CS_JOINT,
 ]
 
 # Common short names users actually type → resolved to the right org via metadata.aliases.

@@ -83,10 +83,45 @@ def _home_dept_org_id(conn, person_node_id) -> int | None:
     return row[0] if row else None
 
 
+def _new_m3_acc() -> dict:
+    """Run-spanning accumulator so a person on multiple pages (CS /faculty + /administration,
+    possibly in DIFFERENT explore() calls) merges into one edge and the section-scoped M3 sweep
+    unions all of an org's feeder pages. `seen` (person,org) gates merge-vs-overwrite; `present`
+    is per-org union of who's still there; `own` = listing orgs to sweep; `changed` = those with
+    a re-parsed (non-unchanged) feeder; `parents` = dean-reappointment targets to never sweep."""
+    return {"seen": set(), "present": {}, "own": set(), "changed": set(), "parents": set()}
+
+
+def _m3_sweep(conn: sqlite3.Connection, acc: dict, st: "ExploreStats") -> None:
+    """Section-scoped deactivation, once, per org a listing OWNS — using the UNION of all its
+    feeder pages (so /faculty doesn't retire admin-only staff and vice-versa). Skips parent
+    (dean-target) orgs and orgs whose feeders were all unchanged."""
+    with conn:
+        for onode in acc["own"]:
+            if onode in acc["parents"] or onode not in acc["changed"]:
+                continue
+            present = acc["present"].get(onode, set())
+            if not present:
+                continue
+            ph = ",".join("?" * len(present))
+            for (eid,) in conn.execute(
+                    f"SELECT e.id FROM edges e JOIN nodes p ON p.id=e.src_id "
+                    f"WHERE e.type='has_role' AND e.dst_id=? AND e.is_active=1 "
+                    f"AND e.source='crawler' AND p.key NOT IN ({ph})",
+                    [onode, *present]).fetchall():
+                conn.execute("UPDATE edges SET is_active=0, updated_at=datetime('now') WHERE id=?",
+                             (eid,))
+                st.departed += 1
+
+
 def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
-            depth: int = 2, aspect: str = "people", delay: float = 0.0) -> ExploreStats:
+            depth: int = 2, aspect: str = "people", delay: float = 0.0,
+            acc: dict | None = None) -> ExploreStats:
     start = start or ep.ROOT
     st = ExploreStats()
+    own_run = acc is None          # standalone call sweeps itself; run_explore sweeps after all calls
+    if acc is None:
+        acc = _new_m3_acc()
     # queue items: (EntryPoint, from_node_id, depth_remaining). A child reached with a
     # remaining budget of >0 hops is fetched; one that would land at 0 is deferred to the
     # frontier instead. So depth=2 walks hub->listing and defers the profiles.
@@ -127,11 +162,10 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
             elif node.kind == "listing":
                 org_id = ensure_org(conn, node.org_slug, node.org_name, node.parent_slug,
                                     type=node.org_type)
-                # M3 present-set keyed by the org each person is ACTUALLY appointed to: a
-                # section policy can route one listing to several orgs (HCAD → its two schools)
-                # or skip rolled-up faculty entirely (a college page). Without a policy this
-                # collapses to {org_id: everyone} — identical to the legacy single-org sweep.
-                present_by_org: dict[int, set[str]] = {}
+                own_onode = org_node_id(conn, org_id)
+                acc["own"].add(own_onode)
+                if not unchanged:
+                    acc["changed"].add(own_onode)
 
                 def _org_id_for(slug):
                     if slug == node.org_slug:
@@ -144,49 +178,46 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                     purl = "https://people.njit.edu/profile/" + p.slug
                     pkey = entity_id_from_url(purl)
                     cat = category_for_section(p.section)
-                    # Section routing: which org (if any) this person is appointed to here.
                     target_slug = section_policy.route(node.policy, p.section, cat, node.org_slug)
                     if target_slug is None:
-                        # Rolled-up faculty / cross-listed section → their HOME appointment comes
-                        # from another listing; do not mint an edge here (also skips their profile
-                        # on this path — the home listing queues it).
+                        # Rolled-up faculty / cross-listed section → home appointment is elsewhere.
                         continue
-                    if unchanged:
-                        row = conn.execute(
-                            "SELECT id FROM nodes WHERE type='Person' AND key=?",
-                            (pkey,)).fetchone()
-                        pid = row[0] if row else None
+                    # Resolve which org this person is appointed to (policy target, or the legacy
+                    # dean→parent reappointment): a college Dean leads the COLLEGE, not the admin
+                    # sub-unit. MTSM is deliberately NOT reappointed (no departments).
+                    if node.policy:
                         appt_org = _org_id_for(target_slug)
-                    elif node.policy:
-                        appt_org = _org_id_for(target_slug)
-                        pid = project_appointment(
-                            conn, person_key=pkey, name=p.name, org_id=appt_org,
-                            category=cat, titles=p.titles, source_section=p.section)
-                        conn.execute(
-                            "INSERT OR IGNORE INTO page_nodes(raw_url,node_id) VALUES(?,?)",
-                            (final_url, pid))
-                        st.appointments += 1
                     else:
-                        # Legacy (no policy): a college's Dean / Associate Deans lead the COLLEGE,
-                        # so appoint them to the parent org (YWCC), not the admin sub-unit; all
-                        # other roles stay on the listing's own org. Keyed on YWCC's 'Dean'/
-                        # 'Associate Deans' sections. MTSM is deliberately NOT reappointed (it has
-                        # no departments; reappointing 'Leadership' to `mtsm` would collide with
-                        # their faculty@mtsm edge) — it stays admin@mtsm-administration + faculty@mtsm.
                         appt_org = org_id
                         if node.parent_slug and "dean" in p.section.lower():
                             prow = conn.execute("SELECT id FROM organizations WHERE slug=?",
                                                 (node.parent_slug,)).fetchone()
                             if prow:
                                 appt_org = prow[0]
+                    appt_onode = org_node_id(conn, appt_org)
+                    if appt_onode != own_onode:
+                        acc["parents"].add(appt_onode)     # dean reappointed to parent — never sweep
+                    if unchanged:
+                        row = conn.execute("SELECT id FROM nodes WHERE type='Person' AND key=?",
+                                           (pkey,)).fetchone()
+                        pid = row[0] if row else None
+                        # mark seen so a later (changed) page MERGES into this existing edge
+                        # instead of overwriting its titles/category.
+                        acc["seen"].add((pkey, appt_onode))
+                    else:
+                        # First touch of this run overwrites (drops stale titles); 2nd+ merges.
+                        merge = (pkey, appt_onode) in acc["seen"]
+                        acc["seen"].add((pkey, appt_onode))
                         pid = project_appointment(
                             conn, person_key=pkey, name=p.name, org_id=appt_org,
-                            category=cat, titles=p.titles, source_section=p.section)
+                            category=cat, titles=p.titles, source_section=p.section, merge=merge)
                         conn.execute(
                             "INSERT OR IGNORE INTO page_nodes(raw_url,node_id) VALUES(?,?)",
                             (final_url, pid))
                         st.appointments += 1
-                    present_by_org.setdefault(org_node_id(conn, appt_org), set()).add(pkey)
+                    # present set for M3 includes UNCHANGED pages too, so a changed sibling page
+                    # can't retire people only an unchanged page lists.
+                    acc["present"].setdefault(appt_onode, set()).add(pkey)
                     prof = ep.EntryPoint(purl, node.org_slug, node.org_name, "profile",
                                          node.parent_slug)
                     if d - 1 > 0:
@@ -194,30 +225,8 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
                     else:
                         _record_frontier(conn, pid, purl, aspect, d - 1)
                         st.frontier_added += 1
-                # M3 — section-scoped deactivation per org this listing OWNS: people on this org
-                # before but not now (departed / moved) lose their appointment to it. Skip the
-                # listing's PARENT org (shared across sibling listings — sweeping it from one
-                # listing would falsely retire people a sibling appointed). Only when we re-parsed
-                # a non-empty listing (a failed/empty fetch must never deactivate).
-                if not unchanged and present_by_org:
-                    parent_onode = None
-                    if node.parent_slug:
-                        prow = conn.execute("SELECT id FROM organizations WHERE slug=?",
-                                            (node.parent_slug,)).fetchone()
-                        if prow:
-                            parent_onode = org_node_id(conn, prow[0])
-                    for onode, pkeys in present_by_org.items():
-                        if onode == parent_onode:
-                            continue
-                        ph = ",".join("?" * len(pkeys))
-                        for (eid,) in conn.execute(
-                                f"SELECT e.id FROM edges e JOIN nodes p ON p.id=e.src_id "
-                                f"WHERE e.type='has_role' AND e.dst_id=? AND e.is_active=1 "
-                                f"AND e.source='crawler' AND p.key NOT IN ({ph})",
-                                [onode, *pkeys]).fetchall():
-                            conn.execute("UPDATE edges SET is_active=0, "
-                                         "updated_at=datetime('now') WHERE id=?", (eid,))
-                            st.departed += 1
+                # M3 sweep is deferred — done once per owning-org (union of feeders) after the whole
+                # run, via _m3_sweep(acc). A standalone explore() call sweeps itself below.
             elif node.kind == "profile":
                 if unchanged:
                     continue
@@ -249,6 +258,11 @@ def explore(conn: sqlite3.Connection, fetch, start: ep.EntryPoint | None = None,
     # that can hold a Dean/President even though no listing crawl appoints to them directly.
     with conn:
         sync_org_nodes(conn)
+    # A standalone explore() call (no shared acc passed) owns its own M3 sweep, once, here — using
+    # the union of this call's listings. When run_explore drives many calls it passes a shared acc
+    # and sweeps once after ALL calls (so multi-page-per-org unions across calls).
+    if own_run:
+        _m3_sweep(conn, acc, st)
     return st
 
 

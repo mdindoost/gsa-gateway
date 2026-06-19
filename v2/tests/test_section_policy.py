@@ -63,3 +63,19 @@ def test_unknown_policy_raises():
     import pytest
     with pytest.raises(ValueError):
         route("nope", "Professors", "faculty", "nce")
+
+
+# ── roll-up / cross-listing sections are skipped (home-appointment rule, any policy) ──
+def test_rollup_graduate_faculty_skipped():
+    assert route(None, "YWCC Graduate Faculty", "faculty", "computer-science") is None
+    assert route("college_admin_only", "Graduate Faculty", "faculty", "nce") is None
+
+def test_affiliated_and_courtesy_skipped():
+    assert route(None, "Affiliated Faculty", "faculty", "physics") is None
+    assert route(None, "Courtesy Appointments", "faculty", "physics") is None
+    assert route(None, "Faculty Teaching Honors Courses", "faculty", "honors") is None
+
+def test_genuine_joint_and_normal_sections_kept():
+    assert route(None, "Joint Appointments", "joint", "computer-science") == "computer-science"
+    assert route(None, "Professors", "faculty", "computer-science") == "computer-science"
+    assert route(None, "Adjunct Faculty", "faculty", "math") == "math"

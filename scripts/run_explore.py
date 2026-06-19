@@ -82,7 +82,7 @@ def main() -> int:
     # their admin listing re-crawls and get falsely retired before the faculty listing runs
     # (H1 in the design review).
     from v2.core.ingestion.entry_points import ALL_ENTRY_POINTS, SEED_ORGS
-    from v2.core.ingestion.explore import reconcile_departures
+    from v2.core.ingestion.explore import reconcile_departures, _new_m3_acc, _m3_sweep, ExploreStats
     from v2.core.graph.orgs import ensure_org, sync_org_nodes
 
     # Seed the org tree top-down BEFORE crawling so colleges/departments never orphan, and so
@@ -93,13 +93,20 @@ def main() -> int:
     sync_org_nodes(conn)
     conn.commit()
 
+    # ONE shared M3 accumulator across all explore() calls, so an org fed by pages in DIFFERENT
+    # entry points (e.g. CS /faculty via the hub + CS /administration as its own entry point) merges
+    # into one edge and is swept ONCE with the union of all its feeders — never cross-deleted.
     total_departed = 0
     total_errors = 0
+    acc = _new_m3_acc()
     for entry in ALL_ENTRY_POINTS:
-        st = explore(conn, http_fetch, start=entry, depth=args.depth, delay=args.delay)
-        total_departed += st.departed
+        st = explore(conn, http_fetch, start=entry, depth=args.depth, delay=args.delay, acc=acc)
         total_errors += st.errors
         print(f"explore[{entry.org_slug:20}] {entry.url}\n   {st}")
+    sweep_st = ExploreStats()
+    _m3_sweep(conn, acc, sweep_st)              # section-scoped sweep ONCE, union per owning org
+    total_departed = sweep_st.departed
+    print(f"M3 section-scoped sweep: {total_departed} appointment(s) retired")
 
     # Aliases so common short names route to the right org ("civil engineering" ->
     # civil-environmental-engineering). Idempotent; re-applied every crawl.

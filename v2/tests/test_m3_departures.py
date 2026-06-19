@@ -99,3 +99,44 @@ def test_reconcile_refiles_college_filed_kb_to_home_department(conn):
     orgs = {r[0] for r in conn.execute("SELECT org_id FROM knowledge_items WHERE is_active=1 AND "
             "json_extract(metadata,'$.entity_id')='p/chair'")}
     assert orgs == {5}                              # re-filed from college (4) → home dept CS (5)
+
+
+# ── multi-page-per-org: merge titles + M3 union (comprehensive crawl, task #8) ──────
+from v2.core.ingestion.entry_points import EntryPoint
+from v2.core.ingestion.explore import _new_m3_acc, _m3_sweep, ExploreStats
+
+
+def _card2(slug, name, title):
+    return (f'<a href="//people.njit.edu/profile/{slug}" class="column">'
+            f'<h1 class="name">{name}</h1><p class="title">{title}</p></a>')
+
+
+def test_merge_titles_across_pages_into_one_edge(conn):
+    fac = EntryPoint("https://cs/faculty", "computer-science", "CS", "listing", parent_slug="ywcc")
+    adm = EntryPoint("https://cs/admin", "computer-science", "CS", "listing", parent_slug="ywcc")
+    pages = {"https://cs/faculty": "<h4>Professors</h4>" + _card2("oria", "Oria, Vincent", "Professor"),
+             "https://cs/admin": "<h4>Administration</h4>" + _card2("oria", "Oria, Vincent", "Director")
+                                  + _card2("staff", "Staff, Sam", "Administrative Assistant")}
+    acc = _new_m3_acc()
+    explore(conn, _fetch(pages), start=fac, depth=1, acc=acc)   # faculty first → canonical edge
+    explore(conn, _fetch(pages), start=adm, depth=1, acc=acc)   # admin merges
+    row = conn.execute("SELECT e.attrs, e.category FROM edges e JOIN nodes p ON p.id=e.src_id "
+                       "JOIN nodes o ON o.id=e.dst_id WHERE p.key='people.njit.edu/profile/oria' "
+                       "AND o.key='computer-science' AND e.type='has_role' AND e.is_active=1").fetchone()
+    assert json.loads(row[0])["titles"] == ["Professor", "Director"]   # merged, faculty-first
+    assert row[1] == "faculty"                                          # category preserved (not flipped)
+    assert conn.execute("SELECT 1 FROM nodes WHERE key='people.njit.edu/profile/staff' "
+                        "AND is_active=1").fetchone()                   # admin-only staff captured
+
+
+def test_m3_union_does_not_cross_delete_admin_only_staff(conn):
+    fac = EntryPoint("https://cs/faculty", "computer-science", "CS", "listing", parent_slug="ywcc")
+    adm = EntryPoint("https://cs/admin", "computer-science", "CS", "listing", parent_slug="ywcc")
+    pages = {"https://cs/faculty": "<h4>Professors</h4>" + _card2("a", "A, A", "Professor"),
+             "https://cs/admin": "<h4>Administration</h4>" + _card2("b", "B, B", "Administrative Assistant")}
+    acc = _new_m3_acc()
+    explore(conn, _fetch(pages), start=fac, depth=1, acc=acc)
+    explore(conn, _fetch(pages), start=adm, depth=1, acc=acc)
+    _m3_sweep(conn, acc, ExploreStats())          # union sweep — neither page deletes the other's people
+    assert _appt_active(conn, "a")[0] == 1        # faculty-only kept
+    assert _appt_active(conn, "b")[0] == 1        # admin-only kept (the bug we're fixing)

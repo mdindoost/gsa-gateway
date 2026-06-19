@@ -3,6 +3,7 @@ and structured `researches` edges. Deterministic only (the LLM is Phase 2). Runs
 inside the reconcile transaction so it is atomic with the text rows (B1)."""
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 
@@ -87,7 +88,8 @@ def project_entity(conn: sqlite3.Connection, rec: EntityRecord, org_id: int,
 
 def project_appointment(conn: sqlite3.Connection, *, person_key: str, name: str,
                         org_id: int, category: str | None, titles: list[str],
-                        source_section: str, source: str = "crawler") -> int:
+                        source_section: str, source: str = "crawler",
+                        merge: bool = False) -> int:
     """Record ONE appointment from a listing appearance — additively (multi-membership).
 
     Upserts the Person (preserving any attrs a profile pass already set — attrs=None) and a
@@ -96,7 +98,24 @@ def project_appointment(conn: sqlite3.Connection, *, person_key: str, name: str,
     reached from two paths (e.g. Wang via College Administration *and* CS) accumulates both
     roles instead of one wiping the other. Returns the Person node id."""
     pid = upsert_node(conn, type="Person", key=person_key, name=name, attrs=None, source=source)
-    upsert_edge(conn, src_id=pid, type="has_role", dst_id=org_node_id(conn, org_id),
+    onode = org_node_id(conn, org_id)
+    if merge:
+        # A second page of the SAME crawl re-appointing this person to this org: UNION the new
+        # titles into the existing edge and PRESERVE its category/source_section/other attrs
+        # (e.g. is_primary). Never let an admin page flip a faculty edge's category, and never
+        # drop attrs a profile pass set. (Caller gates `merge` so the first touch of a run still
+        # overwrites — so a changed title isn't kept stale.)
+        row = conn.execute(
+            "SELECT attrs, category, source_section FROM edges "
+            "WHERE src_id=? AND type='has_role' AND dst_id=?", (pid, onode)).fetchone()
+        if row:
+            old = json.loads(row[0]) if row[0] else {}
+            old["titles"] = list(dict.fromkeys((old.get("titles") or []) + (titles or [])))
+            upsert_edge(conn, src_id=pid, type="has_role", dst_id=onode,
+                        category=row[1] if row[1] is not None else category,
+                        source_section=row[2] or source_section, attrs=old, source=source)
+            return pid
+    upsert_edge(conn, src_id=pid, type="has_role", dst_id=onode,
                 category=category, source_section=source_section,
                 attrs={"titles": titles}, source=source)
     return pid

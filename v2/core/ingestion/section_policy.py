@@ -25,17 +25,29 @@ _ARCH = re.compile(r"architect", re.I)
 _ARTDESIGN = re.compile(r"art\s*\+?\s*(?:and\s+)?design", re.I)
 _LIBRARY = re.compile(r"\blibrar", re.I)   # university library staff cross-listed on the HCAD page
 
+# ROLL-UP / cross-listing section headings — people listed here are HOME in another unit (a
+# college-wide grad-faculty roster, courtesy/affiliated faculty, "teaching X courses"). Skipping
+# them is the home-appointment rule at the section level: never tag a non-home person to this org.
+# NOTE: a genuine "Joint Appointments" section is NOT a roll-up — it's a real secondary appointment,
+# kept (as category 'joint'). Adjunct/Emeritus are real dept members — kept.
+_ROLLUP_SECTION = re.compile(
+    r"graduate\s+faculty|affiliat|associated\s+faculty|courtesy|secondary\s+appointment|"
+    r"advisory|teaching\s+\w+\s+courses", re.I)
+
 
 def route(policy: str | None, section: str, category: str | None,
           default_slug: str) -> str | None:
     """Return the org slug to appoint this person to, or None to skip (no edge).
 
+    - ANY policy: a ROLL-UP/affiliated section is skipped first (home is elsewhere).
     - None (no policy): default_slug (legacy — caller also applies dean→parent reappointment).
     - 'college_admin_only': keep admin/staff/misc sections on the college; skip rolled-up
       faculty/emeritus/joint/advisor (their department listing owns them).
     - 'hcad_split': route architecture sections → 'njsoa', art+design → 'art-design', university
       library → skip, everything else (leadership/staff/centers/emeritus/…) → 'hcad' (college).
     """
+    if _ROLLUP_SECTION.search(section or ""):
+        return None          # college-wide roster / affiliated / courtesy → home is elsewhere
     if not policy:
         return default_slug
     if policy == "college_admin_only":
