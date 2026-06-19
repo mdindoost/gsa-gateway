@@ -30,12 +30,17 @@ class Assistant:
     intent_detector: Any
     retriever: Any | None
     message_handler: Any
+    # The single per-process source of truth for the gsa/free conversation mode. Shared with
+    # the ModeRegistry/ModeDispatcher a connector builds (so judging + conversation read/write
+    # the SAME store). See docs/superpowers/specs/2026-06-19-unify-modes-design.md
+    mode_store: Any = None
 
 
 async def build_assistant(config, db, kb, rate_limiter) -> Assistant:
     """Wire the full brain once. db/kb/rate_limiter are passed in (each process
     owns those; other cogs need direct references)."""
     from bot.core.message_handler import MessageHandler
+    from bot.core.modes import ConversationModeStore
     from bot.services.conversation import ConversationManager
     from bot.services.intent_detector import IntentDetector
 
@@ -50,9 +55,11 @@ async def build_assistant(config, db, kb, rate_limiter) -> Assistant:
         await ollama.check_connection()
         logger.info("Ollama client initialised (model=%s)", config.ollama_model)
 
+    mode_store = ConversationModeStore()
     conversation_manager = ConversationManager(
         timeout_minutes=config.conversation_timeout_minutes,
         max_turns=config.conversation_max_turns,
+        mode_store=mode_store,
     )
     intent_detector = IntentDetector()
 
@@ -96,5 +103,5 @@ async def build_assistant(config, db, kb, rate_limiter) -> Assistant:
     return Assistant(
         ollama=ollama, embedder=embedder, vector_store=vector_store,
         conversation_manager=conversation_manager, intent_detector=intent_detector,
-        retriever=retriever, message_handler=message_handler,
+        retriever=retriever, message_handler=message_handler, mode_store=mode_store,
     )

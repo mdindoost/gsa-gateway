@@ -97,11 +97,13 @@ def test_add_turn_updates_last_active(manager):
     assert session.last_active >= before
 
 
-# ── Mode field ────────────────────────────────────────────────────────────────
+# ── Mode (now backed by the shared ConversationModeStore, not the session field) ─────
 
-def test_session_default_mode_is_gsa(manager):
-    session = manager.get_or_create_session("user_mode_1")
-    assert session.mode == "gsa"
+def test_default_mode_is_gsa(manager):
+    # Exercise the real source of truth (get_mode -> ModeStore), not the retired
+    # ConversationSession.mode field.
+    manager.get_or_create_session("user_mode_1")
+    assert manager.get_mode("user_mode_1") == "gsa"
 
 
 def test_get_mode_returns_gsa_for_unknown_user(manager):

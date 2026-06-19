@@ -59,9 +59,19 @@ async def main() -> None:
     from v2.core.judging.session import JudgingSessionManager
     judging_manager = JudgingSessionManager(db_path=str(config.database_path))
 
+    # Unified mode dispatch. The ModeRegistry composes the ONE per-process conversation-mode
+    # store (built by build_assistant, shared with the message handler) with the judging
+    # manager's DERIVED mode — so judging + conversation read the same source of truth. The
+    # dispatcher is the single, explicit entry point the connector calls.
+    from bot.core.modes import ModeDispatcher, ModeRegistry
+    registry = ModeRegistry(asst.mode_store, judging=judging_manager)
+    dispatcher = ModeDispatcher(
+        registry, judging=judging_manager, conversation_handler=handler.handle,
+    )
+
     connector = TelegramConnector(
         token=config.telegram_token, handler=handler, kb=kb,
-        judging_manager=judging_manager,
+        judging_manager=judging_manager, dispatcher=dispatcher,
     )
     await connector.setup_services()
 

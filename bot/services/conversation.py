@@ -33,10 +33,19 @@ class ConversationManager:
         self,
         timeout_minutes: int = 60,
         max_turns: int = 5,
+        mode_store=None,
     ) -> None:
         self.sessions: dict[str, ConversationSession] = {}
         self.timeout_minutes = timeout_minutes
         self.max_turns = max_turns
+        # Unified mode: the gsa/free bit is owned by a ConversationModeStore — the single
+        # source of truth shared with the dispatcher/registry. get_mode/set_mode delegate to
+        # it. When none is injected (e.g. in unit tests) we create a private one so the API
+        # still works in isolation.
+        if mode_store is None:
+            from bot.core.modes import ConversationModeStore
+            mode_store = ConversationModeStore()
+        self.mode_store = mode_store
         self._cleanup_task: Optional[asyncio.Task] = None
         try:
             loop = asyncio.get_running_loop()
@@ -144,15 +153,19 @@ class ConversationManager:
     def clear_session(self, user_id: str) -> None:
         if user_id in self.sessions:
             del self.sessions[user_id]
+        # Preserve the legacy contract: clearing the conversation also resets the mode to
+        # the default (GSA). Mode now lives in the shared store, so reset it explicitly.
+        self.mode_store.reset(user_id)
         logger.info("Session cleared for user %s...", user_id[:8])
 
     def get_mode(self, user_id: str) -> str:
-        session = self.get_session(user_id)
-        return session.mode if session is not None else "gsa"
+        # Delegates to the shared ConversationModeStore (single source of truth). Returns the
+        # plain string value ("gsa"/"free") for back-compat with callers that compare to a
+        # bare string and with log_question(mode=...).
+        return self.mode_store.get(user_id).value
 
     def set_mode(self, user_id: str, mode: str) -> None:
-        session = self.get_or_create_session(user_id)
-        session.mode = mode
+        self.mode_store.set(user_id, mode)
 
     def get_stats(self) -> dict:
         return {
