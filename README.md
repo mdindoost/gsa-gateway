@@ -175,6 +175,8 @@ Roles being *edges* (not text) is what lets the bot answer "who is the dean" exa
                        └────────────────────────────────────────────────┘
 ```
 
+**0 — Intent gate** (`bot/services/intent_detector.py`): before any retrieval, each message is classified — `question` · `statement` · `greeting` · `farewell` · `thanks` · `help` · `identity` · `clear_history` · `free_mode`/`gsa_mode` (mode switch) · `food` · `social`. Conversational and command-like messages get the right handling instead of being forced through retrieval (a "hi" gets the welcome, "clear" wipes the session, a food question routes to the food-events lookup). Only genuine questions flow into the pipeline below. *(Structured retrieval is actually tried just before this, so "list all CS faculty" is never mis-classified as a statement.)*
+
 **1 — Structured router** (`v2/core/retrieval/router.py`): pure rule-based slot extraction (no LLM — a small local model is unreliable at orchestration). It maps a question to a parameterized skill *only* when the shape is unambiguous; otherwise it returns `None` and stays out of the way. Conservative by design — a descriptive question wrongly forced into a skill is the dangerous failure.
 
 **2 — SQL skills + entity layer** (`skills.py`, `entity.py`): parameterized SQL over the graph/relational data returning **complete sets**, not a top-K sample — "who is the dean of YWCC", "list *all* the Michaels", "what does Guiling Wang research", "who works on graph neural networks". Named people resolve to a full **entity card** (roles, research, education, contact); ambiguous names (5 "Wang"s) **disambiguate instead of guessing**. Empty results fall through to RAG rather than dead-ending — so a missing structured fact never blocks the prose path.
