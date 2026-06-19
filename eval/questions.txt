@@ -148,3 +148,8 @@ Is David Bader in the computer science department?
 # bio survives a transient empty re-crawl (Woodruff: active appt must keep active KB)
 Tell me about Omar Woodruff
 What did Omar Woodruff study?
+
+# external profiles (links on identity, Scholar metrics on research — active once profile data is entered)
+Who is Ioannis Koutis?
+What is Ioannis Koutis's Google Scholar?
+What is Ioannis Koutis's research and how cited is he?

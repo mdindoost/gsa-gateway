@@ -375,7 +375,14 @@ def reconcile_departures(conn: sqlite3.Connection) -> dict:
                 "SELECT id, org_id FROM knowledge_items WHERE is_active=1 AND created_by='crawler' "
                 "AND json_extract(metadata,'$.entity_id')=?", (key,)).fetchall()
             if appts == 0:                                   # fully departed
-                _drop_items([i for i, _ in ki])
+                # Drop ALL of a departed person's KB regardless of source — leaving
+                # non-crawler enrichment (e.g. created_by='scholar') pointing at a
+                # deactivated node would orphan it. (Source-scoping protects the LIVING;
+                # a departure is terminal for every source.)
+                gone = [r[0] for r in conn.execute(
+                    "SELECT id FROM knowledge_items WHERE is_active=1 "
+                    "AND json_extract(metadata,'$.entity_id')=?", (key,)).fetchall()]
+                _drop_items(gone)
                 conn.execute("UPDATE edges SET is_active=0 WHERE src_id=? AND is_active=1", (pid,))
                 conn.execute("UPDATE nodes SET is_active=0, updated_at=datetime('now') WHERE id=?", (pid,))
                 out["departed_people"] += 1

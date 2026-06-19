@@ -59,6 +59,10 @@ def test_reconcile_departures_fully_removes_person_with_no_appointment(conn):
     pid = upsert_node(conn, type="Person", key="p/gone", name="Gone", source="crawler")
     conn.execute("INSERT INTO knowledge_items(org_id,type,content,metadata,created_by) "
                  "VALUES(5,'profile','x',?,'crawler')", (json.dumps({"entity_id": "p/gone"}),))
+    # an enrichment item from another source must also be dropped on full departure
+    # (else it orphans, pointing at a deactivated node).
+    conn.execute("INSERT INTO knowledge_items(org_id,type,content,metadata,created_by) "
+                 "VALUES(5,'scholar_profile','y',?,'scholar')", (json.dumps({"entity_id": "p/gone"}),))
     conn.commit()
     out = reconcile_departures(conn)
     assert out["departed_people"] == 1
