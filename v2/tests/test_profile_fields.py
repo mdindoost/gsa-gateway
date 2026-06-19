@@ -29,9 +29,9 @@ def test_render_links_lists_present_links_in_registry_order():
     assert "ORCID" not in out  # absent field not shown
 
 
-def test_website_alias_reads_crawler_links_website():
-    # No profiles.website, but the crawler's attrs.links.website is present.
-    attrs = {"links": {"website": "https://koutis.example.edu"}}
+def test_website_alias_reads_crawler_flat_website():
+    # No profiles.website, but the crawler's flat attrs.website is present.
+    attrs = {"website": "https://koutis.example.edu"}
     out = render_links(attrs)
     assert "[Website](https://koutis.example.edu)" in out
 

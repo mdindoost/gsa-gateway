@@ -37,6 +37,38 @@ def _rec(areas):
                         contact={"email": "ioannis.koutis@njit.edu", "office": "4105 GITC"})
 
 
+def _rec_links(links):
+    return EntityRecord(entity_id="p/ikoutis", name="Ioannis Koutis", org="Computer Science",
+                        titles=["Associate Professor"], links=links,
+                        contact={"email": "ioannis.koutis@njit.edu"})
+
+
+def test_project_captures_profile_links_into_profiles_bag(conn):
+    import json
+    project_entity(conn, _rec_links({
+        "website": "https://k.io", "scholar": "https://scholar.google.com/x",
+        "linkedin": "https://linkedin.com/in/k", "orcid": "https://orcid.org/0000"}), 5)
+    attrs = json.loads(conn.execute("SELECT attrs FROM nodes WHERE key='p/ikoutis'").fetchone()[0])
+    assert attrs["website"] == "https://k.io"                       # flat, unchanged
+    assert attrs["profiles"]["scholar"]["url"] == "https://scholar.google.com/x"
+    assert attrs["profiles"]["linkedin"]["url"] == "https://linkedin.com/in/k"
+    assert attrs["profiles"]["orcid"]["url"] == "https://orcid.org/0000"
+
+
+def test_recrawl_preserves_manually_set_metrics(conn):
+    import json
+    from v2.core.ingestion.people_editor import set_person_profiles
+    project_entity(conn, _rec_links({"scholar": "https://scholar.google.com/x"}), 5)
+    set_person_profiles(conn, person_key="p/ikoutis",
+                        profiles={"scholar": {"citations": 2774, "h_index": 26}})
+    # re-crawl must NOT clobber the metrics (the whole point of merging attrs)
+    project_entity(conn, _rec_links({"scholar": "https://scholar.google.com/x"}), 5)
+    sch = json.loads(conn.execute("SELECT attrs FROM nodes WHERE key='p/ikoutis'")
+                     .fetchone()[0])["profiles"]["scholar"]
+    assert sch["citations"] == 2774 and sch["h_index"] == 26
+    assert sch["url"] == "https://scholar.google.com/x"
+
+
 def test_project_creates_person_role_and_research_edges(conn):
     pid = project_entity(conn, _rec(["Spectral graph theory", "Graph sparsification"]), 5)
     hr = conn.execute("SELECT category FROM edges WHERE src_id=? AND type='has_role'", (pid,)).fetchall()

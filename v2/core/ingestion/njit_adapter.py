@@ -352,7 +352,7 @@ def parse_entity(url: str, html: str, org_default: str = "") -> EntityRecord:
         links["website"] = website
     about_html = str(pane("about")) if pane("about") else html
     for label, pat in (("scholar", "scholar.google"), ("orcid", "orcid.org"),
-                       ("github", "github.com")):
+                       ("linkedin", "linkedin.com"), ("github", "github.com")):
         lm = re.search(r"https?://[^\"' ]*" + pat + r"[^\"' ]*", about_html)
         if lm:
             links[label] = lm.group(0)

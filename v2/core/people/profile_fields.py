@@ -55,7 +55,8 @@ PROFILE_FIELDS: tuple[Field, ...] = (
                    Metric("i10_index", "i10-index {v}"))),
     Field("linkedin", "LinkedIn", "💼"),
     Field("orcid", "ORCID", "🔗"),
-    Field("website", "Website", "🌐", attrs_fallback=("links.website",)),
+    Field("github", "GitHub", "💻"),
+    Field("website", "Website", "🌐", attrs_fallback=("website", "links.website")),
 )
 
 

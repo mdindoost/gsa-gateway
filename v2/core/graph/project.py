@@ -49,12 +49,31 @@ def project_entity(conn: sqlite3.Connection, rec: EntityRecord, org_id: int,
     creating or clobbering a role (e.g. it must not turn a 'Staff'-section person into
     'admin' because their title carries an '…Office of the Dean' suffix). The standalone
     single-profile ingest path (no listing) keeps the default True. Returns the Person id."""
-    attrs = {k: v for k, v in {
+    # MERGE into existing attrs (don't rebuild) so a re-crawl never clobbers the
+    # external-profile bag (manually-set Scholar metrics etc.). upsert_node overwrites
+    # the whole attrs blob, so we must hand it the merged dict.
+    erow = conn.execute("SELECT attrs FROM nodes WHERE type='Person' AND key=?",
+                        (rec.entity_id,)).fetchone()
+    attrs = json.loads(erow[0]) if erow and erow[0] else {}
+    for k, v in {
         "email": rec.contact.get("email"),
         "phone": rec.contact.get("phone"),
         "office": rec.contact.get("office"),
         "website": rec.links.get("website"),
-    }.items() if v}
+    }.items():
+        if v:
+            attrs[k] = v
+    # Auto-capture profile links the crawler found on the page (scholar/linkedin/orcid)
+    # into attrs.profiles — per-field merge KEEPS any existing metrics on that field.
+    profiles = dict(attrs.get("profiles") or {})
+    for fkey in ("scholar", "linkedin", "orcid", "github"):
+        url = rec.links.get(fkey)
+        if url:
+            entry = dict(profiles.get(fkey) or {})
+            entry["url"] = url
+            profiles[fkey] = entry
+    if profiles:
+        attrs["profiles"] = profiles
     pid = upsert_node(conn, type="Person", key=rec.entity_id, name=rec.name,
                       attrs=attrs, source=source)
 
