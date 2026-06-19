@@ -589,6 +589,20 @@ function renderJobs() {
         <button class="btn btn-primary" id="job-explore">🕸 Gather KG (people + roles + research)</button>
         <button class="btn btn-ghost" id="job-frontier">🔗 Process frontier sites</button>
       </div>
+      <div class="jobs-actions" style="margin-top:8px">
+        <select id="job-crawl-section" class="btn btn-ghost" style="padding:6px 10px">
+          <option value="all">All offices</option>
+          <option value="registrar">Registrar</option>
+          <option value="financialaid">Financial Aid</option>
+          <option value="graduatestudies">Graduate Studies</option>
+          <option value="counseling">Counseling (C-CAPS)</option>
+          <option value="careerservices">Career Development</option>
+          <option value="dos">Dean of Students</option>
+          <option value="global">Global Initiatives (OGI)</option>
+          <option value="bursar">Bursar</option>
+        </select>
+        <button class="btn btn-primary" id="job-crawl">🏛 Refresh NJIT office (fetch + ingest + embed)</button>
+      </div>
       <div id="jobs-kg-scope" class="jobs-scope"></div>
       <div id="jobs-scope" class="jobs-scope"></div>
       <div id="jobs-eta" class="jobs-eta"></div>
@@ -599,9 +613,24 @@ function renderJobs() {
   document.getElementById("job-refresh-all").addEventListener("click", startRefreshAll);
   document.getElementById("job-explore").addEventListener("click", () => startExplore({}));
   document.getElementById("job-frontier").addEventListener("click", () => startExplore({ frontier: true }));
+  document.getElementById("job-crawl").addEventListener("click", startCrawlSection);
   document.getElementById("job-web").addEventListener("change", refreshJobsHealth);
   refreshJobsHealth();
   refreshJobsList();
+}
+
+function startCrawlSection() {
+  const section = document.getElementById("job-crawl-section").value;
+  jobsApi("/api/jobs/crawl-section", { method: "POST", body: { section } })
+    .then(({ status, body }) => {
+      if (status === 409) { toast("A job is already running", false); return; }
+      if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
+      toast(`Refreshing ${section} from njit.edu ✅`);
+      pollJob(body.job_id);
+      refreshJobsList();
+      refreshJobsHealth();
+    })
+    .catch((e) => toast("Server error: " + e.message, false));
 }
 
 function startExplore(opts) {

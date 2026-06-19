@@ -99,6 +99,14 @@ def build_explore_command(*, python_bin, repo_root, db_path, depth, frontier, re
     return cmd
 
 
+def build_crawl_section_command(*, python_bin, repo_root, db_path, section) -> list[str]:
+    """Build the NJIT office-refresh command (crawl_njit_section.py --refresh): fetch the
+    office's grad-relevant pages, ingest them live (gated backup), capture staff, embed.
+    ``section`` is a SECTIONS key (e.g. 'registrar') or 'all'."""
+    script = str(Path(repo_root) / "scripts" / "crawl_njit_section.py")
+    return [python_bin, script, str(section), "--refresh"]
+
+
 def _duration_seconds(started_at, finished_at):
     """Wall-clock seconds between two UTC 'YYYY-MM-DD HH:MM:SS' strings, or None."""
     if not started_at or not finished_at:
@@ -138,6 +146,10 @@ class JobManager:
                 python_bin=self.python_bin, repo_root=self.repo_root,
                 db_path=self.db_path, web=args.get("web", False),
                 changes_log=self.changes_log)
+        if job_type == "crawl_section":
+            return build_crawl_section_command(
+                python_bin=self.python_bin, repo_root=self.repo_root,
+                db_path=self.db_path, section=args.get("section", "all"))
         return build_refresh_command(
             python_bin=self.python_bin, repo_root=self.repo_root,
             db_path=self.db_path, department=args.get("department", "cs"),
@@ -204,6 +216,10 @@ class JobManager:
     def start_explore(self, depth=3, frontier=False, reset=False) -> dict:
         return self._start("explore",
                            {"depth": depth, "frontier": frontier, "reset": reset})
+
+    def start_crawl_section(self, section="all") -> dict:
+        """Refresh one NJIT office (or 'all') from njit.edu: fetch + ingest live + embed."""
+        return self._start("crawl_section", {"section": section})
 
     def estimate_refresh_all(self, web=False) -> dict | None:
         """Duration estimate for an all-departments run, from the last completed one.

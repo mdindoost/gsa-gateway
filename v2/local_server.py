@@ -195,6 +195,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     return self._api_refresh()
                 if path == "/api/jobs/explore":
                     return self._api_explore()
+                if path == "/api/jobs/crawl-section":
+                    return self._api_crawl_section()
                 if path.startswith("/api/jobs/") and path.endswith("/cancel"):
                     return self._api_cancel(path[len("/api/jobs/"):-len("/cancel")])
                 return self._error("Not found", 404)
@@ -562,6 +564,21 @@ class GatewayHandler(BaseHTTPRequestHandler):
         try:
             res = JOBS.start_explore(depth=depth, frontier=bool(body.get("frontier", False)),
                                      reset=bool(body.get("reset", False)))
+        except JobBusyError:
+            return self._error("a job is already running", 409)
+        return self._json(res, 201)
+
+    # NJIT offices the crawler knows how to refresh (SECTIONS keys + 'all').
+    _CRAWL_SECTIONS = ("all", "registrar", "financialaid", "graduatestudies", "counseling",
+                       "careerservices", "dos", "global", "bursar")
+
+    def _api_crawl_section(self):
+        body = self._body()
+        section = str(body.get("section", "all"))
+        if section not in self._CRAWL_SECTIONS:
+            return self._error(f"unknown section: {section}", 400)
+        try:
+            res = JOBS.start_crawl_section(section=section)
         except JobBusyError:
             return self._error("a job is already running", 409)
         return self._json(res, 201)

@@ -329,6 +329,19 @@ def cmd_approve(section: str, cfg: dict) -> None:
         conn.close()
 
 
+def cmd_refresh(section: str, cfg: dict) -> None:
+    """One-shot office refresh for the dashboard Jobs runner: fetch → commit (live, gated
+    backup) → embed. Re-crawl is idempotent per doc_id, so this is the safe 'update this
+    office from njit.edu' button."""
+    cmd_fetch(section, cfg)
+    cmd_commit(section, cfg, do_commit=True)
+    print("  [embed] embedding new/changed items …")
+    import subprocess
+    r = subprocess.run([sys.executable, str(REPO / "v2" / "scripts" / "embed_all.py")],
+                       cwd=str(REPO))
+    print(f"  [embed] exit {r.returncode}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("section", choices=sorted(SECTIONS) + ["all"])
@@ -336,6 +349,8 @@ def main():
     ap.add_argument("--commit", action="store_true", help="gated ingest of the .md (else dry-run)")
     ap.add_argument("--ingest", action="store_true", help="dry-run ingest preview")
     ap.add_argument("--approve", action="store_true", help="flip staged high-stakes items live")
+    ap.add_argument("--refresh", action="store_true",
+                    help="one-shot: fetch + commit (live) + embed (for the dashboard Jobs runner)")
     args = ap.parse_args()
     sections = sorted(SECTIONS) if args.section == "all" else [args.section]
     for sec in sections:
@@ -343,6 +358,8 @@ def main():
         print(f"\n══════ {sec} ══════")
         if args.approve:
             cmd_approve(sec, cfg)
+        elif args.refresh:
+            cmd_refresh(sec, cfg)
         elif args.commit or args.ingest:
             cmd_commit(sec, cfg, do_commit=args.commit)
         else:

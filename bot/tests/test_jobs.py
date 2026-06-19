@@ -18,6 +18,7 @@ from bot.services.jobs import (
     JobBusyError,
     JobManager,
     JobNotFoundError,
+    build_crawl_section_command,
     build_refresh_all_command,
     build_refresh_command,
 )
@@ -238,6 +239,28 @@ def test_start_refresh_all_runs_to_done(tmp_path):
     row = mgr.get_job(job["job_id"])
     assert row["type"] == "refresh_all"
     assert "all-ran" in row["log_tail"]
+
+
+def test_build_crawl_section_command_invokes_refresh():
+    cmd = build_crawl_section_command(
+        python_bin="/venv/python", repo_root="/repo", db_path="/repo/g.db", section="registrar")
+    assert cmd[:2] == ["/venv/python", "/repo/scripts/crawl_njit_section.py"]
+    assert "registrar" in cmd and "--refresh" in cmd
+
+
+def test_build_crawl_section_command_defaults_to_all():
+    cmd = build_crawl_section_command(
+        python_bin="/venv/python", repo_root="/repo", db_path="/repo/g.db", section="all")
+    assert "all" in cmd and "--refresh" in cmd
+
+
+def test_start_crawl_section_runs_to_done(tmp_path):
+    mgr = _make_manager(tmp_path, build_cmd=_fast_ok_builder("crawl-ran"))
+    job = mgr.start_crawl_section(section="bursar")
+    assert _wait_until(lambda: mgr.get_job(job["job_id"])["status"] == "done")
+    row = mgr.get_job(job["job_id"])
+    assert row["type"] == "crawl_section"
+    assert "crawl-ran" in row["log_tail"]
 
 
 # ── duration ──────────────────────────────────────────────────────────────────
