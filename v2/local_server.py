@@ -21,6 +21,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+import threading
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -43,6 +44,9 @@ from v2.core.ingestion.entry_points import crawl_scope as _crawl_scope  # noqa: 
 
 # Control-plane job runner (faculty refresh, …). Same DB the bot/dashboard use.
 JOBS = JobManager(db_path=DB_PATH, repo_root=REPO_ROOT, python_bin=sys.executable)
+# ThreadingHTTPServer runs requests concurrently; this serializes the destructive restore so two
+# (e.g. a double-click) can't copy over the live DB at once.
+_RESTORE_LOCK = threading.Lock()
 
 # Host-header allowlist (defeats DNS-rebinding) — only these Hosts are served.
 ALLOWED_HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}", "localhost", "127.0.0.1"}
@@ -636,14 +640,53 @@ class GatewayHandler(BaseHTTPRequestHandler):
             d.close()
             s.close()
 
+    # The bot processes hold a LONG-LIVED writer connection (bot/services/database.py) and write
+    # analytics on every message — so a restore must NOT run while they're up (a concurrent commit
+    # during the copy can corrupt/revert the DB). These are their pgrep patterns (cf. restart.sh).
+    _BOT_WRITER_PATTERNS = (r"python.*bot\.main", r"python.*run_telegram", r"python.*run_groupme")
+
+    @classmethod
+    def _bot_writers_running(cls) -> bool:
+        import subprocess
+        for pat in cls._BOT_WRITER_PATTERNS:
+            if subprocess.run(["pgrep", "-f", pat], capture_output=True).returncode == 0:
+                return True
+        return False
+
+    @staticmethod
+    def _verify_db(path) -> None:
+        """Raise if the DB at `path` fails integrity or its vec0 table isn't queryable."""
+        from v2.core.database.schema import get_connection
+        c = get_connection(str(path))
+        try:
+            if c.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise RuntimeError("integrity_check failed")
+            c.execute("SELECT COUNT(*) FROM knowledge_vectors").fetchone()   # vec0 smoke test
+        finally:
+            c.close()
+
     def _api_restore_backup(self):
-        """Restore a chosen backup over the live DB — gated + verified + reversible. Refuses while
-        a refresh is running (would race a live writer); snapshots the CURRENT state first; flushes
-        the live WAL; copies the backup in; then re-checks integrity + that vec0 is queryable, and
-        rolls back to the just-taken snapshot if either fails. File must live in .backups (no traversal).
-        Best run when the bots are idle — they read per-query, so a brief read could overlap the copy."""
+        """Restore a chosen backup over the live DB — gated + verified + reversible.
+
+        SAFETY: the bots hold a long-lived WRITER connection, so an online copy while they run can
+        corrupt the DB. We therefore refuse unless (a) no refresh job is running AND (b) no bot
+        writer process is up. Then: snapshot the current state (reversible) → flush WAL → copy the
+        backup in → verify integrity + vec0; on failure, roll back from the snapshot and VERIFY the
+        rollback too. File must live in .backups (no traversal)."""
+        if not _RESTORE_LOCK.acquire(blocking=False):
+            return self._error("a restore is already in progress", 409)
+        try:
+            return self._do_restore_backup()
+        finally:
+            _RESTORE_LOCK.release()
+
+    def _do_restore_backup(self):
         if JOBS.is_running():
             return self._error("a refresh is running — wait for it to finish before restoring", 409)
+        if self._bot_writers_running():
+            return self._error("stop the bots first — they hold the database open, and a live write "
+                               "during a restore can corrupt it. Stop them, restore, then run "
+                               "scripts/restart.sh.", 409)
         body = self._body()
         fname = str(body.get("file", ""))
         src = (self._BACKUP_DIR / fname).resolve()
@@ -651,7 +694,6 @@ class GatewayHandler(BaseHTTPRequestHandler):
             return self._error("unknown backup file", 400)
         import sqlite3
         from scripts._area_tag_migrate import hardened_backup
-        from v2.core.database.schema import get_connection
         try:
             pre = hardened_backup(str(DB_PATH), "pre-restore")   # current state, reversible
         except Exception as exc:  # noqa: BLE001 (disk full etc.) — abort before touching the live DB
@@ -663,16 +705,16 @@ class GatewayHandler(BaseHTTPRequestHandler):
         finally:
             live.close()
         self._copy_db(src, DB_PATH)
-        # Verify the restored DB: integrity + vec0 queryable. On failure, roll back from `pre`.
         try:
-            c = get_connection(str(DB_PATH))
-            ok = c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-            c.execute("SELECT COUNT(*) FROM knowledge_vectors").fetchone()   # vec0 smoke test
-            c.close()
-            if not ok:
-                raise RuntimeError("integrity_check failed")
-        except Exception as exc:  # noqa: BLE001
-            self._copy_db(pre, DB_PATH)                           # roll back to prior state
+            self._verify_db(DB_PATH)
+        except Exception as exc:  # noqa: BLE001 — roll back, then VERIFY the rollback itself
+            try:
+                self._copy_db(pre, DB_PATH)
+                self._verify_db(DB_PATH)
+            except Exception as rexc:  # noqa: BLE001
+                logger.exception("restore AND rollback failed")
+                return self._error(f"RESTORE FAILED ({exc}) AND ROLLBACK FAILED ({rexc}) — the DB "
+                                   f"may be inconsistent. Recover manually from {pre} (and restart).", 500)
             logger.exception("restore verification failed; rolled back to %s", pre.name)
             return self._error(f"restored DB failed verification ({exc}); rolled back to prior state", 500)
         logger.info("restored backup %s (prior state saved to %s)", fname, pre.name)

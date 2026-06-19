@@ -9,6 +9,7 @@ is guarded.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -37,7 +38,9 @@ def hardened_backup(db_path: str, label: str, keep: int = 10) -> Path:
     snapshot is not 'ok' — we never write without a good backup."""
     bdir = REPO / ".backups"
     bdir.mkdir(exist_ok=True)
-    ts = time.strftime("%Y%m%d-%H%M%S")
+    # Sub-second + pid suffix so two backups in the same second (e.g. a double-clicked restore)
+    # never collide to one filename and silently overwrite each other.
+    ts = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}{os.getpid() % 1000:03d}"
     dst = bdir / f"gsa_gateway.{ts}.{label}.db"
     src = sqlite3.connect(db_path)
     d = sqlite3.connect(str(dst))
@@ -52,11 +55,15 @@ def hardened_backup(db_path: str, label: str, keep: int = 10) -> Path:
     for old in sorted(bdir.glob(f"gsa_gateway.*.{label}.db"))[:-keep]:
         old.unlink(missing_ok=True)
     # Global cap across ALL labels (per-label rotation alone is unbounded in number of labels).
-    # Keep the newest KEEP_TOTAL snapshots overall; never delete the one just written.
-    KEEP_TOTAL = 40
-    allb = sorted(bdir.glob("gsa_gateway.*.db"), key=lambda f: f.stat().st_mtime, reverse=True)
+    # Keep the newest KEEP_TOTAL overall, but NEVER prune the just-written file or any snapshot
+    # younger than RECENT_S — so an in-flight op's reference snapshot (a long crawl's pre-explore,
+    # or a just-taken pre-restore) can't be pruned out from under it.
+    KEEP_TOTAL, RECENT_S = 40, 6 * 3600
+    now = time.time()
+    allb = sorted(bdir.glob("gsa_gateway.*.db"),
+                  key=lambda f: (f.stat().st_mtime, f.name), reverse=True)
     for old in allb[KEEP_TOTAL:]:
-        if old != dst:
+        if old != dst and (now - old.stat().st_mtime) > RECENT_S:
             old.unlink(missing_ok=True)
     return dst
 
