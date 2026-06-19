@@ -17,6 +17,7 @@ from telegram.ext import filters
 
 from bot.connectors.base import BasePlatform
 from bot.core.message_handler import MessageHandler, MessageRequest
+from bot.core.modes import ConversationModeStore, ModeDispatcher, ModeRegistry
 from bot.services.knowledge_base import KnowledgeBase
 from v2.core.judging.session import JudgingSessionManager
 
@@ -30,11 +31,27 @@ class TelegramConnector(BasePlatform):
     def __init__(
         self, token: str, handler: MessageHandler, kb: KnowledgeBase,
         judging_manager: Optional[JudgingSessionManager] = None,
+        dispatcher: Optional[ModeDispatcher] = None,
+        mode_store: Optional[ConversationModeStore] = None,
     ) -> None:
         self.token = token
         self.handler = handler
         self.kb = kb
         self.judging_manager = judging_manager
+        # Unified mode dispatch: ONE entry point that decides — by the user's current mode —
+        # whether the judging state machine or the conversation handler owns a message
+        # (replacing the old implicit "judging intercepts first" ordering). If a dispatcher
+        # isn't supplied we build one here so the connector is correct on its own; production
+        # passes a dispatcher whose ModeStore is SHARED with the conversation handler.
+        if dispatcher is None:
+            store = mode_store or ConversationModeStore()
+            registry = ModeRegistry(store, judging=judging_manager)
+            # Late-bind to self.handler so a swapped handler (e.g. in tests) is honored.
+            dispatcher = ModeDispatcher(
+                registry, judging=judging_manager,
+                conversation_handler=lambda req: self.handler.handle(req),
+            )
+        self.dispatcher = dispatcher
         self.app: Optional[Application] = None
         self._stop_event: Optional[asyncio.Event] = None
         # {question_id: {"user_id": int, "timestamp": float,
@@ -158,26 +175,30 @@ class TelegramConnector(BasePlatform):
         if not update.message or not update.message.text or not update.effective_user:
             return
 
-        # Judging intercept — fires before normal RAG so judge messages never
-        # reach the knowledge-base handler.
-        if self.judging_manager:
-            response_text, consumed = self.judging_manager.handle(
-                str(update.effective_user.id), update.message.text
-            )
-            if consumed:
-                if response_text:
-                    try:
-                        await update.message.reply_text(response_text, parse_mode="Markdown")
-                    except Exception:  # noqa: BLE001
-                        await update.message.reply_text(response_text)
-                return
+        user_id = str(update.effective_user.id)
 
-        req = MessageRequest(
-            user_id=str(update.effective_user.id),
-            text=update.message.text,
-            platform="telegram",
+        def _make_request(uid: str, text: str) -> MessageRequest:
+            return MessageRequest(user_id=uid, text=text, platform="telegram")
+
+        # Unified dispatch: the ModeDispatcher decides (by the user's current mode) whether
+        # the judging state machine or the conversation handler owns this message — an
+        # explicit ownership rule, not the old implicit "judging first" call order.
+        reply = await self.dispatcher.dispatch(
+            user_id, update.message.text, make_request=_make_request
         )
-        resp = await self.handler.handle(req)
+
+        # Judging replies: plain Markdown text, no feedback buttons (judging is not RAG).
+        if reply.is_judging:
+            response_text = reply.payload
+            if response_text:
+                try:
+                    await update.message.reply_text(response_text, parse_mode="Markdown")
+                except Exception:  # noqa: BLE001
+                    await update.message.reply_text(response_text)
+            return
+
+        # Conversation replies: a MessageResponse, rendered with source note + feedback UI.
+        resp = reply.payload
         if not resp.text:
             return
 

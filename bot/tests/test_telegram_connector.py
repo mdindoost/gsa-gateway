@@ -93,6 +93,76 @@ async def test_on_message_skips_empty_response(connector):
     update.message.reply_text.assert_not_called()
 
 
+# ── Unified mode dispatch (judging routes through the dispatcher) ──────────────
+
+@pytest.fixture
+def judging_setup():
+    """A real JudgingSessionManager wired into a connector through a ModeDispatcher that
+    shares the conversation ModeStore — the production wiring."""
+    import os
+    import tempfile
+    os.environ.setdefault("GSA_JUDGING_SCRYPT_N", "64")
+    from bot.core.modes import ConversationModeStore, ModeDispatcher, ModeRegistry
+    from v2.core.database.schema import create_all
+    from v2.core.judging import db as jdb
+    from v2.core.judging.session import JudgingSessionManager
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    conn = create_all(db_path)
+    eid = jdb.create_event(conn, "3MRP", criteria=["Q1"], top_n=1, score_min=1, score_max=5)
+    jdb.set_event_status(conn, eid, "open")
+    jdb.add_judge(conn, eid, "Amira", "J-001")
+    conn.commit()
+    conn.close()
+
+    handler = MagicMock()
+    handler.handle = AsyncMock(return_value=MessageResponse(text="RAG answer", question_id=7))
+    judging = JudgingSessionManager(db_path)
+    store = ConversationModeStore()
+    registry = ModeRegistry(store, judging=judging)
+    dispatcher = ModeDispatcher(registry, judging=judging, conversation_handler=handler.handle)
+    connector = TelegramConnector(
+        token="fake", handler=handler, kb=MagicMock(),
+        judging_manager=judging, dispatcher=dispatcher,
+    )
+    yield connector, handler
+    os.unlink(db_path)
+
+
+@pytest.mark.asyncio
+async def test_judging_trigger_routes_to_judging_not_handler(judging_setup):
+    connector, handler = judging_setup
+    update, context = _make_update_context("judge mode")
+    await connector._on_message(update, context)
+    handler.handle.assert_not_called()                 # judging owned it
+    reply_text = update.message.reply_text.call_args[0][0]
+    assert "PIN" in reply_text
+
+
+@pytest.mark.asyncio
+async def test_idle_normal_message_routes_to_handler(judging_setup):
+    connector, handler = judging_setup
+    update, context = _make_update_context("what is gsa?")
+    await connector._on_message(update, context)
+    handler.handle.assert_called_once()                # conversation owned it
+    reply_text = update.message.reply_text.call_args[0][0]
+    assert "rag answer" in reply_text.lower()
+
+
+@pytest.mark.asyncio
+async def test_judge_midflow_number_stays_in_judging(judging_setup):
+    connector, handler = judging_setup
+    for text in ("judge mode", "J-001"):              # authenticate -> ready
+        u, c = _make_update_context(text)
+        await connector._on_message(u, c)
+    handler.handle.reset_mock()
+    # Now in JUDGE mode; a bare number is judging input, NOT a RAG question.
+    u, c = _make_update_context("100")
+    await connector._on_message(u, c)
+    handler.handle.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_cmd_events_lists_event_name(connector):
     update, context = _make_update_context("/events")
