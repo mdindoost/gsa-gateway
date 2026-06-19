@@ -89,11 +89,17 @@ def reconcile_entity(conn, org_id: int, entity_id: str, items: list[KItem],
     # never leave an entity half-deactivated / half-inserted. `with conn` commits
     # on success and rolls back on any exception (it does not close the conn).
     with conn:
+        # Source-scoped: a reconcile only ever diffs/deactivates items from its OWN
+        # producer. Enrichment items (e.g. created_by='scholar') sharing this
+        # entity_id+org must be invisible to a crawler re-run, or the crawler's
+        # "absent now -> deactivate" sweep would wipe them (the Woodruff bug class,
+        # at the source boundary). Mirrors people_editor's created_by-scoped deactivation.
         rows = conn.execute(
             "SELECT id, title, content, metadata, root_id, version "
             "FROM knowledge_items "
-            "WHERE org_id=? AND is_active=1 AND json_extract(metadata,'$.entity_id')=?",
-            (org_id, entity_id),
+            "WHERE org_id=? AND is_active=1 AND created_by=? "
+            "AND json_extract(metadata,'$.entity_id')=?",
+            (org_id, created_by, entity_id),
         ).fetchall()
 
         existing: dict[str, tuple] = {}

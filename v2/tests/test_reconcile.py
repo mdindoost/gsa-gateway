@@ -108,6 +108,28 @@ def test_dropped_publication_is_deactivated(conn):
     assert res.vectors_to_drop == res.deactivated_ids
 
 
+def test_reconcile_is_scoped_by_created_by(conn):
+    # A crawler reconcile must only diff/deactivate ITS OWN source's items. An
+    # enrichment item (created_by='scholar') sharing the same entity_id+org must
+    # survive a re-crawl whose fresh set never mentions it.
+    reconcile_entity(conn, 1, EID, decompose(rec(["P1"])), created_by="crawler")
+    conn.execute(
+        "INSERT INTO knowledge_items(org_id,type,title,content,metadata,created_by,version,is_active) "
+        "VALUES(?,?,?,?,?,?,1,1)",
+        (1, "scholar_profile", "Scholar metrics", "4000 citations, h-index 30",
+         json.dumps({"entity_id": EID, "natural_key": EID + ":scholar:metrics"}), "scholar"),
+    )
+    conn.commit()
+
+    # Re-crawl: the fresh crawler set has no scholar item — must NOT touch it.
+    res = reconcile_entity(conn, 1, EID, decompose(rec(["P1"])), created_by="crawler")
+    survived = conn.execute(
+        "SELECT is_active FROM knowledge_items "
+        "WHERE json_extract(metadata,'$.natural_key')=?", (EID + ":scholar:metrics",)).fetchone()
+    assert survived["is_active"] == 1
+    assert res.deactivated_ids == []
+
+
 def test_empty_items_does_not_deactivate_existing(conn):
     # A freshly-parsed person whose decomposition comes back empty (transient partial
     # fetch / parse anomaly) must NOT have their whole bio retired — they're still present.
