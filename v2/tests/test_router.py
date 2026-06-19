@@ -57,6 +57,14 @@ def test_routes_department_query_to_org_departments(conn):
     assert r.args["org_id"] == 4
 
 
+def test_naming_a_department_does_not_route_to_org_departments(conn):
+    # "the math department" / "how about in math department" NAMES the org — it must not be
+    # read as "enumerate its sub-departments" (which falsely deflects for a leaf dept).
+    for q in ("how about in YWCC department?", "the YWCC department"):
+        r = route(conn, q)
+        assert r is None or r.skill != "org_departments", f"{q!r} -> {r}"
+
+
 def test_routes_faculty_query_to_faculty_in_department(conn):
     r = route(conn, "list faculty in YWCC")
     assert r is not None and r.skill == "faculty_in_department"

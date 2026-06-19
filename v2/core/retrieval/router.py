@@ -33,6 +33,10 @@ _ENUM_AREAS = re.compile(
     r"(?:what|which|list|all|show)\s+(?:research\s+)?areas?)\b")
 # Ranking/aggregation cue ("which areas have the MOST faculty").
 _RANK = re.compile(r"\b(?:most|top|popular|biggest|largest|ranked|by count|how many people)\b")
+# Enumerate an org's SUB-departments ("what departments are in YWCC"). Requires the plural /
+# an explicit count — so naming "the math department" (the org itself) does NOT get read as
+# "list math's sub-departments" (which, for a leaf dept, falsely deflects to 'no info').
+_DEPT_ENUM = re.compile(r"\bsub-?departments?\b|\bdepartments\b|\bhow\s+many\s+departments?\b")
 # "who LISTS X as a research area" -> precise tag match.
 _LISTS_AREA = re.compile(r"who\s+lists?\s+(.+?)\s+as\s+(?:an?\s+)?research\s+area")
 
@@ -234,7 +238,7 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     # Faculty roster is MORE SPECIFIC than the generic people list, so it wins first — e.g.
     # "academic staff in biology" is a faculty ask even though it contains 'staff' (which the
     # generic _PEOPLE cue also matches).
-    if "department" in q and org_id is not None and not _FACULTY_CUE.search(q):
+    if _DEPT_ENUM.search(q) and org_id is not None and not _FACULTY_CUE.search(q):
         return Route("org_departments", {"org_id": org_id})
     if org_id is not None and _FACULTY_CUE.search(q):
         return Route("faculty_in_department", {"org_id": org_id})
