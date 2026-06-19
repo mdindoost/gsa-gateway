@@ -139,3 +139,8 @@ Who are the faculty in physics?
 Who are the faculty in theatre arts?
 Who is in the New Jersey School of Architecture?
 Who works in the CS department administration?
+
+# supplementary-page discovery (people found via /administration, /joint-faculty, etc.)
+Who is the assistant to the CS chair?
+Who are the administrative staff in computer science?
+Is David Bader in the computer science department?
