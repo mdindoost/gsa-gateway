@@ -87,15 +87,19 @@ by `entity_id` and returns DISTINCT people (a person matched by both crawler+sch
 - D3 acquisition manual WebFetch + backfill: **YES.** S5 shared-area edge last-writer-sets-source:
   **ACCEPT + document.** S6 wire `refresh_scholar` to capture interests: **YES.**
 
-## Goals checklist (completeness — `[[feedback_review_against_plan]]`)
-- [ ] G1 `parse_scholar_interests` (clean/dedup/empty) + wired into `refresh_scholar` (S6).
-- [ ] G2 `set_person_research_areas(org_id required)` → ResearchArea node + `researches` edge (source='scholar',
+## Goals checklist (completeness — `[[feedback_review_against_plan]]`) — ALL SHIPPED 2026-06-20 (`2f1504b`)
+- [x] G1 `parse_scholar_interests` (clean/dedup/empty) + wired into `refresh_scholar` (S6). Tests green.
+- [x] G2 `set_person_research_areas(org_id required)` → node + `researches` edge (source='scholar',
       area_source='external') **+** `research_areas` KB item (created_by='scholar', distinct natural_key,
-      metadata.area_source='scholar'); deactivate-then-insert idempotency; source/created_by isolation; S5 documented.
-- [ ] G3 `research_of_person` UNION (all KB items ∪ edges) → group by `area_key`, `_canonical` display,
-      deterministic sort, subsumption suppression.
-- [ ] G4 `people_by_research_area` (un-scoped AND org-scoped) returns scholar-only people, DISTINCT — verify.
-- [ ] G5 `embed_all` + backfill the 48 (incl. Payton); affiliation confirmed+logged per person.
+      metadata.area_source); deactivate-then-insert; source/created_by isolation; reuses area nodes WITHOUT
+      renaming; S5 (shared-edge last-writer) documented. Tests green.
+- [x] G3 `research_of_person` UNION (all KB items ∪ edges) → group by `area_key`, `canonical_area` display
+      (relocated to graph.project, shared w/ skills), deterministic sort, subsumption suppression. Tests green.
+- [x] G4 `people_by_research_area` un-scoped AND org-scoped returns scholar-only people, DISTINCT — verified
+      live ("who works on computing education in computer science" → Jamie Payton).
+- [x] G5 Backfill ran (`scripts/_backfill_scholar_interests.py --commit`): **75 metrics refreshed, 68 got
+      research areas, 0 failed** (7 list no Scholar interests); `embed_all` embedded all 68; restarted.
+      Verified: "Jamie Payton research field" → her areas + un-dormanted citations.
 
 ## Testing (TDD)
 - `parse_scholar_interests`: tags from sample HTML; trimmed/de-duped; `[]` when none.
