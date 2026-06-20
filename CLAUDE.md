@@ -31,13 +31,27 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
    the org by name / slug / parenthetical-acronym / `metadata.aliases`.
 2. `skills.py` — parameterized SQL skills: `faculty_in_department`, `people_by_research_area`,
    `count_people_by_research_area`, `areas_in_org`, `area_counts`, `people_by_area_tag`,
-   `officers_in_org` (officer/deprep roles), `people_in_org` (all roles).
-3. `structured_answer.py` — runs the routed skill → complete deterministic answer.
+   `officers_in_org` (officer/deprep roles), `people_in_org` (all roles), `faculty_areas_in_department`
+   (per-person research areas for a dept's faculty — the ANTI-FABRICATION skill, see below).
+   Entity layer (`entity.py`): `people_by_role`/`role_in_org` (find a person BY their role title),
+   `research_of_person`, `entity_card`, `persons_by_lastname` (unambiguous-surname resolution).
+3. `structured_answer.py` — runs the routed skill → complete deterministic answer. `deterministic_suffix(result)`
+   appends external-profile **links** (on `entity_card`) / Scholar **metrics** (on `research_of_person`)
+   to the FINAL answer VERBATIM, AFTER LLM compose — never handed to the LLM (no hallucinated URLs/numbers).
 4. `retriever.py` (`V2Retriever`) — hybrid semantic (sqlite-vec KNN) + keyword (FTS bm25),
    fused with RRF. **Default answer corpus excludes `publication` + `webpage`** types
    (admin-tunable via `retriever.exclude_types`). `event_info` gets a small boost. (The old
    `contact` boost was removed.)
-5. Generation: Ollama `llama3.1:8b`, grounded in the retrieved rows/chunks.
+5. Generation: Ollama `llama3.1:8b`, grounded in the retrieved rows/chunks. `compose_from_rows`
+   (`bot/services/ollama_client.py`) rephrases the structured Facts at temp 0.0 — it MUST NOT add,
+   drop, invent, attach an unlisted attribute to a name, or elaborate a listed one (anti-fabrication
+   clauses live here). NOTE: a friendly "Hi there!" opener on "tell me about X" answers is INTENTIONAL
+   (Mohammad likes it) — phrasing-driven, facts always correct; do NOT strip it.
+   **Anti-fabrication rule (honest-partial):** if the user asks for an attribute the retrieval doesn't
+   have for those entities, NEVER let the LLM fill the gap. Route to the data we DO have, state what's
+   missing. e.g. "research areas of the professors in X" → `faculty_areas_in_department` (lists ONLY
+   people who list areas, "N of the {org} faculty list research areas: …"; degrades to a names roster +
+   "I don't have research areas listed" line when nobody does) — was fabricating a topic per name.
 6. **High-stakes heads-up** (`bot/core/headsup.py`): immigration/billing/funding answers get a
    "confirm with <office>" line appended.
 7. **Live njit.edu fallback** (`bot/core/live_fallback.py` + `v2/integration/njit_search.py` +
@@ -69,12 +83,32 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
   crawlable (see `docs/superpowers/findings/2026-06-15-gsa-wix-extraction.md`). Officers/
   clubs are authored via the dashboard People editor (or a small backend create); prose
   comes from primary docs as `knowledge_items`.
+- **External profiles (links + Scholar metrics)** — per-person `attrs.profiles` bag on the Person
+  node: `{scholar/linkedin/orcid/github/website: {url, …}}` + Scholar metrics `scholar.{citations,
+  h_index, i10_index, updated_at}`. Registry `v2/core/people/profile_fields.py` is the SINGLE source
+  of truth for which fields exist + how they render (one row = one field). Crawler AUTO-captures any
+  scholar/linkedin/orcid/github/website link present on the NJIT profile page into `attrs.profiles`
+  (`project.py project_entity` MERGES, never clobbers manual metrics). Scholar METRICS are MANUAL /
+  on-demand (NJIT pages don't list Scholar): give me a name + Scholar URL → I WebFetch the public
+  page → `people_editor.set_person_profiles`. `v2/core/ingestion/scholar.py` + `scripts/refresh_scholar.py`
+  (gated) are the refresh mechanism (provider-isolated `default_fetch`; Scholar blocks bots, so a
+  scheduled run needs a sanctioned provider — owner chose manual WebFetch for now, NOT SerpAPI).
+  Surfacing: links on identity ("who is X"), metrics on research ("X research") — NOT on lists.
+  Spec: `docs/superpowers/specs/2026-06-19-person-external-profiles-design.md`.
 
 **Bots** (`bot/main.py` loads cogs): **all-conversational** — the only slash command is
 `/qrcode` (Discord) / `/qrcode` + `/start` (Telegram). Everything else is answered by chat
 (`bot/commands/chat.py` `on_message` → `bot/core/message_handler.py`, which calls the
 structured router then the v2 retriever via `v2/integration/retriever_shim.py`). WorldCup is
 a separate live-scores integration.
+
+**Modes (unified, `bot/core/modes/`):** 5 user modes through ONE registry — **gsa** (default) +
+**free** (general chat, skips GSA knowledge) + **judge / presenter / audience** (judging). `Mode`
+enum + `ConversationModeStore` (owns the gsa/free bit) + `ModeRegistry` (the ONE place to ask
+"what mode") + `ModeDispatcher` (Telegram's single entry point: judging owns a msg iff already in a
+judging mode OR a judging trigger). **Derive-don't-mirror:** judging modes are PROJECTED read-only
+via `JudgingSessionManager.mode_of()` — one writer per fact, can't drift. Free mode skips structured
+routing (so it isn't identical to gsa). Spec: `docs/superpowers/specs/2026-06-19-unify-modes-design.md`.
 
 **Dashboard** — `dashboard/` (vanilla JS + sql.js, loads the whole DB via `/db`) served by
 `v2/local_server.py` (HTTP on `127.0.0.1:5555`). Tabs: Overview, Posts, KB, **People (KG)**
@@ -96,8 +130,9 @@ gsa-gateway/
 │   │   └── worldcup.py          /worldcup — live scores (separate feature)
 │   ├── connectors/telegram_connector.py   Telegram bot (only /start + /qrcode; rest conversational)
 │   ├── core/
-│   │   ├── assistant.py         Wires the V2RetrieverShim + Ollama
-│   │   └── message_handler.py   Routes a message: structured router -> else RAG pipeline
+│   │   ├── assistant.py         Wires the V2RetrieverShim + Ollama; builds the shared ConversationModeStore
+│   │   ├── modes/              Unified mode mgmt: registry.py (Mode/Store/Registry), dispatcher.py
+│   │   └── message_handler.py   Routes a message: structured router -> else RAG pipeline (mode-gated)
 │   ├── services/
 │   │   ├── qr.py                Shared branded-QR generation (Discord + Telegram)
 │   │   ├── database.py          SQLite CRUD + hash_user_id()
@@ -108,10 +143,13 @@ gsa-gateway/
 │   │   ├── database/schema.py   Single source of truth for v2 tables (STRICT; create_all/get_connection)
 │   │   ├── graph/               store.py (node/edge upsert), orgs.py (ensure_org/sync_org_nodes/
 │   │   │                        org_node_id), project.py (project_appointment/project_entity)
-│   │   ├── ingestion/           explore.py (crawler), reconcile.py, discovery.py, entry_points.py,
-│   │   │                        roster.py (roster->KG), gsa_docs.py (doc->KB),
-│   │   │                        people_editor.py (dashboard add/edit/remove person+role+bio)
-│   │   └── retrieval/           router.py, skills.py, structured_answer.py, retriever.py, embedder.py
+│   │   ├── ingestion/           explore.py (crawler+adaptive discovery), reconcile.py, discovery.py,
+│   │   │                        entry_points.py, roster.py, gsa_docs.py, njit_adapter.py (profile
+│   │   │                        parser; captures scholar/linkedin/orcid/github/website links),
+│   │   │                        people_editor.py (add/edit person + set_person_profiles), scholar.py
+│   │   │                        (Scholar metrics parse + refresh)
+│   │   ├── people/              profile_fields.py (external-profile registry: render_links/render_metrics)
+│   │   └── retrieval/           router.py, skills.py, structured_answer.py, entity.py, retriever.py, embedder.py
 │   ├── core/judging/           db.py (CRUD), session.py (state machine), calculator.py (leaderboard/export)
 │   ├── integration/            retriever_shim.py, scheduler_runner.py, match_watcher.py, telegram_client.py
 │   ├── publishing/             publisher.py, connectors/ (registry + discord/telegram/stub)
@@ -148,6 +186,17 @@ gsa-gateway/
 - **User IDs are hashed** (`hash_user_id`) before any DB write.
 - **Org resolution**: orgs resolve by name / slug / parenthetical acronym / `metadata.aliases`.
   Give new clubs a clean short slug (the acronym), like GSA's slug is `gsa`.
+- **Reconcile is SOURCE-SCOPED.** `reconcile_entity` only diffs/deactivates `knowledge_items` with
+  the SAME `created_by`, so a crawler re-run never wipes manual/scholar enrichment sharing a person's
+  entity_id (and an EMPTY decomposition never retires a present person's KB — transient-fetch guard).
+  Departures drop a fully-departed person's KB across ALL sources.
+- **Never fabricate an unheld attribute** (honest-partial) — see the anti-fabrication rule in Retrieval.
+- **EXPERT-REVIEW HARD GATE** (Mohammad, 2026-06-19): build/ship NOTHING non-trivial — including bug
+  FIXES — without (a) a senior-engineer review AND, for retrieval/answer changes, a RAG/LLM-researcher
+  review, AND (b) Mohammad's approval. Flow: design → expert review(s) → he approves → build TDD →
+  show the diff → he signs off → commit + restart. Even small/surgical fixes. Dispatch reviewers as
+  background general-purpose agents with the concrete artifact + file paths; relay findings, don't
+  rubber-stamp. See memory `feedback-senior-eng-review`.
 
 ## Common Tasks
 
@@ -171,6 +220,17 @@ run_explore.py --db /tmp/dev.db`), inspect + `scripts/verify_kg.py`, then live, 
 `v2/scripts/embed_all.py`. `--reset` re-derives crawler data from scratch (manual/dashboard
 content untouched). MTSM program/PhD/FAQ **prose** is separate + manual: `scripts/mtsm_ingest.py
 --commit` (`source='dashboard'`, idempotent on `natural_key`) — re-run when those pages change.
+
+### Add a person's external profile (Scholar / LinkedIn / ORCID / GitHub / website + Scholar metrics)
+Manual / on-demand (NJIT pages don't list Scholar). Given a name + URLs: find the person key
+(`SELECT key FROM nodes WHERE type='Person' AND name LIKE …`), for a Scholar URL **WebFetch the public
+page** for citations/h-index/i10, then `people_editor.set_person_profiles(conn, person_key=…,
+profiles={"scholar":{"url","citations","h_index","i10_index","updated_at"}, "linkedin":{"url"}, …})`
+(deep-merges; metric strings coerced to numbers) — gated `hardened_backup` first. DB-only → no restart.
+Verify: `who is <name>` (links) / `<name> research` (metrics). Crawler auto-captures any of these links
+already on the NJIT page on the next crawl. Refresh job: `scripts/refresh_scholar.py` (dry-run; `--commit`).
+Current data: ~57 people with links, ~49 with Scholar metrics (all manual). 27 have metrics but no
+research areas → citations stay dormant (only surface on "X research" when areas exist) — accepted.
 
 ### Embed new/changed knowledge
 `python v2/scripts/embed_all.py` (resumable — only embeds items missing a vector).
