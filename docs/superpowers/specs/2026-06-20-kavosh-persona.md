@@ -40,7 +40,7 @@ features (find-your-advisor is on a branch; live web search is off).
 turning what used to be a manual hunt into one trusted conversation.*
 
 ## Creator & hosting
-Created by **Mohammad Dindoost**, VP Academic Affairs — **md72@njit.edu**. Runs **locally and privately on
+Created by **Mohammad Dindoost**, VP Academic Affairs — **md724@njit.edu**. Runs **locally and privately on
 NJIT infrastructure** (not a cloud service), on llama3.1:8b.
 
 ## Where the persona lives (surfaces kept consistent)
