@@ -149,6 +149,11 @@ Is David Bader in the computer science department?
 Tell me about Omar Woodruff
 What did Omar Woodruff study?
 
+# research areas of a dept's professors (per-person areas, honest-partial — never fabricated)
+What are the research areas of professors in the math department?
+Research areas of the faculty in computer science
+What research areas does computer science cover?
+
 # external profiles (links on identity, Scholar metrics on research — active once profile data is entered)
 Who is Ioannis Koutis?
 What is Ioannis Koutis's Google Scholar?

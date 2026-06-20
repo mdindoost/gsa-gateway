@@ -281,7 +281,10 @@ class OllamaClient:
             "never add, drop, or invent names or numbers. Do NOT expand, define, or "
             "guess what any abbreviation means — write the organization's name EXACTLY "
             "as it appears in the Facts (e.g. if the Facts say 'Ying Wu College of "
-            "Computing', never substitute another expansion). If the Facts say nothing "
+            "Computing', never substitute another expansion). Do NOT attach a research "
+            "area, title, or any attribute to a name unless that exact attribute appears "
+            "in the Facts for that name, and do NOT elaborate, specialize, or add detail "
+            "to attributes that are listed. If the Facts say nothing "
             "was found, say that plainly."
         )
         # The question is for tone only; the Facts already name the org in full, so the

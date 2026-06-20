@@ -56,6 +56,11 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
                 "links": profile_fields.render_links(_person_attrs(conn, a["entity_id"]))}
     if skill == "person_disambig":
         return {"skill": skill, "candidates": a["candidates"]}
+    if skill == "faculty_areas_in_department":
+        rows = skills.faculty_areas_in_department(conn, a["org_id"])
+        # honest fallback when NObody lists areas: the roster (names only) + a 'no areas' line.
+        roster = [] if rows else [n for n, _ in skills.faculty_in_department(conn, a["org_id"])]
+        return {"skill": skill, "org_name": org_name, "rows": rows, "roster": roster}
     if skill == "org_departments":
         rows = skills.org_departments(conn, a["org_id"])
     elif skill == "faculty_in_department":
@@ -132,6 +137,18 @@ def format_answer(result: dict) -> str:
 
     if skill == "entity_card":
         return result["card"] or ""        # the card is the grounding + offline fallback
+
+    if skill == "faculty_areas_in_department":
+        org = result.get("org_name") or "this department"
+        rows = result["rows"]                      # (name, [areas]) — only people WITH areas
+        if rows:
+            listed = "; ".join(f"{n} — {', '.join(areas)}" for n, areas in rows)
+            return f"{len(rows)} of the {org} faculty list research areas: {listed}."
+        roster = result.get("roster") or []        # honest-partial: nobody lists areas
+        if not roster:
+            return ""                              # no faculty at all → RAG
+        return (f"I don't have research areas listed for {org}'s faculty. "
+                f"The faculty are: {_join(roster)}.")
 
     if skill == "person_disambig":
         cands = result["candidates"]

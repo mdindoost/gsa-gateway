@@ -305,6 +305,25 @@ def area_counts(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, int]]:
     return sorted(out, key=lambda t: (-t[1], t[0].casefold()))
 
 
+def faculty_areas_in_department(conn: sqlite3.Connection,
+                                org_id: int) -> list[tuple[str, list[str]]]:
+    """(name, [areas]) for each person in the org subtree who LISTS research areas — grouped
+    from research_areas items (metadata.areas), case-fold-deduped per person, sorted by name.
+
+    ONLY people who actually list areas appear (no roster left-join): the honest answer to
+    "the research areas of the professors in X" when per-person coverage is partial. When NOBODY
+    lists areas this returns [] and the caller renders the honest fallback (faculty names + a
+    'no areas listed' line) — see structured_answer. Never invents an area for a name."""
+    per: dict[str, dict[str, list[str]]] = {}
+    for val, eid in _area_rows(conn, org_id):
+        per.setdefault(eid, {}).setdefault(val.casefold(), []).append(val)
+    names = _display_names(conn, list(per.keys()))
+    out = [(names[eid],
+            sorted((_canonical(forms) for forms in groups.values()), key=str.casefold))
+           for eid, groups in per.items()]
+    return sorted(out, key=lambda t: t[0].casefold())
+
+
 def people_by_area_tag(conn: sqlite3.Connection, area: str,
                        org_id: int | None = None) -> list[tuple[str, str]]:
     """Faculty (name, entity_id) who LIST ``area`` as a research-area tag — exact

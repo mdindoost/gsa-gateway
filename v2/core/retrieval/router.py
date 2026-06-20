@@ -226,11 +226,14 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     if org_id is not None and _ENUM_AREAS.search(q):
         if _RANK.search(q):
             return Route("area_counts", {"org_id": org_id})
-        # a faculty-roster cue WITHOUT a ranking cue is a roster ask ("list faculty and their
-        # areas" / "who teaches here and their areas"), not area enumeration — fall through to
-        # the faculty branch instead of answering with a bare list of area names.
+        # No faculty cue → enumerate the department's area facet ("what areas does CS cover").
         if not _FACULTY_CUE.search(q):
             return Route("areas_in_org", {"org_id": org_id})
+        # Faculty cue + area enumeration ("research areas of the professors in X") → per-person
+        # areas. The skill renders only people who LIST areas (honest-partial) and degrades to a
+        # names roster + 'no areas listed' line when nobody does — so the LLM is never handed a
+        # bare name list to invent areas for (the fabrication bug). Anti-fabrication, not RAG.
+        return Route("faculty_areas_in_department", {"org_id": org_id})
 
     if (org_id is not None and _OFFICER_IDENTITY.search(q)
             and not _OFFICER_PROCESS.search(q)):

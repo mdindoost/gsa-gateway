@@ -114,11 +114,12 @@ def test_who_works_on_still_routes_to_recall_skill(conn):
     assert r is not None and r.skill == "people_by_research_area"
 
 
-def test_faculty_roster_with_areas_is_not_shadowed_by_enumeration(conn):
-    # "faculty" + "research areas" but NO ranking cue is a roster ask, not enumeration —
-    # it must reach faculty_in_department, not be captured by areas_in_org.
+def test_faculty_roster_with_areas_routes_to_per_person_areas(conn):
+    # "faculty" + "research areas" (no ranking cue) → the per-person areas skill, which lists
+    # each professor's ACTUAL areas (and degrades to a names roster + honest 'no areas' line),
+    # rather than a bare roster that the LLM would invent research areas for. Not areas_in_org.
     r = route(conn, "show all faculty and their research areas in CS")
-    assert r is not None and r.skill == "faculty_in_department" and r.args["org_id"] == 5
+    assert r is not None and r.skill == "faculty_areas_in_department" and r.args["org_id"] == 5
 
 
 def test_area_ranking_with_faculty_metric_still_routes_to_counts(conn):
