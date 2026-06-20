@@ -1,106 +1,147 @@
-# Scholar URL Discovery Job — design
+# Scholar URL Discovery Job — design (v2, reviews folded)
 
 **Date:** 2026-06-20
-**Status:** DESIGN — shape approved by Mohammad; awaiting spec review + senior-eng AND RAG/anti-fabrication review before build (TDD)
+**Status:** DESIGN v2 — both expert reviews + feasibility spike folded in; approved to build (TDD)
 **Builds on:** the Scholar refresh job ([[project_external_profiles]], `2026-06-20-scholar-refresh-job-design.md`),
 `v2/core/ingestion/scholar.py`, `v2/integration/njit_search.py` (Brave), the Jobs control plane.
 
 ## Problem / goal
 
-Most NJIT faculty have **no Google Scholar URL** in the KG (e.g. ECE 59/60, Applied Eng 33/34, Math 107/108
-lack one; ~75 of ~1,076 people total have one). Without a Scholar URL the refresh job can't give them metrics
-or research areas — and NJIT profile pages rarely list Scholar. Goal: **discover + add Scholar URLs by
-searching**, WITHOUT ever attaching the wrong person's profile (the anti-fabrication invariant — a wrong
-profile = wrong citations/research written onto a real person).
+Most NJIT faculty have **no Google Scholar URL** in the KG (~75 of ~1,076 people have one; ECE 59/60, Applied
+Eng 33/34, Math 107/108 lack one). Without a URL the refresh job can't give them metrics or research areas, and
+NJIT profile pages rarely list Scholar. Goal: **discover + add Scholar URLs by searching — without EVER
+attaching the wrong person's profile** (a wrong write fabricates someone else's citations/research onto a real
+NJIT person, rendered deterministically with no answer-time guard).
 
-## The safety principle (non-negotiable)
+## Feasibility spike (2026-06-20) — VALIDATED before build
 
-Google Scholar profile pages display **"Verified email at njit.edu"** (the `#gsc_prf_ivh` element). That is a
-strong, machine-checkable disambiguation signal. **Auto-write ONLY when the candidate profile shows a verified
-`njit.edu` email AND the name matches.** Everything else is queued for human review, never guessed. This is the
-core invariant the RAG/anti-fabrication review must verify.
+Real Brave API + profile fetches on 5 faculty (Ansari, Zhou, Kondic, Turc, Han):
+- Brave returned the person's `scholar.google.com/citations` URL in the top results for **5/5**.
+- Fetched profiles show **"Verified email at njit.edu"** + a full affiliation line (incl. department) + interest tags (3/3 NJIT people).
+- The verified line shows the **domain only** (`njit.edu`), **NOT the username** → can't match email local-part from Scholar → **unique-surname is the primary disambiguator**.
+- A false multi-candidate (2nd "Catalin Turc" hit was actually "Mark Lyon @ unh.edu") is **correctly rejected** by the verified-njit + name gate.
+- No captcha on 3 fetches, but volume (200–500) block risk is real → block detection required (see §2).
+
+## The safety principle (the anti-fabrication boundary)
+
+`classify_candidate` **IS the sole anti-fabrication boundary** for this feature — metrics/areas render
+deterministically (`profile_fields.render_*` bypass the LLM), so there is **no second line of defense at answer
+time**. Therefore the strict (auto-write) bar must be set high:
+
+**STRICT (auto-write)** requires ALL of:
+1. candidate profile shows **verified `njit.edu` email** (`#gsc_prf_ivh`), AND
+2. **name matches** (precise rule, §2), AND
+3. **the person's surname is UNIQUE among active NJIT people** (no homonym) — OR, if not unique, **a second
+   corroborating signal** holds: the profile's **department/affiliation text matches the person's home-org**,
+   OR **Scholar interests ∩ the person's existing crawler research areas** is non-empty.
+
+**UNCERTAIN (review queue, never written):** name matches + verified njit.edu but surname collides and no
+corroboration; multiple candidates that each pass strict; NJIT only in free text (no verified email); bare-initial
+first-name; **>1 strict candidate for one person → automatically uncertain (never auto-pick by search rank).**
+**BLOCKED:** profile fetch returns a captcha/robot page (no `#gsc_prf_in`) → its own state, NOT "uncertain" (§2).
+**REJECT / SKIP:** name mismatch; non-njit verified domain; no candidate found.
 
 ## Decisions (locked with Mohammad, 2026-06-20)
 
-- **Write policy:** auto-write strict (verified njit.edu email + name match); queue the uncertain; skip none-found.
-- **Review queue:** **report-only in v1** (a written report + job log; uncertain matches actioned via the
-  existing manual path / People editor). NO dashboard accept/reject UI this round.
-- **Scope:** a dashboard "Discover Scholar URLs" job (Data Sources tab), scoped by college/department, reusing
-  the refresh job's scope dropdown.
-- **Provider:** Brave general web search (the job runs server-side as a subprocess, so it cannot use Claude's
-  interactive WebSearch — it uses the programmatic Brave API). Provider-isolated/injectable.
-- **Out of scope (v1):** dashboard approve/reject UI; LinkedIn/ORCID discovery (Scholar only); scheduling.
+Write policy = auto-write strict, queue uncertain, report-only review (v1, no accept/reject UI). Scope = dashboard
+"Discover Scholar URLs" job (Data Sources tab), by college/department. Provider = Brave general web search
+(server-side subprocess → programmatic Brave, not Claude WebSearch). Out of scope v1: approve/reject UI;
+LinkedIn/ORCID; scheduling.
 
-## Architecture (each piece independently testable; search/fetch INJECTED so tests need no network)
+## Architecture (each piece independently testable; search + fetch INJECTED → tests need no network)
 
-### 1. Candidate search — `v2/integration/njit_search.py` (or a sibling)
-Add an **un-scoped** Brave web search (the existing `search()` forces `site:njit.edu`; discovery must reach
-`scholar.google.com`). New `web_search(query) -> [url]` (same Brave client/key, no site filter; injectable
-`http_get`; returns [] on error). Per person, query `"<name>" NJIT <department> Google Scholar`; keep result
-URLs matching `scholar.google.com/citations`.
+### 1. Candidate search — `v2/integration/njit_search.py`
+Add `web_search(query, k=5, http_get=_default_get, key=None) -> [url]` — same Brave client/key/`_ENDPOINT` as
+`search()` but **without** `site:njit.edu` (separate function → no regression to the scoped live-fallback search).
+Same contract: `key` injectable, returns `[]` on any error (missing/exhausted key → skip, never crash). Fetch
+top 5 (the Scholar URL may not be #1). [Spike: reliably returns the citations URL.]
 
-### 2. Verify — new `v2/core/ingestion/scholar_discovery.py`
-Pure, testable functions operating on fetched profile HTML (fetch INJECTED):
-- `parse_profile_identity(html) -> {name, verified_email_domain|None, affiliation_text}` — reads `#gsc_prf_in`
-  (name) and `#gsc_prf_ivh` ("Verified email at njit.edu" → domain `njit.edu`).
-- `name_matches(kg_name, profile_name) -> bool` — normalize both (reorder "Last, First" ↔ "First Last",
-  casefold, strip middle initials/punctuation); require first+last match.
-- `classify_candidate(kg_name, identity) -> "strict" | "uncertain" | "reject"`:
-  - **strict**: `verified_email_domain == "njit.edu"` AND `name_matches`.
-  - **uncertain**: `name_matches` but no verified njit.edu email (NJIT only in affiliation text, or none).
-  - **reject**: name doesn't match.
-- `discover_for_person(person, *, web_search, fetch) -> {decision, url|None, reason}` — search → fetch top N
-  candidates → first **strict** wins; else best **uncertain** (for the queue); else none.
+### 2. Verify + classify — new `v2/core/ingestion/scholar_discovery.py` (pure; fetch injected)
+- `parse_profile_identity(html) -> {name, verified_email_domain|None, affiliation, blocked: bool}` — reads
+  `#gsc_prf_in` (name), `#gsc_prf_ivh` ("Verified email at <domain>" → domain), affiliation (`#gsc_prf_il...`).
+  **`blocked=True` when `#gsc_prf_in` is absent / a captcha marker is present** (do NOT treat a blocked page as
+  "no verified email").
+- `name_matches(kg_name, profile_name) -> bool` — **precise rule:** NFKC-normalize, strip accents
+  (José≈Jose), collapse punctuation/whitespace, casefold; split "Last, First" on comma; compare `(first, last)`.
+  **Require full first-name equality** (after reorder). **A conflicting middle initial = mismatch** (David J. Lee ≠
+  David K. Lee); a missing-on-one-side initial is neutral; a **bare-initial first name** ("S. Turc") = weak →
+  never strict.
+- `surname_is_unique(conn, kg_name) -> bool` — count active people sharing the surname (reuses the
+  `persons_by_lastname` logic in `entity.py`). Drives the unique-surname strict gate.
+- `corroborates(conn, person_key, identity, interests) -> bool` — department/affiliation match OR
+  (Scholar interests ∩ person's existing `researches` areas) non-empty.
+- `classify_candidate(conn, person_key, kg_name, identity, interests) -> "strict"|"uncertain"|"blocked"|"reject"`
+  per §safety. `discover_for_person(conn, person, *, web_search, fetch) -> {decision, url, reason, html}` — search
+  → fetch each candidate → if exactly one classifies strict → strict (return its html for reuse); if ≥2 strict →
+  uncertain; else best uncertain; else skip/blocked.
 
-### 3. Orchestrator — `scholar_discovery.run(conn, *, web_search, fetch, org_scope, limit, delay)`
-- Targets = faculty in scope (reuse `scholar.select_scholar_targets`-style org-subtree selection) **who lack a
-  Scholar URL** (the inverse of the refresh job's set). Read-only selection.
-- For each: `discover_for_person`. On **strict** → write the URL via `set_person_profiles`, then run the SAME
-  per-person metrics+interests→areas path the refresh job uses (so a discovered person is fully populated in
-  one pass). On **uncertain** → append to the review queue (no write). Polite `delay` between people.
-- Returns `{scanned, written, queued, skipped, queue: [(key, name, url, reason)], errors}`. Does NOT commit
-  (caller owns txn); embed handled by the CLI like the refresh job.
+### 3. Orchestrator — `scholar_discovery.run(conn, *, web_search, fetch, org_scope, limit, delay, today)`
+- **Targets — `select_discovery_targets(conn, *, org_scope, limit)`** (explicit query, NOT "inverse of"):
+  org-subtree via `org_descendants` + `json_extract(o.attrs,'$.org_id') IN (…)`, **`category='faculty'`** roles
+  only (NEW constraint — discovery targets faculty, not staff/admin), `e/p/o.is_active=1`, **exclude anyone whose
+  `profiles.scholar.url` is set**, DISTINCT keys, capped at `limit`.
+- Per target: `discover_for_person`. On **strict** → **no second fetch**: parse `parse_scholar_metrics` +
+  `parse_scholar_interests` from the **already-fetched html**, then `set_person_profiles(url + metrics +
+  provenance)` and `set_person_research_areas(_home_org_id(...))` directly. On **uncertain** → append to queue
+  (no write). On **blocked** → count; **abort the run after N consecutive blocks** (Scholar captcha'd). Polite
+  `delay` (default ≥ 3.0s). Hard **per-run Brave-call cap** (stops regardless of target count).
+- `_home_org_id` (currently private in `scholar.py`) → make importable (or replicate the home-org lookup).
+- **Provenance (reversibility):** strict writes tag the scholar bag: `scholar.discovered_by="auto"`,
+  `discovered_at=<date>`, `match_basis="unique_surname"|"dept_match"|"interest_overlap"`. Manual entries leave
+  these absent → a bad batch is one query to find + revert (the bag + that person's `source='scholar'` areas).
+- Returns `{scanned, written, queued, skipped, blocked, brave_calls, queue:[(key,name,url,reason)], errors}`.
+  Does NOT commit (caller owns txn).
 
 ### 4. CLI — `scripts/discover_scholar.py` (gated; mirrors refresh_scholar.py)
-`--org/--department`, `--limit`, `--delay`, `--embed`, `--commit`. Dry-run prints the proposed strict writes +
-the uncertain queue (counts + a sample) and writes the full queue to `scholar_review_<scope>_<date>.csv`.
-`--commit` takes a `hardened_backup`, writes strict matches, embeds new areas, and still emits the review CSV.
+`--org/--department`, `--limit` (**conservative DEFAULT, e.g. 50** — "All" without a limit can't drain the pool),
+`--delay`, `--embed`, `--commit`. Dry-run prints proposed strict writes + the uncertain queue (counts + sample).
+Writes the full queue to **`<repo>/logs/scholar_review_<scope>_<date>.csv`** (absolute path so the dashboard can
+link it). `--commit` → `hardened_backup`, strict writes, embed new areas (`_embed_cmd`, positional db_path),
+still emits the CSV. **Note (documented):** un-actioned uncertain people are re-searched on each run (budget cost);
+a `--skip-recently-queued` log is a future refinement, not v1.
 
 ### 5. Job plumbing — `bot/services/jobs.py` + `v2/local_server.py` + dashboard
 - `build_discover_scholar_command(...)`, `start_discover_scholar(scope, limit, embed)`, `_default_build_cmd`
-  branch, `_summarize` line ("Scholar discovery complete: N written, M queued of P.").
-- `POST /api/jobs/discover-scholar` (validate scope → 400, coerce limit/older, 409 busy) — mirrors
-  `_api_refresh_scholar`. Reuses the existing `GET /api/jobs/scholar-scopes` (the scope dropdown already exists).
-- Dashboard: add **"Discover Scholar URLs"** as a `refresh-what` option reusing the scope dropdown + a Run
-  button; on completion the toast/summary reports written vs queued and points to the review CSV.
+  branch, **new `_summarize` branch** for "Scholar discovery complete: N written, M queued of P."
+- `POST /api/jobs/discover-scholar` (validate scope → 400, coerce limit → 400, 409 busy) — mirrors `_api_refresh_scholar`.
+- Dashboard: add **"Discover Scholar URLs"** as a `refresh-what` option + scope dropdown + limit input + Run.
+  **Scope counts:** `scholar_scope_list` gains a `mode="discover"` that counts faculty **WITHOUT** Scholar
+  (the operator needs to see "(N without Scholar)" = how many will be searched = budget cost), vs the refresh
+  job's "(N with Scholar)".
 
-## Data flow
-`button → POST /api/jobs/discover-scholar {scope,limit} → start_discover_scholar → subprocess
-discover_scholar.py --commit --org … --embed → select faculty-without-Scholar in scope → per person:
-Brave web_search → fetch candidate profile(s) → classify → strict: write url+metrics+areas / uncertain: queue
-→ embed new areas → review CSV + summary line → dashboard.`
-
-## Error handling / safety
-- **Anti-fabrication:** strict-only auto-write (verified njit.edu email + name match); uncertain never written.
-- Gated (`hardened_backup`, dry-run default, 409 one-job guard). Per-person search/fetch failure isolated
-  (counted, skipped). Brave/Scholar errors → that person is skipped, run continues.
-- **Budget:** ~1 Brave search/person (~200 these depts, ~500+ NJIT-wide) against the shared ~1,000/mo free
-  Brave credit (same pool as the live fallback) — flagged; the `--limit` caps a run. Scholar fetch at polite delay.
+## Error handling / safety (summary)
+Strict-only auto-write behind the verified-njit + unique-surname/corroboration gate (the anti-fabrication
+boundary). Provenance-tagged for bulk revert. Gated (`hardened_backup`, dry-run, 409). Per-person failure
+isolated; **systemic Scholar block → distinct `blocked` state + run abort** (never silent-degrade to "uncertain").
+Brave budget protected by default limit + hard per-run cap (shared ~1,000/mo pool with the live fallback).
 
 ## Testing (TDD)
-- `parse_profile_identity`: extracts name + `njit.edu` verified email from real-shaped Scholar HTML; None when absent.
-- `name_matches`: "Ghosh, Arnob" ↔ "Arnob Ghosh" true; different person false; middle-initial tolerance.
-- `classify_candidate`: verified njit + match → strict; match + no verified email → uncertain; name mismatch → reject.
-- `discover_for_person`: strict wins over uncertain; none-found → skip (mock web_search + fetch).
-- `run`: writes only strict, queues uncertain, selection = faculty-WITHOUT-scholar in scope, distinct, isolated failures.
-- `build_discover_scholar_command` arg mapping; `start_discover_scholar` dispatch; route 409 + scope validation.
-- A wrong-person fixture (same name, NON-njit verified email) MUST be classified `uncertain`/`reject`, never strict.
+- `parse_profile_identity`: name + njit.edu verified email from real-shaped HTML; **`blocked=True` on a captcha page**.
+- `name_matches`: "Ghosh, Arnob"↔"Arnob Ghosh" true; "David J. Lee"↔"David K. Lee" **false**; accents; bare-initial weak.
+- `surname_is_unique` true for Koutis, **false for Wang/Li/Zhang**.
+- `classify_candidate`: verified-njit + unique surname + match → strict; **verified-njit + COLLIDING surname, no
+  corroboration → uncertain** (the headline anti-fabrication test); non-njit domain → reject; captcha → blocked;
+  ≥2 strict candidates → uncertain.
+- **Wrong-person fixture: two active NJIT "Wang"s, a verified-njit profile → MUST be uncertain, never strict.**
+- `select_discovery_targets`: faculty-only, excludes people with a URL, org subtree incl. depts, distinct.
+- `discover_for_person`: single-strict wins; ≥2 strict → uncertain; reuses fetched html (no 2nd fetch).
+- `run`: writes only strict (with provenance), queues uncertain, aborts after N consecutive blocks, respects Brave cap.
+- `build_discover_scholar_command` arg mapping; `start_discover_scholar` dispatch; route 409 + scope/limit validation.
+
+## Reviews folded (2026-06-20)
+**RAG/anti-fabrication = needs-rework (now addressed):** unique-surname + corroboration strict gate (homonym
+blocker — live data: Wang×10, Li×8, 9 shared first+last pairs); precise `name_matches` (conflicting initial =
+mismatch); provenance tags for revert; classifier-is-sole-boundary stated; ≥2-strict → uncertain; two-NJIT-Wangs
+fixture. **Senior-eng = ship-with-fixes:** explicit faculty-without-scholar selection (+category); no double-fetch
+(parse already-fetched html); hard Brave-budget cap + default limit; captcha/block detection + abort; `_summarize`
+branch; discover-mode scope counts. **Spike validated Brave reliability + the verified-njit signal.**
 
 ## Goals checklist (fill at PR time)
-- [ ] Brave un-scoped `web_search` (provider-isolated)
-- [ ] `parse_profile_identity` / `name_matches` / `classify_candidate` (verified-njit-email gate)
-- [ ] `discover_for_person` + `run` (strict-write, uncertain-queue, faculty-without-scholar selection)
-- [ ] CLI `discover_scholar.py` (gated, dry-run, review CSV, --embed)
-- [ ] Job plumbing (build/start/dispatch/route/summary) + dashboard option
-- [ ] Anti-fabrication: strict-only auto-write, wrong-person fixture test
-- [ ] Review queue = report-only (UI DEFERRED, flagged); LinkedIn/ORCID + scheduling OUT OF SCOPE (flagged)
+- [ ] Brave un-scoped `web_search` (provider-isolated, [] on error)
+- [ ] `parse_profile_identity` (+ blocked detection) / `name_matches` (precise) / `surname_is_unique` / `corroborates` / `classify_candidate`
+- [ ] `select_discovery_targets` (faculty-only, no-url, subtree, distinct) + `discover_for_person` (no double-fetch, ≥2-strict→uncertain)
+- [ ] `run`: strict-write + provenance tags, uncertain-queue, block-abort, Brave hard cap
+- [ ] CLI `discover_scholar.py` (gated, dry-run, review CSV to logs/, default --limit, --embed positional)
+- [ ] Job plumbing (build/start/dispatch/route/summary/validation) + dashboard option + discover-mode scope counts
+- [ ] **Anti-fabrication: strict gate (verified-njit + unique-surname/corroboration) + two-NJIT-Wangs fixture**
+- [ ] Review queue report-only (UI DEFERRED, flagged); LinkedIn/ORCID + scheduling OUT OF SCOPE (flagged)
