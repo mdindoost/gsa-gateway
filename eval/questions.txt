@@ -173,3 +173,9 @@ Who is the most cited professor at NJIT
 # scholar interests -> research areas (forward + scoped reverse; Scholar-only people)
 What is Jamie Payton's research field?
 who works on computing education in computer science
+
+# router robustness (bug 2): profile-link queries + wrong-person guard
+oria linkedin
+Koutis scholar
+who is the linkedin for vincent oria
+professor young

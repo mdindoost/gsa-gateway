@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from v2.core.people.profile_fields import (
     PROFILE_FIELDS, Field, Metric, render_links, render_metrics,
-    metric_fields, match_metric,
+    metric_fields, match_metric, match_link_field,
 )
 
 
@@ -103,6 +103,22 @@ def test_match_metric_drops_dangerous_aliases():
 def test_match_metric_none_for_non_metric_text():
     assert match_metric("who is koutis") is None
     assert match_metric("the i1000 sensor reading") is None  # word-boundary: i1000 != i10
+
+
+def test_match_link_field_hits_each_field():
+    assert match_link_field("oria linkedin")[0] == "linkedin"
+    assert match_link_field("oria linked in")[0] == "linkedin"
+    assert match_link_field("vincent oria google scholar")[0] == "scholar"
+    assert match_link_field("oria scholar")[0] == "scholar"
+    assert match_link_field("koutis github")[0] == "github"
+    assert match_link_field("koutis orcid")[0] == "orcid"
+    assert match_link_field("oria website")[0] == "website"
+    assert match_link_field("oria homepage")[0] == "website"
+
+
+def test_match_link_field_none_for_non_link_text():
+    assert match_link_field("who is koutis") is None
+    assert match_link_field("koutis citations") is None   # metric, not a link
 
 
 def test_adding_a_field_is_one_row():

@@ -218,8 +218,16 @@ def _parse_topn(q: str) -> int:
 def _resolve_surname(conn: sqlite3.Connection, q: str) -> dict | Route | None:
     """Resolve a person by an UNAMBIGUOUS surname token in the (prefix-stripped) query:
     {entity_id, name} for one match, a person_disambig Route for ≥2, or None. The single shared
-    surname resolver (was duplicated inline in the research + entity-card branches)."""
-    for tok in _qtokens(_NAME_PREFIX.sub("", q)):
+    surname resolver (used by the research, entity-card, metric, and link branches).
+
+    GUARD (bug 2): only attempt on a SHORT, person-directed query (≤4 content tokens). A long meta
+    sentence ("I see you used he for Vincent… everything…") otherwise gets surname-mined token-by-token
+    and an incidental word like "see" resolves to a real person (Adam See) → confident wrong-person
+    answer. No stoplist — that would break real faculty named Young/White/Brown; length is the fix."""
+    stripped = _NAME_PREFIX.sub("", q)
+    if len(_qtokens(stripped)) > 4:
+        return None
+    for tok in _qtokens(stripped):
         cands = entity.persons_by_lastname(conn, tok)
         if len(cands) >= 2:
             return Route("person_disambig", {"candidates": cands})
@@ -292,6 +300,20 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
             return Route("metric_of_person",
                          {"entity_id": person["entity_id"], "name": person["name"],
                           "field_key": field_key, "metric_key": metric.key})
+
+    # ── profile-link queries ("X linkedin / scholar / github / website") ───────────
+    # Registry-driven (match_link_field). Needs a resolvable person; a link word with no person
+    # ("what's on the GSA website") must FALL THROUGH (no return) to the normal RAG path.
+    lm = profile_fields.match_link_field(q)
+    if lm is not None:
+        field_key, _field = lm
+        person = _resolve_person(conn, q, named)
+        if isinstance(person, Route):
+            return person
+        if isinstance(person, dict):
+            return Route("link_of_person",
+                         {"entity_id": person["entity_id"], "name": person["name"],
+                          "field_key": field_key})
 
     if (org_id is not None and _OFFICER_IDENTITY.search(q)
             and not _OFFICER_PROCESS.search(q)):

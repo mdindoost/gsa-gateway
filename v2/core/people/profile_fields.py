@@ -50,6 +50,7 @@ class Field:
     icon: str
     metrics: tuple[Metric, ...] = ()
     attrs_fallback: tuple[str, ...] = ()
+    aliases: tuple[str, ...] = ()   # natural-language names for "X's <field>" link queries
 
 
 # THE registry. Append a row to add a field.
@@ -60,11 +61,14 @@ PROFILE_FIELDS: tuple[Field, ...] = (
                    Metric("h_index", "h-index {v}",
                           aliases=("h-index", "h index", "hindex")),
                    Metric("i10_index", "i10-index {v}",
-                          aliases=("i10-index", "i10 index")))),
-    Field("linkedin", "LinkedIn", "💼"),
-    Field("orcid", "ORCID", "🔗"),
-    Field("github", "GitHub", "💻"),
-    Field("website", "Website", "🌐", attrs_fallback=("website", "links.website")),
+                          aliases=("i10-index", "i10 index"))),
+          aliases=("google scholar", "scholar", "gscholar")),
+    Field("linkedin", "LinkedIn", "💼", aliases=("linkedin", "linked in")),
+    Field("orcid", "ORCID", "🔗", aliases=("orcid",)),
+    Field("github", "GitHub", "💻", aliases=("github", "git hub")),
+    Field("website", "Website", "🌐", attrs_fallback=("website", "links.website"),
+          aliases=("website", "web page", "webpage", "homepage", "home page",
+                   "personal site", "personal page", "personal website")),
 )
 
 
@@ -159,4 +163,23 @@ def match_metric(text: str) -> tuple[str, Metric] | None:
     for rx, fk, m in _METRIC_MATCHERS:
         if rx.search(text):
             return (fk, m)
+    return None
+
+
+# (alias -> Field) word-boundary matchers for profile LINK queries ("oria linkedin"), longest alias
+# first so "google scholar" wins over a bare "scholar" and "linked in" isn't shadowed.
+_LINK_MATCHERS: tuple[tuple[re.Pattern, "Field"], ...] = tuple(
+    (re.compile(r"\b" + re.escape(alias) + r"\b", re.I), f)
+    for f in sorted(PROFILE_FIELDS,
+                    key=lambda f: max((len(a) for a in f.aliases), default=0), reverse=True)
+    for alias in sorted(f.aliases, key=len, reverse=True)
+)
+
+
+def match_link_field(text: str) -> tuple[str, "Field"] | None:
+    """The first profile-link field named in ``text`` as (field_key, Field), else None — for
+    "<person> linkedin / scholar / github / website" queries. Registry-driven via Field.aliases."""
+    for rx, f in _LINK_MATCHERS:
+        if rx.search(text):
+            return (f.key, f)
     return None

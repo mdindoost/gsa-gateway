@@ -54,6 +54,9 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         r = skills.top_people_by_metric(conn, a["org_id"], a["field_key"], a["metric_key"])
         return {"skill": skill, "org_name": org_name, "field_key": a["field_key"],
                 "metric_key": a["metric_key"], "n": a.get("n", 1), **r}
+    if skill == "link_of_person":
+        r = entity.link_of_person(conn, a["entity_id"], a["field_key"])
+        return {"skill": skill, "field_key": a["field_key"], **r}
     if skill == "person_disambig":
         return {"skill": skill, "candidates": a["candidates"]}
     if skill == "faculty_areas_in_department":
@@ -90,7 +93,7 @@ def _join(names: list[str]) -> str:
 
 # Deterministic answers whose NUMBERS must never be reworded by the LLM — the caller skips
 # compose_from_rows for these (their format_answer output IS the final answer).
-_DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric"})
+_DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric", "link_of_person"})
 
 
 def is_deterministic(result: dict) -> bool:
@@ -201,6 +204,13 @@ def format_answer(result: dict) -> str:
             return (f"You asked for the top {n}, but I only have Scholar {noun} for "
                     f"{cov}{caveat}: {listed}.")
         return f"Top {len(sel)} in {org} by {noun} — I have metrics for {cov}{caveat}: {listed}."
+
+    if skill == "link_of_person":
+        # Deterministic + TERMINAL: a present URL or an honest-empty line — never "" (which would
+        # fall to RAG and risk surfacing a stale/hallucinated link).
+        if result.get("url"):
+            return f"{result['name']}'s {result['field_label']}: {result['url']}"
+        return f"I don't have a {result['field_label']} on file for {result['name']}."
 
     if skill == "entity_card":
         return result["card"] or ""        # the card is the grounding + offline fallback

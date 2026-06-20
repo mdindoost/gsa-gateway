@@ -11,7 +11,7 @@ import pytest
 from v2.core.database.schema import create_all
 from v2.core.graph.orgs import ensure_org, sync_org_nodes
 from v2.core.graph.project import project_appointment
-from v2.core.retrieval.entity import metric_of_person
+from v2.core.retrieval.entity import metric_of_person, link_of_person
 
 
 def _person(conn, key, name, org_id, profiles=None):
@@ -75,3 +75,32 @@ def test_metric_of_person_unknown_person(db):
     r = metric_of_person(conn, "p/ghost", "scholar", "citations")
     assert r["found"] == {}
     assert r["all"] == {}
+
+
+def test_link_of_person_has_link(db):
+    conn, cs = db
+    _person(conn, "p/o", "Vincent Oria", cs,
+            {"linkedin": {"url": "https://www.linkedin.com/in/vincent-oria-7b06a114"}})
+    r = link_of_person(conn, "p/o", "linkedin")
+    assert r["name"] == "Vincent Oria"
+    assert r["field_label"] == "LinkedIn"
+    assert r["url"] == "https://www.linkedin.com/in/vincent-oria-7b06a114"
+
+
+def test_link_of_person_honest_empty(db):
+    conn, cs = db
+    _person(conn, "p/o", "Vincent Oria", cs, {"linkedin": {"url": "x"}})
+    r = link_of_person(conn, "p/o", "github")   # has linkedin, not github
+    assert r["url"] is None
+    assert r["field_label"] == "GitHub"
+
+
+def test_link_of_person_website_fallback(db):
+    conn, cs = db
+    import json
+    _person(conn, "p/o", "Vincent Oria", cs, {})   # no profiles.website
+    conn.execute("UPDATE nodes SET attrs=? WHERE key='p/o'",
+                 (json.dumps({"website": "https://oria.example.edu"}),))
+    conn.commit()
+    r = link_of_person(conn, "p/o", "website")
+    assert r["url"] == "https://oria.example.edu"   # via attrs_fallback

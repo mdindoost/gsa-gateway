@@ -85,3 +85,25 @@ def test_metric_skills_are_deterministic_no_compose():
 def test_deterministic_suffix_does_not_double_fire_on_metric_skills():
     assert deterministic_suffix(_mop("citations", {"citations": 1}, {"citations": 1})) is None
     assert deterministic_suffix(_top([("A", 1)], 1, 1)) is None
+
+
+# ── link_of_person rendering (Facet B) ─────────────────────────────────────────
+def _link(url, label="LinkedIn", name="Vincent Oria", field_key="linkedin"):
+    return {"skill": "link_of_person", "name": name, "field_label": label,
+            "field_key": field_key, "url": url}
+
+
+def test_link_has_url():
+    out = format_answer(_link("https://www.linkedin.com/in/vincent-oria-7b06a114"))
+    assert "Vincent Oria's LinkedIn" in out
+    assert "https://www.linkedin.com/in/vincent-oria-7b06a114" in out
+
+
+def test_link_honest_empty_is_terminal_not_blank():
+    out = format_answer(_link(None, label="GitHub"))
+    assert out != ""                                  # TERMINAL — must NOT fall through to RAG
+    assert "don't have a github on file" in out.lower()
+
+
+def test_link_is_deterministic():
+    assert is_deterministic(_link("x")) is True

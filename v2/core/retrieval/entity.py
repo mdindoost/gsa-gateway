@@ -289,6 +289,21 @@ def metric_of_person(conn: sqlite3.Connection, entity_id: str, field_key: str,
             "updated_at": entry.get("updated_at")}
 
 
+def link_of_person(conn: sqlite3.Connection, entity_id: str, field_key: str) -> dict:
+    """{name, field_label, url} for one person's external-profile LINK (linkedin/scholar/github/
+    orcid/website). Reads via the registry's `_field_url` so the website `attrs_fallback` is honored.
+    url=None when absent (honest-empty). Never fabricated."""
+    attrs = person_attrs(conn, entity_id)
+    row = conn.execute(
+        "SELECT name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+        (entity_id,)).fetchone()
+    name = normalize_person_name(row[0]) if row else entity_id
+    field = next((f for f in profile_fields.PROFILE_FIELDS if f.key == field_key), None)
+    label = field.label if field else field_key
+    url = profile_fields._field_url(attrs, field) if field else None
+    return {"name": name, "field_label": label, "url": url}
+
+
 def entity_card(conn: sqlite3.Connection, entity_id: str) -> str:
     """A complete grounded fact block for ONE person (KG roles + email + research +
     education/about/teaching prose), EXCLUDING publication/webpage. Returned as text for
