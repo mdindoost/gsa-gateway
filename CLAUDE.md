@@ -207,6 +207,14 @@ gsa-gateway/
   show the diff → he signs off → commit + restart. Even small/surgical fixes. Dispatch reviewers as
   background general-purpose agents with the concrete artifact + file paths; relay findings, don't
   rubber-stamp. See memory `feedback-senior-eng-review`.
+  - **CHECK DESIGN/BUILD AGAINST THE PLAN (Mohammad, 2026-06-20):** the review is not just diff-level
+    correctness — the reviewer (and I, before claiming done) MUST verify the work against the spec's
+    STATED GOALS: every goal/bullet the plan listed is either shipped or **explicitly, loudly flagged
+    as deferred** — never silently dropped. Every reviewer prompt includes "check the implementation
+    against the design's goals; list which shipped vs deferred." Every spec/PR ends with a goals
+    checklist (shipped/deferred). This closes the gap that let the external-profiles spec's bullet 3
+    (Scholar interests → ResearchArea/`researches` edges) ship unbuilt and unflagged. See
+    `feedback_review_against_plan`.
 
 ## Common Tasks
 
