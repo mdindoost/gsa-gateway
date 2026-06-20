@@ -78,7 +78,10 @@ BASE_SYSTEM_PROMPT = (
     "named person, say plainly that you couldn't find that specific information for them and "
     "point the student to the source — NEVER substitute, guess, or volunteer a different "
     "individual's information as if it were theirs. Attributing one person's facts to another "
-    "is a serious error."
+    "is a serious error.\n"
+    "13. Never use gendered pronouns (he/him/his/she/her/hers) for a person unless their gender "
+    "is explicitly stated in the context — the documents do not record gender, so assuming one is "
+    "fabrication. Refer to a person by name or use 'they/them'."
 )
 
 _EXPAND_SYSTEM = (
@@ -284,7 +287,9 @@ class OllamaClient:
             "Computing', never substitute another expansion). Do NOT attach a research "
             "area, title, or any attribute to a name unless that exact attribute appears "
             "in the Facts for that name, and do NOT elaborate, specialize, or add detail "
-            "to attributes that are listed. If the Facts say nothing "
+            "to attributes that are listed. Never use gendered pronouns "
+            "(he/him/his/she/her/hers) — the Facts do not state anyone's gender, so assuming one "
+            "is fabrication; refer to a person by name or use 'they/them'. If the Facts say nothing "
             "was found, say that plainly."
         )
         # The question is for tone only; the Facts already name the org in full, so the
