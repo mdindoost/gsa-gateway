@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from collections import Counter
 
 from v2.core.graph.orgs import org_node_id
 from v2.core.graph.store import (
@@ -33,9 +34,17 @@ def category_from_titles(titles: list[str]) -> str:
 
 
 def area_key(area: str) -> str:
-    """Case-folded grouping key for a ResearchArea node (display canonicalization for
-    the facets is Phase 3, reusing skills._canonical)."""
+    """Case-folded grouping key for a ResearchArea node."""
     return area.strip().casefold()
+
+
+def canonical_area(forms: list[str]) -> str:
+    """Pick the display casing for a case-folded group: most frequent surface form, ties
+    broken case-insensitively first (then raw) so the choice is deterministic and not an
+    artifact of ASCII case ordering (cosmetic only — never a wrong fact). Shared by the
+    area facets (skills) and the research_of_person union (entity)."""
+    counts = Counter(forms)
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0].casefold(), kv[0]))[0][0]
 
 
 def project_entity(conn: sqlite3.Connection, rec: EntityRecord, org_id: int,

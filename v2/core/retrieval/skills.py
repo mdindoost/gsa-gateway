@@ -314,12 +314,7 @@ def _area_rows(conn: sqlite3.Connection, org_id: int | None) -> list[tuple[str, 
     return out
 
 
-def _canonical(forms: list[str]) -> str:
-    """Pick the display casing for a case-folded group: most frequent surface form, ties
-    broken case-insensitively first (then raw) so the choice is deterministic and not an
-    artifact of ASCII case ordering (cosmetic only — never a wrong fact)."""
-    counts = Counter(forms)
-    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0].casefold(), kv[0]))[0][0]
+from v2.core.graph.project import canonical_area as _canonical  # shared display-casing picker
 
 
 def areas_in_org(conn: sqlite3.Connection, org_id: int) -> list[str]:

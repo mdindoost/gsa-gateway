@@ -127,7 +127,9 @@ def test_role_in_org_absent_role_is_empty(conn):
 # ── research ──────────────────────────────────────────────────────────────────────
 def test_research_of_person_prefers_clean_tags(conn):
     rp = entity.research_of_person(conn, "p/gwang")
-    assert rp["areas"] == ["Applied AI", "Transportation", "Blockchain"]
+    # research_of_person now returns the UNION of KB-item areas + researches edges, deduped and
+    # in a deterministic casefold order (was: raw KB-item order).
+    assert rp["areas"] == sorted(["Applied AI", "Transportation", "Blockchain"], key=str.casefold)
     assert rp["name"] == "Guiling Wang"
 
 def test_research_of_person_empty_when_none(conn):

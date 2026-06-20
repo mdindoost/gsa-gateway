@@ -44,6 +44,20 @@ def parse_scholar_metrics(html: str) -> dict | None:
     return out or None
 
 
+def parse_scholar_interests(html: str) -> list[str]:
+    """The self-asserted research-interest tags (#gsc_prf_int) from a Scholar profile page,
+    trimmed and de-duplicated (order-preserving). [] when none / blocked."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    out: list[str] = []
+    seen: set[str] = set()
+    for a in soup.select("#gsc_prf_int a"):
+        t = a.get_text(strip=True)
+        if t and t.casefold() not in seen:
+            seen.add(t.casefold())
+            out.append(t)
+    return out
+
+
 def people_with_scholar(conn) -> list[tuple[str, str]]:
     """(person_key, scholar_url) for every active person carrying a Scholar profile URL."""
     out: list[tuple[str, str]] = []
@@ -71,15 +85,30 @@ def default_fetch(url: str, timeout: int = 20) -> tuple[str, str]:
         return "", f"error:{type(exc).__name__}"
 
 
+def _home_org_id(conn, person_key: str) -> int | None:
+    """The person's faculty-home org_id (where their Scholar research areas should be filed so
+    org-scoped 'who works on X' finds them): prefer a faculty role, then the primary role, then any."""
+    rows = conn.execute(
+        "SELECT e.category, json_extract(e.attrs,'$.is_primary'), json_extract(o.attrs,'$.org_id') "
+        "FROM edges e JOIN nodes p ON p.id=e.src_id JOIN nodes o ON o.id=e.dst_id "
+        "WHERE p.key=? AND e.type='has_role' AND e.is_active=1", (person_key,)).fetchall()
+    for want in (lambda c, pr: c == "faculty", lambda c, pr: bool(pr), lambda c, pr: True):
+        for cat, prim, oid in rows:
+            if oid is not None and want(cat, prim):
+                return oid
+    return None
+
+
 def refresh_scholar(conn, fetch=default_fetch, *, only_key: str | None = None,
                     delay: float = 3.0, today: str | None = None) -> dict:
-    """Fetch + update Scholar metrics for every person with a Scholar URL (or just ``only_key``).
-    Deep-merges metrics via people_editor.set_person_profiles (keeps the url). Does NOT commit —
-    the caller owns the transaction. Returns {people, updated, failed, errors}."""
-    from v2.core.ingestion.people_editor import set_person_profiles
+    """Fetch + update Scholar metrics AND research interests for every person with a Scholar URL
+    (or just ``only_key``). Metrics deep-merge via set_person_profiles (keeps the url); interests
+    become research areas via set_person_research_areas (source='scholar', filed under the faculty
+    home org). Does NOT commit — caller owns the txn. Returns {people, updated, areas_updated, failed, errors}."""
+    from v2.core.ingestion.people_editor import set_person_profiles, set_person_research_areas
     today = today or datetime.date.today().strftime("%Y-%m")
     targets = [(k, u) for k, u in people_with_scholar(conn) if only_key in (None, k)]
-    stats = {"people": len(targets), "updated": 0, "failed": 0, "errors": []}
+    stats = {"people": len(targets), "updated": 0, "areas_updated": 0, "failed": 0, "errors": []}
     for i, (key, url) in enumerate(targets):
         if i and delay:
             time.sleep(delay)
@@ -92,4 +121,10 @@ def refresh_scholar(conn, fetch=default_fetch, *, only_key: str | None = None,
         metrics["updated_at"] = today
         set_person_profiles(conn, person_key=key, profiles={"scholar": metrics})
         stats["updated"] += 1
+        # S6 (no-manual-ops): capture interests as research areas too, if the person has a home org.
+        interests = parse_scholar_interests(html)
+        org_id = _home_org_id(conn, key) if interests else None
+        if interests and org_id is not None:
+            set_person_research_areas(conn, person_key=key, areas=interests, org_id=org_id)
+            stats["areas_updated"] += 1
     return stats

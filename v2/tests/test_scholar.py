@@ -61,7 +61,7 @@ def test_people_with_scholar_finds_only_those_with_url(conn):
 def test_refresh_scholar_updates_metrics_keeping_url(conn):
     out = refresh_scholar(conn, fetch=lambda u: (SCHOLAR_HTML, "ok"), delay=0, today="2026-06")
     conn.commit()
-    assert out == {"people": 1, "updated": 1, "failed": 0, "errors": []}
+    assert out == {"people": 1, "updated": 1, "areas_updated": 0, "failed": 0, "errors": []}
     sch = json.loads(conn.execute("SELECT attrs FROM nodes WHERE key='p/k'").fetchone()[0]
                      )["profiles"]["scholar"]
     assert sch["citations"] == 2774 and sch["h_index"] == 26 and sch["i10_index"] == 35

@@ -9,7 +9,8 @@ import re
 import sqlite3
 
 from v2.core.graph.orgs import ensure_org, org_node_id, sync_org_nodes
-from v2.core.graph.project import project_appointment
+from v2.core.graph.project import project_appointment, area_key
+from v2.core.graph.store import active_edge_ids_from, deactivate_edges, upsert_edge, upsert_node
 
 
 def _slug(name: str) -> str:
@@ -65,6 +66,62 @@ def set_person_profiles(conn: sqlite3.Connection, *, person_key: str,
     conn.execute("UPDATE nodes SET attrs=?, updated_at=datetime('now') WHERE id=?",
                  (json.dumps(attrs), pid))
     return {"person_key": person_key, "profiles": bag}
+
+
+def set_person_research_areas(conn: sqlite3.Connection, *, person_key: str, areas: list[str],
+                             org_id: int, source: str = "scholar") -> dict:
+    """Merge externally-sourced research areas (e.g. Google Scholar interests) into the KG as the
+    SAME artifacts the crawler produces — ResearchArea nodes + `researches` edges + ONE
+    `research_areas` knowledge_item — all tagged ``source`` so crawler data is never touched.
+    Union/dedup by ``area_key`` (reuses the existing area node when present). Idempotent:
+    deactivate-then-insert for the KB item; source-scoped reconcile for the edges. ``org_id`` should
+    be the person's faculty home org (so org-scoped 'who works on X' finds them). Does NOT commit."""
+    row = conn.execute(
+        "SELECT id, name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+        (person_key,)).fetchone()
+    if not row:
+        raise ValueError(f"no active Person with key {person_key!r}")
+    pid, name = row
+    clean, seen = [], set()
+    for a in areas or []:
+        a = (a or "").strip()
+        k = area_key(a)
+        if a and k not in seen:
+            seen.add(k)
+            clean.append(a)
+    # graph: ResearchArea nodes + researches edges, source-scoped reconcile (crawler edges untouched)
+    keep: set[int] = set()
+    for a in clean:
+        # Reuse an existing ResearchArea node WITHOUT renaming it — a self-asserted scholar tag
+        # must not downgrade the crawler's curated display casing (e.g. "Machine Learning").
+        existing = conn.execute(
+            "SELECT id FROM nodes WHERE type='ResearchArea' AND key=?", (area_key(a),)).fetchone()
+        if existing:
+            anode = existing[0]
+            conn.execute("UPDATE nodes SET is_active=1, updated_at=datetime('now') WHERE id=?",
+                         (anode,))
+        else:
+            anode = upsert_node(conn, type="ResearchArea", key=area_key(a), name=a, source=source)
+        keep.add(upsert_edge(conn, src_id=pid, type="researches", dst_id=anode,
+                             area_source="external", source=source))
+    deactivate_edges(
+        conn, active_edge_ids_from(conn, pid, type="researches", source=source) - keep)
+    # KB item: deactivate-then-insert (the add_or_edit_person pattern), distinct natural_key,
+    # created_by=source so the crawler's own research_areas item (created_by='crawler') is untouched.
+    conn.execute(
+        "UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') WHERE is_active=1 "
+        "AND type='research_areas' AND created_by=? AND json_extract(metadata,'$.entity_id')=?",
+        (source, person_key))
+    item_id = None
+    if clean:
+        meta = json.dumps({"entity_id": person_key, "verified": True, "area_source": source,
+                           "areas": clean, "natural_key": f"{person_key}:research_areas:{source}"})
+        content = f"Research areas of {name}: " + "; ".join(clean)
+        item_id = conn.execute(
+            "INSERT INTO knowledge_items(org_id,type,title,content,metadata,version,is_active,"
+            "created_by) VALUES(?,?,?,?,?,1,1,?)",
+            (org_id, "research_areas", name, content, meta, source)).lastrowid
+    return {"person_key": person_key, "areas": clean, "item_id": item_id}
 
 
 def add_or_edit_person(conn: sqlite3.Connection, *, org_id: int, name: str, title: str,

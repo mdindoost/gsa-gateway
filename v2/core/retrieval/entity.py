@@ -29,6 +29,8 @@ import json
 import re
 import sqlite3
 
+from v2.core.graph.project import area_key, canonical_area
+
 from v2.core.people import profile_fields
 
 # Lower rank = preferred for the "primary" role shown in disambiguation.
@@ -191,28 +193,54 @@ def role_in_org(conn: sqlite3.Connection, org_id: int,
 
 
 def research_of_person(conn: sqlite3.Connection, entity_id: str) -> dict:
-    """{name, areas, statement} for one person. Prefers the clean research_areas tag doc
-    (metadata.areas) over the dirtier `researches` edge target strings; falls back to the
-    edges, then the research_statement prose. Honest-empty when the person has none."""
+    """{name, areas, statement} for one person — the UNION of every active research_areas KB item
+    (crawler + scholar) AND every active `researches` edge, deduped by area_key and rendered in a
+    canonical display casing. Self-asserted (scholar) areas that are a token-subset of a specific
+    area from another source are suppressed from the DISPLAY (e.g. broad 'databases' under
+    'Multimedia Databases') to avoid garbled lists. Honest-empty when the person has none."""
     row = conn.execute(
         "SELECT name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
         (entity_id,)).fetchone()
     name = normalize_person_name(row[0]) if row else entity_id
-    areas: list[str] = []
-    r = conn.execute(
-        "SELECT json_extract(metadata,'$.areas') FROM knowledge_items "
-        "WHERE is_active=1 AND type='research_areas' "
-        "AND json_extract(metadata,'$.entity_id')=?", (entity_id,)).fetchone()
-    if r and r[0]:
+
+    raw: list[tuple[str, bool]] = []   # (surface form, is_scholar_sourced)
+    for areas_json, asrc in conn.execute(
+            "SELECT json_extract(metadata,'$.areas'), json_extract(metadata,'$.area_source') "
+            "FROM knowledge_items WHERE is_active=1 AND type='research_areas' "
+            "AND json_extract(metadata,'$.entity_id')=?", (entity_id,)):
         try:
-            areas = [a.strip() for a in json.loads(r[0]) if a and a.strip()]
+            items = json.loads(areas_json) if areas_json else []
         except (TypeError, ValueError):
-            areas = []
-    if not areas:
-        areas = [a for (a,) in conn.execute(
-            "SELECT ra.name FROM edges e JOIN nodes p ON p.id=e.src_id "
+            items = []
+        for a in items:
+            if a and a.strip():
+                raw.append((a.strip(), asrc == "scholar"))
+    for aname, e_asrc in conn.execute(
+            "SELECT ra.name, e.area_source FROM edges e JOIN nodes p ON p.id=e.src_id "
             "JOIN nodes ra ON ra.id=e.dst_id "
-            "WHERE p.key=? AND e.type='researches' AND e.is_active=1", (entity_id,)) if a]
+            "WHERE p.key=? AND e.type='researches' AND e.is_active=1", (entity_id,)):
+        if aname and aname.strip():
+            raw.append((aname.strip(), e_asrc == "external"))
+
+    groups: dict[str, dict] = {}       # area_key -> {forms:[...], has_other_source:bool}
+    for form, is_scholar in raw:
+        g = groups.setdefault(area_key(form), {"forms": [], "has_other_source": False})
+        g["forms"].append(form)
+        if not is_scholar:
+            g["has_other_source"] = True
+    # subsumption: drop a scholar-ONLY area whose tokens are a proper subset of a specific
+    # area contributed by another (non-scholar) source.
+    drop: set[str] = set()
+    for k, g in groups.items():
+        if g["has_other_source"]:
+            continue
+        ktoks = set(k.split())
+        for k2, g2 in groups.items():
+            if k2 != k and g2["has_other_source"] and ktoks < set(k2.split()):
+                drop.add(k)
+                break
+    areas = sorted((canonical_area(g["forms"]) for k, g in groups.items() if k not in drop),
+                   key=str.casefold)
     statement = None
     rs = conn.execute(
         "SELECT content FROM knowledge_items WHERE is_active=1 AND type='research_statement' "
