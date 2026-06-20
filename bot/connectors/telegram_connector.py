@@ -23,6 +23,13 @@ from v2.core.judging.session import JudgingSessionManager
 
 logger = logging.getLogger(__name__)
 
+
+def _tg_md(text: str) -> str:
+    """Adapt Discord-style Markdown to Telegram legacy Markdown: bold is `*single*` on Telegram,
+    not Discord's `**double**`, so `**Kavosh**` would otherwise show its asterisks literally.
+    Italics (`_x_`) are the same on both, so only the bold marker needs converting."""
+    return (text or "").replace("**", "*")
+
 _SIMILARITY_THRESHOLD = 0.90
 _FEEDBACK_TTL = 259200  # 72 hours in seconds
 
@@ -192,7 +199,7 @@ class TelegramConnector(BasePlatform):
             response_text = reply.payload
             if response_text:
                 try:
-                    await update.message.reply_text(response_text, parse_mode="Markdown")
+                    await update.message.reply_text(_tg_md(response_text), parse_mode="Markdown")
                 except Exception:  # noqa: BLE001
                     await update.message.reply_text(response_text)
             return
@@ -219,7 +226,7 @@ class TelegramConnector(BasePlatform):
 
         try:
             await update.message.reply_text(
-                text, parse_mode="Markdown", reply_markup=keyboard
+                _tg_md(text), parse_mode="Markdown", reply_markup=keyboard
             )
         except Exception:
             await update.message.reply_text(text, reply_markup=keyboard)
@@ -357,7 +364,7 @@ class TelegramConnector(BasePlatform):
 
             try:
                 await query.message.reply_text(
-                    new_text, parse_mode="Markdown", reply_markup=new_keyboard
+                    _tg_md(new_text), parse_mode="Markdown", reply_markup=new_keyboard
                 )
             except Exception:
                 await query.message.reply_text(new_text, reply_markup=new_keyboard)
