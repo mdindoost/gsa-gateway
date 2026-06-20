@@ -30,18 +30,21 @@ links; the *specific* "oria linkedin" fails.)
 
 ## Design
 
-### Facet A — guard surname resolution (`router.py` `_resolve_surname`)
-Two cheap, layered guards (belt + suspenders):
-1. **Length guard:** only attempt the surname fallback when the (prefix-stripped) query is short — ≤ 4
-   content tokens (`_qtokens`). A 15-word meta sentence never triggers a bare-surname lookup. Short
-   queries ("oria", "professor wang", "oria email", "koutis info") still work.
-2. **Common-word stoplist:** skip surname tokens that are common English words (a curated set:
-   see, may, will, can, best, young, long, white, brown, black, green, gray, day, week, may, ...). Applied
-   in `_resolve_surname`, so "see" never resolves to "Adam See" from a stray "I see". (Adam See is still
-   reachable by full name "Adam See" via `persons_in_query`; only the bare common-word surname is blocked.)
-
-Both guards together: the length guard kills the long-sentence class structurally; the stoplist kills the
-short-ambiguous class. Net effect: no wrong-person answers from incidental words.
+### Facet A — guard surname resolution (`router.py` `_resolve_surname`) — REVISED per review
+**Length guard ONLY. The stoplist is DROPPED** (senior + RAG review, BLOCKER): a static common-word
+denylist breaks REAL faculty — the live directory has surnames **Young (×4), White, Brown** (+ likely
+Long, Green, May) — and it can't even include "see" safely since **Adam See is a real person**. So:
+- **Length guard, inside `_resolve_surname` (at the top, before the per-token loop)** so ALL three callers
+  inherit it (metric branch + research branch via `_resolve_person`, and the entity-card surname branch).
+  Only attempt surname resolution when the **prefix-stripped** query (`_NAME_PREFIX.sub("", q)`, the same
+  string the function already tokenizes) has **≤ 4 content tokens** (`_qtokens`). The Adam See meta message
+  is 11 content tokens → blocked; legit short queries ("oria"=1, "professor wang"=1, "oria email"=2,
+  "koutis info"=2, "who is wang"=3) pass.
+- **No stoplist.** Adam See remains reachable by full name ("Adam See", via `persons_in_query`).
+- Accepted residual: a rare *short* phrase that pairs a cue with an incidental common-word surname
+  (e.g. "see profile") could still resolve — unfixable via denylist (Adam See is real) and low-risk.
+- Guarding stays in the **router** (`_resolve_surname`), NOT in `entity.persons_by_lastname` (that feeds
+  disambiguation and must stay a pure data lookup — e.g. "professor young" must still return all 4 Youngs).
 
 ### Facet B — profile-link queries (registry-driven, mirrors metric_of_person)
 - **Registry** (`profile_fields.py`): give each `Field` an `aliases` tuple and add
@@ -51,12 +54,17 @@ short-ambiguous class. Net effect: no wrong-person answers from incidental words
 - **Router branch** (after the metric branch, before generic person branches): if `match_link_field(q)`
   AND a person resolves (reuse `_resolve_person`) → `Route("link_of_person", {entity_id, name, field_key})`.
   Ambiguous surname → `person_disambig` (as elsewhere). No person → fall through (don't invent).
-- **Skill** (`entity.link_of_person(conn, entity_id, field_key) -> {name, field_key, url}`): read the URL
-  from `attrs.profiles[field_key]` via the registry's existing `_field_url` (honors the website fallback);
-  honest-empty when absent.
-- **Render** (`structured_answer`): deterministic, no LLM (numbers/URLs never reworded — same as metrics):
+- **Skill** (`entity.link_of_person(conn, entity_id, field_key) -> {name, field_label, url}`): read the URL
+  via the registry's existing `_field_url(attrs, field_obj)` (honors the website `attrs_fallback`); use the
+  registry `Field.label` for display casing ("LinkedIn"). honest-empty (url=None) when absent.
+- **Render** (`structured_answer`): deterministic, no LLM (URLs never reworded — same as metrics):
   - has it: "Vincent Oria's LinkedIn: https://www.linkedin.com/in/vincent-oria-7b06a114"
-  - honest-empty: "I don't have a LinkedIn on file for Vincent Oria." `is_deterministic` → skip compose.
+  - honest-empty: "I don't have a LinkedIn on file for Vincent Oria."
+  - **WIRINGS (review must-dos):** (1) add `"link_of_person"` to `_DETERMINISTIC_SKILLS`; (2) the
+    honest-empty render is **TERMINAL** — it returns the line, NOT `""` (which would fall to RAG and risk
+    surfacing a stale/hallucinated link, unlike the entity-layer "empty→RAG" convention); (3) `match_link_field`
+    compiles longest-alias-first (like `_METRIC_MATCHERS`); (4) the link branch FALLS THROUGH (no early
+    `return`) when no person resolves, so "what's on the GSA website" / "how do I use github" go to RAG.
 
 **"X scholar" disambiguation:** `link_of_person` returns the Scholar **profile URL** (the link). Scholar
 **metrics** stay on "X research / X citations" (the existing metric routing). They don't conflict — "scholar"
@@ -68,13 +76,21 @@ asks for the page, "citations/research" asks for the numbers.
   just routing link-words to `entity_card` (shows the whole card + all links). Rec: focused.
 - **D3** — common-word stoplist contents (start small + curated; expand as needed). Accept a curated list?
 
+## Longer-term direction (note, not built now)
+This is the 3rd router over/under-fire on sentence-shaped free text (FYA regex, Adam See, this). Per-bug
+guards are accreting. Eventual target (record, defer): a single uniform "is this sentence-shaped free
+text?" front-gate that suppresses incidental-token/bare-surname resolution everywhere, and ultimately a
+*constrained* LLM intent/slot-gate (person? attribute? metric/link?) with a confidence floor used only to
+GATE the deterministic skills — rendering stays deterministic, so anti-fabrication is preserved. Near-term,
+per-bug guarding remains the right call (8B is unreliable at orchestration).
+
 ## Goals checklist (completeness — `[[feedback_review_against_plan]]`)
-- [ ] G1 Length guard on `_resolve_surname` (long meta sentence → no surname lookup).
-- [ ] G2 Common-word stoplist in `_resolve_surname` ("see" etc. never resolve as a surname).
-- [ ] G3 `match_link_field` + `Field.aliases` in the registry.
-- [ ] G4 Router `link_of_person` route (link word + resolvable person; disambig/fall-through correct).
-- [ ] G5 `entity.link_of_person` + deterministic render (focused link / honest-empty), `is_deterministic`.
-- [ ] G6 Existing behavior preserved: "oria email"/"vincent oria"/"koutis info"/"who is X" still route as before.
+- [ ] G1 Length guard INSIDE `_resolve_surname` (prefix-stripped ≤4 content tokens) — all 3 callers inherit it.
+- [ ] G2 ~~Common-word stoplist~~ **DROPPED** (breaks real surnames Young/White/Brown; length guard suffices).
+- [ ] G3 `match_link_field` + `Field.aliases` (longest-alias-first, word-boundary).
+- [ ] G4 Router `link_of_person` route (link word + resolvable person; disambig; fall-through on no person).
+- [ ] G5 `entity.link_of_person` + deterministic render: in `_DETERMINISTIC_SKILLS`; honest-empty TERMINAL (not →RAG); reuse `_field_url`.
+- [ ] G6 Existing preserved: "oria email"/"vincent oria"/"koutis info"/"who is X" AND "professor Young"/"who is White" still resolve.
 
 ## Testing (TDD)
 - `_resolve_surname`/router: the Adam See meta message → NOT entity_card (None/RAG); "see"/"everything"
