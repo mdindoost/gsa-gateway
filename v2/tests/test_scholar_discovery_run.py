@@ -99,3 +99,24 @@ def test_brave_hard_cap_limits_calls(db):
         return []
     D.run(db, web_search=web, fetch=lambda u: ("", "ok"), org_scope="ywcc", delay=0, max_brave=1)
     assert calls["n"] == 1
+
+
+def test_run_marks_skip_attempted_and_excludes_on_rerun(db):
+    web = lambda q, **k: []                      # no candidates -> skip
+    fetch = lambda u: ("", "ok")
+    s1 = D.run(db, web_search=web, fetch=fetch, org_scope="ywcc", delay=0)
+    assert s1["skipped"] >= 1
+    sch = json.loads(db.execute("SELECT attrs FROM nodes WHERE key='p/koutis'").fetchone()[0]
+                     )["profiles"]["scholar"]
+    assert sch["discovery_attempted"]["decision"] == "skip"     # marked
+    s2 = D.run(db, web_search=web, fetch=fetch, org_scope="ywcc", delay=0)
+    assert s2["scanned"] == 0                                   # excluded on re-run -> terminates
+
+
+def test_run_does_not_mark_blocked(db):
+    web = lambda q, **k: ["https://scholar.google.com/citations?user=BLK"]
+    fetch = lambda u: (BLOCKED, "ok")
+    D.run(db, web_search=web, fetch=fetch, org_scope="ywcc", delay=0, block_abort=5)
+    raw = db.execute("SELECT attrs FROM nodes WHERE key='p/koutis'").fetchone()[0]
+    sch = (json.loads(raw).get("profiles") or {}).get("scholar") or {}
+    assert "discovery_attempted" not in sch                     # blocked = transient, retry later

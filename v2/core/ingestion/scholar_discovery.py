@@ -11,6 +11,8 @@ docs/superpowers/specs/2026-06-20-scholar-url-discovery-design.md
 from __future__ import annotations
 
 import datetime
+import json
+import random
 import re
 import time
 import unicodedata
@@ -148,13 +150,49 @@ def corroborates(conn, person_key: str, identity: dict, interests: list[str]) ->
     return None
 
 
-def select_discovery_targets(conn, *, org_scope: str | None = None,
-                             limit: int | None = None) -> list[tuple[str, str]]:
+def mark_attempted(conn, person_key: str, decision: str, today: str) -> None:
+    """Record a non-strict discovery outcome so the person drops out of future target sets (the B1
+    termination fix). Writes ``attrs.profiles.scholar.discovery_attempted = {date, decision}`` (NO
+    url) via the deep-merging set_person_profiles. Does NOT commit. NOT used for 'blocked' (transient
+    throttle — we want to retry those) or 'strict' (that writes a url)."""
+    from v2.core.ingestion.people_editor import set_person_profiles
+    set_person_profiles(conn, person_key=person_key,
+                        profiles={"scholar": {"discovery_attempted": {"date": today, "decision": decision}}})
+
+
+def _attempted_keys(conn, retry_after_days: int | None, today: datetime.date | None) -> set[str]:
+    from v2.core.ingestion.scholar import _parse_updated
+    today = today or datetime.date.today()
+    out: set[str] = set()
+    for key, raw in conn.execute(
+            "SELECT key, attrs FROM nodes WHERE type='Person' AND is_active=1 "
+            "AND attrs LIKE '%discovery_attempted%'").fetchall():
+        try:
+            da = ((json.loads(raw or "{}").get("profiles") or {}).get("scholar") or {}).get("discovery_attempted")
+        except (TypeError, ValueError):
+            continue
+        if not da:
+            continue
+        if retry_after_days is not None:                       # stale attempts re-open for retry
+            d = _parse_updated(da.get("date"))
+            if d and (today - d).days >= retry_after_days:
+                continue
+        out.add(key)
+    return out
+
+
+def select_discovery_targets(conn, *, org_scope: str | None = None, limit: int | None = None,
+                             skip_attempted: bool = True, retry_after_days: int | None = None,
+                             today: datetime.date | None = None) -> list[tuple[str, str]]:
     """(key, name) for active FACULTY in scope who DON'T yet have a Scholar URL — discovery's set.
     Faculty-only (`has_role.category='faculty'`), org subtree (college includes its departments),
-    distinct, capped at ``limit``. Read-only."""
+    distinct, capped at ``limit``. ``skip_attempted`` (default) also excludes anyone already tried
+    (a `discovery_attempted` marker) — unless their attempt is older than ``retry_after_days``. This
+    is what makes the sweep terminate + truly resume. Read-only."""
     from v2.core.ingestion.scholar import people_with_scholar
     have_url = {k for k, _ in people_with_scholar(conn)}
+    if skip_attempted:
+        have_url |= _attempted_keys(conn, retry_after_days, today)
     base = ("SELECT DISTINCT p.key, p.name FROM edges e JOIN nodes p ON p.id=e.src_id "
             "{join} WHERE e.type='has_role' AND e.is_active=1 AND e.category='faculty' "
             "AND p.is_active=1 {where} ORDER BY p.name")
@@ -294,11 +332,74 @@ def run(conn, *, web_search, fetch, org_scope: str | None = None, limit: int | N
             _write_discovered(conn, key, res, today); stats["written"] += 1; consecutive = 0
         elif d == "uncertain":
             stats["queued"] += 1
-            stats["queue"].append((key, name, res.get("url"), res.get("reason"))); consecutive = 0
+            stats["queue"].append((key, name, res.get("url"), res.get("reason")))
+            mark_attempted(conn, key, "uncertain", today); consecutive = 0     # drops out of future runs
         elif d == "blocked":
-            stats["blocked"] += 1; consecutive += 1
+            stats["blocked"] += 1; consecutive += 1                            # NOT marked — retry later
             if consecutive >= block_abort:
                 break
         else:
-            stats["skipped"] += 1; consecutive = 0
+            stats["skipped"] += 1
+            mark_attempted(conn, key, "skip", today); consecutive = 0          # dead end — don't re-search
+    return stats
+
+
+def sweep(conn, *, web_search, fetch, sleep, org_scope: str | None = None, chunk: int = 50,
+          brave_budget: int, today: str | None = None, jitter: tuple[int, int] = (45, 100),
+          block_chunk_limit: int = 5, max_blocked_chunks: int = 3, backoff_seconds: int = 3 * 3600,
+          retry_after_days: int | None = None, max_candidates: int = 5,
+          should_stop=lambda: False, on_progress=None) -> dict:
+    """Long-running slow-drip discovery over faculty-without-Scholar. Reuses discover_for_person +
+    _write_discovered + mark_attempted (no classifier change). Terminates via the attempted marker;
+    stops at the ``brave_budget`` ceiling, gives up after ``max_blocked_chunks`` Scholar-blocked
+    chunks, and exits promptly when ``should_stop`` flips (SIGTERM). Commits per person (ms-long txns).
+    Injected ``web_search``/``fetch``/``sleep`` → testable with no network/waits. Caller owns embedding
+    + the final non-commit semantics here (we DO commit incrementally since it's a long unattended run)."""
+    today = today or datetime.date.today().strftime("%Y-%m-%d")
+    today_d = datetime.date.today()
+    stats = {"scanned": 0, "written": 0, "queued": 0, "skipped": 0, "blocked": 0,
+             "brave_calls": 0, "queue": [], "errors": [], "stopped_reason": "done"}
+    blocked_streak = 0
+    while not should_stop():
+        targets = select_discovery_targets(conn, org_scope=org_scope, limit=chunk,
+                                           retry_after_days=retry_after_days, today=today_d)
+        if not targets:
+            stats["stopped_reason"] = "done"; break
+        chunk_blocked = 0
+        for key, name in targets:
+            if should_stop():
+                stats["stopped_reason"] = "interrupted"; return stats
+            if stats["brave_calls"] >= brave_budget:
+                stats["stopped_reason"] = "budget"; return stats
+            stats["brave_calls"] += 1                          # before the call (count even on exception)
+            try:
+                res = discover_for_person(conn, (key, name), web_search=web_search,
+                                          fetch=fetch, max_candidates=max_candidates)
+            except Exception as exc:  # noqa: BLE001
+                stats["errors"].append((key, str(exc))); stats["skipped"] += 1
+                conn.commit(); sleep(random.uniform(*jitter)); continue
+            d = res["decision"]; stats["scanned"] += 1
+            if d == "strict":
+                _write_discovered(conn, key, res, today); stats["written"] += 1
+            elif d == "uncertain":
+                stats["queued"] += 1
+                stats["queue"].append((key, name, res.get("url"), res.get("reason")))
+                mark_attempted(conn, key, "uncertain", today)
+            elif d == "blocked":
+                stats["blocked"] += 1; chunk_blocked += 1      # NOT marked — retry later
+            else:
+                stats["skipped"] += 1; mark_attempted(conn, key, "skip", today)
+            conn.commit()
+            if on_progress:
+                on_progress(stats, key, name, d)
+            if chunk_blocked >= block_chunk_limit:             # stop wasting the chunk once throttled
+                break
+            sleep(random.uniform(*jitter))                     # the slow drip
+        if chunk_blocked >= block_chunk_limit:
+            blocked_streak += 1
+            if blocked_streak >= max_blocked_chunks:
+                stats["stopped_reason"] = "blocked"; return stats
+            sleep(backoff_seconds)                             # pause and resume (interruptible sleep)
+        else:
+            blocked_streak = 0
     return stats
