@@ -34,8 +34,11 @@ def _tg_html(text: str) -> str:
     Telegram's legacy Markdown, which 400s on stray chars like `&` (common in source notes /
     "research areas & citations") and then silently falls back to unformatted text.
 
-    Escapes &/</> first, then converts **bold**, *italic*, and _italic_ to <b>/<i>."""
+    Escapes &/</> first, then converts [label](url) masked links, **bold**, *italic*, _italic_."""
     t = html.escape(text or "", quote=False)
+    # Markdown masked links [label](url) -> <a href> (Discord renders these natively; Telegram
+    # would otherwise show the raw "[label](url)" with the URL exposed). Done before bold/italic.
+    t = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', t)
     t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t, flags=re.S)      # bold (before single-*)
     t = re.sub(r"\*(.+?)\*", r"<i>\1</i>", t, flags=re.S)          # *italic*
     t = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"<i>\1</i>", t, flags=re.S)  # _italic_ (word-boundary)
