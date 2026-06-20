@@ -24,6 +24,8 @@ from bot.services.intent_detector import (
 )
 from bot.services.retriever import SOURCE_FRIENDLY_NAMES
 from bot.core.headsup import apply_headsup
+from bot.core.deflection import looks_like_deflection
+from bot.core.live_query import parse_explicit_live_search, LIVE_NOT_FOUND_MSG
 from bot.core.live_fallback import maybe_answer_live
 from v2.integration.njit_search import search as brave_search
 from v2.core.ingestion.explore import http_fetch
@@ -80,6 +82,7 @@ class MessageResponse:
     used_ai: bool = False
     ollama_failed: bool = False
     question_id: Optional[int] = None
+    offer_live_search: bool = False   # connector should attach a "search NJIT's website" offer
 
 
 class MessageHandler:
@@ -116,6 +119,13 @@ class MessageHandler:
         clean_text = req.text.strip()
         if not clean_text:
             return MessageResponse(text="")
+
+        # ── Explicit "search njit for X" ──────────────────────────────────────
+        # The user literally asked to go to the live njit.edu site, so honor it directly —
+        # wins BEFORE the structured router and RAG (they'd answer a different question).
+        explicit_topic = parse_explicit_live_search(clean_text)
+        if explicit_topic is not None:
+            return await self._answer_explicit_live(req, explicit_topic)
 
         # ── Structured retrieval (enumerate/filter/traverse/count) ────────────
         # Tried BEFORE intent detection on purpose: phrasings like "list all CS
@@ -333,6 +343,38 @@ class MessageHandler:
             req, req.text.strip(), INTENT_QUESTION, temperature=0.7
         )
 
+    async def live_search(self, question: str):
+        """The single seam to the live njit.edu extractive fallback. Constructs the provider
+        wiring + feature-gate in ONE place, so the auto-fire path and the connector offer-tap
+        path can't drift. Returns a LiveAnswer or None (None when the feature is off / no key /
+        no Ollama — so a stale tapped button degrades gracefully instead of crashing)."""
+        if not (botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY and self.ollama):
+            return None
+        return await maybe_answer_live(
+            question,
+            search_fn=brave_search,
+            fetch_fn=http_fetch,
+            generate=lambda system, user: self.ollama.generate(user, system),
+        )
+
+    async def _answer_explicit_live(self, req: MessageRequest, topic: str) -> MessageResponse:
+        """Run a direct live njit.edu search for an explicit 'search njit for X' request.
+        Logged with a question_id (normal 👍/👎/🔄 buttons), but NO web-re-search offer (it
+        just searched). Empty result → the shared 'found nothing' message."""
+        live = await self.live_search(topic)
+        if live is None:
+            return MessageResponse(text=LIVE_NOT_FOUND_MSG)
+        text = apply_headsup(live.text, topic)
+        question_id: Optional[int] = None
+        if self.db:
+            question_id = self.db.log_question(
+                user_id=req.user_id, question=req.text, matched_topic="live njit.edu (explicit)",
+                confidence=100.0, guild_id=req.guild_id, platform=req.platform,
+            )
+        return MessageResponse(
+            text=text, source_note=live.source_url, used_ai=True, question_id=question_id,
+        )
+
     async def _rag_pipeline(
         self,
         req: MessageRequest,
@@ -449,15 +491,13 @@ class MessageHandler:
             # usable KB chunk OR the best chunk's reranker relevance is below threshold. No-ops
             # without a Brave key; LIVE_ENABLED=0 disables it (kill-switch). See live_fallback.py.
             used_live = False
+            attempted_live = False   # auto-fire ran this turn (regardless of result)
+            is_canned_deflection = False   # tag-at-source: our own "no info" reply
             if botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY and self.ollama and self.retriever:
                 relevance = self.retriever.top_relevance(clean_text, chunks) if chunks else None
                 if (not chunks) or (relevance is not None and relevance < botcfg.LIVE_THRESHOLD):
-                    live = await maybe_answer_live(
-                        clean_text,
-                        search_fn=brave_search,
-                        fetch_fn=http_fetch,
-                        generate=lambda system, user: self.ollama.generate(user, system),
-                    )
+                    attempted_live = True
+                    live = await self.live_search(clean_text)   # single seam (provider wiring + gate)
                     if live is not None:
                         response_text = live.text
                         source_note = live.source_url
@@ -503,6 +543,22 @@ class MessageHandler:
                     "- Email us at gsa-pres@njit.edu\n"
                     "- Use /contact to find the right officer"
                 )
+                is_canned_deflection = True
+
+            # Deflection offer (offer-only — NEVER auto-fire). Detect a confident deflection:
+            # tag-at-source (the canned no-info branch above) OR a narrow phrase-match on the
+            # composed-from-chunks answer. Match on the PRE-heads-up text so the heads-up
+            # "confirm with <office>" line can't self-trigger. Suppressed when the feature is
+            # off, when we already answered live, or when this turn already tried live and got
+            # nothing (don't offer to redo a search that just failed).
+            is_deflection = is_canned_deflection or (
+                bool(chunks) and used_ai and not used_live
+                and looks_like_deflection(response_text)
+            )
+            offer_live_search = bool(
+                botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
+                and is_deflection and not used_live and not attempted_live
+            )
 
             # High-stakes heads-up: we still answer, but for immigration/billing/funding
             # questions, tell the student to confirm with the authoritative office. Only when
@@ -541,6 +597,7 @@ class MessageHandler:
                 used_ai=used_ai,
                 ollama_failed=ollama_failed,
                 question_id=question_id,
+                offer_live_search=offer_live_search,
             )
 
         except Exception as exc:

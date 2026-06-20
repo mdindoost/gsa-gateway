@@ -17,8 +17,10 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 from telegram.ext import MessageHandler as PTBHandler
 from telegram.ext import filters
 
+import bot.config as botcfg
 from bot.connectors.base import BasePlatform
 from bot.core.message_handler import MessageHandler, MessageRequest
+from bot.core.live_query import LIVE_NOT_FOUND_MSG
 from bot.core.modes import ConversationModeStore, ModeDispatcher, ModeRegistry
 from bot.services.knowledge_base import KnowledgeBase
 from v2.core.judging.session import JudgingSessionManager
@@ -76,10 +78,11 @@ class TelegramConnector(BasePlatform):
     # ── Keyboard helpers ──────────────────────────────────────────────────────
 
     def _build_feedback_keyboard(
-        self, question_id: int
+        self, question_id: int, offer_live_search: bool = False
     ) -> Optional[InlineKeyboardMarkup]:
         """Build the 👍/👎/🔄 inline keyboard.  Returns None if any callback
-        data would exceed Telegram's 64-byte limit."""
+        data would exceed Telegram's 64-byte limit. When `offer_live_search` is set (a
+        detected deflection), add a second row offering a live njit.edu search."""
         cb_up    = f"fb:{question_id}:up"
         cb_down  = f"fb:{question_id}:down"
         cb_retry = f"fb:{question_id}:retry"
@@ -91,11 +94,18 @@ class TelegramConnector(BasePlatform):
                 )
                 return None
 
-        return InlineKeyboardMarkup([[
+        rows = [[
             InlineKeyboardButton("👍 Helpful",     callback_data=cb_up),
             InlineKeyboardButton("👎 Not helpful", callback_data=cb_down),
             InlineKeyboardButton("🔄 Try again",   callback_data=cb_retry),
-        ]])
+        ]]
+        if offer_live_search:
+            rows.append([self._web_search_button(question_id)])
+        return InlineKeyboardMarkup(rows)
+
+    @staticmethod
+    def _web_search_button(question_id: int) -> InlineKeyboardButton:
+        return InlineKeyboardButton("🌐 Search NJIT's website", callback_data=f"web:{question_id}")
 
     def _build_detail_keyboard(self, question_id: int) -> InlineKeyboardMarkup:
         """Build the Wrong info / Incomplete / Off topic follow-up keyboard."""
@@ -138,6 +148,9 @@ class TelegramConnector(BasePlatform):
         )
         self.app.add_handler(
             CallbackQueryHandler(self._on_feedback_detail, pattern=r"^fbd:\d+:")
+        )
+        self.app.add_handler(
+            CallbackQueryHandler(self._on_web_search,      pattern=r"^web:\d+$")
         )
 
     async def start(self) -> None:
@@ -223,14 +236,17 @@ class TelegramConnector(BasePlatform):
 
         keyboard: Optional[InlineKeyboardMarkup] = None
         if resp.question_id:
-            keyboard = self._build_feedback_keyboard(resp.question_id)
-            if keyboard:
-                self._register_pending(
-                    question_id=resp.question_id,
-                    user_id=update.effective_user.id,
-                    question_text=update.message.text,
-                    answer_text=resp.text,
-                )
+            keyboard = self._build_feedback_keyboard(
+                resp.question_id, offer_live_search=resp.offer_live_search
+            )
+            # Register unconditionally on question_id (not gated on keyboard) so the web offer
+            # and 🔄 dead-end always have question_text to re-issue a live search.
+            self._register_pending(
+                question_id=resp.question_id,
+                user_id=update.effective_user.id,
+                question_text=update.message.text,
+                answer_text=resp.text,
+            )
 
         try:
             await update.message.reply_text(
@@ -290,7 +306,8 @@ class TelegramConnector(BasePlatform):
                     rating="thumbs_down",
                     platform="telegram",
                 )
-            self._pending_feedback.pop(question_id, None)
+            # Do NOT pop here — the detail step (wrong/incomplete) may offer a live search,
+            # which needs question_text from the pending entry. _on_feedback_detail pops it.
             await query.edit_message_reply_markup(reply_markup=None)
             await query.answer()
             await query.message.reply_text(
@@ -349,9 +366,23 @@ class TelegramConnector(BasePlatform):
                 pass
 
             if similarity > _SIMILARITY_THRESHOLD or not new_resp.text:
+                # The 🔄 dead-end is the escalation moment: offer a live njit.edu search.
+                # We popped the pending entry above, so re-register under the ORIGINAL qid
+                # (we still hold question_text) for the web offer's ownership lookup. Gated
+                # on the feature being on (no offer when live search is disabled).
+                dead_end_kb = None
+                if botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY:
+                    self._register_pending(
+                        question_id=question_id,
+                        user_id=query.from_user.id,
+                        question_text=question_text,
+                        answer_text="",
+                    )
+                    dead_end_kb = InlineKeyboardMarkup([[self._web_search_button(question_id)]])
                 await query.message.reply_text(
                     "I got the same answer. Try rephrasing your question or "
-                    "contact gsa-vpa@njit.edu for direct help."
+                    "contact gsa-vpa@njit.edu for direct help.",
+                    reply_markup=dead_end_kb,
                 )
                 return
 
@@ -409,7 +440,75 @@ class TelegramConnector(BasePlatform):
             )
 
         await query.answer()
-        await query.edit_message_text("✅ Feedback recorded — thanks! 🙏")
+        # On "wrong info" / "incomplete", offer a live njit.edu search (the answer was a dead
+        # end). The 👎 handler deliberately did NOT pop the pending entry, so question_text is
+        # still here for the web re-issue. Off-topic gets no offer; pop it now either way.
+        if detail in ("wrong_info", "incomplete") and question_id in self._pending_feedback:
+            await query.edit_message_text(
+                "Thanks — want me to search NJIT's website for this?",
+                reply_markup=InlineKeyboardMarkup([[self._web_search_button(question_id)]]),
+            )
+        else:
+            self._pending_feedback.pop(question_id, None)
+            await query.edit_message_text("✅ Feedback recorded — thanks! 🙏")
+
+    async def _on_web_search(self, update: Update, context) -> None:
+        """Handle the 🌐 'Search NJIT's website' offer (callback web:{question_id})."""
+        query = update.callback_query
+        if not query or not query.data or not query.from_user or not query.message:
+            return
+
+        # Edit the offer button away FIRST so it can't be double-tapped during the search.
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            question_id = int(query.data.split(":")[1])
+        except (ValueError, IndexError):
+            await query.answer()
+            return
+
+        pending = self._pending_feedback.get(question_id)
+        if pending is None:
+            await query.answer()
+            await query.message.reply_text(
+                "That offer expired — please ask your question again and I'll search NJIT for it."
+            )
+            return
+        if pending["user_id_hash"] != self._hash_uid(query.from_user.id):
+            await query.answer(
+                "These buttons are for the person who asked the question.", show_alert=True
+            )
+            return
+
+        question_text = pending.get("question_text", "")
+        self._pending_feedback.pop(question_id, None)
+        await query.answer()
+        thinking = await query.message.reply_text("🌐 Searching NJIT's website…")
+
+        try:
+            live = await self.handler.live_search(question_text)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Telegram live_search error: %s", exc)
+            live = None
+
+        try:
+            await thinking.delete()
+        except Exception:  # noqa: BLE001
+            pass
+
+        if live is None:
+            await query.message.reply_text(LIVE_NOT_FOUND_MSG)
+            return
+        text = live.text
+        if getattr(live, "source_url", None) and "Source:" not in text:
+            text += f"\n\nSource: {live.source_url}"
+        try:
+            await query.message.reply_text(_tg_html(text), parse_mode="HTML")
+        except Exception:  # noqa: BLE001
+            await query.message.reply_text(text)
 
     # ── Command handlers ──────────────────────────────────────────────────────
 

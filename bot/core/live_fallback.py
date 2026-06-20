@@ -26,7 +26,7 @@ class LiveAnswer:
 
 def _format(spans: list[str], source_url: str) -> str:
     body = " ".join(spans)
-    return f"From NJIT's website: {body}\n\nSource: {source_url}"
+    return f"🌐 Live from NJIT's website (fetched live): {body}\n\nSource: {source_url}"
 
 
 async def maybe_answer_live(question, *, search_fn, fetch_fn, generate, max_pages: int = 2):

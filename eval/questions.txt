@@ -179,3 +179,9 @@ oria linkedin
 Koutis scholar
 who is the linkedin for vincent oria
 professor young
+
+# live-search trigger redesign: explicit search + confident-deflection offer (+ heads-up NEGATIVE)
+search njit for library hours
+look up parking permits on njit
+what are the Van Houten library hours
+how do I apply for CPT
