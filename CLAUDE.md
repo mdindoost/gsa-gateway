@@ -68,10 +68,11 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
    `v2/core/ingestion/grounded_extract.py`): on a KB miss (top rerank relevance < `LIVE_THRESHOLD`
    or no chunk), search njit.edu (Brave Search API), fetch the top page, and answer from **verbatim,
    page-grounded spans + source link** (extractive — no hallucination; spans must appear literally
-   on the page or are dropped). Gated by `LIVE_ENABLED`. **Currently OFF (`LIVE_ENABLED=0`, Brave
-   subscription cancelled) → dormant, degrades silently to the "contact the office" deflection.**
-   Re-enable: add a search key (Brave or swap provider — `njit_search` is provider-isolated) +
-   `LIVE_ENABLED=1`. Spec: `docs/superpowers/specs/2026-06-17-live-search-fallback-design.md`.
+   on the page or are dropped). Gated by `LIVE_ENABLED`. **Currently ON (2026-06-20) — `LIVE_ENABLED=1`
+   + a new `BRAVE_API_KEY` on Brave's "Search" tier (NOT "Answers" — we do our own extraction), Free
+   spend-cap (~1,000 req/mo free credits; pauses → degrades to the deflection if exhausted, never a
+   bill).** Provider-isolated (`njit_search` — swap the provider in one module). Off-switch: set
+   `LIVE_ENABLED=0`. Spec: `docs/superpowers/specs/2026-06-17-live-search-fallback-design.md`.
 
 **Knowledge sources:**
 - **YWCC + MTSM / NJIT** — gathered by the `explore()` crawler (`v2/core/ingestion/explore.py`)
