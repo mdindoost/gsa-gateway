@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import difflib
 import hashlib
+import html
 import io
 import logging
+import re
 import time
 from typing import Optional
 
@@ -24,11 +26,17 @@ from v2.core.judging.session import JudgingSessionManager
 logger = logging.getLogger(__name__)
 
 
-def _tg_md(text: str) -> str:
-    """Adapt Discord-style Markdown to Telegram legacy Markdown: bold is `*single*` on Telegram,
-    not Discord's `**double**`, so `**Kavosh**` would otherwise show its asterisks literally.
-    Italics (`_x_`) are the same on both, so only the bold marker needs converting."""
-    return (text or "").replace("**", "*")
+def _tg_html(text: str) -> str:
+    """Render our Discord-style Markdown on Telegram via HTML parse mode — far more robust than
+    Telegram's legacy Markdown, which 400s on stray chars like `&` (common in source notes /
+    "research areas & citations") and then silently falls back to unformatted text.
+
+    Escapes &/</> first, then converts **bold**, *italic*, and _italic_ to <b>/<i>."""
+    t = html.escape(text or "", quote=False)
+    t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t, flags=re.S)      # bold (before single-*)
+    t = re.sub(r"\*(.+?)\*", r"<i>\1</i>", t, flags=re.S)          # *italic*
+    t = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"<i>\1</i>", t, flags=re.S)  # _italic_ (word-boundary)
+    return t
 
 _SIMILARITY_THRESHOLD = 0.90
 _FEEDBACK_TTL = 259200  # 72 hours in seconds
@@ -199,7 +207,7 @@ class TelegramConnector(BasePlatform):
             response_text = reply.payload
             if response_text:
                 try:
-                    await update.message.reply_text(_tg_md(response_text), parse_mode="Markdown")
+                    await update.message.reply_text(_tg_html(response_text), parse_mode="HTML")
                 except Exception:  # noqa: BLE001
                     await update.message.reply_text(response_text)
             return
@@ -226,7 +234,7 @@ class TelegramConnector(BasePlatform):
 
         try:
             await update.message.reply_text(
-                _tg_md(text), parse_mode="Markdown", reply_markup=keyboard
+                _tg_html(text), parse_mode="HTML", reply_markup=keyboard
             )
         except Exception:
             await update.message.reply_text(text, reply_markup=keyboard)
@@ -364,7 +372,7 @@ class TelegramConnector(BasePlatform):
 
             try:
                 await query.message.reply_text(
-                    _tg_md(new_text), parse_mode="Markdown", reply_markup=new_keyboard
+                    _tg_html(new_text), parse_mode="HTML", reply_markup=new_keyboard
                 )
             except Exception:
                 await query.message.reply_text(new_text, reply_markup=new_keyboard)
