@@ -133,10 +133,11 @@ def select_scholar_targets(conn, *, org_scope: str | None = None,
     return [k for k in keys if not (k in seen or seen.add(k))]
 
 
-def scholar_scope_list(conn) -> list[dict]:
+def scholar_scope_list(conn, mode: str = "have") -> list[dict]:
     """The dashboard scope dropdown: 'All faculty' + each college + each department, each with the
-    count of DISTINCT people in that subtree carrying a Scholar URL (a college rolls up its depts).
-    Computed in one pass (no per-org subtree walk): expand each scholar person's role-orgs up the
+    count of DISTINCT people in that subtree. mode='have' (refresh job) counts people WITH a Scholar
+    URL; mode='discover' counts FACULTY WITHOUT one (= how many a discovery run will search).
+    Computed in one pass (no per-org subtree walk): expand each counted person's role-orgs up the
     parent chain, then count distinct people per ancestor org. Read-only."""
     from collections import defaultdict
     scholar_keys = {k for k, _ in people_with_scholar(conn)}
@@ -146,13 +147,16 @@ def scholar_scope_list(conn) -> list[dict]:
             "SELECT id, slug, name, type, parent_id FROM organizations WHERE is_active=1"):
         orgs[oid] = {"slug": slug, "name": name, "type": otype}
         parent[oid] = pid
+    discover = mode == "discover"
+    cat = "AND e.category='faculty'" if discover else ""   # discovery targets faculty only
     membership: dict[str, set[int]] = defaultdict(set)
     for key, org_id in conn.execute(
             "SELECT p.key, json_extract(o.attrs,'$.org_id') "
             "FROM edges e JOIN nodes p ON p.id=e.src_id "
             "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
-            "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1").fetchall():
-        if key in scholar_keys and org_id is not None:
+            f"WHERE e.type='has_role' AND e.is_active=1 {cat} AND p.is_active=1").fetchall():
+        in_set = (key not in scholar_keys) if discover else (key in scholar_keys)
+        if in_set and org_id is not None:
             membership[key].add(int(org_id))
     counts: dict[int, set[str]] = defaultdict(set)
     for key, org_ids in membership.items():
@@ -164,15 +168,16 @@ def scholar_scope_list(conn) -> list[dict]:
                 cur = parent.get(cur)
         for a in ancestors:
             counts[a].add(key)
-    rows = [{"slug": "", "label": f"All faculty ({len(scholar_keys)} with Scholar)",
-             "type": "all", "eligible": len(scholar_keys)}]
+    word = "without Scholar" if discover else "with Scholar"
+    total = len(membership) if discover else len(scholar_keys)
+    rows = [{"slug": "", "label": f"All faculty ({total} {word})", "type": "all", "eligible": total}]
     colleges = sorted((it for it in orgs.items() if it[1]["type"] == "college"),
                       key=lambda it: it[1]["name"])
     depts = sorted((it for it in orgs.items() if it[1]["type"] == "department"),
                    key=lambda it: it[1]["name"])
     for oid, meta in colleges + depts:
         n = len(counts.get(oid, ()))
-        rows.append({"slug": meta["slug"], "label": f'{meta["name"]} ({n} with Scholar)',
+        rows.append({"slug": meta["slug"], "label": f'{meta["name"]} ({n} {word})',
                      "type": meta["type"], "eligible": n})
     return rows
 

@@ -21,6 +21,7 @@ from bot.services.jobs import (
     build_crawl_section_command,
     build_refresh_all_command,
     build_refresh_command,
+    build_discover_scholar_command,
     build_refresh_scholar_command,
     build_seed_roster_command,
 )
@@ -417,3 +418,19 @@ def test_estimate_excludes_non_done_runs(tmp_path):
                 started="2026-06-13 11:00:00", finished="2026-06-13 11:01:00",
                 args='{"scope":"all","web":false}')
     assert mgr.estimate_refresh_all(web=False) is None
+
+
+def test_build_discover_scholar_command_maps_args():
+    cmd = build_discover_scholar_command(python_bin="/v/py", repo_root="/r", db_path="/r/g.db",
+                                         scope="nce", limit=50, embed=True)
+    assert cmd[:2] == ["/v/py", "/r/scripts/discover_scholar.py"]
+    assert "--commit" in cmd and "--org" in cmd and "nce" in cmd
+    assert "--limit" in cmd and "50" in cmd and "--embed" in cmd
+
+
+def test_start_discover_scholar_dispatch_and_summary(tmp_path):
+    line = "Scholar discovery complete: 3 written, 2 queued of 10."
+    mgr = _make_manager(tmp_path, build_cmd=_fast_ok_builder(line))
+    job = mgr.start_discover_scholar(scope="nce", limit=50)
+    assert _wait_until(lambda: mgr.get_job(job["job_id"])["status"] == "done")
+    assert "Scholar discovery complete" in (mgr.get_job(job["job_id"])["summary"] or "")

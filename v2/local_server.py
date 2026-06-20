@@ -151,6 +151,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 return self._json({"jobs": JOBS.list_jobs(20)})
             if path == "/api/jobs/scholar-scopes":
                 return self._api_scholar_scopes()
+            if path == "/api/jobs/discover-scopes":
+                return self._api_scholar_scopes(mode="discover")
             if path == "/api/backups":
                 return self._api_list_backups()
             if path.startswith("/api/jobs/"):
@@ -206,6 +208,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     return self._api_explore()
                 if path == "/api/jobs/refresh-scholar":
                     return self._api_refresh_scholar()
+                if path == "/api/jobs/discover-scholar":
+                    return self._api_discover_scholar()
                 if path == "/api/jobs/crawl-section":
                     return self._api_crawl_section()
                 if path == "/api/jobs/seed-roster":
@@ -570,16 +574,43 @@ class GatewayHandler(BaseHTTPRequestHandler):
             return self._error("a job is already running", 409)
         return self._json(res, 201)
 
-    def _api_scholar_scopes(self):
-        """Dropdown data for the Scholar refresh job: All + colleges + departments + eligible counts."""
+    def _api_scholar_scopes(self, mode="have"):
+        """Dropdown data for the Scholar jobs: All + colleges + departments + eligible counts.
+        mode='have' (refresh) = N with Scholar; mode='discover' = N faculty WITHOUT Scholar."""
         conn = self._conn()
         try:
-            scopes = _scholar.scholar_scope_list(conn)
+            scopes = _scholar.scholar_scope_list(conn, mode=mode)
         except sqlite3.OperationalError:
-            scopes = [{"slug": "", "label": "All faculty (0 with Scholar)", "type": "all", "eligible": 0}]
+            word = "without Scholar" if mode == "discover" else "with Scholar"
+            scopes = [{"slug": "", "label": f"All faculty (0 {word})", "type": "all", "eligible": 0}]
         finally:
             conn.close()
         return self._json({"scopes": scopes})
+
+    def _api_discover_scholar(self):
+        body = self._body()
+        scope = body.get("scope") or None
+        if scope is not None:
+            conn = self._conn()
+            try:
+                ok = conn.execute(
+                    "SELECT 1 FROM organizations WHERE slug=? AND is_active=1", (scope,)).fetchone()
+            except sqlite3.OperationalError:
+                ok = None
+            finally:
+                conn.close()
+            if not ok:
+                return self._error(f"unknown scope: {scope}", 400)
+        try:
+            limit = int(body.get("limit", 50))
+        except (TypeError, ValueError):
+            return self._error("limit must be an integer", 400)
+        embed = bool(body.get("embed", True))
+        try:
+            res = JOBS.start_discover_scholar(scope=scope, limit=limit, embed=embed)
+        except JobBusyError:
+            return self._error("a job is already running", 409)
+        return self._json(res, 201)
 
     def _api_refresh_scholar(self):
         body = self._body()

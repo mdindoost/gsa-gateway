@@ -281,3 +281,35 @@ def test_refresh_scholar_requires_csrf(server):
     _, _, port = server
     status, _ = _request(port, "POST", "/api/jobs/refresh-scholar", body={"scope": ""})
     assert status == 403
+
+
+# ── scholar discovery job ─────────────────────────────────────────────────────
+
+def test_discover_scopes_endpoint_counts_without_scholar(server):
+    srv_mod, _, port = server
+    _seed_orgs(srv_mod)
+    status, body = _request(port, "GET", "/api/jobs/discover-scopes")
+    assert status == 200
+    assert any("without Scholar" in r["label"] for r in body["scopes"])
+
+
+def test_discover_scholar_valid_scope_starts_job(server):
+    srv_mod, _, port = server
+    _seed_orgs(srv_mod)
+    status, body = _request(port, "POST", "/api/jobs/discover-scholar",
+                            body={"scope": "ywcc", "limit": 50}, headers=CSRF)
+    assert status == 201 and body["job_id"] >= 1
+
+
+def test_discover_scholar_unknown_scope_is_400(server):
+    srv_mod, _, port = server
+    _seed_orgs(srv_mod)
+    status, _ = _request(port, "POST", "/api/jobs/discover-scholar",
+                         body={"scope": "nope"}, headers=CSRF)
+    assert status == 400
+
+
+def test_discover_scholar_requires_csrf(server):
+    _, _, port = server
+    status, _ = _request(port, "POST", "/api/jobs/discover-scholar", body={"scope": ""})
+    assert status == 403

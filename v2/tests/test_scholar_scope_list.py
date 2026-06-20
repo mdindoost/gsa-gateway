@@ -75,3 +75,13 @@ def test_person_in_two_subtree_orgs_counted_once_in_college(db):
     db.commit()
     by = _by_slug(scholar_scope_list(db))
     assert by["ywcc"]["eligible"] == 3
+
+
+def test_discover_mode_counts_faculty_without_scholar(db):
+    # db fixture: cs has cs1,cs2 (scholar) + noschol (no scholar). discover mode counts WITHOUT.
+    from v2.core.ingestion.scholar import scholar_scope_list
+    rows = scholar_scope_list(db, mode="discover")
+    by = {r["slug"]: r for r in rows}
+    # 'noschol' is the only faculty without a scholar url, in cs/ywcc
+    assert by["cs"]["eligible"] == 1
+    assert "without Scholar" in by[""]["label"]

@@ -106,6 +106,22 @@ def build_refresh_scholar_command(*, python_bin, repo_root, db_path, scope, olde
     return cmd
 
 
+def build_discover_scholar_command(*, python_bin, repo_root, db_path, scope, limit,
+                                   embed) -> list[str]:
+    """Build the Scholar URL DISCOVERY job (search + verify + strict-write). Always --commit
+    (gated by the script's hardened_backup). ``scope`` = org slug (None = all faculty without a
+    URL); ``limit`` caps the run (Brave budget); ``embed`` embeds new research-area items."""
+    script = str(Path(repo_root) / "scripts" / "discover_scholar.py")
+    cmd = [python_bin, script, "--commit", "--db", str(db_path)]
+    if scope:
+        cmd += ["--org", str(scope)]
+    if limit is not None:
+        cmd += ["--limit", str(limit)]
+    if embed:
+        cmd.append("--embed")
+    return cmd
+
+
 def build_explore_command(*, python_bin, repo_root, db_path, depth, frontier, reset) -> list[str]:
     """Build the KG gather command (run_explore.py). ``frontier`` processes pending personal
     sites instead of a hub crawl; ``reset`` re-derives the graph + crawler KB from scratch."""
@@ -188,6 +204,11 @@ class JobManager:
                 python_bin=self.python_bin, repo_root=self.repo_root,
                 db_path=self.db_path, scope=args.get("scope"),
                 older_than=args.get("older_than"), embed=args.get("embed", True))
+        if job_type == "discover_scholar":
+            return build_discover_scholar_command(
+                python_bin=self.python_bin, repo_root=self.repo_root,
+                db_path=self.db_path, scope=args.get("scope"),
+                limit=args.get("limit", 50), embed=args.get("embed", True))
         if job_type == "crawl_section":
             return build_crawl_section_command(
                 python_bin=self.python_bin, repo_root=self.repo_root,
@@ -268,6 +289,11 @@ class JobManager:
         subtree if ``scope`` given) whose profile is older than ``older_than`` days; embeds new areas."""
         return self._start("refresh_scholar",
                            {"scope": scope, "older_than": older_than, "embed": embed})
+
+    def start_discover_scholar(self, scope=None, limit=50, embed=True) -> dict:
+        """Discover + strict-write Scholar URLs for faculty-without-Scholar in scope (search +
+        verified-njit gate); queues uncertain. ``limit`` caps the Brave spend per run."""
+        return self._start("discover_scholar", {"scope": scope, "limit": limit, "embed": embed})
 
     def start_crawl_section(self, section="all") -> dict:
         """Refresh one NJIT office (or 'all') from njit.edu: fetch + ingest live + embed."""
@@ -458,9 +484,10 @@ class JobManager:
         for ln in reversed(lines):
             if "refresh njit kb complete" in ln.lower():
                 return ln[:300]
-        # Scholar refresh job completion line.
+        # Scholar refresh / discovery job completion lines.
         for ln in reversed(lines):
-            if "scholar refresh complete" in ln.lower():
+            low = ln.lower()
+            if "scholar refresh complete" in low or "scholar discovery complete" in low:
                 return ln[:300]
         # Otherwise the most recent change-count line (single-department run).
         for ln in reversed(lines):

@@ -588,6 +588,7 @@ function renderJobs() {
           <option value="roster">A manual roster</option>
           <option value="frontier">Personal / lab websites</option>
           <option value="scholar">Google Scholar (metrics &amp; research areas)</option>
+          <option value="discover-scholar">Discover Scholar URLs (search + add)</option>
         </select>
         <select id="refresh-target" class="btn btn-ghost" style="padding:6px 10px;display:none"></select>
         <input id="refresh-older" type="number" min="0" value="30" title="only refresh profiles older than N days"
@@ -617,11 +618,15 @@ function renderJobs() {
   const target = document.getElementById("refresh-target");
   const older = document.getElementById("refresh-older");
   const fillTarget = () => {
-    older.style.display = what.value === "scholar" ? "" : "none";
-    if (what.value === "scholar") {
+    const isScholar = what.value === "scholar";
+    const isDiscover = what.value === "discover-scholar";
+    older.style.display = (isScholar || isDiscover) ? "" : "none";
+    if (isScholar || isDiscover) {
+      older.value = isDiscover ? 50 : 30;
+      older.title = isDiscover ? "max faculty to search this run" : "only refresh profiles older than N days";
       target.innerHTML = '<option value="">Loading scopes…</option>';
       target.style.display = "";
-      jobsApi("/api/jobs/scholar-scopes").then(({ body }) => {
+      jobsApi(isDiscover ? "/api/jobs/discover-scopes" : "/api/jobs/scholar-scopes").then(({ body }) => {
         const scopes = (body && body.scopes) || [];
         target.innerHTML = scopes.map((s) =>
           `<option value="${esc(s.slug)}">${esc(s.label)}</option>`).join("");
@@ -655,12 +660,17 @@ function renderJobs() {
       msg = `Refresh Google Scholar for "${label(target)}"?\n\nOnly profiles older than `
           + `${older.value} days are re-fetched (metrics + research areas). A backup is taken first, `
           + "then new research areas are embedded.";
+    else if (what.value === "discover-scholar")
+      msg = `Discover Scholar URLs for "${label(target)}" (up to ${older.value} faculty)?\n\n`
+          + "Searches the web for each faculty member's Scholar profile and auto-adds ONLY verified-NJIT "
+          + "matches; uncertain ones go to a review file. A backup is taken first. Uses Brave search credits.";
     if (!window.confirm(msg)) return;
     if (what.value === "explore") startExplore({});
     else if (what.value === "frontier") startExplore({ frontier: true });
     else if (what.value === "office") startCrawlSection(target.value);
     else if (what.value === "roster") startSeedRoster(target.value);
     else if (what.value === "scholar") startRefreshScholar(target.value, older.value);
+    else if (what.value === "discover-scholar") startDiscoverScholar(target.value, older.value);
   });
   refreshJobsHealth();
   refreshJobsList();
@@ -704,6 +714,20 @@ function startRefreshScholar(scope, olderThan) {
       if (status === 409) { toast("A job is already running", false); return; }
       if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
       toast("Refreshing Google Scholar ✅");
+      pollJob(body.job_id);
+      refreshJobsList();
+      refreshJobsHealth();
+    })
+    .catch((e) => toast("Server error: " + e.message, false));
+}
+
+function startDiscoverScholar(scope, limit) {
+  jobsApi("/api/jobs/discover-scholar",
+          { method: "POST", body: { scope, limit: Number(limit), embed: true } })
+    .then(({ status, body }) => {
+      if (status === 409) { toast("A job is already running", false); return; }
+      if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
+      toast("Discovering Scholar URLs ✅");
       pollJob(body.job_id);
       refreshJobsList();
       refreshJobsHealth();

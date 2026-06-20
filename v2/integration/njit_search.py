@@ -20,6 +20,22 @@ def _default_get(url: str, headers: dict) -> str:
         return r.read().decode("utf-8", "replace")
 
 
+def web_search(query: str, k: int = 5, http_get=_default_get, key: str | None = None) -> list[str]:
+    """Un-scoped Brave web search (NO site:njit.edu) — for Scholar URL discovery, which must reach
+    scholar.google.com. Same key/contract as search(): [] on missing key / quota / network error
+    (so a missing/exhausted key degrades to 'skip', never crashes the job)."""
+    key = key if key is not None else os.getenv("BRAVE_API_KEY", "")
+    if not key:
+        return []
+    url = f"{_ENDPOINT}?{urllib.parse.urlencode({'q': query, 'count': max(k, 5)})}"
+    headers = {"X-Subscription-Token": key, "Accept": "application/json", "User-Agent": _UA}
+    try:
+        results = json.loads(http_get(url, headers)).get("web", {}).get("results", [])
+        return [r["url"] for r in results if r.get("url")][:k]
+    except Exception:
+        return []
+
+
 def search(query: str, k: int = 3, http_get=_default_get, key: str | None = None) -> list[str]:
     key = key if key is not None else os.getenv("BRAVE_API_KEY", "")
     if not key:
