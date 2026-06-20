@@ -27,6 +27,9 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from dotenv import load_dotenv
+load_dotenv(REPO / ".env")          # so BRAVE_API_KEY is available when run from a plain shell
+
 from scripts._area_tag_migrate import hardened_backup
 from v2.core.database.schema import get_connection
 from v2.core.ingestion import scholar_discovery as D
