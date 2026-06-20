@@ -41,6 +41,7 @@ from bot.services.jobs import JobBusyError, JobManager, JobNotFoundError  # noqa
 from v2.core.ingestion.departments import DEPARTMENTS as DEPT_REGISTRY  # noqa: E402
 from v2.core.ingestion.departments import supported as supported_depts  # noqa: E402
 from v2.core.ingestion.entry_points import crawl_scope as _crawl_scope  # noqa: E402
+from v2.core.ingestion import scholar as _scholar  # noqa: E402
 
 # Control-plane job runner (faculty refresh, …). Same DB the bot/dashboard use.
 JOBS = JobManager(db_path=DB_PATH, repo_root=REPO_ROOT, python_bin=sys.executable)
@@ -148,6 +149,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 return self._api_health()
             if path == "/api/jobs":
                 return self._json({"jobs": JOBS.list_jobs(20)})
+            if path == "/api/jobs/scholar-scopes":
+                return self._api_scholar_scopes()
             if path == "/api/backups":
                 return self._api_list_backups()
             if path.startswith("/api/jobs/"):
@@ -201,6 +204,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     return self._api_refresh()
                 if path == "/api/jobs/explore":
                     return self._api_explore()
+                if path == "/api/jobs/refresh-scholar":
+                    return self._api_refresh_scholar()
                 if path == "/api/jobs/crawl-section":
                     return self._api_crawl_section()
                 if path == "/api/jobs/seed-roster":
@@ -561,6 +566,46 @@ class GatewayHandler(BaseHTTPRequestHandler):
         web = bool(body.get("web", False))
         try:
             res = JOBS.start_refresh(department=dept, limit=limit, web=web)
+        except JobBusyError:
+            return self._error("a job is already running", 409)
+        return self._json(res, 201)
+
+    def _api_scholar_scopes(self):
+        """Dropdown data for the Scholar refresh job: All + colleges + departments + eligible counts."""
+        conn = self._conn()
+        try:
+            scopes = _scholar.scholar_scope_list(conn)
+        except sqlite3.OperationalError:
+            scopes = [{"slug": "", "label": "All faculty (0 with Scholar)", "type": "all", "eligible": 0}]
+        finally:
+            conn.close()
+        return self._json({"scopes": scopes})
+
+    def _api_refresh_scholar(self):
+        body = self._body()
+        scope = body.get("scope") or None     # "" / None ⇒ all faculty with a Scholar URL
+        if scope is not None:
+            conn = self._conn()
+            try:
+                ok = conn.execute(
+                    "SELECT 1 FROM organizations WHERE slug=? AND is_active=1", (scope,)).fetchone()
+            except sqlite3.OperationalError:
+                ok = None
+            finally:
+                conn.close()
+            if not ok:
+                return self._error(f"unknown scope: {scope}", 400)
+        older = body.get("older_than", 30)
+        if older in (None, ""):
+            older = None
+        else:
+            try:
+                older = int(older)
+            except (TypeError, ValueError):
+                return self._error("older_than must be an integer", 400)
+        embed = bool(body.get("embed", True))
+        try:
+            res = JOBS.start_refresh_scholar(scope=scope, older_than=older, embed=embed)
         except JobBusyError:
             return self._error("a job is already running", 409)
         return self._json(res, 201)

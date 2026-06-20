@@ -587,8 +587,11 @@ function renderJobs() {
           <option value="office">A specific NJIT office</option>
           <option value="roster">A manual roster</option>
           <option value="frontier">Personal / lab websites</option>
+          <option value="scholar">Google Scholar (metrics &amp; research areas)</option>
         </select>
         <select id="refresh-target" class="btn btn-ghost" style="padding:6px 10px;display:none"></select>
+        <input id="refresh-older" type="number" min="0" value="30" title="only refresh profiles older than N days"
+               class="btn btn-ghost" style="width:70px;padding:6px 8px;display:none">
         <button class="btn btn-primary" id="refresh-run">Run refresh</button>
       </div>
       <div id="jobs-kg-scope" class="jobs-scope"></div>
@@ -612,7 +615,19 @@ function renderJobs() {
 
   const what = document.getElementById("refresh-what");
   const target = document.getElementById("refresh-target");
+  const older = document.getElementById("refresh-older");
   const fillTarget = () => {
+    older.style.display = what.value === "scholar" ? "" : "none";
+    if (what.value === "scholar") {
+      target.innerHTML = '<option value="">Loading scopes…</option>';
+      target.style.display = "";
+      jobsApi("/api/jobs/scholar-scopes").then(({ body }) => {
+        const scopes = (body && body.scopes) || [];
+        target.innerHTML = scopes.map((s) =>
+          `<option value="${esc(s.slug)}">${esc(s.label)}</option>`).join("");
+      });
+      return;
+    }
     const opts = what.value === "office" ? OFFICE_OPTS
       : what.value === "roster" ? ROSTER_OPTS : null;
     if (!opts) { target.style.display = "none"; target.innerHTML = ""; return; }
@@ -636,11 +651,16 @@ function renderJobs() {
     else if (what.value === "roster")
       msg = `Re-seed the "${label(target)}" roster from the curated list?\n\nA backup is taken first. `
           + "This restores the curated people/titles (overwrites any drift).";
+    else if (what.value === "scholar")
+      msg = `Refresh Google Scholar for "${label(target)}"?\n\nOnly profiles older than `
+          + `${older.value} days are re-fetched (metrics + research areas). A backup is taken first, `
+          + "then new research areas are embedded.";
     if (!window.confirm(msg)) return;
     if (what.value === "explore") startExplore({});
     else if (what.value === "frontier") startExplore({ frontier: true });
     else if (what.value === "office") startCrawlSection(target.value);
     else if (what.value === "roster") startSeedRoster(target.value);
+    else if (what.value === "scholar") startRefreshScholar(target.value, older.value);
   });
   refreshJobsHealth();
   refreshJobsList();
@@ -673,6 +693,20 @@ function restoreBackup(file) {
       if (status !== 200) { toast((body && body.error) || "Restore failed", false); return; }
       toast("Restored ✅ — current state saved to " + (body.current_saved_to || "a backup"));
       reloadDbQuietly().then(() => renderJobs());
+    })
+    .catch((e) => toast("Server error: " + e.message, false));
+}
+
+function startRefreshScholar(scope, olderThan) {
+  jobsApi("/api/jobs/refresh-scholar",
+          { method: "POST", body: { scope, older_than: Number(olderThan), embed: true } })
+    .then(({ status, body }) => {
+      if (status === 409) { toast("A job is already running", false); return; }
+      if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
+      toast("Refreshing Google Scholar ✅");
+      pollJob(body.job_id);
+      refreshJobsList();
+      refreshJobsHealth();
     })
     .catch((e) => toast("Server error: " + e.message, false));
 }

@@ -74,6 +74,109 @@ def people_with_scholar(conn) -> list[tuple[str, str]]:
     return out
 
 
+def _parse_updated(s: str | None) -> datetime.date | None:
+    """A stored scholar.updated_at -> date. 'YYYY-MM-DD' exact; legacy 'YYYY-MM' as month-start;
+    anything unparseable / missing -> None (treated as never-refreshed = stale)."""
+    if not s:
+        return None
+    parts = str(s).split("-")
+    try:
+        if len(parts) == 3:
+            return datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+        if len(parts) == 2:
+            return datetime.date(int(parts[0]), int(parts[1]), 1)
+    except (ValueError, TypeError):
+        return None
+    return None
+
+
+def select_scholar_targets(conn, *, org_scope: str | None = None,
+                           older_than_days: int | None = None,
+                           today: datetime.date | None = None) -> list[str]:
+    """Person keys eligible for a Scholar refresh: people carrying a Scholar URL, optionally
+    restricted to an org subtree (a college includes its departments, via the same
+    org_descendants + json_extract(org_id) join the metric ranking uses) and/or only those whose
+    scholar.updated_at is older than ``older_than_days``. READ-ONLY (no commit, no node upsert,
+    no network). Returns DISTINCT person keys (a person with two in-scope roles appears once)."""
+    keys = [k for k, _ in people_with_scholar(conn)]
+
+    if org_scope is not None:
+        from v2.core.retrieval.skills import org_descendants
+        row = conn.execute(
+            "SELECT id FROM organizations WHERE slug=? AND is_active=1", (org_scope,)).fetchone()
+        if not row:
+            return []
+        ids = sorted(org_descendants(conn, row[0]))
+        if not ids:
+            return []
+        ph = ",".join("?" * len(ids))
+        in_scope = {r[0] for r in conn.execute(
+            f"SELECT DISTINCT p.key FROM edges e JOIN nodes p ON p.id=e.src_id "
+            f"JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
+            f"WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1 "
+            f"AND json_extract(o.attrs,'$.org_id') IN ({ph})", tuple(ids)).fetchall()}
+        keys = [k for k in keys if k in in_scope]
+
+    if older_than_days is not None:
+        today = today or datetime.date.today()
+        kept = []
+        for k in keys:
+            row = conn.execute(
+                "SELECT json_extract(attrs,'$.profiles.scholar.updated_at') "
+                "FROM nodes WHERE type='Person' AND key=?", (k,)).fetchone()
+            upd = _parse_updated(row[0] if row else None)
+            if upd is None or (today - upd).days >= older_than_days:
+                kept.append(k)
+        keys = kept
+
+    seen: set[str] = set()
+    return [k for k in keys if not (k in seen or seen.add(k))]
+
+
+def scholar_scope_list(conn) -> list[dict]:
+    """The dashboard scope dropdown: 'All faculty' + each college + each department, each with the
+    count of DISTINCT people in that subtree carrying a Scholar URL (a college rolls up its depts).
+    Computed in one pass (no per-org subtree walk): expand each scholar person's role-orgs up the
+    parent chain, then count distinct people per ancestor org. Read-only."""
+    from collections import defaultdict
+    scholar_keys = {k for k, _ in people_with_scholar(conn)}
+    orgs: dict[int, dict] = {}
+    parent: dict[int, int | None] = {}
+    for oid, slug, name, otype, pid in conn.execute(
+            "SELECT id, slug, name, type, parent_id FROM organizations WHERE is_active=1"):
+        orgs[oid] = {"slug": slug, "name": name, "type": otype}
+        parent[oid] = pid
+    membership: dict[str, set[int]] = defaultdict(set)
+    for key, org_id in conn.execute(
+            "SELECT p.key, json_extract(o.attrs,'$.org_id') "
+            "FROM edges e JOIN nodes p ON p.id=e.src_id "
+            "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
+            "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1").fetchall():
+        if key in scholar_keys and org_id is not None:
+            membership[key].add(int(org_id))
+    counts: dict[int, set[str]] = defaultdict(set)
+    for key, org_ids in membership.items():
+        ancestors: set[int] = set()
+        for oid in org_ids:
+            cur = oid
+            while cur is not None and cur in orgs and cur not in ancestors:
+                ancestors.add(cur)
+                cur = parent.get(cur)
+        for a in ancestors:
+            counts[a].add(key)
+    rows = [{"slug": "", "label": f"All faculty ({len(scholar_keys)} with Scholar)",
+             "type": "all", "eligible": len(scholar_keys)}]
+    colleges = sorted((it for it in orgs.items() if it[1]["type"] == "college"),
+                      key=lambda it: it[1]["name"])
+    depts = sorted((it for it in orgs.items() if it[1]["type"] == "department"),
+                   key=lambda it: it[1]["name"])
+    for oid, meta in colleges + depts:
+        n = len(counts.get(oid, ()))
+        rows.append({"slug": meta["slug"], "label": f'{meta["name"]} ({n} with Scholar)',
+                     "type": meta["type"], "eligible": n})
+    return rows
+
+
 def default_fetch(url: str, timeout: int = 20) -> tuple[str, str]:
     """Best-effort (html, status) reader with the project UA. status is 'ok' or 'error:<reason>'.
     NOTE: Scholar blocks bots — expect this to fail at volume; swap a sanctioned provider in."""
@@ -100,14 +203,18 @@ def _home_org_id(conn, person_key: str) -> int | None:
 
 
 def refresh_scholar(conn, fetch=default_fetch, *, only_key: str | None = None,
+                    only_keys: set[str] | None = None,
                     delay: float = 3.0, today: str | None = None) -> dict:
-    """Fetch + update Scholar metrics AND research interests for every person with a Scholar URL
-    (or just ``only_key``). Metrics deep-merge via set_person_profiles (keeps the url); interests
-    become research areas via set_person_research_areas (source='scholar', filed under the faculty
-    home org). Does NOT commit — caller owns the txn. Returns {people, updated, areas_updated, failed, errors}."""
+    """Fetch + update Scholar metrics AND research interests for every person with a Scholar URL,
+    or just the subset in ``only_keys`` (``only_key`` kept for back-compat = a one-key subset).
+    Metrics deep-merge via set_person_profiles (keeps the url); interests become research areas via
+    set_person_research_areas (source='scholar', filed under the faculty home org). ``updated_at`` is
+    a full ISO date (YYYY-MM-DD). Does NOT commit — caller owns the txn.
+    Returns {people, updated, areas_updated, failed, errors}."""
     from v2.core.ingestion.people_editor import set_person_profiles, set_person_research_areas
-    today = today or datetime.date.today().strftime("%Y-%m")
-    targets = [(k, u) for k, u in people_with_scholar(conn) if only_key in (None, k)]
+    today = today or datetime.date.today().strftime("%Y-%m-%d")
+    keyset = set(only_keys) if only_keys is not None else ({only_key} if only_key is not None else None)
+    targets = [(k, u) for k, u in people_with_scholar(conn) if keyset is None or k in keyset]
     stats = {"people": len(targets), "updated": 0, "areas_updated": 0, "failed": 0, "errors": []}
     for i, (key, url) in enumerate(targets):
         if i and delay:

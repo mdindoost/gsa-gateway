@@ -21,6 +21,7 @@ from bot.services.jobs import (
     build_crawl_section_command,
     build_refresh_all_command,
     build_refresh_command,
+    build_refresh_scholar_command,
     build_seed_roster_command,
 )
 
@@ -98,6 +99,44 @@ def test_build_refresh_command_omits_web_when_disabled():
         department="cs", limit=5, web=False)
     assert "--web" not in cmd
     assert "--overview" in cmd and "--commit" in cmd  # always on
+
+
+def test_build_refresh_scholar_command_maps_all_args():
+    cmd = build_refresh_scholar_command(
+        python_bin="/venv/python", repo_root="/repo", db_path="/repo/g.db",
+        scope="ywcc", older_than=30, embed=True)
+    assert cmd[:2] == ["/venv/python", "/repo/scripts/refresh_scholar.py"]
+    assert "--commit" in cmd                       # always gated-commit (job runs for real)
+    assert "--org" in cmd and "ywcc" in cmd
+    assert "--older-than" in cmd and "30" in cmd
+    assert "--embed" in cmd
+    assert "--db" in cmd and "/repo/g.db" in cmd
+
+
+def test_build_refresh_scholar_command_all_scope_omits_optionals():
+    cmd = build_refresh_scholar_command(
+        python_bin="p", repo_root="/r", db_path="/r/g.db",
+        scope=None, older_than=None, embed=False)
+    assert "--org" not in cmd
+    assert "--older-than" not in cmd
+    assert "--embed" not in cmd
+    assert "--commit" in cmd
+
+
+def test_default_build_cmd_routes_refresh_scholar(tmp_path):
+    mgr = JobManager(db_path=str(tmp_path / "t.db"), repo_root="/repo",
+                     python_bin="/venv/python")
+    cmd = mgr._default_build_cmd("refresh_scholar", {"scope": "ywcc", "older_than": 30, "embed": True})
+    assert "refresh_scholar.py" in cmd[1]
+    assert "--org" in cmd and "ywcc" in cmd and "--embed" in cmd
+
+
+def test_scholar_job_summary_uses_completion_line(tmp_path):
+    line = "Scholar refresh complete: 5 updated, 3 areas, 0 failed of 5."
+    mgr = _make_manager(tmp_path, build_cmd=_fast_ok_builder(line))
+    job = mgr.start_refresh_scholar(scope="ywcc", older_than=30, embed=False)
+    assert _wait_until(lambda: mgr.get_job(job["job_id"])["status"] == "done")
+    assert "Scholar refresh complete" in (mgr.get_job(job["job_id"])["summary"] or "")
 
 
 # ── lifecycle ─────────────────────────────────────────────────────────────────

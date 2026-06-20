@@ -235,3 +235,49 @@ def test_cancel_running_job(server):
     cstatus, cbody = _request(port, "POST", f"/api/jobs/{job_id}/cancel", headers=CSRF)
     assert cstatus == 200
     assert _wait_status(port, job_id, "cancelled") is not None
+
+
+# ── scholar refresh job ───────────────────────────────────────────────────────
+
+def _seed_orgs(srv_mod):
+    """Add organizations + an Org node to the server's temp DB (create_all is idempotent)."""
+    from v2.core.database.schema import create_all
+    from v2.core.graph.orgs import ensure_org, sync_org_nodes
+    c = create_all(str(srv_mod.DB_PATH))
+    c.execute("INSERT OR IGNORE INTO organizations(id,name,slug,type) VALUES(1,'NJIT','njit','university')")
+    ensure_org(c, "ywcc", "YWCC", parent_slug="njit", type="college")
+    sync_org_nodes(c)
+    c.commit(); c.close()
+
+
+def test_scholar_scopes_endpoint_lists_all_and_colleges(server):
+    srv_mod, _, port = server
+    _seed_orgs(srv_mod)
+    status, body = _request(port, "GET", "/api/jobs/scholar-scopes")
+    assert status == 200
+    slugs = [r["slug"] for r in body["scopes"]]
+    assert "" in slugs            # the 'All faculty' entry
+    assert "ywcc" in slugs
+
+
+def test_refresh_scholar_valid_scope_starts_job(server):
+    srv_mod, _, port = server
+    _seed_orgs(srv_mod)
+    status, body = _request(port, "POST", "/api/jobs/refresh-scholar",
+                            body={"scope": "ywcc", "older_than": 30, "embed": False}, headers=CSRF)
+    assert status == 201
+    assert body["job_id"] >= 1
+
+
+def test_refresh_scholar_unknown_scope_is_400(server):
+    srv_mod, _, port = server
+    _seed_orgs(srv_mod)
+    status, _ = _request(port, "POST", "/api/jobs/refresh-scholar",
+                         body={"scope": "bogus-college"}, headers=CSRF)
+    assert status == 400
+
+
+def test_refresh_scholar_requires_csrf(server):
+    _, _, port = server
+    status, _ = _request(port, "POST", "/api/jobs/refresh-scholar", body={"scope": ""})
+    assert status == 403

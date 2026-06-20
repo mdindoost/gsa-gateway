@@ -69,6 +69,31 @@ def test_refresh_scholar_updates_metrics_keeping_url(conn):
     assert sch["url"] == "https://scholar.google.com/k"     # url preserved
 
 
+def test_refresh_scholar_only_keys_limits_fetch(conn):
+    conn.execute("INSERT INTO nodes(type,key,name,attrs,source) VALUES('Person','p/k2','Two',?,'crawler')",
+                 (json.dumps({"profiles": {"scholar": {"url": "https://scholar.google.com/k2"}}}),))
+    conn.commit()
+    fetched = []
+    def fetch(u):
+        fetched.append(u); return (SCHOLAR_HTML, "ok")
+    out = refresh_scholar(conn, fetch=fetch, delay=0, only_keys={"p/k"})
+    assert fetched == ["https://scholar.google.com/k"]
+    assert out["people"] == 1 and out["updated"] == 1
+
+
+def test_refresh_scholar_only_key_backcompat(conn):
+    out = refresh_scholar(conn, fetch=lambda u: (SCHOLAR_HTML, "ok"), delay=0, only_key="p/k")
+    assert out["people"] == 1 and out["updated"] == 1
+
+
+def test_refresh_scholar_default_updated_at_is_full_iso_date(conn):
+    import datetime
+    refresh_scholar(conn, fetch=lambda u: (SCHOLAR_HTML, "ok"), delay=0)
+    sch = json.loads(conn.execute("SELECT attrs FROM nodes WHERE key='p/k'").fetchone()[0]
+                     )["profiles"]["scholar"]
+    assert sch["updated_at"] == datetime.date.today().strftime("%Y-%m-%d")
+
+
 def test_refresh_scholar_counts_blocked_as_failed_without_touching_data(conn):
     out = refresh_scholar(conn, fetch=lambda u: (BLOCKED_HTML, "ok"), delay=0)
     assert out["updated"] == 0 and out["failed"] == 1

@@ -87,6 +87,25 @@ def build_refresh_all_command(*, python_bin, repo_root, db_path, web,
     return cmd
 
 
+def build_refresh_scholar_command(*, python_bin, repo_root, db_path, scope, older_than,
+                                  embed) -> list[str]:
+    """Build the scoped Google Scholar refresh (the dashboard 'Refresh Google Scholar' job).
+
+    Always ``--commit`` (the job runs for real, gated by the script's hardened_backup). ``scope``
+    is an org slug (college or department; its subtree); None ⇒ all faculty with a Scholar URL.
+    ``older_than`` (days) only re-fetches stale profiles; ``embed`` embeds new research-area items.
+    """
+    script = str(Path(repo_root) / "scripts" / "refresh_scholar.py")
+    cmd = [python_bin, script, "--commit", "--db", str(db_path)]
+    if scope:
+        cmd += ["--org", str(scope)]
+    if older_than is not None:
+        cmd += ["--older-than", str(older_than)]
+    if embed:
+        cmd.append("--embed")
+    return cmd
+
+
 def build_explore_command(*, python_bin, repo_root, db_path, depth, frontier, reset) -> list[str]:
     """Build the KG gather command (run_explore.py). ``frontier`` processes pending personal
     sites instead of a hub crawl; ``reset`` re-derives the graph + crawler KB from scratch."""
@@ -164,6 +183,11 @@ class JobManager:
                 python_bin=self.python_bin, repo_root=self.repo_root,
                 db_path=self.db_path, web=args.get("web", False),
                 changes_log=self.changes_log)
+        if job_type == "refresh_scholar":
+            return build_refresh_scholar_command(
+                python_bin=self.python_bin, repo_root=self.repo_root,
+                db_path=self.db_path, scope=args.get("scope"),
+                older_than=args.get("older_than"), embed=args.get("embed", True))
         if job_type == "crawl_section":
             return build_crawl_section_command(
                 python_bin=self.python_bin, repo_root=self.repo_root,
@@ -238,6 +262,12 @@ class JobManager:
     def start_explore(self, depth=3, frontier=False, reset=False) -> dict:
         return self._start("explore",
                            {"depth": depth, "frontier": frontier, "reset": reset})
+
+    def start_refresh_scholar(self, scope=None, older_than=30, embed=True) -> dict:
+        """Scoped Google Scholar refresh: metrics + interests→research-areas for people (in an org
+        subtree if ``scope`` given) whose profile is older than ``older_than`` days; embeds new areas."""
+        return self._start("refresh_scholar",
+                           {"scope": scope, "older_than": older_than, "embed": embed})
 
     def start_crawl_section(self, section="all") -> dict:
         """Refresh one NJIT office (or 'all') from njit.edu: fetch + ingest live + embed."""
@@ -427,6 +457,10 @@ class JobManager:
         # Prefer the explicit completion line the --all run prints.
         for ln in reversed(lines):
             if "refresh njit kb complete" in ln.lower():
+                return ln[:300]
+        # Scholar refresh job completion line.
+        for ln in reversed(lines):
+            if "scholar refresh complete" in ln.lower():
                 return ln[:300]
         # Otherwise the most recent change-count line (single-department run).
         for ln in reversed(lines):
