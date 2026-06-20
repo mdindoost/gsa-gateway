@@ -38,6 +38,9 @@ async def test_explicit_search_returns_live_answer(handler):
     handler.live_search.assert_awaited_once_with("library hours")
     # explicit search wins before the structured router
     handler._try_structured.assert_not_called()
+    # source rendered once: carried on source_note, NOT re-embedded by the handler
+    assert resp.source_note == "https://library.njit.edu"
+    assert resp.is_live is True
 
 
 @pytest.mark.asyncio

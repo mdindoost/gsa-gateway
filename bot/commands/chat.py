@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands
 
 from bot.core.message_handler import MessageRequest
+from bot.core.answer_render import discord_source_link, discord_footer_text
 from bot.ui.feedback import FeedbackView
 
 logger = logging.getLogger(__name__)
@@ -117,18 +118,19 @@ class ChatCog(commands.Cog, name="Chat"):
                 if not resp.text:
                     return
 
-                embed = discord.Embed(color=NJIT_RED)
-                if len(resp.text) <= 4096:
-                    embed.description = resp.text
-                else:
-                    embed.description = resp.text[:4093] + "..."
+                # Clickable "Source" (masked link) goes in the description — embed footers
+                # can't hold links — so the raw URL is never shown. Brand + provenance + any
+                # friendly-name source go in the footer. Shared with the Telegram connector.
+                body = resp.text
+                source_link = discord_source_link(resp.source_note)
+                if source_link:
+                    body = f"{body}\n\n{source_link}"
 
-                footer_parts = ["💡 GSA Gateway · Kavosh v2.0"]
-                if resp.source_note:
-                    footer_parts.append(f"Source: {resp.source_note}")
-                if resp.used_ai:
-                    footer_parts.append("AI-generated from official GSA docs")
-                embed.set_footer(text=" · ".join(footer_parts))
+                embed = discord.Embed(color=NJIT_RED)
+                embed.description = body if len(body) <= 4096 else body[:4093] + "..."
+                embed.set_footer(text=discord_footer_text(
+                    source_note=resp.source_note, used_ai=resp.used_ai, is_live=resp.is_live
+                ))
 
                 feedback_view = None
                 if resp.question_id:

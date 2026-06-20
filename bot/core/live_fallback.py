@@ -25,8 +25,10 @@ class LiveAnswer:
 
 
 def _format(spans: list[str], source_url: str) -> str:
+    # Source is carried on LiveAnswer.source_url and rendered ONCE by the caller (source_note /
+    # platform footer / the offer-tap reply) — do NOT embed it here, or it prints twice.
     body = " ".join(spans)
-    return f"🌐 Live from NJIT's website (fetched live): {body}\n\nSource: {source_url}"
+    return f"🌐 Live from NJIT's website (fetched live): {body}"
 
 
 async def maybe_answer_live(question, *, search_fn, fetch_fn, generate, max_pages: int = 2):

@@ -21,6 +21,7 @@ import bot.config as botcfg
 from bot.connectors.base import BasePlatform
 from bot.core.message_handler import MessageHandler, MessageRequest
 from bot.core.live_query import LIVE_NOT_FOUND_MSG
+from bot.core.answer_render import telegram_footer_html
 from bot.core.modes import ConversationModeStore, ModeDispatcher, ModeRegistry
 from bot.services.knowledge_base import KnowledgeBase
 from v2.core.judging.session import JudgingSessionManager
@@ -230,9 +231,9 @@ class TelegramConnector(BasePlatform):
         if not resp.text:
             return
 
-        text = resp.text
-        if resp.source_note:
-            text += f"\n\n_Source: {resp.source_note}_"
+        html_text = _tg_html(resp.text) + telegram_footer_html(
+            source_note=resp.source_note, used_ai=resp.used_ai, is_live=resp.is_live
+        )
 
         keyboard: Optional[InlineKeyboardMarkup] = None
         if resp.question_id:
@@ -250,10 +251,10 @@ class TelegramConnector(BasePlatform):
 
         try:
             await update.message.reply_text(
-                _tg_html(text), parse_mode="HTML", reply_markup=keyboard
+                html_text, parse_mode="HTML", reply_markup=keyboard
             )
         except Exception:
-            await update.message.reply_text(text, reply_markup=keyboard)
+            await update.message.reply_text(resp.text, reply_markup=keyboard)
 
     # ── Feedback callbacks ────────────────────────────────────────────────────
 
@@ -386,13 +387,15 @@ class TelegramConnector(BasePlatform):
                 )
                 return
 
-            new_text = new_resp.text
-            if new_resp.source_note:
-                new_text += f"\n\n_Source: {new_resp.source_note}_"
+            new_html = _tg_html(new_resp.text) + telegram_footer_html(
+                source_note=new_resp.source_note, used_ai=new_resp.used_ai, is_live=new_resp.is_live
+            )
 
             new_keyboard: Optional[InlineKeyboardMarkup] = None
             if new_resp.question_id:
-                new_keyboard = self._build_feedback_keyboard(new_resp.question_id)
+                new_keyboard = self._build_feedback_keyboard(
+                    new_resp.question_id, offer_live_search=new_resp.offer_live_search
+                )
                 if new_keyboard:
                     self._register_pending(
                         question_id=new_resp.question_id,
@@ -403,10 +406,10 @@ class TelegramConnector(BasePlatform):
 
             try:
                 await query.message.reply_text(
-                    _tg_html(new_text), parse_mode="HTML", reply_markup=new_keyboard
+                    new_html, parse_mode="HTML", reply_markup=new_keyboard
                 )
             except Exception:
-                await query.message.reply_text(new_text, reply_markup=new_keyboard)
+                await query.message.reply_text(new_resp.text, reply_markup=new_keyboard)
 
         else:
             await query.answer()
@@ -502,13 +505,13 @@ class TelegramConnector(BasePlatform):
         if live is None:
             await query.message.reply_text(LIVE_NOT_FOUND_MSG)
             return
-        text = live.text
-        if getattr(live, "source_url", None) and "Source:" not in text:
-            text += f"\n\nSource: {live.source_url}"
+        html_text = _tg_html(live.text) + telegram_footer_html(
+            source_note=getattr(live, "source_url", None), used_ai=True, is_live=True
+        )
         try:
-            await query.message.reply_text(_tg_html(text), parse_mode="HTML")
+            await query.message.reply_text(html_text, parse_mode="HTML")
         except Exception:  # noqa: BLE001
-            await query.message.reply_text(text)
+            await query.message.reply_text(live.text)
 
     # ── Command handlers ──────────────────────────────────────────────────────
 

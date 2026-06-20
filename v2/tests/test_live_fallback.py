@@ -26,6 +26,9 @@ def test_returns_grounded_answer_with_link():
     # framing makes the live/different-source nature unmistakable (no "just now" overclaim)
     assert "Live from NJIT's website" in ans.text
     assert "just now" not in ans.text.lower()
+    # source is NOT embedded in the body — connectors render it once via source_note
+    # (the field still carries it); avoids the double-source on Telegram + Discord.
+    assert "Source:" not in ans.text
 
 
 def test_none_when_no_search_results():

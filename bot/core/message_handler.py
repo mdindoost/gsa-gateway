@@ -83,6 +83,7 @@ class MessageResponse:
     ollama_failed: bool = False
     question_id: Optional[int] = None
     offer_live_search: bool = False   # connector should attach a "search NJIT's website" offer
+    is_live: bool = False             # answer came from the live njit.edu fallback (verbatim extract)
 
 
 class MessageHandler:
@@ -373,6 +374,7 @@ class MessageHandler:
             )
         return MessageResponse(
             text=text, source_note=live.source_url, used_ai=True, question_id=question_id,
+            is_live=True,
         )
 
     async def _rag_pipeline(
@@ -598,6 +600,7 @@ class MessageHandler:
                 ollama_failed=ollama_failed,
                 question_id=question_id,
                 offer_live_search=offer_live_search,
+                is_live=used_live,
             )
 
         except Exception as exc:
