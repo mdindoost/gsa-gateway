@@ -403,10 +403,11 @@ class TelegramConnector(BasePlatform):
         if not update.message:
             return
         text = (
-            "*GSA Gateway*\n\n"
-            "Hi! I'm the Graduate Student Association assistant. Just ask me anything "
-            "in plain language — officers, events, funding, travel awards, how to get "
-            "involved, campus resources, and more.\n\n"
+            "*GSA Gateway* _(version: Kavosh — \"exploration\")_\n\n"
+            "Hi! I'm NJIT's Graduate Student Association assistant — and a guide to the wider "
+            "NJIT community. Ask me anything in plain language: NJIT faculty and their research "
+            "across every college, departments and who's who, plus GSA officers, events, funding, "
+            "travel awards, and campus resources.\n\n"
             "You can also use */qrcode <link or text>* to generate a GSA-branded QR code "
             "(black by default — add `red` for the NJIT-red version).\n\n"
             "_Tip: DM me for a private feedback experience after each answer._"

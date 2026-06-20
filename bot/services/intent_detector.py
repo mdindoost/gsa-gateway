@@ -25,6 +25,19 @@ GREETING_PATTERNS = [
     r"^good afternoon",
     r"^good evening",
     r"^what'?s up",
+    # Non-English hellos — Kavosh welcomes a greeting in any language (then answers in English).
+    # Mirrors the languages in the welcome banner (Persian especially — Kavosh's heritage).
+    r"^سلام",            # Persian / Arabic
+    r"^sal(?:aa|a)m\b",   # romanized salam / salaam
+    r"^hola\b",           # Spanish
+    r"^olá", r"^ola\b",   # Portuguese
+    r"^bonjour\b",        # French
+    r"^ciao\b",           # Italian
+    r"^namaste\b", r"^नमस्ते",   # Hindi
+    r"^你好", r"^ni hao\b",        # Chinese
+    r"^হ্যালো",           # Bengali
+    r"^ආයුබෝවන්",         # Sinhala
+    r"^merhaba\b",        # Turkish
 ]
 
 # Whole-message commands only. These are matched against the entire (normalized)

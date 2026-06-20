@@ -199,6 +199,26 @@ async def test_identity_with_ollama_includes_model_name(mock_services):
 
 
 @pytest.mark.asyncio
+async def test_identity_mentions_kavosh_version_and_creator(mock_services):
+    mock_services["ollama"] = MagicMock()
+    mock_services["ollama"].model = "llama3.1:8b"
+    mock_services["intent_detector"].detect.return_value = (INTENT_IDENTITY, 1.0)
+    h = MessageHandler(**mock_services)
+    resp = await h.handle(MessageRequest(user_id="u1", text="who are you", platform="discord"))
+    assert "GSA Gateway" in resp.text          # brand
+    assert "Kavosh" in resp.text               # version
+    assert "md72@njit.edu" in resp.text        # creator credit
+
+
+@pytest.mark.asyncio
+async def test_greeting_mentions_kavosh_version(handler):
+    handler.intent_detector.detect.return_value = (INTENT_GREETING, 0.95)
+    handler.conversation_manager.get_session.return_value = None
+    resp = await handler.handle(MessageRequest(user_id="123", text="hi", platform="telegram"))
+    assert "Kavosh" in resp.text
+
+
+@pytest.mark.asyncio
 async def test_identity_without_ollama_omits_model_name(mock_services):
     mock_services["ollama"] = None
     mock_services["intent_detector"].detect.return_value = (INTENT_IDENTITY, 1.0)

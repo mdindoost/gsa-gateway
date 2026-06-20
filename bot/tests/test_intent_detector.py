@@ -323,3 +323,17 @@ def test_gsa_mode_exclamation(detector):
 def test_switch_to_gsa_trigger(detector):
     intent, _ = detector.detect("switch to gsa")
     assert intent == INTENT_GSA_MODE
+
+
+# ── Non-English greetings (Kavosh is multilingual-welcoming) ──────────────────
+
+def test_greeting_persian_salam(detector):
+    assert detector.detect("سلام")[0] == INTENT_GREETING
+
+
+def test_greeting_spanish_hola(detector):
+    assert detector.detect("hola")[0] == INTENT_GREETING
+
+
+def test_greeting_chinese_nihao(detector):
+    assert detector.detect("你好")[0] == INTENT_GREETING

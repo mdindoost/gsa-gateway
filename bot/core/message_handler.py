@@ -36,8 +36,8 @@ _OFFICER_FIRST_NAMES = {
 }
 
 FREE_MODE_SYSTEM_PROMPT = (
-    "You are GSA Gateway, the official AI assistant for NJIT's Graduate Student "
-    "Association. The student has switched to general chat mode. Answer helpfully "
+    "You are GSA Gateway (current version: Kavosh), NJIT's Graduate Student "
+    "Association assistant. The student has switched to general chat mode. Answer helpfully "
     "and conversationally. You may answer questions beyond GSA topics, but "
     "periodically remind students you can also help with GSA events, funding, "
     "and campus resources."
@@ -153,23 +153,22 @@ class MessageHandler:
             )
             if session and len(session.turns) > 0:
                 text = (
-                    "Welcome back! What else can I help you with?\n"
+                    "Welcome back! Kavosh here — what else would you like to explore?\n"
                     "_(Type 'clear' to start a new conversation)_"
                 )
             else:
                 text = (
                     "سلام · Hola · नमस्ते · 你好 · হ্যালো · ආයුබෝවන් · Olá · Merhaba · Hello\n"
                     "_Don't see your language? Ask Mohammad — he'll happily add it!_\n\n"
-                    "Hi! I'm **GSA Gateway**, NJIT's Graduate Student Association assistant.\n\n"
-                    "I can help you with:\n"
-                    "- MMI Workshop series\n"
-                    "- **GSA** events and announcements\n"
-                    "- Travel awards and funding\n"
-                    "- Club financial rules\n"
-                    "- Officer contacts\n"
-                    "- GSA constitution and policies\n"
-                    "- Campus resources\n\n"
-                    "Just ask me anything!"
+                    "Hi! I'm **GSA Gateway** — NJIT's Graduate Student Association assistant, and the "
+                    "wider NJIT community's too. _(Current version: **Kavosh** — کاوش, \"exploration.\")_\n\n"
+                    "What I can help you explore:\n"
+                    "- 🔬 **NJIT faculty across every college** — who works on a topic, their research areas & citations\n"
+                    "- 🏫 **Departments, programs & who's who** — deans, chairs, directors\n"
+                    "- 🧭 **Campus resources & offices** across NJIT\n"
+                    "- 🎓 **GSA** — events, the MMI Workshop series, travel awards & funding\n"
+                    "- 👥 **GSA officers, club/RGO rules & the constitution**\n\n"
+                    "Just ask me anything — I answer from real NJIT/GSA sources, in English."
                 )
             return MessageResponse(text=text)
 
@@ -180,7 +179,7 @@ class MessageHandler:
             return MessageResponse(
                 text=(
                     "خداحافظ · Adiós · अलविदा · 再见 · বিদায় · Tchau · Hoşçakal · Goodbye\n\n"
-                    "It was great chatting! Feel free to come back anytime.\n\n"
+                    "It was great exploring with you! Come back anytime — Kavosh will be here.\n\n"
                     f"For any academic questions or GSA matters, reach out to your "
                     f"VP Academic Affairs:\n"
                     f"**{vpa_name}** — {vpa_email} · md72@njit.edu"
@@ -211,17 +210,29 @@ class MessageHandler:
             model_name = self.ollama.model if self.ollama else None
             if model_name:
                 text = (
-                    "I'm **GSA Gateway**, the official AI assistant for NJIT's Graduate Student Association.\n\n"
-                    f"I'm powered by **{model_name}** — a local language model running on NJIT infrastructure, "
-                    "not a cloud service. Unlike ChatGPT, I'm purpose-built for GSA: my answers come directly "
-                    "from official GSA documents, policies, and contacts. I don't browse the internet or answer "
-                    "general topics outside NJIT GSA.\n\n"
-                    "Ask me about events, travel awards, club funding, officer contacts, or anything GSA-related!"
+                    "I'm **GSA Gateway**, NJIT's Graduate Student Association assistant — and the wider "
+                    "NJIT community's too. You're talking to my current version, **Kavosh** "
+                    "(کاوش — *exploration, discovery*), successor to **Binesh** (*insight*), which retired "
+                    "June 15, 2026.\n\n"
+                    f"I run on **{model_name}** — a local language model on NJIT infrastructure, not a cloud "
+                    "service. Unlike ChatGPT, I'm purpose-built for NJIT: my answers come straight from "
+                    "official **GSA** documents *and* NJIT's **knowledge graph** of faculty, research, and "
+                    "departments across **every college** — not the open web, and not general topics unrelated "
+                    "to NJIT.\n\n"
+                    "What I can help you explore:\n"
+                    "- 🔬 NJIT faculty across every college — who works on a topic, their research areas & citations\n"
+                    "- 🏫 Departments, programs & who's who (deans, chairs, directors)\n"
+                    "- 🧭 Campus resources & offices\n"
+                    "- 🎓 GSA events, the MMI Workshop series, travel awards & funding\n"
+                    "- 👥 GSA officers, club/RGO rules & the constitution\n\n"
+                    "Created by **Mohammad Dindoost**, VP Academic Affairs — md72@njit.edu.\n\n"
+                    "Ask me anything about GSA or the NJIT community!"
                 )
             else:
                 text = (
-                    "I'm **GSA Gateway**, the official AI assistant for NJIT's Graduate Student Association — "
-                    "purpose-built to answer questions about GSA services, events, funding, and campus resources."
+                    "I'm **GSA Gateway** (current version: **Kavosh** — \"exploration\"), NJIT's Graduate "
+                    "Student Association assistant and a guide to the wider NJIT community — faculty, "
+                    "research, departments, and GSA services. Created by Mohammad Dindoost (md72@njit.edu)."
                 )
             return MessageResponse(text=text)
 
