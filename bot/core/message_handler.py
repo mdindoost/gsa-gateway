@@ -36,7 +36,7 @@ _OFFICER_FIRST_NAMES = {
 }
 
 FREE_MODE_SYSTEM_PROMPT = (
-    "You are GSA Gateway (current version: Kavosh), NJIT's Graduate Student "
+    "You are GSA Gateway (current version: Kavosh v2.0), NJIT's Graduate Student "
     "Association assistant. The student has switched to general chat mode. Answer helpfully "
     "and conversationally. You may answer questions beyond GSA topics, but "
     "periodically remind students you can also help with GSA events, funding, "
@@ -161,7 +161,7 @@ class MessageHandler:
                     "سلام · Hola · नमस्ते · 你好 · হ্যালো · ආයුබෝවන් · Olá · Merhaba · Hello\n"
                     "_Don't see your language? Ask Mohammad — he'll happily add it!_\n\n"
                     "Hi! I'm **GSA Gateway** — NJIT's Graduate Student Association assistant, and the "
-                    "wider NJIT community's too. _(Current version: **Kavosh** — کاوش, \"exploration.\")_\n\n"
+                    "wider NJIT community's too. _(Current version: **Kavosh v2.0** — کاوش, \"exploration.\")_\n\n"
                     "What I can help you explore:\n"
                     "- 🔬 **NJIT faculty across every college** — who works on a topic, their research areas & citations\n"
                     "- 🏫 **Departments, programs & who's who** — deans, chairs, directors\n"
@@ -211,7 +211,7 @@ class MessageHandler:
             if model_name:
                 text = (
                     "I'm **GSA Gateway**, NJIT's Graduate Student Association assistant — and the wider "
-                    "NJIT community's too. You're talking to my current version, **Kavosh** "
+                    "NJIT community's too. You're talking to my current version, **Kavosh v2.0** "
                     "(کاوش — *exploration, discovery*), successor to **Binesh** (*insight*), which retired "
                     "June 15, 2026.\n\n"
                     f"I run on **{model_name}** — a local language model on NJIT infrastructure, not a cloud "
@@ -230,7 +230,7 @@ class MessageHandler:
                 )
             else:
                 text = (
-                    "I'm **GSA Gateway** (current version: **Kavosh** — \"exploration\"), NJIT's Graduate "
+                    "I'm **GSA Gateway** (current version: **Kavosh v2.0** — \"exploration\"), NJIT's Graduate "
                     "Student Association assistant and a guide to the wider NJIT community — faculty, "
                     "research, departments, and GSA services. Created by Mohammad Dindoost (md72@njit.edu)."
                 )

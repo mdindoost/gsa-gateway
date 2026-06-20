@@ -206,7 +206,8 @@ async def test_identity_mentions_kavosh_version_and_creator(mock_services):
     h = MessageHandler(**mock_services)
     resp = await h.handle(MessageRequest(user_id="u1", text="who are you", platform="discord"))
     assert "GSA Gateway" in resp.text          # brand
-    assert "Kavosh" in resp.text               # version
+    assert "Kavosh" in resp.text               # version name
+    assert "v2.0" in resp.text                 # version number
     assert "md72@njit.edu" in resp.text        # creator credit
 
 

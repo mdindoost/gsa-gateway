@@ -123,7 +123,7 @@ class ChatCog(commands.Cog, name="Chat"):
                 else:
                     embed.description = resp.text[:4093] + "..."
 
-                footer_parts = ["💡 GSA Gateway"]
+                footer_parts = ["💡 GSA Gateway · Kavosh v2.0"]
                 if resp.source_note:
                     footer_parts.append(f"Source: {resp.source_note}")
                 if resp.used_ai:

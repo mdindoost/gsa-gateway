@@ -224,7 +224,7 @@ class FeedbackView(discord.ui.View):
         else:
             embed.description = new_resp.text[:4093] + "..."
 
-        footer_parts = ["💡 GSA Gateway · Retry answer"]
+        footer_parts = ["💡 GSA Gateway · Kavosh v2.0 · Retry answer"]
         if new_resp.source_note:
             footer_parts.append(f"Source: {new_resp.source_note}")
         if new_resp.used_ai:

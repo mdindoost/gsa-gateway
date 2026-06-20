@@ -410,7 +410,7 @@ class TelegramConnector(BasePlatform):
         if not update.message:
             return
         text = (
-            "*GSA Gateway* _(version: Kavosh — \"exploration\")_\n\n"
+            "*GSA Gateway* _(version: Kavosh v2.0 — \"exploration\")_\n\n"
             "Hi! I'm NJIT's Graduate Student Association assistant — and a guide to the wider "
             "NJIT community. Ask me anything in plain language: NJIT faculty and their research "
             "across every college, departments and who's who, plus GSA officers, events, funding, "
