@@ -32,11 +32,13 @@ def canonical_areas(content: str) -> list[str]:
     return _split_areas(content.split(": ", 1)[1])
 
 
-def hardened_backup(db_path: str, label: str, keep: int = 10) -> Path:
+def hardened_backup(db_path: str, label: str, keep: int = 10,
+                    keep_total: int = 10, backups_dir=None) -> Path:
     """Mandatory pre-write snapshot via the SQLite online-backup API (safe with the live
-    bot's WAL open), integrity-checked, rotated to the last ``keep``. Raises if the
-    snapshot is not 'ok' — we never write without a good backup."""
-    bdir = REPO / ".backups"
+    bot's WAL open), integrity-checked, rotated to the last ``keep`` per label AND the newest
+    ``keep_total`` overall. Raises if the snapshot is not 'ok' — we never write without a good
+    backup. ``backups_dir`` overrides the default location (for tests)."""
+    bdir = Path(backups_dir) if backups_dir else REPO / ".backups"
     bdir.mkdir(exist_ok=True)
     # Sub-second + pid suffix so two backups in the same second (e.g. a double-clicked restore)
     # never collide to one filename and silently overwrite each other.
@@ -58,7 +60,7 @@ def hardened_backup(db_path: str, label: str, keep: int = 10) -> Path:
     # Keep the newest KEEP_TOTAL overall, but NEVER prune the just-written file or any snapshot
     # younger than RECENT_S — so an in-flight op's reference snapshot (a long crawl's pre-explore,
     # or a just-taken pre-restore) can't be pruned out from under it.
-    KEEP_TOTAL, RECENT_S = 40, 6 * 3600
+    KEEP_TOTAL, RECENT_S = keep_total, 6 * 3600
     now = time.time()
     allb = sorted(bdir.glob("gsa_gateway.*.db"),
                   key=lambda f: (f.stat().st_mtime, f.name), reverse=True)
