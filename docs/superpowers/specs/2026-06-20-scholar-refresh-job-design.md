@@ -36,14 +36,17 @@ def select_scholar_targets(conn, *, org_scope: str | None = None,
     """Person keys eligible for a Scholar refresh: have a Scholar URL, optionally restricted to
     an org subtree, optionally only those whose scholar.updated_at is older than N days."""
 ```
-- Base set = `people_with_scholar(conn)` (existing).
-- `org_scope`: resolve the org + **all descendant orgs** by reusing `skills.org_descendants(conn, org_id)`
-  (already "org itself + every active descendant" — the same resolver "people in YWCC" uses), map each to its
-  node via `orgs.org_node_id`, then keep only people with an active `has_role` edge into any of those nodes.
-  `org_scope` is an org **slug**; resolve slug→org_id via `organizations`.
-- `older_than_days`: drop anyone whose `scholar.updated_at` is within N days of `today`. (See staleness
-  note below.) `None` ⇒ no age filter; `org_scope=None` ⇒ all faculty.
-- Pure read; no commit; no network.
+- Base set = `people_with_scholar(conn)` (existing; already filters `p.is_active=1`).
+- `org_scope` (an org **slug**; resolve slug→org_id via `organizations`): **copy the proven query from
+  `skills.top_people_by_metric` (`skills.py:247-264`)** — `sorted(org_descendants(conn, org_id))` then
+  `JOIN nodes o ON json_extract(o.attrs,'$.org_id') IN (?,…)` over the descendant **org_ids directly**.
+  Do **NOT** call `orgs.org_node_id` per descendant — it is *not* read-only (it can upsert a node), which
+  would break this helper's read-only contract; the `json_extract(... org_id) IN (…)` join needs no node-id
+  mapping. Filter `e.is_active=1 AND p.is_active=1 AND o.is_active=1` and **`GROUP BY p.id` / return distinct
+  person keys** so a person with roles in two in-scope orgs (e.g. two YWCC depts) is fetched exactly once.
+- `older_than_days`: drop anyone whose `scholar.updated_at` is within N days of `today`. `None` ⇒ no age
+  filter; `org_scope=None` ⇒ all faculty.
+- Pure read; **no commit; no node upsert; no network.** Returns a de-duplicated list of person keys.
 
 ### 2. Execution — generalize `refresh_scholar`
 Change `only_key: str | None` → `only_keys: set[str] | None` (back-compat: callers passing one key wrap it;
@@ -53,8 +56,13 @@ passes `only_keys`. Returns the same stats dict (`people, updated, areas_updated
 
 ### 3. CLI — `scripts/refresh_scholar.py` (stays gated, dry-run default)
 New args: `--org <slug>` / `--department <slug>` (→ `org_scope`), `--older-than <days>` (→ `older_than_days`),
-`--embed` (run `embed_all` after a successful `--commit`, so new research-area KB items are searchable).
-Dry-run prints the resolved target keys + count (so a scoped run is previewable before `--commit`).
+`--embed`. Dry-run prints the resolved target keys + count (via `select_scholar_targets`) before `--commit`.
+**`--embed`**: after a successful `--commit`, **shell out** to `v2/scripts/embed_all.py` as a separate
+process (not an import — keeps sqlite-vec/Ollama deps out of the gated writer; matches `build_explore_command`
+which bundles `--embed`). `embed_all` is **resumable** → embeds ONLY the new `research_areas` items
+`set_person_research_areas` inserted, not the whole corpus. **Embed failure must NOT undo the committed
+metrics/areas write** (the data is already committed): on embed error, log it and report "refreshed but not
+embedded — run embed when Ollama is up" — never fail the whole job's data write. (Embed needs Ollama up.)
 
 ### 4. Job plumbing — mirrors existing jobs exactly
 - `bot/services/jobs.py`: `build_refresh_scholar_command(*, python_bin, repo_root, db_path, org_scope,
@@ -62,15 +70,19 @@ Dry-run prints the resolved target keys + count (so a scoped run is previewable 
   [--older-than N] [--embed] --db <path>`. Add a `"refresh_scholar"` branch to `_default_build_cmd`.
   `JobManager.start_refresh_scholar(org_scope=None, older_than_days=30, embed=True)`.
 - `v2/local_server.py`: `POST /api/jobs/refresh-scholar` (body: `{scope, older_than, embed}`) →
-  `JOBS.start_refresh_scholar(...)`; 409 if a job is already running (same guard as the other jobs).
+  `JOBS.start_refresh_scholar(...)`; 409 if a job is already running. **Input validation mirroring
+  `_api_refresh`:** reject an unknown `scope` slug → 400, coerce `older_than` to int → 400 on bad input.
 
 ### 5. Dropdown data + dashboard UI
-- The jobs/health API returns a **scope list**: each entry `{slug, label, type: college|department, eligible}`
-  where `eligible` = # people in that subtree with a Scholar URL. Plus an "All faculty (N with Scholar)" entry.
-  Built from the `organizations` tree + a per-subtree Scholar-URL count.
-- Dashboard Jobs tab: a **Refresh Google Scholar** job card with a **scope `<select>`** (grouped All /
-  Colleges / Departments, each showing its eligible count), an **"older than [30] days"** number input, and a
-  **Run** button. Progress/result surfaced like the other jobs (the existing job-status polling).
+- **Scope list = its OWN endpoint** (e.g. `GET /api/jobs/scholar-scopes`), fetched **once when the Jobs tab
+  opens — NOT on the hot `_api_health` poll** (which `refreshJobsHealth()` calls on a timer). Computed in
+  **ONE pass:** fetch every (person, has-scholar?, in-scope org_ids) once, then roll the Scholar-URL counts up
+  the org parent-chain in Python — not N subtree-walks × a LIKE scan per poll. Each entry
+  `{slug, label, type: college|department, eligible}` + an "All faculty (N with Scholar)" entry.
+- Dashboard Jobs tab: reuse the **existing "Refresh: [what] [target]" pattern** (`app.js:585-644`) rather than
+  a new card — add **"Google Scholar metrics"** as a `refresh-what` option whose `refresh-target` is the scope
+  list (grouped All / Colleges / Departments, each showing its eligible count), plus an **"older than [30]
+  days"** number input. Reuses the existing run/confirm/poll wiring. Result surfaced like the other jobs.
 
 ## Data flow
 `button → POST /api/jobs/refresh-scholar {scope, older_than, embed} → JobManager.start_refresh_scholar →
@@ -78,11 +90,15 @@ subprocess: refresh_scholar.py --commit --org … --older-than … --embed → s
 refresh_scholar(only_keys=…) → set_person_profiles + set_person_research_areas (per person, polite delay) →
 embed_all → stats in job log → dashboard shows summary.`
 
-## Staleness note (minor, flagged)
-`scholar.updated_at` is currently stored as `YYYY-MM` (month granularity), so "older than N days" is only
-month-precise today. Fix: write new `updated_at` as full `YYYY-MM-DD` (old `YYYY-MM` values still compare
-correctly as month-start, so it's backward-compatible). Then `select_scholar_targets` does an exact date
-diff. This is the one storage tweak in scope.
+## Staleness note (RESOLVED — commit to full date)
+`scholar.updated_at` is stored today as `YYYY-MM` (month granularity), which makes the "older than N days"
+filter month-precise — and that **contradicts** the test "updated today excluded" (it can't pass at month
+resolution). **Decision: write new `updated_at` as full `YYYY-MM-DD`** (in `refresh_scholar`, change the
+`strftime("%Y-%m")` to `%Y-%m-%d`). `select_scholar_targets` parses whatever's stored — a legacy `YYYY-MM`
+value is treated as month-start (fully back-compat), a `YYYY-MM-DD` exactly — so the age diff is exact for
+refreshed people and the filter supports any N (better for frequent checks). Display impact: the metric
+suffix renders `— as of {updated}` verbatim (`profile_fields.py:135-137`), so refreshed people show a
+full date; this is a deliberate, minor, day-precise display improvement (no render-code change).
 
 ## Error handling / safety
 - Gated as today: `--commit` takes a `hardened_backup`; dry-run otherwise. One job at a time (409 guard).
@@ -90,6 +106,9 @@ diff. This is the one storage tweak in scope.
 - Politeness: keep the inter-fetch `--delay` (default 2–3s). The staleness filter further limits volume on
   frequent runs. `default_fetch` (urllib) is the provider (the backfill showed it works at this cadence);
   provider stays injectable for a future swap.
+- **Job summary line (N4):** the CLI prints a completion line the job summarizer recognizes — add a
+  `refresh_scholar` branch to `jobs.py _summarize` (or emit a line matching its grep), so the dashboard shows
+  "N updated, M areas, K failed" instead of falling back to the last (error) line.
 
 ## Testing (TDD)
 - `select_scholar_targets`: no scope ⇒ all scholar people; college scope ⇒ includes its departments'
@@ -105,6 +124,14 @@ diff. This is the one storage tweak in scope.
 - **Automated scheduling** (nightly/weekly) — future feature; manual button only now.
 - Acquiring **new** Scholar URLs for people who lack one (a refresh only touches people who already have a
   URL) — separate from this job; relates to the "build links from personal websites" idea.
+
+## Senior-eng review outcome (2026-06-20) — folded in
+Verdict **ship-with-fixes** (no blockers). Folded: S1 (pin selection to the `top_people_by_metric` query —
+`org_descendants` + `json_extract org_id IN`, drop `org_node_id`, distinct keys, read-only), S2 (commit to
+`YYYY-MM-DD`, parse legacy `YYYY-MM` as month-start — resolves the test/format contradiction), S3 (`--embed`
+shells out, post-commit, embed failure never undoes the write), S4 (scope counts on their own endpoint /
+one query, off the health poll), N1 (reuse the "Refresh: [what][target]" UI), N2 (route input validation),
+N3 (`only_key`→`only_keys` filter detail), N4 (recognizable summary line). No goal silently dropped.
 
 ## Goals checklist (fill at PR time)
 - [ ] Scope dropdown: All + college + department, from the org tree, with eligible counts
