@@ -26,13 +26,16 @@ from v2.core.database.schema import get_connection
 from v2.core.ingestion import scholar
 
 
+def _embed_cmd(db_path: str) -> list[str]:
+    """The embed command. embed_all.py takes db_path POSITIONALLY (not --db)."""
+    return [sys.executable, str(REPO / "v2" / "scripts" / "embed_all.py"), str(db_path)]
+
+
 def _run_embed(db_path: str) -> bool:
     """Shell out to the resumable embedder (only NEW research-area items get vectors). Embed
     failure (e.g. Ollama down) must NOT undo the already-committed metrics/areas write."""
     try:
-        r = subprocess.run([sys.executable, str(REPO / "v2" / "scripts" / "embed_all.py"),
-                            "--db", db_path], cwd=str(REPO))
-        return r.returncode == 0
+        return subprocess.run(_embed_cmd(db_path), cwd=str(REPO)).returncode == 0
     except Exception as exc:  # noqa: BLE001
         print(f"  ⚠️ embed failed ({exc}) — data is committed; run embed_all when Ollama is up.")
         return False

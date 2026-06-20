@@ -58,3 +58,11 @@ def test_dryrun_no_scope_lists_all(tmp_path, capsys):
     cli.main(["--db", p])
     out = capsys.readouterr().out
     assert "p/cs1" in out and "p/nce1" in out
+
+
+def test_embed_cmd_passes_db_path_positionally_not_flag(tmp_path):
+    # regression: embed_all.py takes db_path POSITIONALLY; '--db' makes it argparse-error.
+    cmd = cli._embed_cmd("/some/g.db")
+    assert "--db" not in cmd
+    assert cmd[-1] == "/some/g.db"
+    assert cmd[-2].endswith("embed_all.py")
