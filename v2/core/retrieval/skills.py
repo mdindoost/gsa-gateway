@@ -21,6 +21,8 @@ import json
 import sqlite3
 from collections import Counter
 
+from v2.core.retrieval.entity import normalize_person_name
+
 # Hand aliases beyond what organizations.name/slug already cover.
 _ORG_ALIASES = {
     "cs": "computer-science", "comp sci": "computer-science",
@@ -227,6 +229,40 @@ def people_in_org(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, str,
         email = (json.loads(pattrs) if pattrs else {}).get("email")
         out.append((name, titles[0] if titles else category, email))
     return sorted(set(out), key=lambda r: r[0])
+
+
+def top_people_by_metric(conn: sqlite3.Connection, org_id: int, field_key: str,
+                         metric_key: str) -> dict:
+    """Rank the DISTINCT active people in the org SUBTREE who have ``profiles[field_key][metric_key]``,
+    highest first (ties broken by name). Returns the FULL ranked list (the n-slice + tie handling is
+    done at format time — the list is small, ≤ with_metric) plus the two counts that drive the
+    honest-partial wording:
+      ranked        : [(name, int value), …] — only people who HAVE the metric, desc
+      with_metric   : how many distinct people had the metric
+      total_in_org  : how many distinct people are in the subtree (any role) — the denominator gap
+
+    A person with several roles in the subtree counts ONCE (GROUP BY / COUNT(DISTINCT p.id)). The
+    JSON path is built from registry keys (field_key/metric_key from match_metric), never raw user
+    text, and bound as a parameter."""
+    ids = sorted(org_descendants(conn, org_id))
+    if not ids:
+        return {"ranked": [], "with_metric": 0, "total_in_org": 0}
+    ph = ",".join("?" * len(ids))
+    path = f"$.profiles.{field_key}.{metric_key}"
+    member_join = (
+        "FROM edges e JOIN nodes p ON p.id=e.src_id "
+        "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
+        "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1 "
+        f"AND json_extract(o.attrs,'$.org_id') IN ({ph})")
+    rows = conn.execute(
+        f"SELECT p.name, json_extract(p.attrs, ?) AS v {member_join} "
+        f"AND json_extract(p.attrs, ?) IS NOT NULL "
+        f"GROUP BY p.id ORDER BY CAST(json_extract(p.attrs, ?) AS INTEGER) DESC, p.name ASC",
+        (path, *ids, path, path)).fetchall()
+    ranked = [(normalize_person_name(n), int(v)) for n, v in rows]
+    total = conn.execute(
+        f"SELECT COUNT(DISTINCT p.id) {member_join}", tuple(ids)).fetchone()[0]
+    return {"ranked": ranked, "with_metric": len(ranked), "total_in_org": total}
 
 
 def _research_entities(conn: sqlite3.Connection, area: str, org_id: int | None) -> set[str]:

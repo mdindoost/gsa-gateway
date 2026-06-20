@@ -18,6 +18,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 
+from v2.core.people import profile_fields
 from v2.core.retrieval import entity, skills
 
 # Verb phrases that introduce a research area ("who WORKS ON graph"). Deliberately
@@ -104,6 +105,10 @@ _FACULTY_CUE = re.compile(
     r"teaching\s+(?:staff|faculty)|academic\s+staff)\b"
     r"|\bwho\s+teach(?:es)?\b|\bteach(?:es|ing)?\s+(?:in|at|for|within)\b", re.I)
 _RESEARCH_CUE = re.compile(r"\b(research|works?\s+on|working\s+on|studies|studying|specializ|expert)\b")
+# Ranking cue for a METRIC ranking ("who has the MOST citations", "TOP 5 by h-index"). Narrowed
+# (RAG review) — leading/largest/greatest never naturally rank citations, only add false positives.
+_RANK_CUE = re.compile(r"\b(most|top|highest|ranked?|rank)\b")
+_TOPN = re.compile(r"\btop\s+(\d+)\b|\b(\d+)\s+most\b")
 _PERSON_INTENT = re.compile(
     r"\b(who(?:'s|\s+is|\s+are)|tell\s+me\s+about|info(?:rmation)?\s+on|"
     r"profile\s+of|contact\s+(?:for|info)|reach)\b")
@@ -202,10 +207,42 @@ def _extract_area(q: str, org_phrase: str | None) -> str | None:
     return area or None
 
 
+def _parse_topn(q: str) -> int:
+    """N from 'top N' / 'N most'; 1 for a bare 'most'/'highest'."""
+    m = _TOPN.search(q)
+    if m:
+        return int(m.group(1) or m.group(2))
+    return 1
+
+
+def _resolve_surname(conn: sqlite3.Connection, q: str) -> dict | Route | None:
+    """Resolve a person by an UNAMBIGUOUS surname token in the (prefix-stripped) query:
+    {entity_id, name} for one match, a person_disambig Route for ≥2, or None. The single shared
+    surname resolver (was duplicated inline in the research + entity-card branches)."""
+    for tok in _qtokens(_NAME_PREFIX.sub("", q)):
+        cands = entity.persons_by_lastname(conn, tok)
+        if len(cands) >= 2:
+            return Route("person_disambig", {"candidates": cands})
+        if len(cands) == 1:
+            return {"entity_id": cands[0]["entity_id"], "name": cands[0]["name"]}
+    return None
+
+
+def _resolve_person(conn: sqlite3.Connection, q: str, named: list[dict]) -> dict | Route | None:
+    """The person a question is about: a single {entity_id, name}, a person_disambig Route when
+    ambiguous, or None. Tries FULL names found in the query first, then the surname fallback."""
+    if len(named) == 1:
+        return {"entity_id": named[0]["entity_id"], "name": named[0]["name"]}
+    if len(named) > 1:
+        return Route("person_disambig", {"candidates": named})
+    return _resolve_surname(conn, q)
+
+
 def route(conn: sqlite3.Connection, question: str) -> Route | None:
     q = question.strip().lower().rstrip("?").strip()
     org_id, org_phrase = _find_org(conn, q)
     area = _extract_area(q, org_phrase)
+    named = entity.persons_in_query(conn, q)   # people whose FULL name is in the query
 
     # precise "who lists X as a research area" (before the generic area branches)
     m = _LISTS_AREA.search(q)
@@ -234,6 +271,27 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         # names roster + 'no areas listed' line when nobody does — so the LLM is never handed a
         # bare name list to invent areas for (the fabrication bug). Anti-fabrication, not RAG.
         return Route("faculty_areas_in_department", {"org_id": org_id})
+
+    # ── metric queries (Scholar citations / h-index / i10) ─────────────────────────
+    # Registry-driven (profile_fields.match_metric): only words registered as a Metric alias match,
+    # so non-metric uses ("how do I cite a paper", "form i10") don't. Placed AFTER the area branches
+    # (so "most cited research area" stays an area question) and BEFORE the generic person branches.
+    # Ranking needs an org + a rank cue; single-person needs a resolvable person. A metric word with
+    # NEITHER must FALL THROUGH (no return here) so the normal person/RAG branches still run.
+    mm = profile_fields.match_metric(q)
+    if mm is not None:
+        field_key, metric = mm
+        if org_id is not None and _RANK_CUE.search(q):
+            return Route("top_people_by_metric",
+                         {"org_id": org_id, "field_key": field_key,
+                          "metric_key": metric.key, "n": _parse_topn(q)})
+        person = _resolve_person(conn, q, named)
+        if isinstance(person, Route):
+            return person
+        if isinstance(person, dict):
+            return Route("metric_of_person",
+                         {"entity_id": person["entity_id"], "name": person["name"],
+                          "field_key": field_key, "metric_key": metric.key})
 
     if (org_id is not None and _OFFICER_IDENTITY.search(q)
             and not _OFFICER_PROCESS.search(q)):
@@ -264,7 +322,7 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         return Route("people_in_org", {"org_id": org_id})
 
     # ── person-centric branches (entity layer) ─────────────────────────────────
-    named = entity.persons_in_query(conn, q)   # people whose FULL name is in the query
+    # (`named` resolved at the top of route().)
 
     # name enumeration: "list all the Michaels" / "the Michaels at NJIT"
     if _ENUM_TRIGGER.search(q):
@@ -276,23 +334,15 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         if cand and 1 <= len(cand.split()) <= 3 and entity.resolve_people(conn, cand):
             return Route("people_by_name", {"name": cand})
 
-    # person → research: "<full name> research / works on / studies"
+    # person → research: "<full name> research / works on / studies". Full name first, then an
+    # unambiguous-surname fallback (shared _resolve_person — same path the metric branch uses).
     if _RESEARCH_CUE.search(q):
-        if len(named) == 1:
+        person = _resolve_person(conn, q, named)
+        if isinstance(person, Route):
+            return person
+        if isinstance(person, dict):
             return Route("research_of_person",
-                         {"entity_id": named[0]["entity_id"], "name": named[0]["name"]})
-        if len(named) > 1:
-            return Route("person_disambig", {"candidates": named})
-        # surname-only: "what does Koutis work on" / "Koutis's research" — resolve an
-        # UNAMBIGUOUS last name (the same fallback the entity card uses below), so a research
-        # ask by surname reaches the person instead of falling through to RAG.
-        for tok in _qtokens(_NAME_PREFIX.sub("", q)):
-            cands = entity.persons_by_lastname(conn, tok)
-            if len(cands) >= 2:
-                return Route("person_disambig", {"candidates": cands})
-            if len(cands) == 1:
-                return Route("research_of_person",
-                             {"entity_id": cands[0]["entity_id"], "name": cands[0]["name"]})
+                         {"entity_id": person["entity_id"], "name": person["name"]})
 
     # entity card: a specific named person (who-is / tell-me-about / "<name>'s email" /
     # bare name). LAST + most-guarded so it never hijacks a "who works on X" ask.
@@ -311,11 +361,10 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     qn_toks = _qtokens(qn)
     if (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q) or _NAME_PREFIX.search(q)
             or _INFO_CUE.search(q) or len(qn_toks) == 1):
-        for tok in qn_toks:
-            cands = entity.persons_by_lastname(conn, tok)
-            if len(cands) >= 2:
-                return Route("person_disambig", {"candidates": cands})
-            if len(cands) == 1:
-                return Route("entity_card",
-                             {"entity_id": cands[0]["entity_id"], "name": cands[0]["name"]})
+        person = _resolve_surname(conn, q)
+        if isinstance(person, Route):
+            return person
+        if isinstance(person, dict):
+            return Route("entity_card",
+                         {"entity_id": person["entity_id"], "name": person["name"]})
     return None

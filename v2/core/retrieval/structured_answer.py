@@ -16,15 +16,8 @@ from v2.core.retrieval.router import Route
 
 
 def _person_attrs(conn: sqlite3.Connection, entity_id: str) -> dict:
-    row = conn.execute(
-        "SELECT attrs FROM nodes WHERE type='Person' AND key=? AND is_active=1",
-        (entity_id,)).fetchone()
-    if not row or not row[0]:
-        return {}
-    try:
-        return json.loads(row[0])
-    except (TypeError, ValueError):
-        return {}
+    # Single per-person attrs reader lives in entity.py; delegate so there is one read path.
+    return entity.person_attrs(conn, entity_id)
 
 
 def run(conn: sqlite3.Connection, route: Route) -> dict:
@@ -54,6 +47,13 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         return {"skill": skill, "name": a.get("name"),
                 "card": entity.entity_card(conn, a["entity_id"]),
                 "links": profile_fields.render_links(_person_attrs(conn, a["entity_id"]))}
+    if skill == "metric_of_person":
+        r = entity.metric_of_person(conn, a["entity_id"], a["field_key"], a.get("metric_key"))
+        return {"skill": skill, "field_key": a["field_key"], "metric_key": a.get("metric_key"), **r}
+    if skill == "top_people_by_metric":
+        r = skills.top_people_by_metric(conn, a["org_id"], a["field_key"], a["metric_key"])
+        return {"skill": skill, "org_name": org_name, "field_key": a["field_key"],
+                "metric_key": a["metric_key"], "n": a.get("n", 1), **r}
     if skill == "person_disambig":
         return {"skill": skill, "candidates": a["candidates"]}
     if skill == "faculty_areas_in_department":
@@ -86,6 +86,41 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
 
 def _join(names: list[str]) -> str:
     return ", ".join(names)
+
+
+# Deterministic answers whose NUMBERS must never be reworded by the LLM — the caller skips
+# compose_from_rows for these (their format_answer output IS the final answer).
+_DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric"})
+
+
+def is_deterministic(result: dict) -> bool:
+    """True for skills whose rendered answer must be sent VERBATIM (no LLM compose)."""
+    return result.get("skill") in _DETERMINISTIC_SKILLS
+
+
+def _fmt_metrics(field_key: str, present: dict) -> str:
+    """Render the present metrics of a field via the registry templates, in registry order:
+    {"citations":2774,"h_index":26} -> "2,774 citations, h-index 26"."""
+    parts = [m.template.format(v=present[m.key])
+             for fk, m in profile_fields.metric_fields()
+             if fk == field_key and m.key in present]
+    return ", ".join(parts)
+
+
+def _metric_noun(metric_key: str) -> str:
+    return metric_key.replace("_", "-")   # citations / h-index / i10-index
+
+
+def _top_with_ties(ranked: list, n: int) -> list:
+    """The top n, extended to include everyone tied with the n-th value (so n=1 never names just
+    one of several tied top people)."""
+    if len(ranked) <= n:
+        return list(ranked)
+    cutoff = ranked[n - 1][1]
+    k = n
+    while k < len(ranked) and ranked[k][1] == cutoff:
+        k += 1
+    return ranked[:k]
 
 
 def format_answer(result: dict) -> str:
@@ -134,6 +169,38 @@ def format_answer(result: dict) -> str:
         if rp["areas"]:
             return f"{rp['name']}'s research areas: {', '.join(rp['areas'])}."
         return f"{rp['name']}'s research: {rp['statement']}"
+
+    if skill == "metric_of_person":
+        name, found, allm = result["name"], result["found"], result["all"]
+        updated = result.get("updated_at")
+        asof = f" (as of {updated})" if updated else ""
+        if found:
+            return f"{name} — {_fmt_metrics(result['field_key'], found)}{asof}."
+        if allm:                                   # partial miss: offer the metrics we DO have
+            noun = _metric_noun(result["metric_key"])
+            return (f"I don't have the {noun} on file for {name} — "
+                    f"I do have {_fmt_metrics(result['field_key'], allm)}{asof}.")
+        return f"I don't have Scholar metrics on file for {name}."
+
+    if skill == "top_people_by_metric":
+        org = result.get("org_name") or "this group"
+        ranked, wm, total = result["ranked"], result["with_metric"], result["total_in_org"]
+        n, noun = result.get("n", 1), _metric_noun(result["metric_key"])
+        fk = result["field_key"]
+        if wm == 0:
+            return f"I don't have Scholar metrics on file for anyone in {org}."
+        cov = f"{wm} of {org}'s {total} people"
+        caveat = ", so this isn't a full ranking" if wm < total else ""
+        sel = _top_with_ties(ranked, n)
+        vstr = lambda v: _fmt_metrics(fk, {result["metric_key"]: v})  # noqa: E731
+        if len(sel) == 1:
+            return (f"I have Scholar {noun} for {cov}{caveat}. "
+                    f"The highest is {sel[0][0]} ({vstr(sel[0][1])}).")
+        listed = "; ".join(f"{i}. {nm} ({vstr(v)})" for i, (nm, v) in enumerate(sel, 1))
+        if len(ranked) < n:                        # asked for more than exist with metrics
+            return (f"You asked for the top {n}, but I only have Scholar {noun} for "
+                    f"{cov}{caveat}: {listed}.")
+        return f"Top {len(sel)} in {org} by {noun} — I have metrics for {cov}{caveat}: {listed}."
 
     if skill == "entity_card":
         return result["card"] or ""        # the card is the grounding + offline fallback

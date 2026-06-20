@@ -161,3 +161,11 @@ What is Ioannis Koutis's research and how cited is he?
 Koutis's email
 koutis info
 what does Koutis work on
+
+# metric queries (Scholar citations / h-index / i10 — single-person + org ranking, honest-partial)
+Koutis citations
+What is Koutis's h-index
+How many citations does Ioannis Koutis have
+Who has the most citations in the computer science department
+Top 5 faculty by citations in YWCC
+Who is the most cited professor at NJIT

@@ -29,6 +29,8 @@ import json
 import re
 import sqlite3
 
+from v2.core.people import profile_fields
+
 # Lower rank = preferred for the "primary" role shown in disambiguation.
 _ROLE_RANK = {"faculty": 0, "admin": 1, "officer": 2, "joint": 3,
               "staff": 4, "advisor": 5, "emeritus": 6}
@@ -218,6 +220,45 @@ def research_of_person(conn: sqlite3.Connection, entity_id: str) -> dict:
     if rs and rs[0]:
         statement = rs[0].strip()
     return {"name": name, "areas": areas, "statement": statement}
+
+
+def person_attrs(conn: sqlite3.Connection, entity_id: str) -> dict:
+    """The Person node's parsed ``attrs`` bag (or {}). The SINGLE JSON-reader for per-person
+    attrs — structured_answer delegates here so there is only one read path."""
+    row = conn.execute(
+        "SELECT attrs FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+        (entity_id,)).fetchone()
+    if not row or not row[0]:
+        return {}
+    try:
+        return json.loads(row[0])
+    except (TypeError, ValueError):
+        return {}
+
+
+def metric_of_person(conn: sqlite3.Connection, entity_id: str, field_key: str,
+                     metric_key: str | None = None) -> dict:
+    """{name, field_key, found, all, updated_at} for one person's numeric metrics, read straight
+    from ``attrs.profiles[field_key]``. ``found`` is the asked metric (or all of the field's metrics
+    when ``metric_key`` is None); ``all`` is every metric present for the field — so a partial miss
+    (asked h-index, only citations on file) can still offer what we DO have. Honest-empty (found={})
+    when absent. Never fabricated."""
+    attrs = person_attrs(conn, entity_id)
+    row = conn.execute(
+        "SELECT name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+        (entity_id,)).fetchone()
+    name = normalize_person_name(row[0]) if row else entity_id
+    entry = ((attrs.get("profiles") or {}).get(field_key)) or {}
+    metric_keys = [m.key for fk, m in profile_fields.metric_fields() if fk == field_key]
+    all_present = {k: entry.get(k) for k in metric_keys if entry.get(k) is not None}
+    if metric_key is None:
+        found = dict(all_present)
+    elif entry.get(metric_key) is not None:
+        found = {metric_key: entry[metric_key]}
+    else:
+        found = {}
+    return {"name": name, "field_key": field_key, "found": found, "all": all_present,
+            "updated_at": entry.get("updated_at")}
 
 
 def entity_card(conn: sqlite3.Connection, entity_id: str) -> str:

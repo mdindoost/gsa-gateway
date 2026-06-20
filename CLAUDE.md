@@ -32,9 +32,19 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
 2. `skills.py` — parameterized SQL skills: `faculty_in_department`, `people_by_research_area`,
    `count_people_by_research_area`, `areas_in_org`, `area_counts`, `people_by_area_tag`,
    `officers_in_org` (officer/deprep roles), `people_in_org` (all roles), `faculty_areas_in_department`
-   (per-person research areas for a dept's faculty — the ANTI-FABRICATION skill, see below).
+   (per-person research areas for a dept's faculty — the ANTI-FABRICATION skill, see below),
+   `top_people_by_metric` (rank an org SUBTREE by a Scholar metric; GROUP BY p.id so multi-role people
+   count once; returns the full ranked list + `with_metric`/`total_in_org` for honest-partial wording).
    Entity layer (`entity.py`): `people_by_role`/`role_in_org` (find a person BY their role title),
-   `research_of_person`, `entity_card`, `persons_by_lastname` (unambiguous-surname resolution).
+   `research_of_person`, `entity_card`, `persons_by_lastname` (unambiguous-surname resolution),
+   `metric_of_person` (one person's Scholar numbers; `person_attrs` is the single per-person attrs reader).
+   **Metrics are a first-class, registry-driven queryable facet:** the router matches metric words via
+   `profile_fields.match_metric` (aliases live ON the `Metric` — bare `i10`/`cite` deliberately NOT
+   aliased), routes "X citations / X's h-index" → `metric_of_person` and "most cited in <org> / top N by
+   h-index in <org>" (org + `_RANK_CUE`) → `top_people_by_metric` (root org = university-wide). Numbers
+   are rendered DETERMINISTICALLY and `is_deterministic(result)` makes the caller skip LLM compose so a
+   metric is never reworded. Surname/full-name resolution is the shared `_resolve_person`/`_resolve_surname`.
+   Spec: `docs/superpowers/specs/2026-06-19-metric-queries-design.md`.
 3. `structured_answer.py` — runs the routed skill → complete deterministic answer. `deterministic_suffix(result)`
    appends external-profile **links** (on `entity_card`) / Scholar **metrics** (on `research_of_person`)
    to the FINAL answer VERBATIM, AFTER LLM compose — never handed to the LLM (no hallucinated URLs/numbers).

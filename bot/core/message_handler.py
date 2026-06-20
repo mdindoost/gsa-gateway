@@ -288,7 +288,10 @@ class MessageHandler:
                     return None
                 # A deterministic line (profile links / Scholar metrics) appended to the
                 # FINAL answer verbatim — never handed to the LLM to restate.
-                return facts, structured_answer.deterministic_suffix(result)
+                # Metric answers are themselves deterministic (numbers must not be reworded) →
+                # flag so the caller skips LLM compose entirely.
+                return (facts, structured_answer.deterministic_suffix(result),
+                        structured_answer.is_deterministic(result))
             finally:
                 conn.close()
 
@@ -299,9 +302,9 @@ class MessageHandler:
             return None
         if not ran:
             return None
-        facts, suffix = ran
+        facts, suffix, deterministic = ran
         out = facts
-        if self.ollama:
+        if self.ollama and not deterministic:   # metric numbers must not be reworded by the LLM
             composed = await self.ollama.compose_from_rows(text, facts)
             if composed:
                 out = composed

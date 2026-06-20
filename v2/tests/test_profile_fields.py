@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from v2.core.people.profile_fields import (
     PROFILE_FIELDS, Field, Metric, render_links, render_metrics,
+    metric_fields, match_metric,
 )
 
 
@@ -59,6 +60,49 @@ def test_render_metrics_none_when_no_numbers():
 def test_render_metrics_partial():
     attrs = {"profiles": {"scholar": {"citations": 12}}}
     assert render_metrics(attrs) == "Google Scholar: 12 citations"
+
+
+def test_render_metrics_only_renders_one_metric():
+    attrs = {"profiles": {"scholar": {
+        "citations": 5021, "h_index": 30, "i10_index": 62, "updated_at": "2026-06"}}}
+    assert render_metrics(attrs, only="citations") == "Google Scholar: 5,021 citations — as of 2026-06"
+    assert render_metrics(attrs, only="h_index") == "Google Scholar: h-index 30 — as of 2026-06"
+
+
+def test_render_metrics_only_missing_metric_is_none():
+    attrs = {"profiles": {"scholar": {"citations": 5021}}}
+    assert render_metrics(attrs, only="h_index") is None
+
+
+def test_metric_fields_lists_every_metric_with_its_field_key():
+    mf = metric_fields()
+    keys = {(fk, m.key) for fk, m in mf}
+    assert keys == {("scholar", "citations"), ("scholar", "h_index"), ("scholar", "i10_index")}
+
+
+def test_match_metric_hits_each_kept_alias():
+    assert match_metric("koutis citations")[1].key == "citations"
+    assert match_metric("Koutis citation")[1].key == "citations"
+    assert match_metric("how many times has koutis been cited")[1].key == "citations"
+    assert match_metric("what is koutis's h-index")[1].key == "h_index"
+    assert match_metric("koutis h index")[1].key == "h_index"
+    assert match_metric("koutis hindex")[1].key == "h_index"
+    assert match_metric("koutis i10-index")[1].key == "i10_index"
+    assert match_metric("koutis i10 index")[1].key == "i10_index"
+    # returns the field_key too
+    assert match_metric("koutis citations")[0] == "scholar"
+
+
+def test_match_metric_drops_dangerous_aliases():
+    # bare "i10" matches immigration forms; "cite" is the verb form, not a metric.
+    assert match_metric("do I need form i10 for my visa") is None
+    assert match_metric("how do I cite a paper") is None
+    assert match_metric("cite your sources") is None
+
+
+def test_match_metric_none_for_non_metric_text():
+    assert match_metric("who is koutis") is None
+    assert match_metric("the i1000 sensor reading") is None  # word-boundary: i1000 != i10
 
 
 def test_adding_a_field_is_one_row():
