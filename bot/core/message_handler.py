@@ -193,7 +193,7 @@ class MessageHandler:
                     "It was great exploring with you! Come back anytime — Kavosh will be here.\n\n"
                     f"For any academic questions or GSA matters, reach out to your "
                     f"VP Academic Affairs:\n"
-                    f"**{vpa_name}** — {vpa_email} · md72@njit.edu"
+                    f"**{vpa_name}** — {vpa_email} · md724@njit.edu"
                 )
             )
 
@@ -236,16 +236,15 @@ class MessageHandler:
                     "- 🧭 Campus resources & offices\n"
                     "- 🎓 GSA events, the MMI Workshop series, travel awards & funding\n"
                     "- 👥 GSA officers, club/RGO rules & the constitution\n\n"
-                    "md72@njit.edu\n\n"
+                    "md724@njit.edu\n\n"
                     "🛠️ Open source — explore the code or contribute on "
-                    "[GitHub](https://github.com/mdindoost/gsa-gateway).\n\n"
-                    "Ask me anything about GSA or the NJIT community!"
+                    "[GitHub](https://github.com/mdindoost/gsa-gateway)."
                 )
             else:
                 text = (
                     "I'm **GSA Gateway** (current version: **Kavosh v2.0** — \"exploration\"), NJIT's Graduate "
                     "Student Association assistant and a guide to the wider NJIT community — faculty, "
-                    "research, departments, and GSA services. md72@njit.edu. "
+                    "research, departments, and GSA services. md724@njit.edu. "
                     "🛠️ Open source — contribute on [GitHub](https://github.com/mdindoost/gsa-gateway)."
                 )
             return MessageResponse(text=text)
