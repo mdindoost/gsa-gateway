@@ -1,111 +1,125 @@
 # Scholar Interests → Research Areas (completing external-profiles bullet 3)
 
-> **Status:** Design (COMPLETE version — Scholar areas first-class, both query directions). Scoping the
-> UNBUILT third goal of `2026-06-19-person-external-profiles-design.md` (line 9: "Scholar research
-> interests: fed into the EXISTING `ResearchArea` nodes + `researches` edges"). Awaiting the gate
-> (senior-eng + RAG review — now incl. completeness-vs-plan — → Mohammad approves → TDD).
+> **Status:** Design — COMPLETE version, REVISED per senior-eng + RAG review (2026-06-20, both incl. the
+> completeness-vs-plan check). Mohammad approved the amendments → build via TDD next. Scoping the unbuilt
+> 3rd goal of `2026-06-19-person-external-profiles-design.md` (line 9).
 > **Date:** 2026-06-20 · **Author:** Claude (Opus 4.8) with Mohammad Dindoost.
 > **Related:** `[[project_external_profiles]]`, `[[feedback_review_against_plan]]`,
-> `[[feedback_no_bandaid_align_data_and_retrieval]]` (one uniform standard, verify on BOTH KB and KG),
-> `v2/core/graph/project.py` (`area_key`, area upsert+reconcile), `v2/core/ingestion/{scholar,decompose,
-> reconcile,people_editor}.py`, `v2/core/retrieval/{entity,skills}.py`.
+> `[[feedback_no_bandaid_align_data_and_retrieval]]`, `[[feedback_no_manual_ops]]`,
+> `v2/core/graph/project.py` (`area_key`), `v2/core/ingestion/{scholar,decompose,reconcile,people_editor}.py`,
+> `v2/core/retrieval/{entity,skills}.py`, `skills._canonical`.
 
-## Problem (the gap the new completeness rule caught)
-External-profiles listed three goals: links ✅, Scholar metrics ✅, **Scholar interests → research areas
-❌ (never built, only quietly noted in a status line).** Effect: "Jamie Payton research field" deflects —
-she has Scholar metrics (1,404 cit) but **0 research-area edges** (Deans' NJIT pages list no research and
-we capture Scholar *numbers*, not *interests*). Same gap = the ~27 metrics-but-no-areas people with
-dormant citations.
+## Problem
+External-profiles shipped links ✅ + Scholar metrics ✅ but **never built bullet 3 (Scholar interests →
+research areas)** — only quietly noted in a status line (the gap the new completeness rule caught). So
+"Jamie Payton research field" deflects (she has 1,404 citations but **0 research-area items**), and **48**
+people have Scholar metrics but no areas → their citations stay dormant.
 
-## Goal — Scholar areas become FIRST-CLASS, identical to crawler areas (Mohammad's uniform-standard rule)
-Capture each enriched person's **Scholar interest tags** and merge them into the KG's research-area
-representation (**union + dedup** with the crawler's "card" areas), producing the SAME artifacts the
-crawler produces, so Scholar areas behave identically in **both** query directions:
-- **Forward** — "X research field / X research" (`research_of_person`): lists the person's areas.
-- **Reverse** — "who works on <area>" (`people_by_research_area`, FTS): finds the person by topic.
-- Plus: their Scholar metrics un-dormant (metrics surface on `research_of_person` only when areas exist),
-  and more faculty carry areas (feeds a future Find-Your-Advisor).
+## Goal — Scholar areas FIRST-CLASS, identical to crawler areas, both query directions
+Capture each enriched person's Scholar interest tags and merge them into the KG (**union + dedup** with
+crawler "card" areas), producing the SAME artifacts the crawler does, so Scholar areas work in BOTH:
+- **Forward** "X research field / X research" (`research_of_person`) and
+- **Reverse** "who works on X" (`people_by_research_area`, FTS) — incl. **org-scoped** variants.
 
-Self-asserted Scholar interests ARE legitimate research areas — not fabrication. Same NJIT-affiliation
-confirmation as metrics guards wrong-person profiles.
+Plus: un-dormant their metrics (metrics surface on `research_of_person` only when areas exist). Self-
+asserted Scholar interests are legitimate research areas (not fabrication); NJIT-affiliation confirmed at
+capture guards wrong-person profiles.
 
 ## Design
 
-### 1. Parse interests — `scholar.parse_scholar_interests(html) -> list[str]`
-Scholar lists interests at `#gsc_prf_int a` (validated in the profiles-design finding). Add beside
-`parse_scholar_metrics`. The MANUAL WebFetch path (owner's chosen method — Scholar blocks bots) already
-returns interests; the on-demand `scholar.py` refresh gains interest capture too.
+### 1. Parse — `scholar.parse_scholar_interests(html) -> list[str]`
+Tags at `#gsc_prf_int a`. Trim, drop empties, de-dup (mirror `parse_scholar_metrics`' guarding). `[]` when
+none. **S6 (no-manual-ops):** wire it into the on-demand `scholar.refresh_scholar` too — when interests are
+parsed, call `set_person_research_areas` — so the one sanctioned-provider swap later covers interests, not
+just metrics. (Acquisition today stays manual WebFetch; this just makes the refresh path interest-aware.)
 
-### 2. Write — `people_editor.set_person_research_areas(conn, person_key, areas, *, source="scholar")`
-Produces the SAME artifacts the crawler does for a person's areas, source-tagged `'scholar'` so it never
-collides with crawler data:
-- **Graph:** for each area → `area_key()` → `upsert_node(type="ResearchArea", key, name, source="scholar")`
-  (reuses the EXISTING node if the area already exists = union/dedup), then `upsert_edge(researches,
-  area_source="external", source="scholar")`. Source-scoped reconcile deactivates this person's
-  `source='scholar'` `researches` edges not in the new set (a refresh updates cleanly); crawler edges
-  (`source='crawler'`) are untouched.
-- **KB (the reverse-direction enabler):** upsert ONE `research_areas` `knowledge_item` for the person —
-  `type='research_areas'`, `content` = "Research areas of <name>: a; b; c", `metadata.entity_id` = person
-  key, `metadata.areas` = the tag list, **`created_by='scholar'`**, `source='dashboard'`. Idempotent /
-  source-scoped: reconcile only this person's `created_by='scholar'` research_areas item, so the crawler's
-  own research_areas item (`created_by='crawler'`) is never touched. The FTS5 trigger indexes
-  `search_text` on insert → the person is immediately matchable in `people_by_research_area`. Returns the
-  item id needing embedding.
-- Does NOT commit (caller owns the txn), consistent with `set_person_profiles`.
+### 2. Write — `set_person_research_areas(conn, person_key, areas, *, org_id, source="scholar")`
+Produces the SAME two artifacts the crawler does, source-tagged `'scholar'`:
+- **`org_id` is REQUIRED (review B1)** — `knowledge_items.org_id` is NOT NULL and is what org-scoped
+  reverse/facet queries filter on. Caller derives it from the person's **primary faculty `has_role` org**
+  (the `category='faculty'`/`is_primary` edge); multi-role people (e.g. Payton admin@YWCC + faculty@CS) →
+  the **faculty** org, co-filing with where they actually sit. If no faculty edge, use the single role's org.
+- **Graph:** per area → `area_key()` → `upsert_node(ResearchArea, key, name, source="scholar")` (reuses the
+  EXISTING node = union/dedup) → `upsert_edge(researches, area_source="external", source="scholar")`.
+  Source-scoped reconcile of `source='scholar'` `researches` edges (deactivate this person's scholar edges
+  not in the new set), mirroring `project_entity`'s `source='crawler'` scoping. Crawler edges untouched.
+  - **S5 (accepted + documented, Mohammad):** the `(src,researches,dst)` index is UNIQUE, so if the crawler
+    already linked an area Scholar also asserts, `upsert_edge` UPDATES the one edge and its `source` flips
+    to 'scholar' (**last-writer-sets-source**). The edge stays active and resolves correctly both
+    directions; only provenance flips and a re-crawl can't re-own that one edge. Accepted (no schema
+    change). Test asserts: a shared area is NOT duplicated/deactivated and the person still researches it.
+- **KB (reverse-direction enabler):** ONE `research_areas` `knowledge_item`:
+  - `org_id` (above), `type='research_areas'`, `content="Research areas of <name>: a; b; c"` (never insert
+    the generated `search_text` — invariant), `metadata.entity_id`=person key, `metadata.areas`=tag list,
+    **`metadata.area_source='scholar'` (review S2)** so reverse/ranking consumers (incl. future FYA) can
+    down-weight broad self-asserted tags, **`created_by='scholar'`**, `source='dashboard'`,
+    **distinct natural_key `{key}:research_areas:scholar`** (review B2) so it never conflates with the
+    crawler's `{key}:research_areas:main`.
+  - **Idempotency = deactivate-then-insert (review B2)**, the `add_or_edit_person` pattern: `UPDATE
+    knowledge_items SET is_active=0 WHERE json_extract(metadata,'$.entity_id')=? AND created_by='scholar'
+    AND type='research_areas'`, then INSERT fresh. (No `reconcile_entity` — that's for full crawler
+    decomposition.) Crawler's `created_by='crawler'` item is never touched. FTS auto-indexes on INSERT
+    (search_text is generated + trigger). Returns the new item id for embedding.
+- Does NOT commit (caller owns the txn).
 
-### 3. Serve — TRUE union across ALL sources (the "OR + dedup" you described)
-`research_of_person` today reads ONE `research_areas` KB item via `fetchone()` and only falls back to
-edges if absent — so it would miss a second (scholar) item and miss edges. **Change it to return the
-UNION of: every active `research_areas` KB item's `metadata.areas` (crawler + scholar) ∪ every active
-`researches` edge's area — deduped by `area_key`, display-normalized.** This makes the merge real for
-everyone (area-less people AND people who already have crawler areas). Statement handling unchanged.
+### 3. Serve — TRUE union in `research_of_person` (the "OR + dedup")
+Today it reads ONE `research_areas` item via `fetchone()` then falls back to edges → misses a 2nd item and
+edges. **Change to: union of EVERY active `research_areas` item's `metadata.areas` (crawler + scholar) ∪
+EVERY active `researches` edge area; group by `area_key`; emit `skills._canonical(forms)` per group
+(review S1 — reuse the existing canonical picker, don't reinvent); deterministic sort (canonical casefold,
+like `areas_in_org`) so ordering can't regress eval (review S2-order).** Plus **subsumption suppression
+(review S1):** drop a Scholar-only area from the DISPLAY union when its casefold is a whole-token subset of
+another area from a different source (e.g. "databases" ⊂ "Multimedia Databases") — keeps the edge/KB for
+reverse recall but de-garbles the forward list. Statement handling unchanged.
 
-`people_by_research_area` needs no change: it already FTS-matches `research_areas` KB items by
-`entity_id` and returns DISTINCT people, so the new `created_by='scholar'` item makes Scholar-only people
-matchable by topic automatically.
+`people_by_research_area` needs no code change (review G4 confirmed): it FTS-matches `research_areas` items
+by `entity_id` and returns DISTINCT people (a person matched by both crawler+scholar items appears once) —
+**contingent on B1's `org_id` being correct** for the org-scoped variant.
 
 ### 4. Embed + backfill
-- New/updated scholar `research_areas` items are embedded by the existing `v2/scripts/embed_all.py`
-  (resumable; embeds items missing a vector) — so they also join the semantic retriever, not just FTS.
-- **Backfill** the ~49 people who already have Scholar metrics but never had interests captured: per
-  person, fetch interests (manual WebFetch, same as metrics) → `set_person_research_areas` → `embed_all`.
-  Gated (`hardened_backup` + commit), source-tagged `'scholar'`. Includes Jamie Payton.
+- `v2/scripts/embed_all.py` (resumable) embeds the new items → they join semantic retrieval too.
+- **Backfill the 48** metrics-but-no-areas people (incl. Payton): per person, WebFetch interests (NJIT-
+  affiliation confirmed, logged) → `set_person_research_areas(org_id=faculty-home)` → `embed_all`. Gated
+  (`hardened_backup` + commit). DB-only → no restart for data.
 
-## Open decisions (RESOLVED 2026-06-20, Mohammad)
-- **D1 — `research_of_person` union (all KB items ∪ edges):** YES (the core "OR + dedup").
-- **D2 — Scholar areas matchable in "who works on X":** **INCLUDED** (not deferred) — via the
-  `created_by='scholar'` `research_areas` KB item, so Scholar areas are first-class in both directions
-  (Mohammad's "one uniform standard / verify on BOTH KB and KG").
-- **D3 — acquisition = manual WebFetch + one-time backfill:** YES (Scholar blocks bots).
+## Decisions (RESOLVED 2026-06-20, Mohammad)
+- D1 union (all KB ∪ edges): **YES.** D2 reverse first-class via the scholar KB item: **INCLUDED.**
+- D3 acquisition manual WebFetch + backfill: **YES.** S5 shared-area edge last-writer-sets-source:
+  **ACCEPT + document.** S6 wire `refresh_scholar` to capture interests: **YES.**
 
-## Goals checklist (completeness — per `[[feedback_review_against_plan]]`)
-- [ ] G1 `scholar.parse_scholar_interests`.
-- [ ] G2 `set_person_research_areas` — node + `researches` edge (source='scholar') **+** `research_areas`
-      KB item (created_by='scholar'); union via `area_key`; source-scoped reconcile for BOTH edges and the KB item.
-- [ ] G3 `research_of_person` returns the UNION of all research_areas KB items ∪ edges, deduped (D1).
-- [ ] G4 Verify `people_by_research_area` surfaces Scholar-only people by topic (D2) — confirm, no code change expected.
-- [ ] G5 Embed the new items (`embed_all`) + backfill existing Scholar people (incl. Jamie Payton).
+## Goals checklist (completeness — `[[feedback_review_against_plan]]`)
+- [ ] G1 `parse_scholar_interests` (clean/dedup/empty) + wired into `refresh_scholar` (S6).
+- [ ] G2 `set_person_research_areas(org_id required)` → ResearchArea node + `researches` edge (source='scholar',
+      area_source='external') **+** `research_areas` KB item (created_by='scholar', distinct natural_key,
+      metadata.area_source='scholar'); deactivate-then-insert idempotency; source/created_by isolation; S5 documented.
+- [ ] G3 `research_of_person` UNION (all KB items ∪ edges) → group by `area_key`, `_canonical` display,
+      deterministic sort, subsumption suppression.
+- [ ] G4 `people_by_research_area` (un-scoped AND org-scoped) returns scholar-only people, DISTINCT — verify.
+- [ ] G5 `embed_all` + backfill the 48 (incl. Payton); affiliation confirmed+logged per person.
 
 ## Testing (TDD)
-- `scholar.parse_scholar_interests`: extracts tags from sample HTML; [] when none.
-- `set_person_research_areas`: creates ResearchArea node + edge (source='scholar', area_source='external')
-  **and** a `research_areas` KB item (created_by='scholar', metadata.areas/entity_id set, FTS-indexed);
-  **reuses the existing area node** incl. case-fold ("Machine Learning"=="machine learning"); a second
-  call updates (source-scoped reconcile drops removed scholar areas) and does NOT touch a `source='crawler'`
-  edge / `created_by='crawler'` item for the same person.
-- `research_of_person` union: scholar-only person → areas shown (Payton); person with crawler KB item +
-  extra scholar areas → UNION, deduped; statement path unchanged.
-- `people_by_research_area`: a scholar-only person is returned for a query matching a Scholar interest
-  (reverse direction); DISTINCT (no dup when both crawler + scholar items match).
-- Real-DB verify: "Jamie Payton research field" → her Scholar interests; "who works on computing
-  education" → Payton appears; "Payton research" → metrics now also surface.
+- `parse_scholar_interests`: tags from sample HTML; trimmed/de-duped; `[]` when none.
+- `set_person_research_areas`: creates node + edge (source='scholar', area_source='external') **and** the
+  KB item (created_by='scholar', metadata.area_source='scholar'/areas/entity_id, distinct natural_key,
+  FTS-indexed, correct `org_id` from faculty edge); **reuses existing area node** incl. case-fold; second
+  call **replaces, no dup** (deactivate-then-insert); a `source='crawler'` edge / `created_by='crawler'`
+  item for the same person is NOT touched; **shared-area edge (S5): not duplicated/deactivated, person
+  still researches it.**
+- `research_of_person` union: scholar-only person → areas (Payton); crawler item + extra scholar tags →
+  UNION, deduped, `_canonical` form, deterministic order, subsumption drops "databases" under "Multimedia
+  Databases"; statement path unchanged. Re-run existing research-areas eval Q's → no order regression.
+- `people_by_research_area`: scholar-only person returned for a matching topic **un-scoped AND org-scoped
+  (org_id=faculty dept)** — DISTINCT.
+- Real-DB verify: "Jamie Payton research field" → her interests; "who works on computing education in
+  computer science" → Payton; "Payton research" → areas + citation suffix; "who works on machine learning"
+  → still a sane bounded set (S2 over-return check).
 
 ## Files touched
-- `v2/core/ingestion/scholar.py` — `parse_scholar_interests`.
-- `v2/core/ingestion/people_editor.py` — `set_person_research_areas` (graph + KB item, source-scoped).
-- `v2/core/retrieval/entity.py` — `research_of_person` union (all KB items ∪ edges).
-- `v2/tests/` — new tests; `eval/questions.txt` — forward + reverse questions for a Scholar-only person.
+- `v2/core/ingestion/scholar.py` — `parse_scholar_interests` + `refresh_scholar` interest wiring (S6).
+- `v2/core/ingestion/people_editor.py` — `set_person_research_areas` (graph + KB item, org_id, deactivate-then-insert).
+- `v2/core/retrieval/entity.py` — `research_of_person` union (`_canonical`, sort, subsumption).
+- `v2/tests/` — new tests; `eval/questions.txt` — forward + scoped-reverse + broad-topic Q's.
 - Backfill = gated data run + `embed_all` (not code).
 
-No schema change. The backfill is data (no restart); the `research_of_person` code change needs a restart.
-After backfill, run `embed_all` so the new research_areas items join semantic retrieval.
+No schema change. Backfill = data (no restart); the `research_of_person` change needs a restart; run
+`embed_all` after backfill.
