@@ -49,3 +49,33 @@
 {"id":"cmd2","query":"reset","family":"COMMAND","group":"cmd-reset"}
 {"id":"cmd3","query":"help","family":"COMMAND","group":"cmd-help"}
 {"id":"cmd4","query":"start","family":"COMMAND","group":"cmd-start"}
+{"id":"b1-01","query":"Top 10 by citations mechanical engineering","family":"KG","skill":"top_people_by_metric","slots":{"org":"mechanical engineering","metric":"citations","n":10},"group":"rank-mech-cite"}
+{"id":"b1-02","query":"Most cited professor in mechanical and industrial","family":"KG","skill":"top_people_by_metric","slots":{"org":"mie","metric":"citations","n":1},"group":"rank-mech-cite"}
+{"id":"b1-03","query":"Top 5 ywcc h index","family":"KG","skill":"top_people_by_metric","slots":{"org":"ywcc","metric":"h_index","n":5},"group":"rank-ywcc-h"}
+{"id":"b1-04","query":"Min citation ywcc","family":"KG","skill":"top_people_by_metric","slots":{"org":"ywcc","metric":"citations","order":"asc"},"group":"rank-ywcc-cite-min"}
+{"id":"b1-05","query":"Least h index cs","family":"KG","skill":"top_people_by_metric","slots":{"org":"cs","metric":"h_index","order":"asc"},"group":"rank-cs-h-min"}
+{"id":"b1-06","query":"who has the most citation in cs department","family":"KG","skill":"top_people_by_metric","slots":{"org":"cs","metric":"citations","n":1},"group":"rank-cs-cite"}
+{"id":"b1-07","query":"what is Zhi Wei's h-index","family":"KG","skill":"metric_of_person","slots":{"person":"Zhi Wei","metric":"h_index"},"group":"metric-zhiwei"}
+{"id":"b1-08","query":"Koutis citation","family":"KG","skill":"metric_of_person","slots":{"person":"Koutis","metric":"citations"},"group":"koutis-cite"}
+{"id":"b1-09","query":"What is Andew Sohn's research area?","family":"KG","skill":"research_of_person","slots":{"person":"Andrew Sohn"},"group":"res-sohn"}
+{"id":"b1-10","query":"Petras research field","family":"KG","skill":"research_of_person","slots":{"person":"Petras"},"group":"petras"}
+{"id":"b1-11","query":"jamie payton research field","family":"KG","skill":"research_of_person","slots":{"person":"Jamie Payton"},"group":"res-payton"}
+{"id":"b1-12","query":"what does Koutis work on","family":"KG","skill":"research_of_person","slots":{"person":"Koutis"},"group":"res-koutis"}
+{"id":"b1-13","query":"Who is petras","family":"KG","skill":"entity_card","slots":{"person":"Petras"},"group":"petras"}
+{"id":"b1-14","query":"koutis","family":"KG","skill":"entity_card","slots":{"person":"Koutis"},"group":"card-koutis"}
+{"id":"b1-15","query":"Koutis's email","family":"KG","skill":"entity_card","slots":{"person":"Koutis","attr":"email"},"group":"card-koutis"}
+{"id":"b1-16","query":"oria linkedin","family":"KG","skill":"link_of_person","slots":{"person":"Oria","profile":"linkedin"},"group":"link-oria"}
+{"id":"b1-17","query":"What is koutis personal website","family":"KG","skill":"link_of_person","slots":{"person":"Koutis","profile":"website"},"group":"link-koutis"}
+{"id":"b1-18","query":"List all the people research is graph","family":"KG","skill":"people_by_research_area","slots":{"area":"graph"},"group":"area-graph"}
+{"id":"b1-19","query":"List of professors who research graphs","family":"KG","skill":"people_by_research_area","slots":{"area":"graph"},"group":"area-graph"}
+{"id":"b1-20","query":"Find an advisor machine learning","family":"KG","skill":"people_by_research_area","slots":{"area":"machine learning"},"group":"area-ml-advisor"}
+{"id":"b1-21","query":"All ywcc profssors research field","family":"KG","skill":"faculty_areas_in_department","slots":{"org":"ywcc"},"group":"facareas-ywcc"}
+{"id":"b1-22","query":"How can I extend my PhD duration to 6 years?","family":"RAG","source":"general","group":"gen-phd-extend"}
+{"id":"b1-23","query":"what is the GSA travel award","family":"RAG","source":"general","group":"gen-travel-award"}
+{"id":"b1-24","query":"tell me about the data science program","family":"RAG","source":"general","group":"gen-ds-program"}
+{"id":"b1-25","query":"what is the MMI Workshop","family":"RAG","source":"general","group":"gen-mmi"}
+{"id":"b1-26","query":"njit parking permits","family":"LIVE","slots":{"topic":"parking","kb_candidate":true},"group":"live-parking"}
+{"id":"b1-27","query":"NJIT library hours","family":"LIVE","slots":{"topic":"library hours","kb_candidate":true},"group":"live-library-hours"}
+{"id":"b1-28","query":"How silly you are?","family":"OTHER","slots":{"reason":"social"},"group":"other-social"}
+{"id":"b1-29","query":"capital of iran","family":"OTHER","slots":{"reason":"out-of-scope"},"group":"other-oos"}
+{"id":"b1-30","query":"Talk about yourself and your abilities","family":"OTHER","slots":{"reason":"meta-about-bot"},"group":"other-meta"}
