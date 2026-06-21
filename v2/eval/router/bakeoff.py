@@ -31,12 +31,28 @@ def _build_arms(conn, train, encoder, masker=None) -> tuple[dict, dict]:
     return arms, notes
 
 
+def _partition(examples, encoder, test_frac, seed, split_mode):
+    """Train/test partition that honors the labeling protocol: seeds are ALWAYS train (never gold),
+    and an explicit `split:test` gold set (real-only) wins over a computed split. `hardneg` rows are
+    excluded from the main run (scored as a separate suite). Falls back to a computed split over the
+    real rows when no explicit gold set exists yet — with seeds still pinned to train (no seed/real
+    paraphrase can straddle the boundary)."""
+    seeds = [x for x in examples if x.provenance == "seed"]
+    non_seed = [x for x in examples if x.provenance != "seed"]
+    explicit_test = [x for x in non_seed if x.split == "test"]
+    pool = [x for x in non_seed if x.split not in ("test", "hardneg")]
+    if explicit_test:
+        return seeds + pool, explicit_test
+    if split_mode == "entity":
+        tr, te = split_entity_disjoint(pool, test_frac=test_frac, seed=seed)
+    else:
+        tr, te = split(pool, encoder, test_frac=test_frac, seed=seed)
+    return seeds + tr, te
+
+
 def run_bakeoff(examples, conn, encoder, test_frac=0.3, seed=0, masker=None,
                 split_mode="paraphrase") -> dict:
-    if split_mode == "entity":
-        train, test = split_entity_disjoint(examples, test_frac=test_frac, seed=seed)
-    else:
-        train, test = split(examples, encoder, test_frac=test_frac, seed=seed)
+    train, test = _partition(examples, encoder, test_frac, seed, split_mode)
     arms, notes = _build_arms(conn, train, encoder, masker=masker)
     result: dict = {"_meta": {"n_train": len(train), "n_test": len(test), "seed": seed,
                               "split_mode": split_mode, **notes}}
