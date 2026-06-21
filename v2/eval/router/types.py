@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 
 class Family:
     KG = "KG"; RAG = "RAG"; LIVE = "LIVE"; CLARIFY = "CLARIFY"; COMMAND = "COMMAND"
-    ALL = (KG, RAG, LIVE, CLARIFY, COMMAND)
+    OTHER = "OTHER"   # non-routable: social/meta, out-of-scope, context-dependent follow-ups
+    ALL = (KG, RAG, LIVE, CLARIFY, COMMAND, OTHER)
 
 
 @dataclass
