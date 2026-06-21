@@ -1,0 +1,571 @@
+{"id": "q0", "label": "OTHER", "note": "R1 about-the-assistant"}
+{"id": "q1", "label": "OTHER", "note": "R1 capabilities meta"}
+{"id": "q2", "label": "OTHER", "note": "R3 complaint/correction"}
+{"id": "q3", "label": "OTHER", "note": "R3 complaint"}
+{"id": "q4", "label": "OTHER", "note": "R3 user statement/assertion"}
+{"id": "q5", "label": "RAG/general +live", "note": "PhD extension policy / OGI logistics"}
+{"id": "q6", "label": "OTHER", "note": "R1 introduce yourself"}
+{"id": "q7", "label": "KG/top_people_by_metric", "note": "min citation ywcc = rank by metric"}
+{"id": "q8", "label": "KG/people_in_org", "note": "staff of an org unit"}
+{"id": "q9", "label": "RAG/general +live", "note": "parking fee logistics"}
+{"id": "q10", "label": "RAG/general +live", "note": "parking hours"}
+{"id": "q11", "label": "RAG/general", "note": "gsa travel award prose"}
+{"id": "q12", "label": "KG/research_of_person"}
+{"id": "q13", "label": "RAG/general +live", "note": "parking hours"}
+{"id": "q14", "label": "RAG/general +live", "note": "CPT process, OGI heads-up"}
+{"id": "q15", "label": "CLARIFY", "note": "recommend courses - underspecified, no program"}
+{"id": "q16", "label": "KG/top_people_by_metric"}
+{"id": "q17", "label": "KG/top_people_by_metric"}
+{"id": "q18", "label": "hardneg", "note": "R6 pronoun 'his' no antecedent"}
+{"id": "q19", "label": "RAG/general +live", "note": "R4 search parking -> live logistics"}
+{"id": "q20", "label": "RAG/general +live", "note": "library hours"}
+{"id": "q21", "label": "RAG/general +live", "note": "visitor parking"}
+{"id": "q22", "label": "RAG/general +live", "note": "tuition payment"}
+{"id": "q23", "label": "RAG/general +live", "note": "CPT process"}
+{"id": "q24", "label": "RAG/general +live", "note": "OGI contact"}
+{"id": "q25", "label": "KG/metric_of_person"}
+{"id": "q26", "label": "RAG/general", "note": "program prose"}
+{"id": "q27", "label": "RAG/general", "note": "what is GWICS"}
+{"id": "q28", "label": "KG/people_by_role", "note": "chair of CS"}
+{"id": "q29", "label": "RAG/general", "note": "conference funding how-to"}
+{"id": "q30", "label": "RAG/general", "note": "what is MMI Workshop"}
+{"id": "q31", "label": "RAG/general", "note": "GSA travel award"}
+{"id": "q32", "label": "KG/top_people_by_metric"}
+{"id": "q33", "label": "KG/top_people_by_metric"}
+{"id": "q34", "label": "KG/top_people_by_metric"}
+{"id": "q35", "label": "CLARIFY", "note": "R5 top 10 no metric"}
+{"id": "q36", "label": "KG/top_people_by_metric"}
+{"id": "q37", "label": "KG/top_people_by_metric", "note": "most cited"}
+{"id": "q38", "label": "KG/top_people_by_metric", "note": "citations of a dept = rank/list by metric"}
+{"id": "q39", "label": "hardneg", "note": "R6 'who else' follow-up"}
+{"id": "q40", "label": "KG/faculty_areas_in_department", "note": "all ywcc profs research field"}
+{"id": "q41", "label": "OTHER", "note": "R3 complaint"}
+{"id": "q42", "label": "RAG/general +live", "note": "fitness center hours"}
+{"id": "q43", "label": "RAG/general +live", "note": "wellness center hours"}
+{"id": "q44", "label": "OTHER", "note": "social/insult"}
+{"id": "q45", "label": "OTHER", "note": "social/insult"}
+{"id": "q46", "label": "OTHER", "note": "social"}
+{"id": "q47", "label": "OTHER", "note": "R3 complaint about pay"}
+{"id": "q48", "label": "RAG/general +live", "note": "CityMD hours"}
+{"id": "q49", "label": "RAG/general +live", "note": "R4 search hours -> live"}
+{"id": "q50", "label": "RAG/general +live", "note": "R4 health care logistics"}
+{"id": "q51", "label": "RAG/food", "note": "R4 search food"}
+{"id": "q52", "label": "RAG/general", "note": "travel award procedure"}
+{"id": "q53", "label": "KG/top_people_by_metric", "note": "most citation"}
+{"id": "q54", "label": "KG/top_people_by_metric"}
+{"id": "q55", "label": "KG/metric_of_person", "note": "R7 Prtras->Petras citation"}
+{"id": "q56", "label": "KG/research_of_person", "note": "Petras"}
+{"id": "q57", "label": "KG/entity_card", "note": "who is petras"}
+{"id": "q58", "label": "OTHER", "note": "R3 complaint"}
+{"id": "q59", "label": "OTHER", "note": "meta about conversation history"}
+{"id": "q60", "label": "KG/top_people_by_metric", "note": "least h index = rank by metric"}
+{"id": "q61", "label": "KG/top_people_by_metric"}
+{"id": "q62", "label": "KG/top_people_by_metric", "note": "mist->most h index cs"}
+{"id": "q63", "label": "hardneg", "note": "R6 'same question ece' follow-up"}
+{"id": "q64", "label": "OTHER", "note": "R2 non-English"}
+{"id": "q65", "label": "OTHER", "note": "R1 llm engine meta"}
+{"id": "q66", "label": "OTHER", "note": "R2 non-English"}
+{"id": "q67", "label": "OTHER", "note": "R1 story of gsa gateway = about assistant"}
+{"id": "q68", "label": "RAG/general +live", "note": "what time at njit -> live"}
+{"id": "q69", "label": "RAG/general +live", "note": "njit parking permits"}
+{"id": "q70", "label": "KG/entity_card", "note": "R4 search person -> KG"}
+{"id": "q71", "label": "RAG/general +live", "note": "parking"}
+{"id": "q72", "label": "RAG/general +live", "note": "njit parking permits"}
+{"id": "q73", "label": "RAG/general +live", "note": "courses fall 2026 -> live"}
+{"id": "q74", "label": "RAG/general +live", "note": "parking hours"}
+{"id": "q75", "label": "hardneg", "note": "R6 'search for it' bare pronoun"}
+{"id": "q76", "label": "RAG/general +live", "note": "dining hall hours"}
+{"id": "q77", "label": "KG/entity_card", "note": "R4 search koutis -> KG person"}
+{"id": "q78", "label": "RAG/general +live", "note": "library hours"}
+{"id": "q79", "label": "RAG/general +live", "note": "academic calendar"}
+{"id": "q80", "label": "RAG/general +live", "note": "parking permit logistics"}
+{"id": "q81", "label": "KG/research_of_person", "note": "Heidi Young research"}
+{"id": "q82", "label": "KG/link_of_person", "note": "oria linkedin"}
+{"id": "q83", "label": "hardneg", "note": "R6 'for him' follow-up"}
+{"id": "q84", "label": "KG/research_of_person"}
+{"id": "q85", "label": "OTHER", "note": "R1 what is Kavosh"}
+{"id": "q86", "label": "OTHER", "note": "R1 what is your version"}
+{"id": "q87", "label": "OTHER", "note": "R2 non-English greeting"}
+{"id": "q88", "label": "KG/research_of_person"}
+{"id": "q89", "label": "KG/people_by_research_area", "note": "find advisor ML = who works on ML"}
+{"id": "q90", "label": "KG/research_of_person"}
+{"id": "q91", "label": "KG/entity_card", "note": "whi is samaneh berenjian"}
+{"id": "q92", "label": "KG/top_people_by_metric", "note": "most citation cs"}
+{"id": "q93", "label": "KG/link_of_person", "note": "koutis website"}
+{"id": "q94", "label": "KG/metric_of_person", "note": "koutis citation"}
+{"id": "q95", "label": "KG/metric_of_person"}
+{"id": "q96", "label": "KG/entity_card", "note": "bare name Mengjia Xu"}
+{"id": "q97", "label": "hardneg", "note": "R6 'what about network?' follow-up"}
+{"id": "q98", "label": "KG/people_by_research_area", "note": "people researching graph"}
+{"id": "q99", "label": "KG/people_by_research_area"}
+{"id": "q100", "label": "RAG/general", "note": "steps for travel award"}
+{"id": "q101", "label": "RAG/general", "note": "timeline for travel award"}
+{"id": "q102", "label": "hardneg", "note": "R6 'how can i get it' bare pronoun"}
+{"id": "q103", "label": "RAG/general", "note": "what is travel award"}
+{"id": "q104", "label": "RAG/general", "note": "BME PhD requirements"}
+{"id": "q105", "label": "OTHER", "note": "R3 complaint/bias"}
+{"id": "q106", "label": "hardneg", "note": "R6 'what about for BME?' follow-up"}
+{"id": "q107", "label": "RAG/general", "note": "quickest PhD timeline policy"}
+{"id": "q108", "label": "RAG/general", "note": "PhD in 1 semester policy"}
+{"id": "q109", "label": "RAG/general", "note": "how to apply travel award"}
+{"id": "q110", "label": "RAG/general", "note": "R7 aard->award"}
+{"id": "q111", "label": "RAG/general", "note": "travel award date"}
+{"id": "q112", "label": "RAG/general", "note": "travel award"}
+{"id": "q113", "label": "KG/entity_card", "note": "koutis all info"}
+{"id": "q114", "label": "KG/entity_card", "note": "bare name"}
+{"id": "q115", "label": "KG/entity_card", "note": "koutis info"}
+{"id": "q116", "label": "KG/entity_card", "note": "email lives on entity card"}
+{"id": "q117", "label": "KG/research_of_person", "note": "what does Koutis work on"}
+{"id": "q118", "label": "KG/research_of_person"}
+{"id": "q119", "label": "OTHER", "note": "out-of-scope general knowledge"}
+{"id": "q120", "label": "KG/entity_card", "note": "who is ioannis koutis"}
+{"id": "q121", "label": "KG/entity_card", "note": "more about mohammad dindoost"}
+{"id": "q122", "label": "OTHER", "note": "out-of-scope general knowledge"}
+{"id": "q123", "label": "KG/entity_card", "note": "Blake Haggerty"}
+{"id": "q124", "label": "KG/people_by_role", "note": "R9 is X provost"}
+{"id": "q125", "label": "KG/people_by_role", "note": "who is provost"}
+{"id": "q126", "label": "KG/entity_card", "note": "Yan Xu"}
+{"id": "q127", "label": "RAG/general +live", "note": "bursar / pay bill logistics"}
+{"id": "q128", "label": "KG/people_in_org", "note": "who is in NJ School of Architecture"}
+{"id": "q129", "label": "KG/faculty_in_department", "note": "civil engineering faculty"}
+{"id": "q130", "label": "KG/org_departments", "note": "departments of newark college"}
+{"id": "q131", "label": "KG/org_departments", "note": "njit colleges"}
+{"id": "q132", "label": "RAG/general", "note": "R8 MMI organizers -> RAG"}
+{"id": "q133", "label": "RAG/general", "note": "about MMI"}
+{"id": "q134", "label": "RAG/general", "note": "MMI + dindoost (event roster) -> RAG"}
+{"id": "q135", "label": "KG/people_by_name", "note": "do we have mohammad in njit"}
+{"id": "q136", "label": "hardneg", "note": "R6 bare 'Yes' affirmation"}
+{"id": "q137", "label": "hardneg", "note": "R6 bare number"}
+{"id": "q138", "label": "COMMAND", "note": "R7 judge mide->judge mode"}
+{"id": "q139", "label": "KG/research_of_person", "note": "guiling wang"}
+{"id": "q140", "label": "KG/entity_card", "note": "more about prof guiling wang"}
+{"id": "q141", "label": "KG/entity_card", "note": "more about prof wang"}
+{"id": "q142", "label": "hardneg", "note": "R6 bare 'more'"}
+{"id": "q143", "label": "KG/entity_card", "note": "bare name Guiling Wang"}
+{"id": "q144", "label": "hardneg", "note": "R6 'why you didnt list him'"}
+{"id": "q145", "label": "hardneg", "note": "R6 'what about X' follow-up"}
+{"id": "q146", "label": "KG/people_by_name", "note": "list all the michael"}
+{"id": "q147", "label": "KG/people_by_name", "note": "any michael in njit"}
+{"id": "q148", "label": "KG/entity_card", "note": "how is lasha in ywcc = identity"}
+{"id": "q149", "label": "KG/research_of_person", "note": "hai phan research area"}
+{"id": "q150", "label": "KG/research_of_person"}
+{"id": "q151", "label": "KG/entity_card", "note": "who is hai phan"}
+{"id": "q152", "label": "RAG/general +live", "note": "I-20 renewal process"}
+{"id": "q153", "label": "COMMAND", "note": "judge mode"}
+{"id": "q154", "label": "RAG/general", "note": "food cost limit per person policy"}
+{"id": "q155", "label": "RAG/general", "note": "club food spend policy"}
+{"id": "q156", "label": "RAG/general", "note": "petty cash reimbursement policy"}
+{"id": "q157", "label": "RAG/general +live", "note": "OPT process"}
+{"id": "q158", "label": "RAG/general", "note": "tasks of vp academic affairs"}
+{"id": "q159", "label": "RAG/general", "note": "R7 vop->vp; task of vpa"}
+{"id": "q160", "label": "CLARIFY", "note": "'about graduation' too vague"}
+{"id": "q161", "label": "hardneg", "note": "R6 'about this' no antecedent"}
+{"id": "q162", "label": "RAG/general", "note": "December grad walk in May policy"}
+{"id": "q163", "label": "RAG/general", "note": "December graduates walk"}
+{"id": "q164", "label": "RAG/general", "note": "what is lavender graduation"}
+{"id": "q165", "label": "RAG/general", "note": "PhD timeline app to grad"}
+{"id": "q166", "label": "RAG/general", "note": "what is management college"}
+{"id": "q167", "label": "RAG/general", "note": "what phd students should do"}
+{"id": "q168", "label": "RAG/general", "note": "credit requirements scenario"}
+{"id": "q169", "label": "RAG/general", "note": "same credit scenario (dissertation)"}
+{"id": "q170", "label": "COMMAND", "note": "qrcode"}
+{"id": "q171", "label": "KG/link_of_person", "note": "bader website"}
+{"id": "q172", "label": "KG/research_of_person", "note": "bader research area"}
+{"id": "q173", "label": "KG/research_of_person"}
+{"id": "q174", "label": "KG/research_of_person", "note": "does bader work on graph - still about his area"}
+{"id": "q175", "label": "KG/research_of_person", "note": "bader on graph too"}
+{"id": "q176", "label": "KG/research_of_person", "note": "research field of Bader"}
+{"id": "q177", "label": "KG/entity_card", "note": "who is david bader"}
+{"id": "q178", "label": "KG/entity_card", "note": "more about Koutis"}
+{"id": "q179", "label": "RAG/event", "note": "event today"}
+{"id": "q180", "label": "RAG/general", "note": "travel award paper requirement policy"}
+{"id": "q181", "label": "OTHER", "note": "emoji only"}
+{"id": "q182", "label": "OTHER", "note": "R3 feedback about bot behavior"}
+{"id": "q183", "label": "RAG/event", "note": "fun activity or event"}
+{"id": "q184", "label": "KG/research_of_person", "note": "research field of David Bader"}
+{"id": "q185", "label": "RAG/general", "note": "travel award what to do"}
+{"id": "q186", "label": "RAG/general", "note": "what is ICA"}
+{"id": "q187", "label": "RAG/event", "note": "most recent event of ICA"}
+{"id": "q188", "label": "RAG/general", "note": "tell me more about ICA"}
+{"id": "q189", "label": "KG/officers_in_org", "note": "ICA president = officer of club"}
+{"id": "q190", "label": "hardneg", "note": "R6 'who is the president' no org antecedent"}
+{"id": "q191", "label": "RAG/general", "note": "what is iranian club"}
+{"id": "q192", "label": "KG/entity_card", "note": "R7 aaskar -> a person name"}
+{"id": "q193", "label": "RAG/general", "note": "name clubs - list of GSA clubs prose"}
+{"id": "q194", "label": "RAG/general", "note": "what is MMI"}
+{"id": "q195", "label": "OTHER", "note": "meta/about gsa instagram, malformed; not routable"}
+{"id": "q196", "label": "RAG/general", "note": "travel award approval time"}
+{"id": "q197", "label": "RAG/general", "note": "process for travel award"}
+{"id": "q198", "label": "CLARIFY", "note": "name officers - which org? could default gsa but ambiguous"}
+{"id": "q199", "label": "RAG/general", "note": "what is gsa"}
+{"id": "q200", "label": "RAG/general +live", "note": "robotic labs at njit"}
+{"id": "q201", "label": "OTHER", "note": "R3 feedback"}
+{"id": "q202", "label": "KG/entity_card", "note": "Koutis awards = on entity card"}
+{"id": "q203", "label": "KG/entity_card", "note": "Bader awards"}
+{"id": "q204", "label": "KG/research_of_person"}
+{"id": "q205", "label": "KG/research_of_person"}
+{"id": "q206", "label": "KG/entity_card", "note": "who is koutis"}
+{"id": "q207", "label": "KG/entity_card", "note": "R7 Gibe->Give koutis publications"}
+{"id": "q208", "label": "hardneg", "note": "R6 'about her' follow-up"}
+{"id": "q209", "label": "KG/entity_card", "note": "who is julie ancis"}
+{"id": "q210", "label": "COMMAND", "note": "R7 cleer->clear"}
+{"id": "q211", "label": "RAG/general", "note": "what is ywcc + departments - mixed; explanatory"}
+{"id": "q212", "label": "KG/people_by_research_area", "note": "ywcc who works on graph"}
+{"id": "q213", "label": "KG/people_by_research_area"}
+{"id": "q214", "label": "KG/entity_card", "note": "who is david bader + research - identity primary"}
+{"id": "q215", "label": "KG/entity_card", "note": "david bader networkx = about him"}
+{"id": "q216", "label": "RAG/general", "note": "networkx - bare topic, explanatory"}
+{"id": "q217", "label": "KG/research_of_person", "note": "what does Bader research"}
+{"id": "q218", "label": "RAG/general", "note": "travel fund"}
+{"id": "q219", "label": "KG/people_by_research_area", "note": "who works on graph theory"}
+{"id": "q220", "label": "RAG/general", "note": "cs department - bare org, explanatory"}
+{"id": "q221", "label": "hardneg", "note": "R6 'what about wang she is working' follow-up"}
+{"id": "q222", "label": "KG/people_by_research_area", "note": "professors on graph in cs dept"}
+{"id": "q223", "label": "hardneg", "note": "R6 'who else'"}
+{"id": "q224", "label": "KG/people_by_research_area", "note": "cs dept works on graph"}
+{"id": "q225", "label": "OTHER", "note": "R3 user assertion 'koutis exists'"}
+{"id": "q226", "label": "RAG/food", "note": "food"}
+{"id": "q227", "label": "RAG/event", "note": "events of gsa"}
+{"id": "q228", "label": "RAG/general", "note": "how to get travel fund"}
+{"id": "q229", "label": "KG/officers_in_org", "note": "officers of gsa"}
+{"id": "q230", "label": "KG/officers_in_org", "note": "president of gsa = officer"}
+{"id": "q231", "label": "KG/people_by_research_area", "note": "cs dept who works on graph"}
+{"id": "q232", "label": "KG/research_of_person", "note": "Koutis research field"}
+{"id": "q233", "label": "hardneg", "note": "R6 'his research area' pronoun"}
+{"id": "q234", "label": "OTHER", "note": "R2 non-English"}
+{"id": "q235", "label": "OTHER", "note": "R2 non-English"}
+{"id": "q236", "label": "KG/faculty_in_department", "note": "cs professors"}
+{"id": "q237", "label": "hardneg", "note": "R6 'what about cs department' follow-up"}
+{"id": "q238", "label": "hardneg", "note": "R6 'only 3? should be more' follow-up complaint"}
+{"id": "q239", "label": "KG/faculty_in_department", "note": "list all professors in ywcc"}
+{"id": "q240", "label": "KG/people_in_org", "note": "professors in gitc (building/org)"}
+{"id": "q241", "label": "hardneg", "note": "R6 'for previous question' follow-up"}
+{"id": "q242", "label": "KG/people_by_research_area", "note": "people in cs working on graph"}
+{"id": "q243", "label": "hardneg", "note": "R6 'who else working on graph'"}
+{"id": "q244", "label": "KG/research_of_person", "note": "koutis research"}
+{"id": "q245", "label": "KG/entity_card", "note": "tell me about koutis"}
+{"id": "q246", "label": "hardneg", "note": "R6 'about him' pronoun"}
+{"id": "q247", "label": "KG/people_by_role", "note": "dean of ywcc"}
+{"id": "q248", "label": "KG/people_by_research_area", "note": "who works on graph research"}
+{"id": "q249", "label": "KG/people_by_research_area", "note": "phd students work on graph"}
+{"id": "q250", "label": "hardneg", "note": "R6 'koutis and other professors' follow-up"}
+{"id": "q251", "label": "KG/people_by_research_area", "note": "people working on graph research"}
+{"id": "q252", "label": "hardneg", "note": "R6 'who else working on graph'"}
+{"id": "q253", "label": "KG/people_by_research_area", "note": "who works on graph in ywcc"}
+{"id": "q254", "label": "KG/entity_card", "note": "who is koutis + his research - identity primary"}
+{"id": "q255", "label": "hardneg", "note": "R6 'is this a fun event?' refers to prior"}
+{"id": "q256", "label": "RAG/general", "note": "about clearwater (club)"}
+{"id": "q257", "label": "hardneg", "note": "R6 follow-up 'send more sources for newsletters'"}
+{"id": "q258", "label": "RAG/general", "note": "MMI workshop"}
+{"id": "q259", "label": "KG/org_departments", "note": "which dept has ywcc"}
+{"id": "q260", "label": "RAG/general", "note": "what you know about ywcc"}
+{"id": "q261", "label": "OTHER", "note": "R3 statement 'hula means hi'"}
+{"id": "q262", "label": "OTHER", "note": "greeting hula"}
+{"id": "q263", "label": "hardneg", "note": "R6 bare 'what else'"}
+{"id": "q264", "label": "RAG/general", "note": "campus resources"}
+{"id": "q265", "label": "OTHER", "note": "meta about assistant 'are you alive'"}
+{"id": "q266", "label": "KG/people_by_research_area", "note": "who works on graph"}
+{"id": "q267", "label": "KG/people_by_research_area", "note": "someone in cs working on graph"}
+{"id": "q268", "label": "KG/research_of_person", "note": "R7 cristean boreca -> Borcea field"}
+{"id": "q269", "label": "hardneg", "note": "R6 'his field' pronoun"}
+{"id": "q270", "label": "KG/entity_card", "note": "who is cristean in cs"}
+{"id": "q271", "label": "KG/people_by_role", "note": "dean ywcc"}
+{"id": "q272", "label": "KG/entity_card", "note": "Yiannis Koutis bare name"}
+{"id": "q273", "label": "KG/research_of_person", "note": "Yiannis research field"}
+{"id": "q274", "label": "KG/research_of_person", "note": "Craig Gotsman research"}
+{"id": "q275", "label": "KG/entity_card", "note": "who is Craig Gotsman"}
+{"id": "q276", "label": "KG/research_of_person", "note": "borcea research"}
+{"id": "q277", "label": "KG/research_of_person", "note": "R7 vorcea->Borcea"}
+{"id": "q278", "label": "KG/entity_card", "note": "cristian borcea bare name"}
+{"id": "q279", "label": "KG/entity_card", "note": "vincent oria bare name"}
+{"id": "q280", "label": "KG/people_by_role", "note": "dean of ywcc"}
+{"id": "q281", "label": "KG/people_by_role", "note": "dean ywcc name"}
+{"id": "q282", "label": "RAG/general", "note": "R8 mmi lecturers -> RAG event people"}
+{"id": "q283", "label": "KG/faculty_in_department", "note": "cs distinguished professors"}
+{"id": "q284", "label": "KG/people_by_role", "note": "ywcc dean name"}
+{"id": "q285", "label": "KG/people_by_role", "note": "R7 yecc->ywcc dean"}
+{"id": "q286", "label": "KG/people_by_role", "note": "cs dean name"}
+{"id": "q287", "label": "OTHER", "note": "R3 assertion 'clearwater should be in your kb'"}
+{"id": "q288", "label": "RAG/general", "note": "clearwater bare topic"}
+{"id": "q289", "label": "RAG/event", "note": "last gsa event"}
+{"id": "q290", "label": "KG/entity_card", "note": "Dindoost bare name"}
+{"id": "q291", "label": "KG/entity_card", "note": "who is mohammad dindoost"}
+{"id": "q292", "label": "OTHER", "note": "R2 non-English + meta history"}
+{"id": "q293", "label": "OTHER", "note": "out-of-scope tell me a story"}
+{"id": "q294", "label": "OTHER", "note": "bare 'Whatsapp' no intent"}
+{"id": "q295", "label": "OTHER", "note": "out-of-scope coding request"}
+{"id": "q296", "label": "OTHER", "note": "R2 non-English coding"}
+{"id": "q297", "label": "OTHER", "note": "R2 non-English"}
+{"id": "q298", "label": "OTHER", "note": "R2 non-English"}
+{"id": "q299", "label": "OTHER", "note": "R2 non-English about assistant"}
+{"id": "q300", "label": "OTHER", "note": "R2 non-English greeting"}
+{"id": "q301", "label": "OTHER", "note": "R2 non-English about assistant"}
+{"id": "q302", "label": "OTHER", "note": "R2 non-English"}
+{"id": "q303", "label": "OTHER", "note": "R2 non-English"}
+{"id": "q304", "label": "OTHER", "note": "R2 non-English"}
+{"id": "q305", "label": "KG/officers_in_org", "note": "who handles GSA finances = treasurer officer"}
+{"id": "q306", "label": "RAG/general", "note": "MMI workshop"}
+{"id": "q307", "label": "RAG/general", "note": "penalties for clubs policy"}
+{"id": "q308", "label": "RAG/general", "note": "how to apply travel award"}
+{"id": "q309", "label": "KG/officers_in_org", "note": "gsa president = officer"}
+{"id": "q310", "label": "OTHER", "note": "out-of-scope tallest tree"}
+{"id": "q311", "label": "RAG/general", "note": "mmi?"}
+{"id": "q312", "label": "OTHER", "note": "meta 'alive?'"}
+{"id": "q313", "label": "OTHER", "note": "R1 which mode you are = meta"}
+{"id": "q314", "label": "OTHER", "note": "worldcup out-of-scope/separate feature"}
+{"id": "q315", "label": "OTHER", "note": "R1 meta about response time"}
+{"id": "q316", "label": "OTHER", "note": "R2 non-English"}
+{"id": "q317", "label": "OTHER", "note": "R2 non-English meta"}
+{"id": "q318", "label": "OTHER", "note": "R1 how can you help me = capabilities"}
+{"id": "q319", "label": "OTHER", "note": "out-of-scope coding request"}
+{"id": "q320", "label": "OTHER", "note": "out-of-scope arithmetic"}
+{"id": "q321", "label": "OTHER", "note": "out-of-scope best seller"}
+{"id": "q322", "label": "OTHER", "note": "out-of-scope best seller"}
+{"id": "q323", "label": "RAG/general", "note": "what is mmi"}
+{"id": "q324", "label": "OTHER", "note": "R1 meta about session memory"}
+{"id": "q325", "label": "KG/officers_in_org", "note": "officers name in gsa"}
+{"id": "q326", "label": "OTHER", "note": "R1 what is your name"}
+{"id": "q327", "label": "OTHER", "note": "R1 meta do you support spanish"}
+{"id": "q328", "label": "RAG/general", "note": "concrete sampling and testing - course/program prose"}
+{"id": "q329", "label": "OTHER", "note": "greeting"}
+{"id": "q330", "label": "OTHER", "note": "goodbye social"}
+{"id": "q331", "label": "RAG/event", "note": "fun activity gsa has"}
+{"id": "q332", "label": "RAG/event", "note": "fun gsa"}
+{"id": "q333", "label": "KG/officers_in_org", "note": "GSA officers"}
+{"id": "q334", "label": "RAG/general", "note": "speakers MMI + officers GSA - mixed, R8 speakers->RAG dominant"}
+{"id": "q335", "label": "OTHER", "note": "R3 feedback about mention behavior"}
+{"id": "q336", "label": "OTHER", "note": "R3 feedback 'it should say deadline passed'"}
+{"id": "q337", "label": "RAG/general", "note": "MMI 2026 registration"}
+{"id": "q338", "label": "RAG/general", "note": "how to register for MMI 2026"}
+{"id": "q339", "label": "RAG/general", "note": "R8 list speakers mmi 2026 -> RAG"}
+{"id": "q340", "label": "RAG/general", "note": "R8 speakers 2026 -> RAG"}
+{"id": "q341", "label": "RAG/general", "note": "mmi series"}
+{"id": "q342", "label": "RAG/general", "note": "fund gsa mmi"}
+{"id": "q343", "label": "RAG/general", "note": "register mmi 2026"}
+{"id": "q344", "label": "RAG/general", "note": "R8 which speakers from rutgers -> event roster"}
+{"id": "q345", "label": "RAG/general", "note": "list of 2026 talks"}
+{"id": "q346", "label": "RAG/general", "note": "mmi talks about llm"}
+{"id": "q347", "label": "RAG/general", "note": "mmi llm"}
+{"id": "q348", "label": "RAG/general", "note": "based in mmi who works on llm - event roster"}
+{"id": "q349", "label": "KG/officers_in_org", "note": "gsa administration = officers"}
+{"id": "q350", "label": "OTHER", "note": "R1 what is ur name"}
+{"id": "q351", "label": "RAG/event", "note": "GSA events"}
+{"id": "q352", "label": "RAG/general", "note": "Artificial Intelligence bare topic, explanatory"}
+{"id": "q353", "label": "OTHER", "note": "R3 statement 'my name is AJ'"}
+{"id": "q354", "label": "RAG/general", "note": "R8 cathal gurrin + what he talked about = MMI speaker"}
+{"id": "q355", "label": "RAG/general", "note": "R8 what vincent did in mmi = event roster"}
+{"id": "q356", "label": "KG/entity_card", "note": "who is vincent oria - person identity"}
+{"id": "q357", "label": "KG/entity_card", "note": "Vincent bare name"}
+{"id": "q358", "label": "RAG/general", "note": "R8 overlap between speakers 2025/2026"}
+{"id": "q359", "label": "KG/entity_card", "note": "Sohrab Namazi Nia person"}
+{"id": "q360", "label": "RAG/general", "note": "R8 mmi 2026 first speaker"}
+{"id": "q361", "label": "OTHER", "note": "social 'how are you'"}
+{"id": "q362", "label": "OTHER", "note": "social Hru"}
+{"id": "q363", "label": "OTHER", "note": "greeting"}
+{"id": "q364", "label": "RAG/general", "note": "R8 Satoh talk = MMI speaker talk"}
+{"id": "q365", "label": "RAG/general", "note": "R8 Satoh talk"}
+{"id": "q366", "label": "hardneg", "note": "R6 'title of his talk' pronoun"}
+{"id": "q367", "label": "RAG/general", "note": "R8 Satoh 2026 talk"}
+{"id": "q368", "label": "RAG/general", "note": "R8 Satoh talk 2025"}
+{"id": "q369", "label": "RAG/general", "note": "R8 Satoh talks"}
+{"id": "q370", "label": "RAG/general", "note": "R8 yan sun talk = MMI speaker"}
+{"id": "q371", "label": "hardneg", "note": "R6 'how many' incomplete trailing"}
+{"id": "q372", "label": "RAG/general", "note": "how many people talked in mmi - speaker count"}
+{"id": "q373", "label": "RAG/general", "note": "R8 mmi 2026 speakers list"}
+{"id": "q374", "label": "RAG/general", "note": "mmi bare"}
+{"id": "q375", "label": "RAG/general", "note": "R8 professors from rutgers = mmi speakers context"}
+{"id": "q376", "label": "RAG/general", "note": "R8 stevens mmi speakers"}
+{"id": "q377", "label": "RAG/general", "note": "R8 Semenova = mmi speaker"}
+{"id": "q378", "label": "RAG/general", "note": "R8 speaker 2025"}
+{"id": "q379", "label": "hardneg", "note": "R6 'who talked there' = there pronoun"}
+{"id": "q380", "label": "RAG/general", "note": "what is mmi 2026"}
+{"id": "q381", "label": "OTHER", "note": "meta/malformed 'is the gsa logo?'"}
+{"id": "q382", "label": "OTHER", "note": "bare 'Test' no intent"}
+{"id": "q383", "label": "OTHER", "note": "out-of-scope general knowledge Rashomon"}
+{"id": "q384", "label": "hardneg", "note": "R6 'who else 2025' follow-up"}
+{"id": "q385", "label": "RAG/general", "note": "R8 tell me about a talk in 2025"}
+{"id": "q386", "label": "RAG/general", "note": "R8 satoh topic 2025"}
+{"id": "q387", "label": "RAG/general", "note": "R8 who spoke mmi 2026"}
+{"id": "q388", "label": "RAG/general", "note": "travel award for MMI 2027 eligibility"}
+{"id": "q389", "label": "RAG/general", "note": "R8 Semenova content question - event talk"}
+{"id": "q390", "label": "RAG/general", "note": "R8 Dunn postdoc - speaker bio detail"}
+{"id": "q391", "label": "RAG/general", "note": "R8 three MMI organizers"}
+{"id": "q392", "label": "RAG/general", "note": "R8 mmi talks on bias/fairness"}
+{"id": "q393", "label": "RAG/general", "note": "what is InstructEx - talk content"}
+{"id": "q394", "label": "RAG/general", "note": "R8 stevens speakers count + content"}
+{"id": "q395", "label": "RAG/general", "note": "R8 njit invited speakers"}
+{"id": "q396", "label": "RAG/general", "note": "R8 what about Cathal Gurrin = speaker"}
+{"id": "q397", "label": "RAG/general", "note": "R8 speaker at both 2025/2026"}
+{"id": "q398", "label": "RAG/general", "note": "what is MARCuS - talk content"}
+{"id": "q399", "label": "RAG/general", "note": "R8 day 2 talks"}
+{"id": "q400", "label": "RAG/general", "note": "R8 speakers on explainability"}
+{"id": "q401", "label": "RAG/general", "note": "R8 what did Singh talk about"}
+{"id": "q402", "label": "KG/entity_card", "note": "who is Prof Dunn - person identity (also speaker, but who-is)"}
+{"id": "q403", "label": "RAG/general", "note": "mmi fund"}
+{"id": "q404", "label": "RAG/general", "note": "mmi 2026 travel award"}
+{"id": "q405", "label": "OTHER", "note": "R1 how to create qr code = meta/feature usage"}
+{"id": "q406", "label": "RAG/general", "note": "mmi 2026 day 2 schedule"}
+{"id": "q407", "label": "RAG/general", "note": "mmi 2026 schedule"}
+{"id": "q408", "label": "RAG/general", "note": "R8 Dunn university - speaker detail"}
+{"id": "q409", "label": "RAG/general", "note": "R8 mmi 2026 speakers names"}
+{"id": "q410", "label": "hardneg", "note": "R6 'what about Dunn' follow-up"}
+{"id": "q411", "label": "RAG/general", "note": "R8 how many speakers rutgers"}
+{"id": "q412", "label": "hardneg", "note": "R6 'same question for rutgers'"}
+{"id": "q413", "label": "hardneg", "note": "R6 'give me a number of stevens' follow-up"}
+{"id": "q414", "label": "RAG/general", "note": "R8 how many speakers from stevens"}
+{"id": "q415", "label": "RAG/general", "note": "R8 njit speakers in mmi 2026"}
+{"id": "q416", "label": "RAG/general", "note": "R8 organizers + funding mixed -> RAG"}
+{"id": "q417", "label": "OTHER", "note": "bare 'Aayush' no surname/context, ambiguous token"}
+{"id": "q418", "label": "OTHER", "note": "bare 'Mohith' no context"}
+{"id": "q419", "label": "OTHER", "note": "bare 'Fernando' no context"}
+{"id": "q420", "label": "OTHER", "note": "R7 Feenando bare name no context"}
+{"id": "q421", "label": "RAG/general", "note": "R7 gaa->gsa what is"}
+{"id": "q422", "label": "OTHER", "note": "social lol"}
+{"id": "q423", "label": "OTHER", "note": "social/spam"}
+{"id": "q424", "label": "OTHER", "note": "social/emoji"}
+{"id": "q425", "label": "hardneg", "note": "R6 'but still may' fragment follow-up"}
+{"id": "q426", "label": "OTHER", "note": "R1 meta how to DM you"}
+{"id": "q427", "label": "RAG/general", "note": "what is mathcafe"}
+{"id": "q428", "label": "OTHER", "note": "R1 meta how does free chat work"}
+{"id": "q429", "label": "RAG/general", "note": "R8 mmi 2025 speakers"}
+{"id": "q430", "label": "RAG/general", "note": "mmi how many years"}
+{"id": "q431", "label": "RAG/general", "note": "R8 mmi speakers"}
+{"id": "q432", "label": "RAG/general", "note": "mmi what is it"}
+{"id": "q433", "label": "RAG/general", "note": "Gsa bare"}
+{"id": "q434", "label": "RAG/general", "note": "what is ucan"}
+{"id": "q435", "label": "OTHER", "note": "good night social"}
+{"id": "q436", "label": "OTHER", "note": "gn social"}
+{"id": "q437", "label": "OTHER", "note": "R3 feedback about tags"}
+{"id": "q438", "label": "OTHER", "note": "social/emoji"}
+{"id": "q439", "label": "OTHER", "note": "R3 statement about changes to logic"}
+{"id": "q440", "label": "OTHER", "note": "R1 meta sense of humor"}
+{"id": "q441", "label": "OTHER", "note": "emoji only"}
+{"id": "q442", "label": "COMMAND", "note": "control action - send message to admin"}
+{"id": "q443", "label": "OTHER", "note": "R3 complaint 'why you missed vp comm'"}
+{"id": "q444", "label": "CLARIFY", "note": "give me officers name - which org ambiguous"}
+{"id": "q445", "label": "KG/people_by_role", "note": "who is gsa communication = officer role"}
+{"id": "q446", "label": "RAG/general", "note": "Money bare - funding topic"}
+{"id": "q447", "label": "OTHER", "note": "R3 meta 'still working? llm off?'"}
+{"id": "q448", "label": "RAG/general", "note": "what is the travel award"}
+{"id": "q449", "label": "OTHER", "note": "bare 'Nistha' no context"}
+{"id": "q450", "label": "OTHER", "note": "bare 'Nishta' no context"}
+{"id": "q451", "label": "OTHER", "note": "bare 'Mohamma' truncated name no context"}
+{"id": "q452", "label": "OTHER", "note": "bare 'fernand' no context"}
+{"id": "q453", "label": "OTHER", "note": "bare 'fer' no context"}
+{"id": "q454", "label": "OTHER", "note": "bare 'moheemmad' no context"}
+{"id": "q455", "label": "OTHER", "note": "bare 'durvish' no context"}
+{"id": "q456", "label": "KG/entity_card", "note": "Mohammad? bare name query - resolve person"}
+{"id": "q457", "label": "KG/entity_card", "note": "Mohammad bare name"}
+{"id": "q458", "label": "KG/entity_card", "note": "mohith? person query"}
+{"id": "q459", "label": "KG/people_by_name", "note": "mohith gsa? person in gsa"}
+{"id": "q460", "label": "KG/people_by_name", "note": "who is fernando in gsa"}
+{"id": "q461", "label": "RAG/event", "note": "fun bare - activities"}
+{"id": "q462", "label": "RAG/general", "note": "workshop bare topic"}
+{"id": "q463", "label": "RAG/general", "note": "travel bare - travel award"}
+{"id": "q464", "label": "RAG/general", "note": "R8 who spoke at MMI 2025"}
+{"id": "q465", "label": "RAG/general", "note": "R8 who spoke at MMI"}
+{"id": "q466", "label": "RAG/general", "note": "workshop? bare topic"}
+{"id": "q467", "label": "RAG/general", "note": "financial aids"}
+{"id": "q468", "label": "RAG/general", "note": "what is travel award (UI noise stripped)"}
+{"id": "q469", "label": "OTHER", "note": "R3 statement about llm restart"}
+{"id": "q470", "label": "RAG/food", "note": "Pizza - food"}
+{"id": "q471", "label": "RAG/general", "note": "what is travel award"}
+{"id": "q472", "label": "OTHER", "note": "R1 'gsa soul' meta/nonsense about identity"}
+{"id": "q473", "label": "RAG/general +live", "note": "full time certification process"}
+{"id": "q474", "label": "RAG/food", "note": "free food"}
+{"id": "q475", "label": "RAG/general +live", "note": "temperature newark today - live/out-of-scope weather; treat as live"}
+{"id": "q476", "label": "hardneg", "note": "R6 'how i can apply' bare follow-up"}
+{"id": "q477", "label": "RAG/general", "note": "travel award?"}
+{"id": "q478", "label": "RAG/general", "note": "graduate research day travel awards"}
+{"id": "q479", "label": "RAG/general", "note": "need money - funding intent"}
+{"id": "q480", "label": "OTHER", "note": "out-of-scope website design help"}
+{"id": "q481", "label": "hardneg", "note": "R6 bare 'Okay' affirmation"}
+{"id": "q482", "label": "hardneg", "note": "R6 correction 'I asked about food' follow-up"}
+{"id": "q483", "label": "OTHER", "note": "meta about conversation history"}
+{"id": "q484", "label": "hardneg", "note": "R6 'but give it chronological' follow-up"}
+{"id": "q485", "label": "hardneg", "note": "R6 'give me exact dates' follow-up"}
+{"id": "q486", "label": "RAG/event", "note": "list events next 5 months"}
+{"id": "q487", "label": "RAG/food", "note": "places on campus to eat daily"}
+{"id": "q488", "label": "hardneg", "note": "R6 'the one in November' follow-up"}
+{"id": "q489", "label": "hardneg", "note": "R6 'where is this event' pronoun"}
+{"id": "q490", "label": "hardneg", "note": "R6 'but January is more than 6 months' follow-up"}
+{"id": "q491", "label": "hardneg", "note": "R6 'what kind of food?' follow-up"}
+{"id": "q492", "label": "hardneg", "note": "R6 'when is this event' pronoun"}
+{"id": "q493", "label": "RAG/food", "note": "where to have food"}
+{"id": "q494", "label": "OTHER", "note": "R1 'asking about you not gsa' meta"}
+{"id": "q495", "label": "OTHER", "note": "R1 what you can do capabilities"}
+{"id": "q496", "label": "hardneg", "note": "R6 bare 'Free' ambiguous"}
+{"id": "q497", "label": "RAG/food", "note": "Drink - food/refreshment context"}
+{"id": "q498", "label": "RAG/general", "note": "gsa hospitality"}
+{"id": "q499", "label": "OTHER", "note": "social/insult"}
+{"id": "q500", "label": "OTHER", "note": "meta history of my questions"}
+{"id": "q501", "label": "hardneg", "note": "R6 'Q17' bare ref to history"}
+{"id": "q502", "label": "hardneg", "note": "R6 'Q3 MMI' ref to history"}
+{"id": "q503", "label": "hardneg", "note": "R6 'Q2 funding' ref to history"}
+{"id": "q504", "label": "hardneg", "note": "R6 'Q1 travel award' ref to history"}
+{"id": "q505", "label": "OTHER", "note": "meta search history for Spencer question"}
+{"id": "q506", "label": "OTHER", "note": "meta about last question"}
+{"id": "q507", "label": "OTHER", "note": "R3 social/meta 'he was talking to me'"}
+{"id": "q508", "label": "RAG/general", "note": "tell me about gsa"}
+{"id": "q509", "label": "RAG/general", "note": "what resources does gsa provide"}
+{"id": "q510", "label": "RAG/event", "note": "upcoming gsa events"}
+{"id": "q511", "label": "hardneg", "note": "R6 'via email or phone, do have their contacts' follow-up"}
+{"id": "q512", "label": "RAG/general", "note": "how to access GSA member - contact info"}
+{"id": "q513", "label": "OTHER", "note": "R1 meta language support question"}
+{"id": "q514", "label": "OTHER", "note": "R3 statement 'he need more money'"}
+{"id": "q515", "label": "RAG/general", "note": "how and who can help get travel award"}
+{"id": "q516", "label": "hardneg", "note": "R6 'revisit the question' follow-up"}
+{"id": "q517", "label": "hardneg", "note": "R6 'get back to my prev question'"}
+{"id": "q518", "label": "OTHER", "note": "R1 meta about documents location"}
+{"id": "q519", "label": "OTHER", "note": "R1 meta how many documents you have"}
+{"id": "q520", "label": "RAG/event", "note": "next gsa event"}
+{"id": "q521", "label": "OTHER", "note": "out-of-scope coding request"}
+{"id": "q522", "label": "COMMAND", "note": "control action flag chat for review"}
+{"id": "q523", "label": "OTHER", "note": "R3 complaint + control 'change timing'"}
+{"id": "q524", "label": "hardneg", "note": "R6 bare 'do it' command-like follow-up"}
+{"id": "q525", "label": "OTHER", "note": "R1 meta how to start a new chat"}
+{"id": "q526", "label": "RAG/general", "note": "what is math cafe in the channel"}
+{"id": "q527", "label": "OTHER", "note": "R3 complaint 'wrong answer think carefully'"}
+{"id": "q528", "label": "RAG/event", "note": "i'm bored what can i do = activities"}
+{"id": "q529", "label": "OTHER", "note": "R1 introduce yourself + knowledge base"}
+{"id": "q530", "label": "OTHER", "note": "R1 what is your name who you are"}
+{"id": "q531", "label": "RAG/general", "note": "GSA mission/goals - prose about GSA"}
+{"id": "q532", "label": "KG/people_in_org", "note": "name people in GSA"}
+{"id": "q533", "label": "hardneg", "note": "R6 'what about food?' follow-up"}
+{"id": "q534", "label": "OTHER", "note": "R1 'are you silly' social/meta"}
+{"id": "q535", "label": "RAG/general", "note": "money for research = funding intent"}
+{"id": "q536", "label": "RAG/general", "note": "what are NJIT GSA UCAN HIGHLANDER - explanatory"}
+{"id": "q537", "label": "KG/officers_in_org", "note": "name gsa officers"}
+{"id": "q538", "label": "KG/people_by_role", "note": "vp academic affairs = role lookup"}
+{"id": "q539", "label": "KG/officers_in_org", "note": "gsa president = officer"}
+{"id": "q540", "label": "RAG/general", "note": "how to get involved in GSA"}
+{"id": "q541", "label": "RAG/general", "note": "explain travel award"}
+{"id": "q542", "label": "RAG/general +live", "note": "what is the date - live/calendar"}
+{"id": "q543", "label": "RAG/general", "note": "how to apply travel award"}
+{"id": "q544", "label": "hardneg", "note": "R6 'what about the second offense' follow-up"}
+{"id": "q545", "label": "RAG/general", "note": "penalties for clubs policy"}
+{"id": "q546", "label": "OTHER", "note": "out-of-scope make $10000000"}
+{"id": "q547", "label": "RAG/general", "note": "funds bare - funding topic"}
+{"id": "q548", "label": "hardneg", "note": "R6 'who do I contact about this' pronoun"}
+{"id": "q549", "label": "hardneg", "note": "R6 'what documents do I need' follow-up no antecedent"}
+{"id": "q550", "label": "hardneg", "note": "R6 'what about the second offense' follow-up"}
+{"id": "q551", "label": "RAG/general", "note": "fund bare - funding"}
+{"id": "q552", "label": "OTHER", "note": "out-of-scope make money (UI noise)"}
+{"id": "q553", "label": "OTHER", "note": "R3 'silly question' complaint/meta"}
+{"id": "q554", "label": "OTHER", "note": "out-of-scope how to make money"}
+{"id": "q555", "label": "KG/officers_in_org", "note": "Officers bare - default gsa officers"}
+{"id": "q556", "label": "RAG/general", "note": "explain funds"}
+{"id": "q557", "label": "RAG/general", "note": "what are the penalties (clubs policy)"}
+{"id": "q558", "label": "RAG/general", "note": "conference fund"}
+{"id": "q559", "label": "OTHER", "note": "out-of-scope make a million dollars"}
+{"id": "q560", "label": "RAG/general", "note": "R7 ravel->travel award how to get"}
+{"id": "q561", "label": "RAG/general", "note": "what is 3mrp"}
+{"id": "q562", "label": "RAG/event", "note": "events bare"}
+{"id": "q563", "label": "RAG/general", "note": "gsa office - contact/info"}
+{"id": "q564", "label": "KG/officers_in_org", "note": "who the GSA officers"}
+{"id": "q565", "label": "KG/people_by_role", "note": "who is academic affair = vpa role"}
+{"id": "q566", "label": "KG/officers_in_org", "note": "GSA president = officer"}
+{"id": "q567", "label": "RAG/general", "note": "what is GSA and how to join"}
+{"id": "q568", "label": "RAG/general", "note": "how to register for a GSA event"}
+{"id": "q569", "label": "RAG/general", "note": "how to join/become GSA member"}
+{"id": "q570", "label": "RAG/general", "note": "what is the GSA"}
