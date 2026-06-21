@@ -141,3 +141,33 @@
 {"id": "t27", "query": "Who else in mechanical engineering citation you have", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "follow-up; needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t28", "query": "Wrong", "family": "OTHER", "slots": {"note": "feedback"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t29", "query": "Warren street fitness summer working hour", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t30", "query": "Wellness center working hiur summer", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t31", "query": "Silly Kavosh", "family": "OTHER", "slots": {"note": "social"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t32", "query": "Love you baby", "family": "OTHER", "slots": {"note": "social"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t33", "query": "My pay stub is low", "family": "OTHER", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t34", "query": "City md working hours", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t35", "query": "Search city md working hours", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t36", "query": "Search health care", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t37", "query": "Search for food", "family": "RAG", "source": "food", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t38", "query": "Travel award procedure", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t39", "query": "Most citation mechanical", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t40", "query": "Who has the most citation in mechanical", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t41", "query": "Prtras citation", "family": "KG", "skill": "metric_of_person", "slots": {"note": "clarify+kg; typo Prtras=Petras"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t42", "query": "Wrong answer", "family": "OTHER", "slots": {"note": "feedback"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t43", "query": "What was my last question", "family": "COMMAND", "slots": {"note": "recall last question"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t44", "query": "The most h index cs", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t45", "query": "Who has the mist h index in cs", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "typo mist=most"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t46", "query": "The same question ece", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "clarify+kg follow-up ece"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t47", "query": "کی هستی", "family": "OTHER", "slots": {"note": "non-english"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t48", "query": "What is your llm engine", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t49", "query": "کی هستم", "family": "OTHER", "slots": {"note": "non-english"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t50", "query": "Tell me the story of gsa gateway", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t51", "query": "what time is in njit", "family": "OTHER", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t52", "query": "njit for parking permits", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t53", "query": "Search for koutis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t54", "query": "Parking", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t55", "query": "search courses for fall 2026", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t56", "query": "search for parking hours", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t57", "query": "search for it", "family": "CLARIFY", "slots": {"note": "+live intent; follow-up 'it'"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t58", "query": "search koutis", "family": "KG", "skill": "entity_card", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t59", "query": "how do I get a parking permit at NJIT", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
