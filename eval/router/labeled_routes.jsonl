@@ -171,3 +171,33 @@
 {"id": "t57", "query": "search for it", "family": "CLARIFY", "slots": {"note": "+live intent; follow-up 'it'"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t58", "query": "search koutis", "family": "KG", "skill": "entity_card", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t59", "query": "how do I get a parking permit at NJIT", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t60", "query": "Heidi Young research", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t61", "query": "you said research ares for him is multimedia database what else you can say?", "family": "KG", "skill": "research_of_person", "slots": {"note": "follow-up; dual KG+OTHER"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t62", "query": "oya tukel research field?", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t63", "query": "what is Kavosh?", "family": "OTHER", "slots": {"note": "about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t64", "query": "what is your version?", "family": "OTHER", "slots": {"note": "about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t65", "query": "سلام", "family": "OTHER", "slots": {"note": "non-english"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t66", "query": "Berenjian research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t67", "query": "Whi is smaneh berenjian", "family": "KG", "skill": "entity_card", "slots": {"note": "typo; dual KG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t68", "query": "What is koutis citation?", "family": "KG", "skill": "metric_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t69", "query": "Megjia xu", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t70", "query": "What about network?", "family": "CLARIFY", "slots": {"note": "follow-up"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t71", "query": "What are the steps for travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t72", "query": "Is there any time line for travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t73", "query": "How can i get it", "family": "RAG", "source": "general", "slots": {"note": "follow-up 'it'; dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t74", "query": "What is travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t75", "query": "What are the requirements to graduate as a BME PhD?", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t76", "query": "Ur bot is biased towards CS ppl", "family": "OTHER", "slots": {"note": "complaint; dual OTHER+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t77", "query": "What about for BME?", "family": "KG", "skill": "faculty_in_department", "slots": {"note": "follow-up BME; dual CLARIFY+KG"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t78", "query": "What's the quickest timeline to finish my PhD?", "family": "RAG", "source": "general", "slots": {"note": "dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t79", "query": "How do I finish my PhD in 1 semester?", "family": "RAG", "source": "general", "slots": {"note": "dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t80", "query": "how to apply to get  travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t81", "query": "how to apply to get aard", "family": "RAG", "source": "general", "slots": {"note": "dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t82", "query": "travel award date", "family": "RAG", "source": "general", "slots": {"note": "dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t83", "query": "travel award", "family": "RAG", "source": "general", "slots": {"note": "bare; dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t84", "query": "koutis all info", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t85", "query": "koutis info", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t86", "query": "koutis research area", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t87", "query": "What else you know about mohammad dindoost", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t88", "query": "Where is the capital of iran", "family": "OTHER", "slots": {"note": "out-of-scope"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t89", "query": "tell me more abuot Blake Haggerty", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
