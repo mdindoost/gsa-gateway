@@ -289,6 +289,7 @@ class V2Retriever:
         limit: int = 5,
         group_by_entity: bool = True,
         exclude_types: list[str] | None = None,
+        query_vec: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         # Default answer corpus drops noise-heavy types (publications, raw webpages).
         # An explicit item_types whitelist already constrains, so exclusion is skipped
@@ -307,7 +308,7 @@ class V2Retriever:
         pool = self.pool_size
         sem_fetch = min(total_active, _VEC_KNN_MAX) if allowed is not None else min(pool, _VEC_KNN_MAX)
 
-        qvec = self.embedder.embed_query(query)
+        qvec = query_vec if query_vec is not None else self.embedder.embed_query(query)
         sem = self._semantic(qvec, sem_fetch, allowed) if qvec else []
         kw = self._keyword(query, (total_active if allowed is not None else pool), allowed)
 
