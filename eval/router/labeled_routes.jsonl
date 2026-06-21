@@ -201,3 +201,33 @@
 {"id": "t87", "query": "What else you know about mohammad dindoost", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t88", "query": "Where is the capital of iran", "family": "OTHER", "slots": {"note": "out-of-scope"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t89", "query": "tell me more abuot Blake Haggerty", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t90", "query": "is John Pelesko provost?", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t91", "query": "who is the provost", "family": "KG", "skill": "people_by_role", "slots": {"note": "exact-role match required; 8 vice/assoc provosts also carry provost title"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t92", "query": "tell me more about Yan Xu", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t93", "query": "what is the bursar's office / how do I pay my bill", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t94", "query": "who is in the New Jersey School of Architecture", "family": "KG", "skill": "people_in_org", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t95", "query": "who’s in the civil engineering faculty", "family": "KG", "skill": "faculty_in_department", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t96", "query": "Name departments if newark college", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t97", "query": "Name njit colleges", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t98", "query": "Mmi organizers", "family": "RAG", "source": "general", "slots": {"note": "mmi organizers; he said RAG"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t99", "query": "What you know about mmi", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t100", "query": "Mmi mohammad dindoost", "family": "RAG", "source": "general", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t101", "query": "Do we have mohammad in njit", "family": "KG", "skill": "entity_card", "slots": {"note": "person existence check"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t102", "query": "Yes", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t103", "query": "110", "family": "OTHER", "slots": {"note": "bare number"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t104", "query": "Judge mide", "family": "COMMAND", "slots": {"note": "typo->judge mode"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t105", "query": "guiling wang research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t106", "query": "more about professor giling wang", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t107", "query": "more about professor wang", "family": "KG", "skill": "entity_card", "slots": {"note": "which wang; dual CLARIFY+KG"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t108", "query": "more", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t109", "query": "Guiling wang", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t110", "query": "Why you didnt list him", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t111", "query": "What about michael giorgio", "family": "KG", "skill": "entity_card", "slots": {"note": "follow-up"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t112", "query": "List all the michael", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t113", "query": "Do we have any michael in njit", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t114", "query": "How is lasha in ywcc", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t115", "query": "Hai phan research area", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t116", "query": "What is hai phan research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t117", "query": "Who is hai phan", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t118", "query": "I20 renew", "family": "RAG", "source": "general", "slots": {"note": "immigration"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t119", "query": "Judge mode", "family": "COMMAND", "provenance": "real", "split": "test", "annotator": "mohammad"}
