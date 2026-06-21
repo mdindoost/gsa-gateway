@@ -84,7 +84,8 @@ class MatchWatcher:
     @staticmethod
     def _fresh_ledger() -> dict:
         return {"started": False, "score": (0, 0), "finished": False,
-                "half": 1, "pending_half": False}
+                "half": 1, "pending_half": False,
+                "score_updated": None, "correction_gen": 0}
 
     @staticmethod
     def _normalize(st: dict) -> dict:
@@ -94,7 +95,15 @@ class MatchWatcher:
                 "score": tuple(st.get("score") or (0, 0)),
                 "finished": bool(st.get("finished", False)),
                 "half": int(st.get("half", 1)),
-                "pending_half": bool(st.get("pending_half", False))}
+                "pending_half": bool(st.get("pending_half", False)),
+                # score_updated: the API `lastUpdated` of the read that set the current
+                # score — used to tell a genuine downward correction (VAR / disallowed goal)
+                # from a stale/empty read. None on an older file → corrections stay disabled
+                # until a real scoring read stamps it.
+                "score_updated": st.get("score_updated"),
+                # correction_gen: bumped on each downward correction so a re-scored line
+                # (0-1 disallowed → 0-0 → 0-1 again) gets a fresh goal dedup key.
+                "correction_gen": int(st.get("correction_gen", 0))}
 
     def _match_state(self, match_id: int) -> dict:
         """Resume the persisted ledger for a match, or register a fresh one. The same
@@ -178,6 +187,15 @@ class MatchWatcher:
         return match.get("status"), (ft.get("home") or 0, ft.get("away") or 0)
 
     @staticmethod
+    def _read_meta(match: dict):
+        """Return (last_updated, carried_score). ``carried_score`` is True ONLY when the
+        payload actually reported both score sides — an empty payload (home/away None)
+        must never be treated as a real 0-0 that could lower a tracked score."""
+        ft = (match.get("score") or {}).get("fullTime") or {}
+        carried = ft.get("home") is not None and ft.get("away") is not None
+        return match.get("lastUpdated"), carried
+
+    @staticmethod
     def _with_score(match: dict, score) -> dict:
         m = dict(match)
         m["score"] = {"fullTime": {"home": score[0], "away": score[1]}}
@@ -191,17 +209,22 @@ class MatchWatcher:
         kickoff) decides what a non-0-0 FIRST live read means: a genuine start the API
         reported late (announce kickoff) vs. a mid-match restart (stay silent)."""
         status, (h, a) = self._parse(match)
+        read_lu, carried = self._read_meta(match)
+        score_lu = state.get("score_updated")
         events: list[dict] = []
         if status in DONE:
             if not state["finished"]:
                 state["finished"] = True
                 # The FINISHED payload OFTEN carries the true final score — the free API can
-                # lag during play and only reveal it at full-time (e.g. we only ever saw 1-0
-                # live but the match ended 4-1). Reconcile: per-side MAX of what we tracked
-                # and what FINISHED reports. If FINISHED has an empty (0-0) score, our tracked
-                # score wins; if it has the real final, that wins. Either way the announced
-                # full-time is correct.
-                final = (max(h, state["score"][0]), max(a, state["score"][1]))
+                # lag during play. If it's a FRESH read that carried a real score, TRUST it
+                # outright (up OR down): up covers "we only ever saw 1-0 live but the match
+                # ended 4-1"; down covers a VAR/disallowed goal we caught only at full-time
+                # (the live PAUSED corrections were missed). Otherwise (empty/stale FINISHED)
+                # fall back to the per-side MAX so a junk 0-0 can't erase our tracked score.
+                if carried and read_lu is not None and score_lu is not None and read_lu > score_lu:
+                    final = (h, a)
+                else:
+                    final = (max(h, state["score"][0]), max(a, state["score"][1]))
                 state["score"] = final
                 events.append({"type": "fulltime",
                                "match": self._with_score(match, final)})
@@ -236,31 +259,62 @@ class MatchWatcher:
                     return events
                 events.append({"type": "kickoff", "match": match})
             ph, pa = state["score"]
+            # Downward correction (VAR / disallowed goal): a FRESH read (lastUpdated strictly
+            # newer than the stamp on our current score) that CARRIED a real score and is lower
+            # on either side is a genuine retraction — update down and announce it. A stale/empty
+            # read can only carry an OLD or absent lastUpdated, so it stays under the monotonic
+            # guard below and can never lower the score. score_updated=None (no prior stamp)
+            # disables corrections — we only trust a drop relative to a known-fresh baseline.
+            if (carried and read_lu is not None and score_lu is not None
+                    and read_lu > score_lu and (h < ph or a < pa)):
+                state["score"] = (h, a)
+                state["score_updated"] = read_lu
+                state["correction_gen"] = state.get("correction_gen", 0) + 1
+                events.append({"type": "correction", "half_label": half_label,
+                               "gen": state["correction_gen"],
+                               "match": self._with_score(match, (h, a))})
+                return events
             nh, na = max(h, ph), max(a, pa)          # monotonic — never go down
             if (nh, na) != (ph, pa):
                 # Walk the score up one goal at a time so each goal post shows its
                 # own running scoreline AND gets a distinct dedup key (a single
                 # read jumping 0-0→2-0 must produce "1-0" then "2-0", not two "2-0"
-                # that would collide and drop the 2nd goal).
+                # that would collide and drop the 2nd goal). The correction generation
+                # is stamped on each goal so a re-scored line after a retraction gets a
+                # fresh key instead of colliding with the disallowed goal's.
+                gen = state.get("correction_gen", 0)
                 cur_h, cur_a = ph, pa
                 for _ in range(nh - ph):
                     cur_h += 1
                     events.append({"type": "goal", "scoring_team": match["homeTeam"],
-                                   "half_label": half_label,
+                                   "half_label": half_label, "gen": gen,
                                    "match": self._with_score(match, (cur_h, cur_a))})
                 for _ in range(na - pa):
                     cur_a += 1
                     events.append({"type": "goal", "scoring_team": match["awayTeam"],
-                                   "half_label": half_label,
+                                   "half_label": half_label, "gen": gen,
                                    "match": self._with_score(match, (cur_h, cur_a))})
                 state["score"] = (nh, na)
+                if read_lu is not None:               # stamp the freshness of this score
+                    state["score_updated"] = read_lu
         return events
 
     @staticmethod
     def _dedup_key(match_id: int, ev: dict) -> str:
         if ev["type"] == "goal":
             s = ev["match"]["score"]["fullTime"]
-            return f"{match_id}:goal:{s['home']}-{s['away']}"
+            gen = ev.get("gen", 0)
+            # gen omitted when 0 so pre-correction keys stay "<id>:goal:H-A"; after a
+            # correction the gen distinguishes a re-scored line from the disallowed one.
+            stem = f"goal:{gen}:" if gen else "goal:"
+            return f"{match_id}:{stem}{s['home']}-{s['away']}"
+        if ev["type"] == "correction":
+            s = ev["match"]["score"]["fullTime"]
+            gen = ev.get("gen", 0)
+            # gen keeps a 2nd correction that lands on the same scoreline (0-0 → goal →
+            # disallowed → 0-0 again) from colliding with the first and being dropped.
+            stem = f"correction:{gen}:" if gen else "correction:"
+            return f"{match_id}:{stem}{s['home']}-{s['away']}"
         return f"{match_id}:{ev['type']}:"
 
     def _post(self, match_id: int, ev: dict) -> None:

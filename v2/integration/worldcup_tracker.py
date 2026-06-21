@@ -333,6 +333,8 @@ def format_event(ev: dict) -> str:
             return f"🥅 **GOAL!** {flag(ev.get('team',''))} {ev['scorer']}{minute}\n{_score_line(match)}{tail}"
         scorer_team = ev.get("scoring_team", {})
         return f"🥅 **GOAL!** {team_label(scorer_team)}\n{_score_line(match)}{tail}"
+    if etype == "correction":
+        return f"⚠️ **Score correction**\n{_score_line(match)}"
     if etype == "halftime":
         return f"⏸️ **HALF-TIME**\n{_score_line(match)}"
     if etype == "second_half":
