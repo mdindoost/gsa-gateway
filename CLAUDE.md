@@ -123,8 +123,9 @@ routing (so it isn't identical to gsa). Spec: `docs/superpowers/specs/2026-06-19
 
 **Dashboard** — `dashboard/` (vanilla JS + sql.js, loads the whole DB via `/db`) served by
 `v2/local_server.py` (HTTP on `127.0.0.1:5555`). Tabs: Overview, Posts, KB, **People (KG)**
-(add/edit/remove people + roles + clubs), Analytics, Settings, **Jobs** (control plane: run
-the crawler / refresh / embed as subprocess jobs), **Judging** (create events, load presenter
+(add/edit/remove people + roles + clubs), Analytics, Settings, **Data Sources** (the control-plane
+tab — UI label; code key still `data-tab="jobs"`/`renderJobs()`: run the crawler / faculty refresh /
+Scholar refresh / Scholar discovery / embed as subprocess jobs), **Judging** (create events, load presenter
 CSV, manage judges + PINs, open/close, live progress, leaderboard, score drill-down, export).
 Writes go through `POST` endpoints (`/orgs /knowledge /people /people/remove /settings /posts`)
 or an offline `changes.sql`. Judging writes go through `/judging/events/…` (live API, not sql.js).
@@ -193,7 +194,8 @@ gsa-gateway/
 - **Graph-write transactions**: the core helpers (`project_appointment`, `people_editor`,
   `roster`) do NOT commit — the caller (CLI / `local_server` handler) owns the transaction.
 - **Gated live writes**: any script that writes the live DB takes a `hardened_backup(...)`
-  (online-backup API + integrity check), defaults to dry-run, requires `--commit`.
+  (online-backup API + integrity check), defaults to dry-run, requires `--commit`. Backups rotate to
+  the **newest 10 overall** (`.backups/`), never pruning the just-written one or anything < 6h old.
 - **User IDs are hashed** (`hash_user_id`) before any DB write.
 - **Org resolution**: orgs resolve by name / slug / parenthetical acronym / `metadata.aliases`.
   Give new clubs a clean short slug (the acronym), like GSA's slug is `gsa`.
@@ -250,6 +252,28 @@ Verify: `who is <name>` (links) / `<name> research` (metrics). Crawler auto-capt
 already on the NJIT page on the next crawl. Refresh job: `scripts/refresh_scholar.py` (dry-run; `--commit`).
 Current data: ~57 people with links, ~49 with Scholar metrics (all manual). 27 have metrics but no
 research areas → citations stay dormant (only surface on "X research" when areas exist) — accepted.
+
+### Refresh / discover Scholar (dashboard "Data Sources" tab + CLIs) — SHIPPED 2026-06-20
+Three jobs around `attrs.profiles.scholar`, all gated (`hardened_backup` + `--commit`, dry-run default).
+Dashboard **Data Sources** tab → "Refresh:" dropdown:
+- **"Google Scholar (metrics & research areas)"** = the RECURRING refresh: re-pull citations/h-index/i10 +
+  interests→research-areas for people who ALREADY have a Scholar URL, scoped by college/dept, with an
+  "older than N days" staleness filter (default 30). CLI: `scripts/refresh_scholar.py --org X --older-than N
+  --commit --embed`. `select_scholar_targets` / `scholar_scope_list(mode="have")`. updated_at is full YYYY-MM-DD.
+- **"Discover Scholar URLs (search + add)"** = the ONE-TIME find: for faculty WITHOUT a URL, Brave-search
+  the profile, verify, and AUTO-WRITE only a **verified-`njit.edu`-email + name-match + (unique-surname OR
+  dept/interest corroboration)** match (the anti-fab gate, `v2/core/ingestion/scholar_discovery.py`
+  `classify_candidate` — the SOLE boundary; homonyms→review CSV, never guessed; provenance-tagged
+  `discovered_by/at/match_basis`). CLI: `scripts/discover_scholar.py`. `scholar_scope_list(mode="discover")`
+  counts faculty WITHOUT a URL.
+- **Slow-drip sweep** (CLI only, long-running): `scripts/discover_scholar_sweep.py --budget N --commit`
+  (nohup/detached) — drips ~50/hr across ALL faculty-without-Scholar, required Brave `--budget` (shared
+  ~1,000/mo pool w/ the live fallback), block-aware backoff, SIGTERM-safe, embeds once at end.
+**Termination/resume marker:** non-strict outcomes write `scholar.discovery_attempted` and
+`select_discovery_targets(skip_attempted=True, retry_after_days=)` excludes them → both discovery jobs never
+re-search a dead end; `blocked` (transient throttle) is NOT marked. Scholar blocks bots at volume → discovery
+is best-effort; full coverage of the ~580 ultimately needs a sanctioned provider (SerpAPI, owner-deferred).
+Spec: `docs/superpowers/specs/2026-06-20-scholar-url-discovery-design.md` + `…-discovery-sweep-design.md`.
 
 ### Embed new/changed knowledge
 `python v2/scripts/embed_all.py` (resumable — only embeds items missing a vector).
