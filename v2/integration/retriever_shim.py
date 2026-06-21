@@ -52,13 +52,13 @@ class V2RetrieverShim:
         self._sem = asyncio.Semaphore(max_concurrency)  # serialize v2 sqlite access
 
     # ── v1 Retriever interface ────────────────────────────────────────────────
-    async def retrieve(self, query, conversation_history=None, source_type_filter=None):
+    async def retrieve(self, query, conversation_history=None, source_type_filter=None, query_vec=None):
         # Retrieval uses the CURRENT question only. Conversation history is for
         # GENERATION context (Ollama, via message_handler) — prepending it here
         # pollutes the search query on topic switches (e.g. MMI → finances).
         item_types = _FILTER_MAP.get(source_type_filter) if source_type_filter else None
         async with self._sem:
-            return await asyncio.to_thread(self._retrieve_sync, query, item_types)
+            return await asyncio.to_thread(self._retrieve_sync, query, item_types, query_vec)
 
     async def retrieve_for_food_query(self):
         # Food handling uses get_food_events(kb, db) directly, not retriever chunks.
@@ -81,11 +81,12 @@ class V2RetrieverShim:
         logger.info("V2RetrieverShim.rebuild_bm25_index() is a no-op (use rebuild_index.py)")
 
     # ── internals ─────────────────────────────────────────────────────────────
-    def _retrieve_sync(self, query, item_types):
+    def _retrieve_sync(self, query, item_types, query_vec=None):
         conn = get_connection(self.db_path)  # fresh, sqlite-vec loaded, this thread only
         try:
             retriever = V2Retriever(conn, self.embedder, self.reranker)
-            results = retriever.retrieve(query, org_id=self.org_id, item_types=item_types, limit=5)
+            results = retriever.retrieve(query, org_id=self.org_id, item_types=item_types,
+                                         limit=5, query_vec=query_vec)
             return [self._to_v1(c) for c in results]
         except Exception:  # noqa: BLE001 - never break the answer path; fall back to empty
             logger.exception("V2 retrieval failed for query: %s", query[:80])
