@@ -7,6 +7,7 @@ order in `decide()`: (0) deterministic COMMAND layer, (1) deterministic FAST-PAT
 The classifier picks the FAMILY only; the SQL skill stays deterministic. (Inverse-FN guard DEFERRED.)
 """
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field
 
 from bot.services.intent_detector import (
@@ -18,6 +19,14 @@ _COMMAND_INTENTS = {
     INTENT_CLEAR_HISTORY, INTENT_GREETING, INTENT_FAREWELL, INTENT_THANKS,
     INTENT_HELP, INTENT_IDENTITY, INTENT_FREE_MODE, INTENT_GSA_MODE,
 }
+
+# High-precision structured cues (mirror router.py's org-anchored structured cues). A match runs
+# the deterministic resolver directly with ZERO classifier encode — common KG intents stay at
+# zero added latency (spec §8). On a miss we fall through to encode + classify.
+_FASTPATH_CUE = re.compile(
+    r"\b(faculty|professors?|officers?|e-?board|department|departments|"
+    r"who teaches|teaches in|people (?:in|at|of)|staff (?:of|at|in)|"
+    r"chair|dean|director|provost|citations?|cited|h-?index|i10)\b", re.I)
 
 
 @dataclass
@@ -75,10 +84,21 @@ class UnifiedRouter:
             return "event"
         return "general"
 
+    def fast_path(self, message: str) -> "RouteDecision | None":
+        if not _FASTPATH_CUE.search(message):
+            return None
+        rt = self._route(message)              # short-lived conn (no classifier encode)
+        if rt is None:
+            return None
+        return RouteDecision(family="KG", skill=rt.skill, args=dict(rt.args))
+
     def decide(self, message: str) -> "RouteDecision":
         cmd = self.command_layer(message)
         if cmd is not None:
             return cmd
+        fp = self.fast_path(message)
+        if fp is not None:
+            return fp
         ranked = self.classifier.ranked(message)
         top = ranked[0][0] if ranked else "RAG"
         if top == "KG":
