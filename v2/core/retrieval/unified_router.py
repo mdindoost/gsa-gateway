@@ -59,3 +59,34 @@ class UnifiedRouter:
         if rt is None:
             return RouteDecision(family="RAG", source="general")
         return RouteDecision(family="KG", skill=rt.skill, args=dict(rt.args))
+
+    def _rag_outcome(self, message: str) -> str:
+        from bot.services.intent_detector import INTENT_FOOD
+        intent, _ = self.intent_detector.detect(message)
+        if intent == INTENT_FOOD:
+            return "food"
+        # Word-boundary event cue (so "in the event of" / "eventually" don't fire). The "event"
+        # label is an ADVISORY boost hint ONLY — E1 must NOT translate it into a source_type
+        # item_types filter (that DISABLES BM25 → kills recall on sparse/acronym/award queries,
+        # spec §4). Only "food" has a dedicated handler; "event"/"general" go through normal RAG
+        # with the retriever's existing event_info boost. [RAG-review S2 / spec §4]
+        import re as _re
+        if _re.search(r"\b(events?|workshops?|seminars?|happening)\b", message.lower()):
+            return "event"
+        return "general"
+
+    def decide(self, message: str) -> "RouteDecision":
+        cmd = self.command_layer(message)
+        if cmd is not None:
+            return cmd
+        ranked = self.classifier.ranked(message)
+        top = ranked[0][0] if ranked else "RAG"
+        if top == "KG":
+            return self.resolve_kg(message)        # the inverse-FN guard is REMOVED (Task C3 deferred)
+        if top == "RAG":
+            return RouteDecision(family="RAG", source=self._rag_outcome(message),
+                                 score=ranked[0][1])
+        if top == "LIVE":
+            return RouteDecision(family="LIVE", score=ranked[0][1])
+        # CLARIFY / OTHER / a COMMAND family from the classifier
+        return RouteDecision(family=top, score=(ranked[0][1] if ranked else None))
