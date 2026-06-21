@@ -173,19 +173,22 @@ def _w_with_state(tmp_path):
 def test_save_then_load_roundtrips_ledger(tmp_path):
     w1 = _w_with_state(tmp_path)
     w1._states[537336] = {"started": True, "score": (4, 0), "finished": False,
-                          "half": 2, "pending_half": False}
+                          "half": 2, "pending_half": False,
+                          "score_updated": "2026-06-18T20:00:00Z", "correction_gen": 0}
     w1.save_states()
     w2 = _w_with_state(tmp_path)
     w2.load_states()
     assert w2._states[537336] == {"started": True, "score": (4, 0), "finished": False,
-                                  "half": 2, "pending_half": False}
+                                  "half": 2, "pending_half": False,
+                                  "score_updated": "2026-06-18T20:00:00Z", "correction_gen": 0}
 
 
 def test_match_state_returns_fresh_for_unknown_match(tmp_path):
     w = _w_with_state(tmp_path)
     st = w._match_state(99)
     assert st == {"started": False, "score": (0, 0), "finished": False,
-                  "half": 1, "pending_half": False}
+                  "half": 1, "pending_half": False,
+                  "score_updated": None, "correction_gen": 0}
     assert w._states[99] is st        # registered so a later save persists it
 
 
@@ -276,6 +279,128 @@ def test_next_kickoff_none_when_all_done():
     now = datetime.datetime(2026, 7, 20, 0, 0, 0)
     matches = [{"id": 1, "utcDate": "2026-06-11T19:00:00Z", "status": "FINISHED"}]
     assert MatchWatcher._next_kickoff(matches, now) is None
+
+
+# ── score correction (VAR / disallowed goal) ────────────────────────────────────
+def mk_lu(status, h, a, lu):
+    m = mk(status, h, a)
+    m["lastUpdated"] = lu
+    return m
+
+
+def test_var_disallowed_goal_corrects_down_and_posts_correction():
+    # Belgium v Iran 2026-06-21: goal 0-1 stood ~28 min, then VAR disallowed it; the API
+    # corrected to 0-0 (fresh lastUpdated) and the match ended 0-0.
+    wt = w(); st = wt._match_state(537365); st["started"] = True
+    g = wt._process(mk_lu("IN_PLAY", 0, 1, "2026-06-21T19:31:13Z"), st)
+    assert [e["type"] for e in g] == ["goal"] and st["score"] == (0, 1)
+    c = wt._process(mk_lu("PAUSED", 0, 0, "2026-06-21T19:59:25Z"), st)
+    assert [e["type"] for e in c] == ["correction"]
+    assert c[0]["match"]["score"]["fullTime"] == {"home": 0, "away": 0}
+    assert st["score"] == (0, 0)
+    f = wt._process(mk_lu("FINISHED", 0, 0, "2026-06-21T21:06:37Z"), st)
+    assert [e["type"] for e in f] == ["fulltime"]
+    assert f[0]["match"]["score"]["fullTime"] == {"home": 0, "away": 0}
+
+
+def test_fresh_empty_payload_does_not_correct():
+    # A fresh-timestamped but EMPTY (None-None) read must not lower a real score.
+    wt = w(); st = wt._match_state(42); st["started"] = True
+    wt._process(mk_lu("IN_PLAY", 1, 0, "2026-06-21T19:31:13Z"), st)
+    evs = wt._process(mk_lu("IN_PLAY", None, None, "2026-06-21T19:59:25Z"), st)
+    assert evs == [] and st["score"] == (1, 0)
+
+
+def test_equal_lastupdated_lower_score_no_correction():
+    # The correcting read must be STRICTLY newer; an equal timestamp is the same snapshot.
+    wt = w(); st = wt._match_state(42); st["started"] = True
+    wt._process(mk_lu("IN_PLAY", 1, 0, "2026-06-21T19:31:13Z"), st)
+    evs = wt._process(mk_lu("PAUSED", 0, 0, "2026-06-21T19:31:13Z"), st)
+    assert evs == [] and st["score"] == (1, 0)
+
+
+def test_decrease_with_no_prior_stamp_does_not_correct():
+    # No score_updated yet (e.g. a silently-adopted baseline) → keep monotonic protection.
+    wt = w(); st = {"started": True, "score": (1, 0), "finished": False}
+    evs = wt._process(mk_lu("PAUSED", 0, 0, "2026-06-21T19:59:25Z"), st)
+    assert evs == [] and st["score"] == (1, 0)
+
+
+def test_finished_lower_with_fresh_lastupdated_is_trusted():
+    # Catch-late: we miss the live PAUSED reads and only see FINISHED 0-0 (fresh) — full-time
+    # must be 0-0, not the stale tracked 0-1.
+    wt = w(); st = wt._match_state(537365); st["started"] = True
+    wt._process(mk_lu("IN_PLAY", 0, 1, "2026-06-21T19:31:13Z"), st)
+    f = wt._process(mk_lu("FINISHED", 0, 0, "2026-06-21T21:06:37Z"), st)
+    assert [e["type"] for e in f] == ["fulltime"]
+    assert f[0]["match"]["score"]["fullTime"] == {"home": 0, "away": 0}
+    assert st["score"] == (0, 0)
+
+
+def test_rescore_after_correction_not_deduped():
+    # 0-1 disallowed → 0-0 → Iran scores 0-1 for real. The second 0-1 goal must NOT collide
+    # with the disallowed one's dedup key.
+    wt = w(); st = wt._match_state(42); st["started"] = True
+    g1 = wt._process(mk_lu("IN_PLAY", 0, 1, "2026-06-21T19:31:13Z"), st)
+    wt._process(mk_lu("PAUSED", 0, 0, "2026-06-21T19:59:25Z"), st)
+    g2 = wt._process(mk_lu("IN_PLAY", 0, 1, "2026-06-21T20:40:00Z"), st)
+    assert [e["type"] for e in g2] == ["goal"]
+    k1 = MatchWatcher._dedup_key(42, g1[0])
+    k2 = MatchWatcher._dedup_key(42, g2[0])
+    assert k1 != k2
+
+
+def test_correction_dedup_key_includes_gen():
+    ev = {"type": "correction", "gen": 1, "match": {"score": {"fullTime": {"home": 0, "away": 0}}}}
+    assert MatchWatcher._dedup_key(42, ev) == "42:correction:1:0-0"
+
+
+def test_goals_from_both_sides_resume_correctly_after_correction():
+    # After a correction back to 0-0, a goal from EITHER side must continue the running
+    # scoreline with a distinct (non-colliding) dedup key.
+    wt = w(); st = wt._match_state(42); st["started"] = True
+    wt._process(mk_lu("IN_PLAY", 0, 1, "2026-06-21T19:31:13Z"), st)   # Iran 0-1
+    c = wt._process(mk_lu("PAUSED", 0, 0, "2026-06-21T19:59:25Z"), st)   # disallowed → 0-0
+    assert [e["type"] for e in c] == ["correction"] and st["score"] == (0, 0)
+    g_home = wt._process(mk_lu("IN_PLAY", 1, 0, "2026-06-21T20:20:00Z"), st)   # Belgium 1-0
+    assert [e["type"] for e in g_home] == ["goal"]
+    assert g_home[0]["scoring_team"]["name"] == "Mexico"   # home team in mk()
+    assert g_home[0]["match"]["score"]["fullTime"] == {"home": 1, "away": 0}
+    g_away = wt._process(mk_lu("IN_PLAY", 1, 1, "2026-06-21T20:40:00Z"), st)   # Iran 1-1
+    assert [e["type"] for e in g_away] == ["goal"]
+    assert g_away[0]["match"]["score"]["fullTime"] == {"home": 1, "away": 1}
+    assert st["score"] == (1, 1)
+    # every posted key after the correction is distinct from the disallowed goal's
+    keys = [MatchWatcher._dedup_key(42, e) for e in (g_home + g_away)]
+    assert keys == ["42:goal:1:1-0", "42:goal:1:1-1"]
+
+
+def test_second_correction_same_line_not_deduped():
+    # 0-0 → goal 1-0 → that goal also disallowed → 0-0 again. The 2nd correction must post,
+    # not collide with the 1st correction's dedup key.
+    wt = w(); st = wt._match_state(42); st["started"] = True
+    wt._process(mk_lu("IN_PLAY", 0, 1, "2026-06-21T19:31:13Z"), st)   # 0-1
+    c1 = wt._process(mk_lu("PAUSED", 0, 0, "2026-06-21T19:59:25Z"), st)   # → 0-0  (corr gen 1)
+    wt._process(mk_lu("IN_PLAY", 1, 0, "2026-06-21T20:20:00Z"), st)   # 1-0
+    c2 = wt._process(mk_lu("PAUSED", 0, 0, "2026-06-21T20:40:00Z"), st)   # → 0-0  (corr gen 2)
+    assert [e["type"] for e in c2] == ["correction"] and st["score"] == (0, 0)
+    assert MatchWatcher._dedup_key(42, c1[0]) != MatchWatcher._dedup_key(42, c2[0])
+
+
+def test_format_event_correction():
+    from v2.integration.worldcup_tracker import format_event
+    out = format_event({"type": "correction", "match": mk("PAUSED", 0, 0)})
+    assert "correction" in out.lower()
+
+
+def test_correction_persists_across_save_load(tmp_path):
+    w1 = _w_with_state(tmp_path); st = w1._match_state(42); st["started"] = True
+    w1._process(mk_lu("IN_PLAY", 0, 1, "2026-06-21T19:31:13Z"), st)
+    w1._process(mk_lu("PAUSED", 0, 0, "2026-06-21T19:59:25Z"), st)
+    w1.save_states()
+    w2 = _w_with_state(tmp_path); w2.load_states()
+    assert w2._states[42]["score"] == (0, 0)
+    assert w2._states[42]["score_updated"] == "2026-06-21T19:59:25Z"
 
 
 # ── catch (async, mocked fetch + no real sleeps) ─────────────────────────────
