@@ -53,3 +53,9 @@ class UnifiedRouter:
         if intent in _COMMAND_INTENTS:
             return RouteDecision(family="COMMAND", command_intent=intent)
         return None
+
+    def resolve_kg(self, message: str) -> "RouteDecision":
+        rt = self._route(message)              # short-lived conn; carries all negative guards
+        if rt is None:
+            return RouteDecision(family="RAG", source="general")
+        return RouteDecision(family="KG", skill=rt.skill, args=dict(rt.args))
