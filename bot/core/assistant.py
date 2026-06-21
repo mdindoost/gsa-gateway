@@ -15,10 +15,34 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
+import time
 from dataclasses import dataclass
 from typing import Any
 
+import bot.config as botcfg
+from v2.core.retrieval.route_exemplars import build_classifier, encoder_stamp, verify_stamp
+from v2.core.retrieval.unified_router import UnifiedRouter
+
 logger = logging.getLogger(__name__)
+
+
+def maybe_build_unified_router(db_path, embedder, intent_detector):
+    """Build the v2.1 UnifiedRouter ONLY when ROUTER_V21 is on; else None (zero overhead).
+    The classifier is FIT here (encodes the ~500 train exemplars once at startup via the
+    embedder's batch path — see route_exemplars._encode_prefixed). The router holds db_path,
+    NOT a live connection: it opens a short-lived sqlite connection per decide() inside _route."""
+    if not botcfg.ROUTER_V21:
+        return None
+    verify_stamp(embedder, encoder_stamp(embedder))      # fail loudly on encoder drift BEFORE fitting
+    t0 = time.time()
+    fit_conn = sqlite3.connect(db_path)                  # snapshot conn for the masker + exemplar fit
+    try:
+        clf = build_classifier(fit_conn, embedder)
+    finally:
+        fit_conn.close()
+    logger.info("router-v21 classifier fit in %.2fs", time.time() - t0)
+    return UnifiedRouter(db_path=db_path, classifier=clf, intent_detector=intent_detector)
 
 
 @dataclass
@@ -93,9 +117,20 @@ async def build_assistant(config, db, kb, rate_limiter) -> Assistant:
     else:
         logger.warning("Retriever not initialized — keyword fallback only")
 
+    # ── Kavosh v2.1 UnifiedRouter (flag-gated; None unless ROUTER_V21) ─────────
+    unified_router = None
+    if botcfg.ROUTER_V21:
+        from v2.core.retrieval.embedder import Embedder as V2Embedder
+        try:
+            unified_router = maybe_build_unified_router(
+                db_path="gsa_gateway.db", embedder=V2Embedder(), intent_detector=intent_detector)
+        except Exception:  # noqa: BLE001 - never block startup; router stays off on failure
+            logger.exception("router-v21 build failed; falling back to legacy routing")
+
     message_handler = MessageHandler(
         retriever=retriever, ollama=ollama, conversation_manager=conversation_manager,
         intent_detector=intent_detector, db=db, rate_limiter=rate_limiter, kb=kb, config=config,
+        unified_router=unified_router,
     )
     logger.info("Assistant brain built (retriever=%s)",
                 type(retriever).__name__ if retriever else None)

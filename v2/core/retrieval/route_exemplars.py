@@ -69,8 +69,20 @@ def build_masker(conn):
     return build_masker_from_db(conn)
 
 
+def _encode_prefixed(embedder, texts):
+    """Encode a list of RAW texts in the router-prefix space, L2-normalized. Uses the embedder's
+    batch path (one HTTP call) when available — keeps the ~500-exemplar startup fit fast (review
+    S-2) — else falls back to serial single embeds."""
+    prefixed = [ROUTER_PREFIX + t for t in texts]
+    batch = getattr(embedder, "_embed_batch", None)
+    if callable(batch):
+        vecs = batch(prefixed)
+        return np.array([embedder.normalize(v) for v in vecs])
+    return np.array([_embed_with_prefix(embedder, t) for t in texts])
+
+
 def build_classifier(conn, embedder, path: str = DEFAULT_EXEMPLARS) -> RouteClassifier:
     exemplars = load_exemplars(path)
     masker = build_masker(conn)
-    encode_fn = lambda texts: np.array([_embed_with_prefix(embedder, t) for t in texts])
+    encode_fn = lambda texts: _encode_prefixed(embedder, texts)
     return RouteClassifier(exemplars, encode_fn, masker)
