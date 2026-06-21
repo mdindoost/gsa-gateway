@@ -5,9 +5,39 @@ from v2.eval.router.split import split, split_entity_disjoint, entity_of
 
 def test_entity_of_extracts_org_person_area():
     assert entity_of(LabeledExample("1", "q", "KG", "faculty_in_department", slots={"org": "CS"})) == "org:cs"
-    assert entity_of(LabeledExample("2", "q", "KG", "entity_card", slots={"person": "Ioannis Koutis"})) == "person:ioannis koutis"
     assert entity_of(LabeledExample("3", "q", "KG", "people_by_research_area", slots={"area": "graph"})) == "area:graph"
     assert entity_of(LabeledExample("4", "q", "RAG", source="general")) is None
+
+
+def test_person_entity_canonicalized_to_surname():
+    full = LabeledExample("1", "q", "KG", "entity_card", slots={"person": "Ioannis Koutis"})
+    surn = LabeledExample("2", "q", "KG", "metric_of_person", slots={"person": "Koutis", "metric": "citations"})
+    assert entity_of(full) == entity_of(surn) == "person:koutis"   # full name and surname collapse
+
+
+def test_entity_disjoint_keeps_cross_entity_group_together():
+    # a paraphrase group spanning two orgs must NOT be split across train/test (C1)
+    ex = [LabeledExample("a", "top cs", "KG", "top_people_by_metric", slots={"org": "cs"}, group="rank"),
+          LabeledExample("b", "top math", "KG", "top_people_by_metric", slots={"org": "math"}, group="rank"),
+          LabeledExample("c", "faculty bio", "KG", "faculty_in_department", slots={"org": "bio"}, group="fac-bio"),
+          LabeledExample("d", "faculty chem", "KG", "faculty_in_department", slots={"org": "chem"}, group="fac-chem")]
+    tr, te = split_entity_disjoint(ex, test_frac=0.5, seed=0)
+    side = {e.id: ("te" if e in te else "tr") for e in ex}
+    assert side["a"] == side["b"]            # cross-entity group stays whole
+    assert te and tr                          # both sides non-empty
+
+
+def test_entity_disjoint_keeps_same_person_together():
+    # full-name and surname of the same person must land on the same side (C2)
+    ex = [LabeledExample("1", "who is Ioannis Koutis", "KG", "entity_card",
+                         slots={"person": "Ioannis Koutis"}, group="card-k"),
+          LabeledExample("2", "Koutis citation", "KG", "metric_of_person",
+                         slots={"person": "Koutis"}, group="metric-k"),
+          LabeledExample("3", "who is Bader", "KG", "entity_card",
+                         slots={"person": "David Bader"}, group="card-b")]
+    tr, te = split_entity_disjoint(ex, test_frac=0.5, seed=0)
+    side = {e.id: ("te" if e in te else "tr") for e in ex}
+    assert side["1"] == side["2"]            # same person, different surface form, same side
 
 
 def test_entity_disjoint_no_entity_on_both_sides():

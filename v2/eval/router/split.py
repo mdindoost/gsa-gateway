@@ -12,13 +12,49 @@ def entity_of(ex: LabeledExample) -> str | None:
 
     Used by the entity-disjoint split: holding out whole entities is the only way to measure
     whether the router generalizes past the dominating entity token ("org token dominates").
+    Persons are canonicalized to SURNAME so "Koutis" and "Ioannis Koutis" are the same entity and
+    can't straddle train/test.
     """
     s = ex.slots or {}
     for k in _ENTITY_KEYS:
         v = s.get(k)
         if v:
-            return f"{k}:{str(v).strip().lower()}"
+            v = str(v).strip().lower()
+            if k == "person":
+                toks = v.split()
+                v = toks[-1] if toks else v
+            return f"{k}:{v}"
     return None
+
+
+def _entity_components(examples) -> dict[str, str]:
+    """Union-find over group-nodes and entity-nodes; returns entity -> component-root.
+
+    A paraphrase group and the entities its rows mention are merged into one component, so the
+    entity-disjoint split can hold out a whole component and keep BOTH guarantees: no entity on
+    both sides AND no paraphrase group split across the boundary (C1/C2 from the bake-off review).
+    """
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]; x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for ex in examples:
+        ent = entity_of(ex)
+        if ent is None:
+            continue
+        gnode = f"g:{ex.group}" if ex.group else f"r:{ex.id}"
+        union(gnode, f"e:{ent}")
+    return {ent: find(f"e:{ent}")
+            for ent in (entity_of(x) for x in examples) if ent is not None}
 
 
 def _stratum_of(ex: LabeledExample):
@@ -88,17 +124,18 @@ def split_entity_disjoint(examples, test_frac=0.3, seed=0):
     training. Entity-less rows (RAG/general, OTHER, COMMAND, CLARIFY) carry no entity to hold out and
     go to train; the test set is exactly the rows about held-out entities.
     """
-    entities = sorted({e for e in (entity_of(x) for x in examples) if e})
-    if not entities:
+    comp_of_entity = _entity_components(examples)
+    comps = sorted(set(comp_of_entity.values()))
+    if not comps:
         return list(examples), []
     rng = random.Random(seed)
-    rng.shuffle(entities)
-    n_hold = max(1, math.ceil(len(entities) * test_frac))
-    held_out = set(entities[:n_hold])
+    rng.shuffle(comps)
+    n_hold = max(1, math.ceil(len(comps) * test_frac))
+    held_out = set(comps[:n_hold])
     train, test = [], []
     for x in examples:
         ent = entity_of(x)
-        if ent is not None and ent in held_out:
+        if ent is not None and comp_of_entity[ent] in held_out:
             test.append(x)
         else:
             train.append(x)
