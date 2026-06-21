@@ -29,6 +29,7 @@ from bot.core.live_query import parse_explicit_live_search, LIVE_NOT_FOUND_MSG
 from bot.core.live_fallback import maybe_answer_live
 from v2.integration.njit_search import search as brave_search
 from v2.core.ingestion.explore import http_fetch
+from v2.core.retrieval.route_shadow import log_shadow
 import bot.config as botcfg
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,7 @@ class MessageHandler:
         rate_limiter,
         kb,
         config,
+        unified_router=None,
     ) -> None:
         self.retriever = retriever
         self.ollama = ollama
@@ -106,6 +108,7 @@ class MessageHandler:
         self.rate_limiter = rate_limiter
         self.kb = kb
         self.config = config
+        self.unified_router = unified_router    # Kavosh v2.1 UnifiedRouter (None unless ROUTER_V21)
 
     async def handle(self, req: MessageRequest) -> MessageResponse:
         user_id = req.user_id
@@ -120,6 +123,19 @@ class MessageHandler:
         clean_text = req.text.strip()
         if not clean_text:
             return MessageResponse(text="")
+
+        # ── Kavosh v2.1 UnifiedRouter — SHADOW (compute + log, act on current path) ──
+        # When ROUTER_V21 is on we compute the new decision and (in shadow) only LOG it;
+        # the answer still comes from the existing flow until the flip gate. A shadow
+        # exception must NEVER break the answer path. (ACT path is Task E1.)
+        if botcfg.ROUTER_V21 and self.unified_router is not None:
+            try:
+                decision = self.unified_router.decide(clean_text)
+                if botcfg.ROUTER_V21_SHADOW:
+                    log_shadow({"message": clean_text[:200],
+                                "new_family": decision.family, "new_skill": decision.skill})
+            except Exception:  # noqa: BLE001 - shadow must never break the answer path
+                logger.debug("router-v21 shadow decide failed (ignored)", exc_info=True)
 
         # ── Explicit "search njit for X" ──────────────────────────────────────
         # The user literally asked to go to the live njit.edu site, so honor it directly —
