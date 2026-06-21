@@ -11,6 +11,8 @@ VALID_SKILLS = frozenset({
     "people_by_name", "person_disambig",
 })
 VALID_RAG_SOURCES = frozenset({"food", "event", "general"})
+VALID_PROVENANCE = frozenset({"real", "seed"})
+VALID_SPLIT = frozenset({"train", "test", "hardneg"})
 
 
 def load_dataset(path) -> list[LabeledExample]:
@@ -31,7 +33,16 @@ def load_dataset(path) -> list[LabeledExample]:
             raise ValueError(f"line {n}: KG row needs a known skill, got {d.get('skill')!r}")
         if d["family"] == Family.RAG and d.get("source") not in VALID_RAG_SOURCES:
             raise ValueError(f"line {n}: RAG row needs source in {VALID_RAG_SOURCES}")
+        prov, spl = d.get("provenance"), d.get("split")
+        if prov is not None and prov not in VALID_PROVENANCE:
+            raise ValueError(f"line {n}: bad provenance {prov!r}")
+        if spl is not None and spl not in VALID_SPLIT:
+            raise ValueError(f"line {n}: bad split {spl!r}")
+        if prov == "seed" and spl == "test":
+            raise ValueError(f"line {n}: a seed row may not be in the test split (gold = real-only)")
         rows.append(LabeledExample(
             id=d["id"], query=d["query"], family=d["family"], skill=d.get("skill"),
-            source=d.get("source"), slots=d.get("slots", {}), group=d.get("group")))
+            source=d.get("source"), slots=d.get("slots", {}), group=d.get("group"),
+            provenance=prov, split=spl, annotator=d.get("annotator"),
+            proposed_family=d.get("proposed_family"), confirmed=d.get("confirmed")))
     return rows

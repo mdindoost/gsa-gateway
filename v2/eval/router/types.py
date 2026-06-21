@@ -27,3 +27,9 @@ class LabeledExample:
     source: str | None = None
     slots: dict = field(default_factory=dict)
     group: str | None = None         # paraphrase-group id for disjoint split
+    # --- labeling-protocol provenance (Workstream B) ---
+    provenance: str | None = None    # "real" (harvested) | "seed" (synthetic, train-only)
+    split: str | None = None         # "train" | "test" (gold) | "hardneg" (boundary suite)
+    annotator: str | None = None     # who assigned the gold label
+    proposed_family: str | None = None  # what the LLM proposed (to audit anchoring/edit-rate)
+    confirmed: bool | None = None     # human confirmed/edited the proposal

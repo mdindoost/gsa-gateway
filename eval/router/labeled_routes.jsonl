@@ -1,113 +1,113 @@
-{"id":"kgrank1","query":"top 10 by citations in mechanical engineering","family":"KG","skill":"top_people_by_metric","slots":{"org":"mechanical engineering","metric":"citations","n":10},"group":"rank-me"}
-{"id":"kgrank2","query":"most cited professor in mechanical and industrial engineering","family":"KG","skill":"top_people_by_metric","slots":{"org":"mie","metric":"citations","n":1},"group":"rank-me"}
-{"id":"kgrank3","query":"who has the highest h-index in computer science","family":"KG","skill":"top_people_by_metric","slots":{"org":"cs","metric":"h_index","n":1},"group":"rank-cs"}
-{"id":"kgrank4","query":"top 5 most cited faculty in ying wu college of computing","family":"KG","skill":"top_people_by_metric","slots":{"org":"ywcc","metric":"citations","n":5},"group":"rank-ywcc"}
-{"id":"kgrole1","query":"who is the dean of computing","family":"KG","skill":"people_by_role","slots":{"role":"dean","org":"ywcc"},"group":"role-dean"}
-{"id":"kgrole2","query":"who is the dean of the ying wu college","family":"KG","skill":"people_by_role","slots":{"role":"dean","org":"ywcc"},"group":"role-dean"}
-{"id":"kgrole3","query":"who is the chair of computer science","family":"KG","skill":"people_by_role","slots":{"role":"chair","org":"cs"},"group":"role-chair"}
-{"id":"kgfac1","query":"who teaches in computer science","family":"KG","skill":"faculty_in_department","slots":{"org":"cs"},"group":"fac-cs"}
-{"id":"kgfac2","query":"list the faculty in computer science","family":"KG","skill":"faculty_in_department","slots":{"org":"cs"},"group":"fac-cs"}
-{"id":"kgfac3","query":"professors in mechanical engineering","family":"KG","skill":"faculty_in_department","slots":{"org":"mechanical engineering"},"group":"fac-me"}
-{"id":"kgfac4","query":"show me the math department faculty","family":"KG","skill":"faculty_in_department","slots":{"org":"math"},"group":"fac-math"}
-{"id":"kgppl1","query":"who is in the GSA","family":"KG","skill":"people_in_org","slots":{"org":"gsa"},"group":"ppl-gsa"}
-{"id":"kgppl2","query":"list everyone in the management school","family":"KG","skill":"people_in_org","slots":{"org":"mtsm"},"group":"ppl-mtsm"}
-{"id":"kgoff1","query":"who are the GSA officers","family":"KG","skill":"officers_in_org","slots":{"org":"gsa"},"group":"off-gsa"}
-{"id":"kgoff2","query":"who runs the GSA","family":"KG","skill":"officers_in_org","slots":{"org":"gsa"},"group":"off-gsa"}
-{"id":"kgoff3","query":"who are the officers of ACM","family":"KG","skill":"officers_in_org","slots":{"org":"acm"},"group":"off-acm"}
-{"id":"kgcard1","query":"who is Ioannis Koutis","family":"KG","skill":"entity_card","slots":{"person":"Ioannis Koutis"},"group":"card-koutis"}
-{"id":"kgcard2","query":"tell me about Cristian Borcea","family":"KG","skill":"entity_card","slots":{"person":"Cristian Borcea"},"group":"card-borcea"}
-{"id":"kgres1","query":"what does Ioannis Koutis research","family":"KG","skill":"research_of_person","slots":{"person":"Ioannis Koutis"},"group":"res-koutis"}
-{"id":"kgres2","query":"what are Borcea's research areas","family":"KG","skill":"research_of_person","slots":{"person":"Cristian Borcea"},"group":"res-borcea"}
-{"id":"kgmetric1","query":"how many citations does Koutis have","family":"KG","skill":"metric_of_person","slots":{"person":"Koutis","metric":"citations"},"group":"metric-koutis"}
-{"id":"kgmetric2","query":"what is Koutis's h-index","family":"KG","skill":"metric_of_person","slots":{"person":"Koutis","metric":"h_index"},"group":"metric-koutis"}
-{"id":"kglink1","query":"what is Koutis's google scholar profile","family":"KG","skill":"link_of_person","slots":{"person":"Koutis","profile":"scholar"},"group":"link-koutis"}
-{"id":"kglink2","query":"linkedin for Cristian Borcea","family":"KG","skill":"link_of_person","slots":{"person":"Cristian Borcea","profile":"linkedin"},"group":"link-borcea"}
-{"id":"kgarea1","query":"who works on machine learning","family":"KG","skill":"people_by_research_area","slots":{"area":"machine learning"},"group":"area-ml"}
-{"id":"kgarea2","query":"which faculty do research in cybersecurity","family":"KG","skill":"people_by_research_area","slots":{"area":"cybersecurity"},"group":"area-cyber"}
-{"id":"kgareacount1","query":"how many faculty work on artificial intelligence","family":"KG","skill":"count_people_by_research_area","slots":{"area":"artificial intelligence"},"group":"areacount-ai"}
-{"id":"kgareas1","query":"what research areas are covered in computer science","family":"KG","skill":"areas_in_org","slots":{"org":"cs"},"group":"areas-cs"}
-{"id":"kgfacareas1","query":"what are the research areas of the professors in computer science","family":"KG","skill":"faculty_areas_in_department","slots":{"org":"cs"},"group":"facareas-cs"}
-{"id":"food1","query":"is there free food this week","family":"RAG","source":"food","group":"food-week"}
-{"id":"food2","query":"any free pizza on campus today","family":"RAG","source":"food","group":"food-pizza"}
-{"id":"food3","query":"where can I get free lunch","family":"RAG","source":"food","group":"food-lunch"}
-{"id":"event1","query":"what events are happening this week","family":"RAG","source":"event","group":"event-week"}
-{"id":"event2","query":"when is the next GSA event","family":"RAG","source":"event","group":"event-next"}
-{"id":"event3","query":"are there any workshops coming up","family":"RAG","source":"event","group":"event-workshop"}
-{"id":"neg-process1","query":"how do I become a dean","family":"RAG","source":"general","group":"neg-process"}
-{"id":"neg-process2","query":"who is responsible for officer elections","family":"RAG","source":"general","group":"neg-process"}
-{"id":"neg-prose1","query":"what is the dean's welcome message","family":"RAG","source":"general","group":"neg-prose"}
-{"id":"neg-cite1","query":"how do I cite a paper","family":"RAG","source":"general","group":"neg-cite"}
-{"id":"neg-web1","query":"what's on the GSA website","family":"RAG","source":"general","group":"neg-web"}
-{"id":"gen1","query":"what is the GSA","family":"RAG","source":"general","group":"gen-gsa"}
-{"id":"gen2","query":"how do I register for classes","family":"RAG","source":"general","group":"gen-register"}
-{"id":"gen3","query":"what is the graduate student association","family":"RAG","source":"general","group":"gen-gsa"}
-{"id":"gen4","query":"tell me about NJIT","family":"RAG","source":"general","group":"gen-njit"}
-{"id":"clar1","query":"who is the advisor","family":"CLARIFY","slots":{"missing":"org"},"group":"clar-advisor"}
-{"id":"clar2","query":"who is the chair","family":"CLARIFY","slots":{"missing":"org"},"group":"clar-chair"}
-{"id":"clar3","query":"tell me about the professor","family":"CLARIFY","slots":{"missing":"person"},"group":"clar-prof"}
-{"id":"cmd1","query":"clear","family":"COMMAND","group":"cmd-clear"}
-{"id":"cmd2","query":"reset","family":"COMMAND","group":"cmd-reset"}
-{"id":"cmd3","query":"help","family":"COMMAND","group":"cmd-help"}
-{"id":"cmd4","query":"start","family":"COMMAND","group":"cmd-start"}
-{"id":"b1-01","query":"Top 10 by citations mechanical engineering","family":"KG","skill":"top_people_by_metric","slots":{"org":"mechanical engineering","metric":"citations","n":10},"group":"rank-mech-cite"}
-{"id":"b1-02","query":"Most cited professor in mechanical and industrial","family":"KG","skill":"top_people_by_metric","slots":{"org":"mie","metric":"citations","n":1},"group":"rank-mech-cite"}
-{"id":"b1-03","query":"Top 5 ywcc h index","family":"KG","skill":"top_people_by_metric","slots":{"org":"ywcc","metric":"h_index","n":5},"group":"rank-ywcc-h"}
-{"id":"b1-04","query":"Min citation ywcc","family":"KG","skill":"top_people_by_metric","slots":{"org":"ywcc","metric":"citations","order":"asc"},"group":"rank-ywcc-cite-min"}
-{"id":"b1-05","query":"Least h index cs","family":"KG","skill":"top_people_by_metric","slots":{"org":"cs","metric":"h_index","order":"asc"},"group":"rank-cs-h-min"}
-{"id":"b1-06","query":"who has the most citation in cs department","family":"KG","skill":"top_people_by_metric","slots":{"org":"cs","metric":"citations","n":1},"group":"rank-cs-cite"}
-{"id":"b1-07","query":"what is Zhi Wei's h-index","family":"KG","skill":"metric_of_person","slots":{"person":"Zhi Wei","metric":"h_index"},"group":"metric-zhiwei"}
-{"id":"b1-08","query":"Koutis citation","family":"KG","skill":"metric_of_person","slots":{"person":"Koutis","metric":"citations"},"group":"koutis-cite"}
-{"id":"b1-09","query":"What is Andew Sohn's research area?","family":"KG","skill":"research_of_person","slots":{"person":"Andrew Sohn"},"group":"res-sohn"}
-{"id":"b1-10","query":"Petras research field","family":"KG","skill":"research_of_person","slots":{"person":"Petras"},"group":"petras"}
-{"id":"b1-11","query":"jamie payton research field","family":"KG","skill":"research_of_person","slots":{"person":"Jamie Payton"},"group":"res-payton"}
-{"id":"b1-12","query":"what does Koutis work on","family":"KG","skill":"research_of_person","slots":{"person":"Koutis"},"group":"res-koutis"}
-{"id":"b1-13","query":"Who is petras","family":"KG","skill":"entity_card","slots":{"person":"Petras"},"group":"petras"}
-{"id":"b1-14","query":"koutis","family":"KG","skill":"entity_card","slots":{"person":"Koutis"},"group":"card-koutis"}
-{"id":"b1-15","query":"Koutis's email","family":"KG","skill":"entity_card","slots":{"person":"Koutis","attr":"email"},"group":"card-koutis"}
-{"id":"b1-16","query":"oria linkedin","family":"KG","skill":"link_of_person","slots":{"person":"Oria","profile":"linkedin"},"group":"link-oria"}
-{"id":"b1-17","query":"What is koutis personal website","family":"KG","skill":"link_of_person","slots":{"person":"Koutis","profile":"website"},"group":"link-koutis"}
-{"id":"b1-18","query":"List all the people research is graph","family":"KG","skill":"people_by_research_area","slots":{"area":"graph"},"group":"area-graph"}
-{"id":"b1-19","query":"List of professors who research graphs","family":"KG","skill":"people_by_research_area","slots":{"area":"graph"},"group":"area-graph"}
-{"id":"b1-20","query":"Find an advisor machine learning","family":"KG","skill":"people_by_research_area","slots":{"area":"machine learning"},"group":"area-ml-advisor"}
-{"id":"b1-21","query":"All ywcc profssors research field","family":"KG","skill":"faculty_areas_in_department","slots":{"org":"ywcc"},"group":"facareas-ywcc"}
-{"id":"b1-22","query":"How can I extend my PhD duration to 6 years?","family":"RAG","source":"general","group":"gen-phd-extend"}
-{"id":"b1-23","query":"what is the GSA travel award","family":"RAG","source":"general","group":"gen-travel-award"}
-{"id":"b1-24","query":"tell me about the data science program","family":"RAG","source":"general","group":"gen-ds-program"}
-{"id":"b1-25","query":"what is the MMI Workshop","family":"RAG","source":"general","group":"gen-mmi"}
-{"id":"b1-26","query":"njit parking permits","family":"RAG","source":"general","slots":{"topic":"parking","expected":"live","kb_candidate":true},"group":"live-parking"}
-{"id":"b1-27","query":"NJIT library hours","family":"RAG","source":"general","slots":{"topic":"library hours","expected":"live","kb_candidate":true},"group":"live-library-hours"}
-{"id":"b1-28","query":"How silly you are?","family":"OTHER","slots":{"reason":"social"},"group":"other-social"}
-{"id":"b1-29","query":"capital of iran","family":"OTHER","slots":{"reason":"out-of-scope"},"group":"other-oos"}
-{"id":"b1-30","query":"Talk about yourself and your abilities","family":"OTHER","slots":{"reason":"meta-about-bot"},"group":"other-meta"}
-{"id":"b2-01","query":"who is dean of ywcc","family":"KG","skill":"people_by_role","slots":{"role":"dean","org":"ywcc"},"group":"dean-ywcc"}
-{"id":"b2-02","query":"dean name? ywcc","family":"KG","skill":"people_by_role","slots":{"role":"dean","org":"ywcc"},"group":"dean-ywcc"}
-{"id":"b2-03","query":"Cs dean name","family":"KG","skill":"people_by_role","slots":{"role":"dean","org":"cs"},"group":"dean-cs"}
-{"id":"b2-04","query":"who is the president of gsa","family":"KG","skill":"people_by_role","slots":{"role":"president","org":"gsa"},"group":"pres-gsa"}
-{"id":"b2-05","query":"what is ywcc and which departments are in it?","family":"KG","skill":"org_departments","slots":{"org":"ywcc"},"group":"dept-ywcc"}
-{"id":"b2-06","query":"Which deprtment has ywcc","family":"KG","skill":"org_departments","slots":{"org":"ywcc"},"group":"dept-ywcc"}
-{"id":"b2-07","query":"Who are the cs professors","family":"KG","skill":"faculty_in_department","slots":{"org":"cs"},"group":"fac-cs2"}
-{"id":"b2-08","query":"Do you know and can list all the professors in ywcc","family":"KG","skill":"faculty_in_department","slots":{"org":"ywcc"},"group":"fac-ywcc"}
-{"id":"b2-09","query":"name cs department distinguished professors","family":"KG","skill":"faculty_in_department","slots":{"org":"cs","filter":"distinguished"},"group":"fac-cs-distinguished"}
-{"id":"b2-10","query":"name officers of gsa","family":"KG","skill":"officers_in_org","slots":{"org":"gsa"},"group":"off-gsa2"}
-{"id":"b2-11","query":"tell me who is david bader?","family":"KG","skill":"entity_card","slots":{"person":"David Bader"},"group":"card-bader"}
-{"id":"b2-12","query":"Who is julie ancis","family":"KG","skill":"entity_card","slots":{"person":"Julie Ancis"},"group":"card-ancis"}
-{"id":"b2-13","query":"who is Craig Gotsman","family":"KG","skill":"entity_card","slots":{"person":"Craig Gotsman"},"group":"card-gotsman"}
-{"id":"b2-14","query":"Who is mohammad dindoost","family":"KG","skill":"entity_card","slots":{"person":"Mohammad Dindoost"},"group":"card-dindoost"}
-{"id":"b2-15","query":"Bader research area?","family":"KG","skill":"research_of_person","slots":{"person":"David Bader"},"group":"res-bader"}
-{"id":"b2-16","query":"what is research area of Craig Gotsman","family":"KG","skill":"research_of_person","slots":{"person":"Craig Gotsman"},"group":"res-gotsman"}
-{"id":"b2-17","query":"borcea research","family":"KG","skill":"research_of_person","slots":{"person":"Borcea"},"group":"res-borcea2"}
-{"id":"b2-18","query":"can you give bader personal web site?","family":"KG","skill":"link_of_person","slots":{"person":"David Bader","profile":"website"},"group":"link-bader"}
-{"id":"b2-19","query":"Who works on graph","family":"KG","skill":"people_by_research_area","slots":{"area":"graph"},"group":"area-graph2"}
-{"id":"b2-20","query":"I want to work on graph theory who are working on it","family":"KG","skill":"people_by_research_area","slots":{"area":"graph theory"},"group":"area-graph2"}
-{"id":"b2-21","query":"is there any event for today?","family":"RAG","source":"event","group":"event-today"}
-{"id":"b2-22","query":"Last gsa event","family":"RAG","source":"event","group":"event-last"}
-{"id":"b2-23","query":"food","family":"RAG","source":"food","group":"food-bare"}
-{"id":"b2-24","query":"How much can a club spend on food per person at an event?","family":"RAG","source":"general","group":"food-policy"}
-{"id":"b2-25","query":"What is the lavender graduation","family":"RAG","source":"general","group":"gen-lavender"}
-{"id":"b2-26","query":"what is MMI?","family":"RAG","source":"general","group":"gen-mmi2"}
-{"id":"b2-27","query":"dinning hall hours","family":"RAG","source":"general","slots":{"topic":"dining hours","expected":"live","kb_candidate":true},"group":"live-dining"}
-{"id":"b2-28","query":"NJIT academic calendar","family":"RAG","source":"general","slots":{"topic":"academic calendar","expected":"live","kb_candidate":true},"group":"live-calendar"}
-{"id":"b2-29","query":"Who is the president","family":"CLARIFY","slots":{"missing":"org"},"group":"clar-president"}
-{"id":"b2-30","query":"Qrcode","family":"COMMAND","group":"cmd-qrcode"}
-{"id":"b2-31","query":"🤣","family":"OTHER","slots":{"reason":"social"},"group":"other-emoji"}
-{"id":"b2-32","query":"تو‌ کی هستی معرفی کن","family":"OTHER","slots":{"reason":"non-english"},"group":"other-persian"}
+{"id": "kgrank1", "query": "top 10 by citations in mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "mechanical engineering", "metric": "citations", "n": 10}, "group": "rank-me", "provenance": "seed"}
+{"id": "kgrank2", "query": "most cited professor in mechanical and industrial engineering", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "mie", "metric": "citations", "n": 1}, "group": "rank-me", "provenance": "seed"}
+{"id": "kgrank3", "query": "who has the highest h-index in computer science", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "cs", "metric": "h_index", "n": 1}, "group": "rank-cs", "provenance": "seed"}
+{"id": "kgrank4", "query": "top 5 most cited faculty in ying wu college of computing", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "ywcc", "metric": "citations", "n": 5}, "group": "rank-ywcc", "provenance": "seed"}
+{"id": "kgrole1", "query": "who is the dean of computing", "family": "KG", "skill": "people_by_role", "slots": {"role": "dean", "org": "ywcc"}, "group": "role-dean", "provenance": "seed"}
+{"id": "kgrole2", "query": "who is the dean of the ying wu college", "family": "KG", "skill": "people_by_role", "slots": {"role": "dean", "org": "ywcc"}, "group": "role-dean", "provenance": "seed"}
+{"id": "kgrole3", "query": "who is the chair of computer science", "family": "KG", "skill": "people_by_role", "slots": {"role": "chair", "org": "cs"}, "group": "role-chair", "provenance": "seed"}
+{"id": "kgfac1", "query": "who teaches in computer science", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "cs"}, "group": "fac-cs", "provenance": "seed"}
+{"id": "kgfac2", "query": "list the faculty in computer science", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "cs"}, "group": "fac-cs", "provenance": "seed"}
+{"id": "kgfac3", "query": "professors in mechanical engineering", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "mechanical engineering"}, "group": "fac-me", "provenance": "seed"}
+{"id": "kgfac4", "query": "show me the math department faculty", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "math"}, "group": "fac-math", "provenance": "seed"}
+{"id": "kgppl1", "query": "who is in the GSA", "family": "KG", "skill": "people_in_org", "slots": {"org": "gsa"}, "group": "ppl-gsa", "provenance": "seed"}
+{"id": "kgppl2", "query": "list everyone in the management school", "family": "KG", "skill": "people_in_org", "slots": {"org": "mtsm"}, "group": "ppl-mtsm", "provenance": "seed"}
+{"id": "kgoff1", "query": "who are the GSA officers", "family": "KG", "skill": "officers_in_org", "slots": {"org": "gsa"}, "group": "off-gsa", "provenance": "seed"}
+{"id": "kgoff2", "query": "who runs the GSA", "family": "KG", "skill": "officers_in_org", "slots": {"org": "gsa"}, "group": "off-gsa", "provenance": "seed"}
+{"id": "kgoff3", "query": "who are the officers of ACM", "family": "KG", "skill": "officers_in_org", "slots": {"org": "acm"}, "group": "off-acm", "provenance": "seed"}
+{"id": "kgcard1", "query": "who is Ioannis Koutis", "family": "KG", "skill": "entity_card", "slots": {"person": "Ioannis Koutis"}, "group": "card-koutis", "provenance": "seed"}
+{"id": "kgcard2", "query": "tell me about Cristian Borcea", "family": "KG", "skill": "entity_card", "slots": {"person": "Cristian Borcea"}, "group": "card-borcea", "provenance": "seed"}
+{"id": "kgres1", "query": "what does Ioannis Koutis research", "family": "KG", "skill": "research_of_person", "slots": {"person": "Ioannis Koutis"}, "group": "res-koutis", "provenance": "seed"}
+{"id": "kgres2", "query": "what are Borcea's research areas", "family": "KG", "skill": "research_of_person", "slots": {"person": "Cristian Borcea"}, "group": "res-borcea", "provenance": "seed"}
+{"id": "kgmetric1", "query": "how many citations does Koutis have", "family": "KG", "skill": "metric_of_person", "slots": {"person": "Koutis", "metric": "citations"}, "group": "metric-koutis", "provenance": "seed"}
+{"id": "kgmetric2", "query": "what is Koutis's h-index", "family": "KG", "skill": "metric_of_person", "slots": {"person": "Koutis", "metric": "h_index"}, "group": "metric-koutis", "provenance": "seed"}
+{"id": "kglink1", "query": "what is Koutis's google scholar profile", "family": "KG", "skill": "link_of_person", "slots": {"person": "Koutis", "profile": "scholar"}, "group": "link-koutis", "provenance": "seed"}
+{"id": "kglink2", "query": "linkedin for Cristian Borcea", "family": "KG", "skill": "link_of_person", "slots": {"person": "Cristian Borcea", "profile": "linkedin"}, "group": "link-borcea", "provenance": "seed"}
+{"id": "kgarea1", "query": "who works on machine learning", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "machine learning"}, "group": "area-ml", "provenance": "seed"}
+{"id": "kgarea2", "query": "which faculty do research in cybersecurity", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "cybersecurity"}, "group": "area-cyber", "provenance": "seed"}
+{"id": "kgareacount1", "query": "how many faculty work on artificial intelligence", "family": "KG", "skill": "count_people_by_research_area", "slots": {"area": "artificial intelligence"}, "group": "areacount-ai", "provenance": "seed"}
+{"id": "kgareas1", "query": "what research areas are covered in computer science", "family": "KG", "skill": "areas_in_org", "slots": {"org": "cs"}, "group": "areas-cs", "provenance": "seed"}
+{"id": "kgfacareas1", "query": "what are the research areas of the professors in computer science", "family": "KG", "skill": "faculty_areas_in_department", "slots": {"org": "cs"}, "group": "facareas-cs", "provenance": "seed"}
+{"id": "food1", "query": "is there free food this week", "family": "RAG", "source": "food", "group": "food-week", "provenance": "seed"}
+{"id": "food2", "query": "any free pizza on campus today", "family": "RAG", "source": "food", "group": "food-pizza", "provenance": "seed"}
+{"id": "food3", "query": "where can I get free lunch", "family": "RAG", "source": "food", "group": "food-lunch", "provenance": "seed"}
+{"id": "event1", "query": "what events are happening this week", "family": "RAG", "source": "event", "group": "event-week", "provenance": "seed"}
+{"id": "event2", "query": "when is the next GSA event", "family": "RAG", "source": "event", "group": "event-next", "provenance": "seed"}
+{"id": "event3", "query": "are there any workshops coming up", "family": "RAG", "source": "event", "group": "event-workshop", "provenance": "seed"}
+{"id": "neg-process1", "query": "how do I become a dean", "family": "RAG", "source": "general", "group": "neg-process", "provenance": "seed"}
+{"id": "neg-process2", "query": "who is responsible for officer elections", "family": "RAG", "source": "general", "group": "neg-process", "provenance": "seed"}
+{"id": "neg-prose1", "query": "what is the dean's welcome message", "family": "RAG", "source": "general", "group": "neg-prose", "provenance": "seed"}
+{"id": "neg-cite1", "query": "how do I cite a paper", "family": "RAG", "source": "general", "group": "neg-cite", "provenance": "seed"}
+{"id": "neg-web1", "query": "what's on the GSA website", "family": "RAG", "source": "general", "group": "neg-web", "provenance": "seed"}
+{"id": "gen1", "query": "what is the GSA", "family": "RAG", "source": "general", "group": "gen-gsa", "provenance": "seed"}
+{"id": "gen2", "query": "how do I register for classes", "family": "RAG", "source": "general", "group": "gen-register", "provenance": "seed"}
+{"id": "gen3", "query": "what is the graduate student association", "family": "RAG", "source": "general", "group": "gen-gsa", "provenance": "seed"}
+{"id": "gen4", "query": "tell me about NJIT", "family": "RAG", "source": "general", "group": "gen-njit", "provenance": "seed"}
+{"id": "clar1", "query": "who is the advisor", "family": "CLARIFY", "slots": {"missing": "org"}, "group": "clar-advisor", "provenance": "seed"}
+{"id": "clar2", "query": "who is the chair", "family": "CLARIFY", "slots": {"missing": "org"}, "group": "clar-chair", "provenance": "seed"}
+{"id": "clar3", "query": "tell me about the professor", "family": "CLARIFY", "slots": {"missing": "person"}, "group": "clar-prof", "provenance": "seed"}
+{"id": "cmd1", "query": "clear", "family": "COMMAND", "group": "cmd-clear", "provenance": "seed"}
+{"id": "cmd2", "query": "reset", "family": "COMMAND", "group": "cmd-reset", "provenance": "seed"}
+{"id": "cmd3", "query": "help", "family": "COMMAND", "group": "cmd-help", "provenance": "seed"}
+{"id": "cmd4", "query": "start", "family": "COMMAND", "group": "cmd-start", "provenance": "seed"}
+{"id": "b1-01", "query": "Top 10 by citations mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "mechanical engineering", "metric": "citations", "n": 10}, "group": "rank-mech-cite", "provenance": "real"}
+{"id": "b1-02", "query": "Most cited professor in mechanical and industrial", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "mie", "metric": "citations", "n": 1}, "group": "rank-mech-cite", "provenance": "real"}
+{"id": "b1-03", "query": "Top 5 ywcc h index", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "ywcc", "metric": "h_index", "n": 5}, "group": "rank-ywcc-h", "provenance": "real"}
+{"id": "b1-04", "query": "Min citation ywcc", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "ywcc", "metric": "citations", "order": "asc"}, "group": "rank-ywcc-cite-min", "provenance": "real"}
+{"id": "b1-05", "query": "Least h index cs", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "cs", "metric": "h_index", "order": "asc"}, "group": "rank-cs-h-min", "provenance": "real"}
+{"id": "b1-06", "query": "who has the most citation in cs department", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "cs", "metric": "citations", "n": 1}, "group": "rank-cs-cite", "provenance": "real"}
+{"id": "b1-07", "query": "what is Zhi Wei's h-index", "family": "KG", "skill": "metric_of_person", "slots": {"person": "Zhi Wei", "metric": "h_index"}, "group": "metric-zhiwei", "provenance": "real"}
+{"id": "b1-08", "query": "Koutis citation", "family": "KG", "skill": "metric_of_person", "slots": {"person": "Koutis", "metric": "citations"}, "group": "koutis-cite", "provenance": "real"}
+{"id": "b1-09", "query": "What is Andew Sohn's research area?", "family": "KG", "skill": "research_of_person", "slots": {"person": "Andrew Sohn"}, "group": "res-sohn", "provenance": "real"}
+{"id": "b1-10", "query": "Petras research field", "family": "KG", "skill": "research_of_person", "slots": {"person": "Petras"}, "group": "petras", "provenance": "real"}
+{"id": "b1-11", "query": "jamie payton research field", "family": "KG", "skill": "research_of_person", "slots": {"person": "Jamie Payton"}, "group": "res-payton", "provenance": "real"}
+{"id": "b1-12", "query": "what does Koutis work on", "family": "KG", "skill": "research_of_person", "slots": {"person": "Koutis"}, "group": "res-koutis", "provenance": "real"}
+{"id": "b1-13", "query": "Who is petras", "family": "KG", "skill": "entity_card", "slots": {"person": "Petras"}, "group": "petras", "provenance": "real"}
+{"id": "b1-14", "query": "koutis", "family": "KG", "skill": "entity_card", "slots": {"person": "Koutis"}, "group": "card-koutis", "provenance": "real"}
+{"id": "b1-15", "query": "Koutis's email", "family": "KG", "skill": "entity_card", "slots": {"person": "Koutis", "attr": "email"}, "group": "card-koutis", "provenance": "real"}
+{"id": "b1-16", "query": "oria linkedin", "family": "KG", "skill": "link_of_person", "slots": {"person": "Oria", "profile": "linkedin"}, "group": "link-oria", "provenance": "real"}
+{"id": "b1-17", "query": "What is koutis personal website", "family": "KG", "skill": "link_of_person", "slots": {"person": "Koutis", "profile": "website"}, "group": "link-koutis", "provenance": "real"}
+{"id": "b1-18", "query": "List all the people research is graph", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "graph"}, "group": "area-graph", "provenance": "real"}
+{"id": "b1-19", "query": "List of professors who research graphs", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "graph"}, "group": "area-graph", "provenance": "real"}
+{"id": "b1-20", "query": "Find an advisor machine learning", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "machine learning"}, "group": "area-ml-advisor", "provenance": "real"}
+{"id": "b1-21", "query": "All ywcc profssors research field", "family": "KG", "skill": "faculty_areas_in_department", "slots": {"org": "ywcc"}, "group": "facareas-ywcc", "provenance": "real"}
+{"id": "b1-22", "query": "How can I extend my PhD duration to 6 years?", "family": "RAG", "source": "general", "group": "gen-phd-extend", "provenance": "real"}
+{"id": "b1-23", "query": "what is the GSA travel award", "family": "RAG", "source": "general", "group": "gen-travel-award", "provenance": "real"}
+{"id": "b1-24", "query": "tell me about the data science program", "family": "RAG", "source": "general", "group": "gen-ds-program", "provenance": "real"}
+{"id": "b1-25", "query": "what is the MMI Workshop", "family": "RAG", "source": "general", "group": "gen-mmi", "provenance": "real"}
+{"id": "b1-26", "query": "njit parking permits", "family": "RAG", "source": "general", "slots": {"topic": "parking", "expected": "live", "kb_candidate": true}, "group": "live-parking", "provenance": "real"}
+{"id": "b1-27", "query": "NJIT library hours", "family": "RAG", "source": "general", "slots": {"topic": "library hours", "expected": "live", "kb_candidate": true}, "group": "live-library-hours", "provenance": "real"}
+{"id": "b1-28", "query": "How silly you are?", "family": "OTHER", "slots": {"reason": "social"}, "group": "other-social", "provenance": "real"}
+{"id": "b1-29", "query": "capital of iran", "family": "OTHER", "slots": {"reason": "out-of-scope"}, "group": "other-oos", "provenance": "real"}
+{"id": "b1-30", "query": "Talk about yourself and your abilities", "family": "OTHER", "slots": {"reason": "meta-about-bot"}, "group": "other-meta", "provenance": "real"}
+{"id": "b2-01", "query": "who is dean of ywcc", "family": "KG", "skill": "people_by_role", "slots": {"role": "dean", "org": "ywcc"}, "group": "dean-ywcc", "provenance": "real"}
+{"id": "b2-02", "query": "dean name? ywcc", "family": "KG", "skill": "people_by_role", "slots": {"role": "dean", "org": "ywcc"}, "group": "dean-ywcc", "provenance": "real"}
+{"id": "b2-03", "query": "Cs dean name", "family": "KG", "skill": "people_by_role", "slots": {"role": "dean", "org": "cs"}, "group": "dean-cs", "provenance": "real"}
+{"id": "b2-04", "query": "who is the president of gsa", "family": "KG", "skill": "people_by_role", "slots": {"role": "president", "org": "gsa"}, "group": "pres-gsa", "provenance": "real"}
+{"id": "b2-05", "query": "what is ywcc and which departments are in it?", "family": "KG", "skill": "org_departments", "slots": {"org": "ywcc"}, "group": "dept-ywcc", "provenance": "real"}
+{"id": "b2-06", "query": "Which deprtment has ywcc", "family": "KG", "skill": "org_departments", "slots": {"org": "ywcc"}, "group": "dept-ywcc", "provenance": "real"}
+{"id": "b2-07", "query": "Who are the cs professors", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "cs"}, "group": "fac-cs2", "provenance": "real"}
+{"id": "b2-08", "query": "Do you know and can list all the professors in ywcc", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "ywcc"}, "group": "fac-ywcc", "provenance": "real"}
+{"id": "b2-09", "query": "name cs department distinguished professors", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "cs", "filter": "distinguished"}, "group": "fac-cs-distinguished", "provenance": "real"}
+{"id": "b2-10", "query": "name officers of gsa", "family": "KG", "skill": "officers_in_org", "slots": {"org": "gsa"}, "group": "off-gsa2", "provenance": "real"}
+{"id": "b2-11", "query": "tell me who is david bader?", "family": "KG", "skill": "entity_card", "slots": {"person": "David Bader"}, "group": "card-bader", "provenance": "real"}
+{"id": "b2-12", "query": "Who is julie ancis", "family": "KG", "skill": "entity_card", "slots": {"person": "Julie Ancis"}, "group": "card-ancis", "provenance": "real"}
+{"id": "b2-13", "query": "who is Craig Gotsman", "family": "KG", "skill": "entity_card", "slots": {"person": "Craig Gotsman"}, "group": "card-gotsman", "provenance": "real"}
+{"id": "b2-14", "query": "Who is mohammad dindoost", "family": "KG", "skill": "entity_card", "slots": {"person": "Mohammad Dindoost"}, "group": "card-dindoost", "provenance": "real"}
+{"id": "b2-15", "query": "Bader research area?", "family": "KG", "skill": "research_of_person", "slots": {"person": "David Bader"}, "group": "res-bader", "provenance": "real"}
+{"id": "b2-16", "query": "what is research area of Craig Gotsman", "family": "KG", "skill": "research_of_person", "slots": {"person": "Craig Gotsman"}, "group": "res-gotsman", "provenance": "real"}
+{"id": "b2-17", "query": "borcea research", "family": "KG", "skill": "research_of_person", "slots": {"person": "Borcea"}, "group": "res-borcea2", "provenance": "real"}
+{"id": "b2-18", "query": "can you give bader personal web site?", "family": "KG", "skill": "link_of_person", "slots": {"person": "David Bader", "profile": "website"}, "group": "link-bader", "provenance": "real"}
+{"id": "b2-19", "query": "Who works on graph", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "graph"}, "group": "area-graph2", "provenance": "real"}
+{"id": "b2-20", "query": "I want to work on graph theory who are working on it", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "graph theory"}, "group": "area-graph2", "provenance": "real"}
+{"id": "b2-21", "query": "is there any event for today?", "family": "RAG", "source": "event", "group": "event-today", "provenance": "real"}
+{"id": "b2-22", "query": "Last gsa event", "family": "RAG", "source": "event", "group": "event-last", "provenance": "real"}
+{"id": "b2-23", "query": "food", "family": "RAG", "source": "food", "group": "food-bare", "provenance": "real"}
+{"id": "b2-24", "query": "How much can a club spend on food per person at an event?", "family": "RAG", "source": "general", "group": "food-policy", "provenance": "real"}
+{"id": "b2-25", "query": "What is the lavender graduation", "family": "RAG", "source": "general", "group": "gen-lavender", "provenance": "real"}
+{"id": "b2-26", "query": "what is MMI?", "family": "RAG", "source": "general", "group": "gen-mmi2", "provenance": "real"}
+{"id": "b2-27", "query": "dinning hall hours", "family": "RAG", "source": "general", "slots": {"topic": "dining hours", "expected": "live", "kb_candidate": true}, "group": "live-dining", "provenance": "real"}
+{"id": "b2-28", "query": "NJIT academic calendar", "family": "RAG", "source": "general", "slots": {"topic": "academic calendar", "expected": "live", "kb_candidate": true}, "group": "live-calendar", "provenance": "real"}
+{"id": "b2-29", "query": "Who is the president", "family": "CLARIFY", "slots": {"missing": "org"}, "group": "clar-president", "provenance": "real"}
+{"id": "b2-30", "query": "Qrcode", "family": "COMMAND", "group": "cmd-qrcode", "provenance": "real"}
+{"id": "b2-31", "query": "🤣", "family": "OTHER", "slots": {"reason": "social"}, "group": "other-emoji", "provenance": "real"}
+{"id": "b2-32", "query": "تو‌ کی هستی معرفی کن", "family": "OTHER", "slots": {"reason": "non-english"}, "group": "other-persian", "provenance": "real"}
