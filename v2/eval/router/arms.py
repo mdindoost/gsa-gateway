@@ -12,6 +12,43 @@ def from_route(route_obj) -> RoutePrediction:
     return RoutePrediction(family=Family.KG, skill=route_obj.skill, slots=dict(route_obj.args))
 
 
+def kg_recall_bias(ranked, route_fn, conn, query, margin_max):
+    """Inverse-FN offline analogue (spec §5 step 4): if the classifier put RAG on top but KG is a
+    close runner-up AND the deterministic router actually resolves a skill, prefer the resolved KG
+    route. Returns the resolved RoutePrediction or None (no change). Exactness is preserved because
+    the route comes from the deterministic router, never from the classifier."""
+    if not ranked or ranked[0][0] != Family.RAG:
+        return None
+    kg = next((s for lab, s in ranked if lab == Family.KG), None)
+    if kg is None or (ranked[0][1] - kg) > margin_max:
+        return None
+    r = route_fn(conn, query)
+    if r is None:
+        return None
+    return from_route(r)
+
+
+class KGRecallBiasedArm:
+    """coarse_then_deterministic + the inverse-FN bias (Lever #1 experiment B)."""
+    def __init__(self, conn, classifier, encoder, margin_max=0.05):
+        self.conn, self.clf, self.enc, self.margin_max = conn, classifier, encoder, margin_max
+
+    def predict(self, query: str) -> RoutePrediction:
+        from v2.core.retrieval import router as srouter
+        ranked = self.clf.predict(query, self.enc)
+        biased = kg_recall_bias(ranked, srouter.route, self.conn, query, self.margin_max)
+        if biased is not None:
+            biased.score = ranked[0][1]
+            return biased
+        fam, score, margin = self.clf.top(query, self.enc)
+        if fam == Family.KG:
+            p = from_route(srouter.route(self.conn, query))
+            p.score, p.margin = score, margin
+            return p
+        return RoutePrediction(family=fam, source=("general" if fam == Family.RAG else None),
+                               score=score, margin=margin)
+
+
 def _parse_label(label: str) -> tuple[str, str | None, str | None]:
     if "/" not in label:
         return (label, None, None)

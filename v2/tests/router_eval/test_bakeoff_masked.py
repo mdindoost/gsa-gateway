@@ -24,7 +24,7 @@ def test_entity_split_with_masked_arms(monkeypatch):
                       masker=masker, split_mode="entity")
     assert res["_meta"]["split_mode"] == "entity"
     # masked + abstaining arms present and gated
-    assert {"masked_coarse", "masked_full", "masked_full_abstain"} <= set(res)
+    assert {"masked_coarse", "masked_coarse_kgbias", "masked_full", "masked_full_abstain"} <= set(res)
     assert "masked_full" in res["gate"]
     assert isinstance(format_report(res), str)
 

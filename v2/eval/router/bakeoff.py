@@ -1,7 +1,8 @@
 from __future__ import annotations
 from v2.eval.router.classifier import ExemplarClassifier
 from v2.eval.router.split import split, split_entity_disjoint
-from v2.eval.router.arms import DetectorFirstArm, CoarseThenDeterministicArm, FullClassifierArm
+from v2.eval.router.arms import (DetectorFirstArm, CoarseThenDeterministicArm, FullClassifierArm,
+                                  KGRecallBiasedArm)
 from v2.eval.router.mask import MaskedEncoder
 from v2.eval.router.abstain import AbstainingArm, calibrate_thresholds
 from v2.eval.router.metrics import score
@@ -22,6 +23,7 @@ def _build_arms(conn, train, encoder, masker=None, val=None) -> tuple[dict, dict
         m_fam = ExemplarClassifier(level="family").fit(train, menc)
         m_skill = ExemplarClassifier(level="skill").fit(train, menc)
         arms["masked_coarse"] = CoarseThenDeterministicArm(conn, m_fam, menc)
+        arms["masked_coarse_kgbias"] = KGRecallBiasedArm(conn, m_fam, menc)
         arms["masked_full"] = FullClassifierArm(m_skill, menc)
         # abstention thresholds are calibrated on TRAIN only, then applied to masked_full
         _s, mgn, met = calibrate_thresholds(m_skill, train, menc, level="skill", target_precision=0.9)
