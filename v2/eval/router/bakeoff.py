@@ -50,6 +50,19 @@ def _partition(examples, encoder, test_frac, seed, split_mode):
     return seeds + tr, te
 
 
+def partition_with_val(examples, encoder, test_frac=0.3, val_frac=0.2, seed=0,
+                       split_mode="paraphrase"):
+    """Three-way split (train, val, test). `test` is the gold (explicit split:test or computed).
+    `val` is a stratified paraphrase-disjoint carve from the NON-SEED train pool so it represents
+    every family/source (FAMILY-level abstention must be calibrated on a realistic family mix, not
+    a KG-only entity-disjoint fold). Seeds stay pinned to train; all three folds are id-disjoint."""
+    train_full, test = _partition(examples, encoder, test_frac, seed, split_mode)
+    seeds = [x for x in train_full if x.provenance == "seed"]
+    pool = [x for x in train_full if x.provenance != "seed"]
+    tr, val = split(pool, encoder, test_frac=val_frac, seed=seed)
+    return seeds + tr, val, test
+
+
 def run_bakeoff(examples, conn, encoder, test_frac=0.3, seed=0, masker=None,
                 split_mode="paraphrase") -> dict:
     train, test = _partition(examples, encoder, test_frac, seed, split_mode)
