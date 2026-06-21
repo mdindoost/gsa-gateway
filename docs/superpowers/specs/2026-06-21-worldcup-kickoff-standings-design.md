@@ -24,10 +24,10 @@ The match is underway! 🌍
 _Group Stage · Group H_
 
 📊 Group H
-1. Spain — 4 pts · P2 W1 D1 L0 · GD +4
-2. Cape Verde Islands — 4 pts · P2 W1 D1 L0 · GD +1
-3. Uruguay — 1 pt · P2 W0 D1 L1 · GD -1
-4. Saudi Arabia — 1 pt · P2 W0 D1 L1 · GD -4
+1. Spain — 4 pts · GD +4
+2. Cape Verde Islands — 4 pts · GD +1
+3. Uruguay — 1 pt · GD -1
+4. Saudi Arabia — 1 pt · GD -4
 ```
 
 ## Decisions (owner, 2026-06-21)
@@ -64,7 +64,7 @@ read well on the **weakest** renderer (GroupMe plain text). Therefore:
 
 Per-team line template:
 ```
-{pos}. {team} — {pts} pt{s} · P{played} W{won} D{draw} L{lost} · GD {+/-gd}
+{pos}. {team} — {pts} pt{s} · GD {+/-gd}
 ```
 Header line: `📊 **{group_label}**` (e.g. `Group H`). `pt`/`pts` pluralized.
 
@@ -118,12 +118,12 @@ directly. Emits the monospace-free format above:
 
 ```
 📊 **Group H**
-1. Spain — 4 pts · P2 W1 D1 L0 · GD +4
+1. Spain — 4 pts · GD +4
 ...
 ```
 
-- Row fields: `position`, `team.name`, `points`, `playedGames`, `won`, `draw`,
-  `lost`, `goalDifference` (signed `+`/`-`).
+- Row fields: `position`, `team.name`, `points`, `goalDifference` (signed `+`/`-`).
+  (Owner trimmed the line to rank · name · points · GD — P/W/D/L dropped.)
 - **Defensive:** missing numeric fields render as `0`; a missing name renders as
   `"?"`; an empty `rows` returns `""` (caller then skips the append).
 - **Team-name length:** truncate names longer than **28 chars** to `27 + "…"`

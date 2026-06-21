@@ -158,6 +158,21 @@ class WorldCupTracker:
         self._debug(len(data.get("matches", [])), todays)
         return todays
 
+    async def fetch_standings(self) -> dict[str, list[dict]]:
+        """Return {group_token: [table_rows]} for the WC group stage. {} on failure.
+
+        Reuses ``_get`` (round-robin keys, returns {} on any HTTP/network error,
+        never raises). Keeps only blocks that carry a ``group`` — knockout blocks
+        have ``group=None`` and are dropped. Same payload the dashboard embed at
+        ``bot/services/worldcup_embeds.py`` consumes."""
+        data = await self._get("/competitions/WC/standings")
+        out: dict[str, list[dict]] = {}
+        for block in data.get("standings", []):
+            g = block.get("group")
+            if g:
+                out[g] = block.get("table", [])
+        return out
+
     def _debug(self, total: int, matches: list) -> None:
         """Append one line per poll showing exactly what the API returned (fresh
         vs stale), keyed by which API key served it. Never raises."""
@@ -317,6 +332,30 @@ def _context(match: dict) -> str:
     if match.get("group"):
         bits.append(match["group"].replace("_", " ").title())
     return " · ".join(bits)
+
+
+def format_standings(group: str, rows: list[dict]) -> str:
+    """One line per team — monospace-free so it renders on every channel.
+
+    Discord/Telegram show the bold header; GroupMe (plain text) strips it. NO code
+    fences: Telegram HTML-escapes them and GroupMe shows them literally, and neither
+    keeps monospace column alignment. So each team is a self-contained line instead
+    of a grid. Returns "" for an empty table (caller then appends nothing)."""
+    if not rows:
+        return ""
+    label = group.replace("_", " ").title()
+    lines = [f"📊 **{label}**"]
+    for r in rows:
+        name = (r.get("team") or {}).get("name") or "?"
+        if len(name) > 28:
+            name = name[:27] + "…"
+        pts = r.get("points") or 0
+        gd = r.get("goalDifference") or 0
+        gd_str = f"+{gd}" if gd > 0 else str(gd)
+        lines.append(
+            f"{r.get('position') or 0}. {name} — {pts} pt{'' if pts == 1 else 's'} · GD {gd_str}"
+        )
+    return "\n".join(lines)
 
 
 def format_event(ev: dict) -> str:

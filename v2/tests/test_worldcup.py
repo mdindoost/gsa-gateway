@@ -201,3 +201,174 @@ def test_runner_posts_consecutive_free_tier_goals(monkeypatch, tmp_path):
 
     n = conn.execute("SELECT COUNT(*) FROM posts WHERE type='worldcup'").fetchone()[0]
     assert n == 2  # both goals posted (was 1 before the scoreline-keyed fix)
+
+
+# ── kick-off group-standings (single combined post) ──────────────────────────
+
+SAMPLE_ROWS = [
+    {"position": 1, "team": {"name": "Spain"}, "playedGames": 2, "won": 1,
+     "draw": 1, "lost": 0, "goalDifference": 4, "points": 4},
+    {"position": 2, "team": {"name": "Uruguay"}, "playedGames": 2, "won": 0,
+     "draw": 1, "lost": 1, "goalDifference": -1, "points": 1},
+]
+
+
+def test_format_standings_lines():
+    out = wt.format_standings("GROUP_H", SAMPLE_ROWS)
+    assert out.splitlines()[0] == "📊 **Group H**"
+    assert "1. Spain — 4 pts · GD +4" in out
+    assert "2. Uruguay — 1 pt · GD -1" in out                 # pt singular, signed -GD
+
+
+def test_format_standings_empty_returns_blank():
+    assert wt.format_standings("GROUP_H", []) == ""
+
+
+def test_format_standings_no_code_fences():
+    # GroupMe (plain text) + Telegram (HTML-escapes) can't render ``` monospace
+    # blocks — the table MUST be code-fence-free to read on all three channels.
+    assert "```" not in wt.format_standings("GROUP_H", SAMPLE_ROWS)
+
+
+def test_format_standings_defensive_on_missing_fields():
+    out = wt.format_standings("GROUP_A", [{"position": 1}])  # bare row
+    assert "1. ? — 0 pts · GD 0" in out
+
+
+def test_fetch_standings_keeps_only_grouped_blocks(tracker, monkeypatch):
+    async def fake_get(ep):
+        assert ep == "/competitions/WC/standings"
+        return {"standings": [
+            {"group": "GROUP_A", "table": [{"position": 1}]},
+            {"group": None, "table": [{"position": 1}]},      # knockout — dropped
+        ]}
+    monkeypatch.setattr(tracker, "_get", fake_get)
+    out = asyncio.run(tracker.fetch_standings())
+    assert list(out) == ["GROUP_A"]
+
+
+def _kickoff_runner(conn, tmp_path, monkeypatch, state_name):
+    monkeypatch.setattr("v2.integration.worldcup_tracker.STATE_FILE", tmp_path / state_name)
+    from v2.integration.worldcup_runner import WorldCupRunner
+    r = WorldCupRunner(registry=None, api_key="k", channel="world-cup-2026",
+                       db_path=":memory:", org_slug="gsa")
+    r._conn = conn
+    r.org_id = 2
+    r.allowed = {"discord", "telegram", "groupme"}
+    monkeypatch.setattr("v2.integration.worldcup_runner.format_event",
+                        lambda ev: "⚽ **KICK-OFF!**\nSpain vs Uruguay")
+    return r
+
+
+def _org_conn():
+    conn = create_all(":memory:")
+    conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(2,'GSA','gsa','gsa')")
+    conn.commit()
+    return conn
+
+
+def test_kickoff_post_includes_group_standings(monkeypatch, tmp_path):
+    conn = _org_conn()
+    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks1.json")
+
+    async def fake_check():
+        return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
+    runner.tracker.check_matches = fake_check
+
+    async def fake_standings():
+        return {"GROUP_H": SAMPLE_ROWS}
+    runner.tracker.fetch_standings = fake_standings
+
+    asyncio.run(runner._loop_once())
+
+    rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
+    assert len(rows) == 1                                   # ONE combined post
+    content = rows[0]["content"]
+    assert "KICK-OFF" in content                            # kick-off text kept
+    assert "📊 **Group H**" in content                      # table appended
+    assert "1. Spain — 4 pts" in content
+
+
+def test_kickoff_knockout_has_no_table(monkeypatch, tmp_path):
+    conn = _org_conn()
+    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks2.json")
+
+    async def fake_check():
+        return [{"type": "kickoff", "match": {"id": 7}, "minute": 0}]   # no group
+    runner.tracker.check_matches = fake_check
+
+    called = []
+    async def track():
+        called.append(1)
+        return {}
+    runner.tracker.fetch_standings = track
+
+    asyncio.run(runner._loop_once())
+
+    rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
+    assert len(rows) == 1
+    assert "📊" not in rows[0]["content"]
+    assert called == []                                    # standings never fetched
+
+
+def test_kickoff_standings_failure_degrades_to_plain(monkeypatch, tmp_path):
+    conn = _org_conn()
+    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks3.json")
+
+    async def fake_check():
+        return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
+    runner.tracker.check_matches = fake_check
+
+    async def boom():
+        raise RuntimeError("api down")
+    runner.tracker.fetch_standings = boom
+
+    asyncio.run(runner._loop_once())                       # must NOT raise
+
+    rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
+    assert len(rows) == 1                                   # kick-off still posts
+    assert "KICK-OFF" in rows[0]["content"]
+    assert "📊" not in rows[0]["content"]
+
+
+def test_kickoff_standings_toggle_off(monkeypatch, tmp_path):
+    monkeypatch.setenv("FOOTBALL_KICKOFF_STANDINGS", "false")   # read in __init__
+    conn = _org_conn()
+    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks4.json")
+
+    async def fake_check():
+        return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
+    runner.tracker.check_matches = fake_check
+
+    called = []
+    async def track():
+        called.append(1)
+        return {}
+    runner.tracker.fetch_standings = track
+
+    asyncio.run(runner._loop_once())
+
+    rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
+    assert len(rows) == 1
+    assert "📊" not in rows[0]["content"]
+    assert called == []
+
+
+def test_goal_event_does_not_fetch_standings(monkeypatch, tmp_path):
+    conn = _org_conn()
+    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks5.json")
+
+    async def fake_check():
+        return [{"type": "goal", "match": {"id": 42}, "minute": 23,
+                 "scoring_team": {"name": "Brazil"}}]
+    runner.tracker.check_matches = fake_check
+
+    called = []
+    async def track():
+        called.append(1)
+        return {}
+    runner.tracker.fetch_standings = track
+
+    asyncio.run(runner._loop_once())
+
+    assert called == []                                    # only kick-offs fetch standings

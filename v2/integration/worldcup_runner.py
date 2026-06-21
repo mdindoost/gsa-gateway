@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 from v2.core.database.schema import get_connection
 from v2.core.publishing.sources import PostDraft, EnqueueError, enqueue_post, platform_channels
-from v2.integration.worldcup_tracker import WorldCupTracker, format_event
+from v2.integration.worldcup_tracker import WorldCupTracker, format_event, format_standings
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ class WorldCupRunner:
         self.db_path = db_path
         self.org_slug = org_slug
         self.interval = interval
+        # On a group-stage kick-off, append that group's table to the kick-off post
+        # (one combined post). Default on; FOOTBALL_KICKOFF_STANDINGS=false disables.
+        self.kickoff_standings = os.getenv("FOOTBALL_KICKOFF_STANDINGS", "true").lower() != "false"
         self._conn = None
         self.org_id = None
         self.allowed = set(platform_channels())
@@ -83,9 +87,21 @@ class WorldCupRunner:
             # disambiguate same-key events within one tick (e.g. two goals that
             # land on the same scoreline in a single poll) so none are dropped
             dedup_key = base_key if seen_keys[base_key] == 1 else f"{base_key}#{seen_keys[base_key]}"
+            # On a group-stage kick-off, append that group's table to the SAME post.
+            # Failure-isolated: any standings error degrades to the plain kick-off
+            # post (content is assigned before the try); knockout matches (no group)
+            # and the toggle-off case fall through untouched.
+            content = format_event(ev)
+            if ev_type == "kickoff" and match.get("group") and self.kickoff_standings:
+                try:
+                    table = (await self.tracker.fetch_standings()).get(match["group"])
+                    if table:
+                        content = content + "\n\n" + format_standings(match["group"], table)
+                except Exception:  # noqa: BLE001 - never let standings break the kick-off post
+                    logger.exception("World Cup: kickoff standings failed; posting plain kick-off")
             draft = PostDraft(
                 org_id=self.org_id,
-                content=format_event(ev),
+                content=content,
                 type="worldcup",
                 channels=[c for c in platform_channels() if c in self.allowed],
                 discord_channel=self.channel,
