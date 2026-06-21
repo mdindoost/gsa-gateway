@@ -111,3 +111,33 @@
 {"id": "b2-30", "query": "Qrcode", "family": "COMMAND", "group": "cmd-qrcode", "provenance": "real"}
 {"id": "b2-31", "query": "🤣", "family": "OTHER", "slots": {"reason": "social"}, "group": "other-emoji", "provenance": "real"}
 {"id": "b2-32", "query": "تو‌ کی هستی معرفی کن", "family": "OTHER", "slots": {"reason": "non-english"}, "group": "other-persian", "provenance": "real"}
+{"id": "t0", "query": "Tell me about Kavosh", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t1", "query": "You said “I searched NJIT's website but couldn't find anything on that. Try rephrasing, or contact a GSA officer at gsa-vpa@njit.edu.” which is completely wrong since it literally has the info:\n\nhttps://www.njit.edu/global/program-extensions", "family": "OTHER", "slots": {"note": "complaint"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t2", "query": "Njit website literally provides this information: https://www.njit.edu/global/program-extensions\n\nHow did you miss this?", "family": "OTHER", "slots": {"note": "complaint"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t3", "query": "I think Michael houle is ds lecturer", "family": "KG", "skill": "entity_card", "slots": {"note": "statement/correction; dual KG+OTHER; fact KG-verifiable"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t4", "query": "Hi, introduce yourself thoroughly", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t5", "query": "Strategic Events and Conference Services Staff", "family": "KG", "skill": "people_in_org", "slots": {"note": "org=strategic events and conference services"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t6", "query": "Parking fee", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t7", "query": "Parking hours", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t8", "query": "gsa travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t9", "query": "Parking hour time", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t10", "query": "how do I apply for CPT   (answers + “confirm with OGI” heads-up)", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t11", "query": "please  recommend some courses for me to take this fall", "family": "CLARIFY", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t12", "query": "Ranking citation ywcc top 5", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t13", "query": "What is his position", "family": "CLARIFY", "slots": {"note": "follow-up, no antecedent"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t14", "query": "search njit for parking permits", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t15", "query": "what are the hours of the Van Houten library", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t16", "query": "where can visitors park on campus", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t17", "query": "how do I pay my tuition", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t18", "query": "how do I apply for CPT", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t19", "query": "how do I contact the office of global initiatives", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t20", "query": "what is GWICS", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t21", "query": "how do I get funding to attend a conference", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t22", "query": "Top 10 by citation mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t23", "query": "Top 10 citation mechanical department", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t24", "query": "Top 10 in mechanical department", "family": "CLARIFY", "slots": {"note": "top-N with no metric specified"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t25", "query": "Top 10 citation in mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t26", "query": "Give me the citations mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t27", "query": "Who else in mechanical engineering citation you have", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "follow-up; needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t28", "query": "Wrong", "family": "OTHER", "slots": {"note": "feedback"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t29", "query": "Warren street fitness summer working hour", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
