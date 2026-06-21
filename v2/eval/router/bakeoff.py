@@ -24,6 +24,10 @@ def _build_arms(conn, train, encoder, masker=None, val=None) -> tuple[dict, dict
         m_skill = ExemplarClassifier(level="skill").fit(train, menc)
         arms["masked_coarse"] = CoarseThenDeterministicArm(conn, m_fam, menc)
         arms["masked_coarse_kgbias"] = KGRecallBiasedArm(conn, m_fam, menc)
+        # Lever #1a: class-balanced exemplar vote — cap the big families (KG/RAG/OTHER ~100-200)
+        # so the majority class can't dominate the max-sim vote; tiny families stay intact.
+        m_fam_bal = ExemplarClassifier(level="family").fit(train, menc, max_per_label=100)
+        arms["masked_coarse_balanced"] = CoarseThenDeterministicArm(conn, m_fam_bal, menc)
         arms["masked_full"] = FullClassifierArm(m_skill, menc)
         # abstention thresholds are calibrated on TRAIN only, then applied to masked_full
         _s, mgn, met = calibrate_thresholds(m_skill, train, menc, level="skill", target_precision=0.9)
