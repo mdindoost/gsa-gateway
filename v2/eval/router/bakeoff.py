@@ -7,8 +7,8 @@ from v2.eval.router.abstain import AbstainingArm, calibrate_thresholds
 from v2.eval.router.metrics import score
 
 
-def _build_arms(conn, train, encoder, masker=None) -> dict:
-    """The bake-off arms. Masked + abstaining arms are added only when a masker is supplied (CLI)."""
+def _build_arms(conn, train, encoder, masker=None) -> tuple[dict, dict]:
+    """The bake-off arms + a notes dict. Masked + abstaining arms are added only with a masker."""
     fam_clf = ExemplarClassifier(level="family").fit(train, encoder)
     skill_clf = ExemplarClassifier(level="skill").fit(train, encoder)
     arms = {
@@ -16,6 +16,7 @@ def _build_arms(conn, train, encoder, masker=None) -> dict:
         "coarse_then_deterministic": CoarseThenDeterministicArm(conn, fam_clf, encoder),
         "full_classifier": FullClassifierArm(skill_clf, encoder),
     }
+    notes: dict = {}
     if masker is not None:
         menc = MaskedEncoder(encoder, masker)
         m_fam = ExemplarClassifier(level="family").fit(train, menc)
@@ -23,9 +24,11 @@ def _build_arms(conn, train, encoder, masker=None) -> dict:
         arms["masked_coarse"] = CoarseThenDeterministicArm(conn, m_fam, menc)
         arms["masked_full"] = FullClassifierArm(m_skill, menc)
         # abstention thresholds are calibrated on TRAIN only, then applied to masked_full
-        _s, mgn = calibrate_thresholds(m_skill, train, menc, level="skill", target_precision=0.9)
+        _s, mgn, met = calibrate_thresholds(m_skill, train, menc, level="skill", target_precision=0.9)
         arms["masked_full_abstain"] = AbstainingArm(FullClassifierArm(m_skill, menc), margin_min=mgn)
-    return arms
+        notes["abstention_margin"] = round(mgn, 4)
+        notes["abstention_target_met"] = met
+    return arms, notes
 
 
 def run_bakeoff(examples, conn, encoder, test_frac=0.3, seed=0, masker=None,
@@ -34,9 +37,9 @@ def run_bakeoff(examples, conn, encoder, test_frac=0.3, seed=0, masker=None,
         train, test = split_entity_disjoint(examples, test_frac=test_frac, seed=seed)
     else:
         train, test = split(examples, encoder, test_frac=test_frac, seed=seed)
-    arms = _build_arms(conn, train, encoder, masker=masker)
+    arms, notes = _build_arms(conn, train, encoder, masker=masker)
     result: dict = {"_meta": {"n_train": len(train), "n_test": len(test), "seed": seed,
-                              "split_mode": split_mode}}
+                              "split_mode": split_mode, **notes}}
     for name, arm in arms.items():
         pairs = [(ex, arm.predict(ex.query)) for ex in test]
         result[name] = score(pairs)
@@ -59,6 +62,22 @@ def format_report(result: dict, title: str = "Kavosh v2.1 — Phase-0 Bake-off R
     lines = [f"# {title}", "",
              f"split: {meta.get('split_mode', 'paraphrase')}-disjoint | "
              f"train/test: {meta['n_train']}/{meta['n_test']} (seed {meta['seed']})", ""]
+    # honesty caveats — so the table is not over-read
+    n_test = meta.get("n_test", 0)
+    lines += ["> NOTES (read before trusting the numbers):",
+              "> - coarse_* arms get their SKILL from the deterministic router (which resolves entities"
+              " against the LIVE KG), not from the classifier — their skill_accuracy is the router's, and"
+              " the deterministic arms enjoy a DB entity oracle the classifier arms do not.",
+              f"> - small N (test={n_test}): single-digit anti-fab counts drive the gate; one row can flip"
+              " a verdict — treat deltas as directional, not significant."]
+    if "abstention_margin" in meta:
+        margin, met = meta["abstention_margin"], meta.get("abstention_target_met")
+        if margin == 0.0 or not met:
+            lines.append(f"> - ⚠ ABSTENTION INACTIVE: calibrated margin={margin}, target_precision met={met}"
+                         " — masked_full_abstain == masked_full on this run (no threshold met target on TRAIN).")
+        else:
+            lines.append(f"> - abstention active: calibrated margin={margin} (target_precision met={met}).")
+    lines.append("")
     for name, m in result.items():
         if name in ("_meta", "gate"):
             continue
