@@ -26,3 +26,19 @@ def test_false_honest_partial():
     pairs = [(_ex("faculty_in_department"), RoutePrediction("KG", "metric_of_person"))]
     r = score(pairs)
     assert r["false_honest_partial"] == 1
+
+
+def test_false_honest_partial_on_non_kg_gold():
+    # the dangerous leak: a non-KG question routed confidently to a terminal person skill ->
+    # would fabricate "I don't have <person>'s citations". Must be counted even though gold is RAG.
+    pairs = [(_ex(skill=None, family="RAG", source="general"), RoutePrediction("KG", "metric_of_person")),
+             (_ex(skill=None, family="OTHER"), RoutePrediction("KG", "link_of_person"))]
+    r = score(pairs)
+    assert r["false_honest_partial"] == 2
+
+
+def test_terminal_gold_terminal_pred_is_not_fhp():
+    # gold legitimately asks for a metric and we predicted the metric skill -> NOT a false honest-partial
+    pairs = [(_ex("metric_of_person"), RoutePrediction("KG", "metric_of_person"))]
+    r = score(pairs)
+    assert r["false_honest_partial"] == 0

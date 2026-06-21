@@ -21,9 +21,12 @@ def score(pairs) -> dict:
                 else:
                     wce += 1                     # wrong-but-valid exact dispatch
                 confusion[(gold.skill, pred.skill)] += 1
-            # gold is NOT a terminal ask, but pred chose a terminal skill -> false honest-partial
-            if gold.skill not in TERMINAL_SKILLS and pred.skill in TERMINAL_SKILLS:
-                fhp += 1
+        # false honest-partial: pred chose a terminal person skill but the gold is NOT a terminal
+        # ask (any family). Catches the dangerous leak where a non-KG question is answered with a
+        # confident "I don't have <person>'s metric/link" fabrication.
+        gold_is_terminal_ask = (gold.family == "KG" and gold.skill in TERMINAL_SKILLS)
+        if pred.skill in TERMINAL_SKILLS and not gold_is_terminal_ask:
+            fhp += 1
     n = len(pairs) or 1
     return {
         "family_accuracy": fam_ok / n,
