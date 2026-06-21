@@ -21,7 +21,8 @@ if __name__ == "__main__":
     masker = build_masker_from_db(conn)
     sections = []
     for mode, label in (("entity", "entity-disjoint (PRIMARY)"), ("paraphrase", "paraphrase-disjoint")):
-        result = run_bakeoff(examples, conn, real_encoder, masker=masker, split_mode=mode)
+        result = run_bakeoff(examples, conn, real_encoder, masker=masker,
+                             split_mode=mode, val_frac=0.2)
         sections.append(format_report(result, title=f"Phase-0 Bake-off — {label} split"))
     report = "\n\n---\n\n".join(sections)
     Path("eval/router/bakeoff_report.md").write_text(report)

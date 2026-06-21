@@ -7,7 +7,7 @@ from v2.eval.router.abstain import AbstainingArm, calibrate_thresholds
 from v2.eval.router.metrics import score
 
 
-def _build_arms(conn, train, encoder, masker=None) -> tuple[dict, dict]:
+def _build_arms(conn, train, encoder, masker=None, val=None) -> tuple[dict, dict]:
     """The bake-off arms + a notes dict. Masked + abstaining arms are added only with a masker."""
     fam_clf = ExemplarClassifier(level="family").fit(train, encoder)
     skill_clf = ExemplarClassifier(level="skill").fit(train, encoder)
@@ -28,6 +28,13 @@ def _build_arms(conn, train, encoder, masker=None) -> tuple[dict, dict]:
         arms["masked_full_abstain"] = AbstainingArm(FullClassifierArm(m_skill, menc), margin_min=mgn)
         notes["abstention_margin"] = round(mgn, 4)
         notes["abstention_target_met"] = met
+        if val:
+            fa_s, fa_mgn, fa_met = calibrate_thresholds(m_fam, val, menc, level="family",
+                                                        target_precision=0.9)
+            arms["masked_coarse_abstain"] = AbstainingArm(
+                CoarseThenDeterministicArm(conn, m_fam, menc), margin_min=fa_mgn)
+            notes["family_abstention_margin"] = round(fa_mgn, 4)
+            notes["family_abstention_target_met"] = fa_met
     return arms, notes
 
 
@@ -64,10 +71,15 @@ def partition_with_val(examples, encoder, test_frac=0.3, val_frac=0.2, seed=0,
 
 
 def run_bakeoff(examples, conn, encoder, test_frac=0.3, seed=0, masker=None,
-                split_mode="paraphrase") -> dict:
-    train, test = _partition(examples, encoder, test_frac, seed, split_mode)
-    arms, notes = _build_arms(conn, train, encoder, masker=masker)
-    result: dict = {"_meta": {"n_train": len(train), "n_test": len(test), "seed": seed,
+                split_mode="paraphrase", val_frac=0.0) -> dict:
+    if val_frac > 0:
+        train, val, test = partition_with_val(examples, encoder, test_frac, val_frac, seed, split_mode)
+    else:
+        train, test = _partition(examples, encoder, test_frac, seed, split_mode)
+        val = None
+    arms, notes = _build_arms(conn, train, encoder, masker=masker, val=val)
+    result: dict = {"_meta": {"n_train": len(train), "n_val": (len(val) if val else 0),
+                              "n_test": len(test), "seed": seed,
                               "split_mode": split_mode, **notes}}
     for name, arm in arms.items():
         pairs = [(ex, arm.predict(ex.query)) for ex in test]
@@ -109,6 +121,12 @@ def format_report(result: dict, title: str = "Kavosh v2.1 — Phase-0 Bake-off R
                          " full coverage, so margin=0.0 and masked_full_abstain == masked_full.")
         else:
             lines.append(f"> - abstention active: calibrated margin={margin} (target precision met on TRAIN).")
+    if "family_abstention_margin" in meta:
+        fmgn, fmet = meta["family_abstention_margin"], meta.get("family_abstention_target_met")
+        state = ("active" if (fmet and fmgn > 0) else
+                 "inactive (target met at full coverage)" if fmgn == 0 else
+                 "DEGENERATE (target precision unreachable on VAL)")
+        lines.append(f"> - family abstention {state}: calibrated margin={fmgn} on VAL.")
     lines.append("")
     for name, m in result.items():
         if name in ("_meta", "gate"):
