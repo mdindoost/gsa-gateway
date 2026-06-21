@@ -124,7 +124,7 @@
 {"id": "t10", "query": "how do I apply for CPT   (answers + “confirm with OGI” heads-up)", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t11", "query": "please  recommend some courses for me to take this fall", "family": "CLARIFY", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t12", "query": "Ranking citation ywcc top 5", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t13", "query": "What is his position", "family": "CLARIFY", "slots": {"note": "follow-up, no antecedent"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t13", "query": "What is his position", "family": "CLARIFY", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t14", "query": "search njit for parking permits", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t15", "query": "what are the hours of the Van Houten library", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t16", "query": "where can visitors park on campus", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
@@ -154,7 +154,7 @@
 {"id": "t40", "query": "Who has the most citation in mechanical", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t41", "query": "Prtras citation", "family": "KG", "skill": "metric_of_person", "slots": {"note": "clarify+kg; typo Prtras=Petras"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t42", "query": "Wrong answer", "family": "OTHER", "slots": {"note": "feedback"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t43", "query": "What was my last question", "family": "COMMAND", "slots": {"note": "recall last question"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t43", "query": "What was my last question", "family": "OTHER", "slots": {"note": "R15: no recall command implemented"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t44", "query": "The most h index cs", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t45", "query": "Who has the mist h index in cs", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "typo mist=most"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t46", "query": "The same question ece", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "clarify+kg follow-up ece"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
@@ -168,7 +168,7 @@
 {"id": "t54", "query": "Parking", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t55", "query": "search courses for fall 2026", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t56", "query": "search for parking hours", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t57", "query": "search for it", "family": "CLARIFY", "slots": {"note": "+live intent; follow-up 'it'"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t57", "query": "search for it", "family": "CLARIFY", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t58", "query": "search koutis", "family": "KG", "skill": "entity_card", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t59", "query": "how do I get a parking permit at NJIT", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t60", "query": "Heidi Young research", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
@@ -181,7 +181,7 @@
 {"id": "t67", "query": "Whi is smaneh berenjian", "family": "KG", "skill": "entity_card", "slots": {"note": "typo; dual KG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t68", "query": "What is koutis citation?", "family": "KG", "skill": "metric_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t69", "query": "Megjia xu", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t70", "query": "What about network?", "family": "CLARIFY", "slots": {"note": "follow-up"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t70", "query": "What about network?", "family": "CLARIFY", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t71", "query": "What are the steps for travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t72", "query": "Is there any time line for travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t73", "query": "How can i get it", "family": "RAG", "source": "general", "slots": {"note": "follow-up 'it'; dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
@@ -222,7 +222,7 @@
 {"id": "t108", "query": "more", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t109", "query": "Guiling wang", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t110", "query": "Why you didnt list him", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
-{"id": "t111", "query": "What about michael giorgio", "family": "KG", "skill": "entity_card", "slots": {"note": "follow-up"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t111", "query": "What about michael giorgio", "family": "KG", "skill": "entity_card", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t112", "query": "List all the michael", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t113", "query": "Do we have any michael in njit", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t114", "query": "How is lasha in ywcc", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}

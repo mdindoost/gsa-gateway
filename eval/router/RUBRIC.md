@@ -39,4 +39,11 @@ or just the family for CLARIFY / COMMAND / OTHER. If a question is context-depen
 - **R11** identity → `entity_card`; X's research → `research_of_person`; X's citations/h-index → `metric_of_person`; X's links → `link_of_person`; a bare person name → `entity_card`.
 - **R12** "who's in dept Y / faculty of Y" → `faculty_in_department`; "who is in org Y" → `people_in_org`; "officers of Y" → `officers_in_org`; "what departments/colleges in Y" → `org_departments`; "list/has people named Z" → `people_by_name`.
 
-When a question doesn't fit cleanly, note WHY and which rule is ambiguous — those notes drive the Round-2 debate.
+## Ratified rules (expert panel Round 2, 2026-06-21 — all 41 disagreements resolved, 0 deadlocks)
+- **R13 — event identity-facet override (supersedes R8 for modeled people):** if a named person is a MODELED NJIT entity, "who is X / X's research / X's metrics" → KG even in MMI/event context; only event-SPECIFIC facets ("what X presented", "X's talk", "who spoke at MMI") → RAG/event.
+- **R14 — non-modeled per-person attributes → RAG:** awards, publications, and ANY per-person attribute NOT in {citations, h_index, i10} → RAG/general, never KG.
+- **R13-intent — hardneg / CLARIFY / OTHER 3-way test:** hardneg = answering REQUIRES the prior turn (pronoun / "what else"/"more" / re-ask / affirmation). CLARIFY = a fresh, well-formed intent MISSING one required parameter (org for "name officers"; metric for "top 10 in X"). OTHER = no routable intent at all (truncated fragment, meta-about-conversation/assistant, out-of-scope, social).
+- **bare-person token:** resolvable surname/given-name (incl. typo via R7) → `people_by_name` (a has-people-named lookup, not a confirmed single card); fragment too short to resolve (≤3 chars) → OTHER.
+- **bare-org token (no predicate):** default to the org's PRIMARY people-list skill (`faculty_in_department` for a dept, `people_in_org` for an office), NOT a RAG sweep. (A people verb with NO org — "name officers" — is CLARIFY.)
+- **+live scope:** NJIT-institutional logistics (parking/hours/tuition/courses/calendar/I-20) → `+live`; GSA-internal policy/docs (travel award, PhD requirements, club penalties) → `general`. `+live` is njit.edu-scoped only; arbitrary live data (weather, time-of-day) → OTHER.
+- **R15 — unimplemented control → OTHER:** a control phrasing mapping to NO implemented command ("message admin", "flag this chat", "what was my last question") → OTHER, not COMMAND. Only exposed controls (/qrcode, judge/presenter/audience mode, clear/reset/help/start) are COMMAND.
