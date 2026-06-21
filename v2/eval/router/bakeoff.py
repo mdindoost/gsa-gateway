@@ -72,11 +72,14 @@ def format_report(result: dict, title: str = "Kavosh v2.1 — Phase-0 Bake-off R
               " a verdict — treat deltas as directional, not significant."]
     if "abstention_margin" in meta:
         margin, met = meta["abstention_margin"], meta.get("abstention_target_met")
-        if margin == 0.0 or not met:
-            lines.append(f"> - ⚠ ABSTENTION INACTIVE: calibrated margin={margin}, target_precision met={met}"
-                         " — masked_full_abstain == masked_full on this run (no threshold met target on TRAIN).")
+        if not met:
+            lines.append(f"> - ⚠ ABSTENTION DEGENERATE: target precision UNREACHABLE on TRAIN; fell back to"
+                         f" max-precision margin={margin}. masked_full_abstain may equal masked_full.")
+        elif margin == 0.0:
+            lines.append("> - abstention inactive (not needed): TRAIN skill precision already meets target at"
+                         " full coverage, so margin=0.0 and masked_full_abstain == masked_full.")
         else:
-            lines.append(f"> - abstention active: calibrated margin={margin} (target_precision met={met}).")
+            lines.append(f"> - abstention active: calibrated margin={margin} (target precision met on TRAIN).")
     lines.append("")
     for name, m in result.items():
         if name in ("_meta", "gate"):
