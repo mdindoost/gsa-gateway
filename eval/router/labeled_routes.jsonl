@@ -1,0 +1,51 @@
+{"id":"kgrank1","query":"top 10 by citations in mechanical engineering","family":"KG","skill":"top_people_by_metric","slots":{"org":"mechanical engineering","metric":"citations","n":10},"group":"rank-me"}
+{"id":"kgrank2","query":"most cited professor in mechanical and industrial engineering","family":"KG","skill":"top_people_by_metric","slots":{"org":"mie","metric":"citations","n":1},"group":"rank-me"}
+{"id":"kgrank3","query":"who has the highest h-index in computer science","family":"KG","skill":"top_people_by_metric","slots":{"org":"cs","metric":"h_index","n":1},"group":"rank-cs"}
+{"id":"kgrank4","query":"top 5 most cited faculty in ying wu college of computing","family":"KG","skill":"top_people_by_metric","slots":{"org":"ywcc","metric":"citations","n":5},"group":"rank-ywcc"}
+{"id":"kgrole1","query":"who is the dean of computing","family":"KG","skill":"people_by_role","slots":{"role":"dean","org":"ywcc"},"group":"role-dean"}
+{"id":"kgrole2","query":"who is the dean of the ying wu college","family":"KG","skill":"people_by_role","slots":{"role":"dean","org":"ywcc"},"group":"role-dean"}
+{"id":"kgrole3","query":"who is the chair of computer science","family":"KG","skill":"people_by_role","slots":{"role":"chair","org":"cs"},"group":"role-chair"}
+{"id":"kgfac1","query":"who teaches in computer science","family":"KG","skill":"faculty_in_department","slots":{"org":"cs"},"group":"fac-cs"}
+{"id":"kgfac2","query":"list the faculty in computer science","family":"KG","skill":"faculty_in_department","slots":{"org":"cs"},"group":"fac-cs"}
+{"id":"kgfac3","query":"professors in mechanical engineering","family":"KG","skill":"faculty_in_department","slots":{"org":"mechanical engineering"},"group":"fac-me"}
+{"id":"kgfac4","query":"show me the math department faculty","family":"KG","skill":"faculty_in_department","slots":{"org":"math"},"group":"fac-math"}
+{"id":"kgppl1","query":"who is in the GSA","family":"KG","skill":"people_in_org","slots":{"org":"gsa"},"group":"ppl-gsa"}
+{"id":"kgppl2","query":"list everyone in the management school","family":"KG","skill":"people_in_org","slots":{"org":"mtsm"},"group":"ppl-mtsm"}
+{"id":"kgoff1","query":"who are the GSA officers","family":"KG","skill":"officers_in_org","slots":{"org":"gsa"},"group":"off-gsa"}
+{"id":"kgoff2","query":"who runs the GSA","family":"KG","skill":"officers_in_org","slots":{"org":"gsa"},"group":"off-gsa"}
+{"id":"kgoff3","query":"who are the officers of ACM","family":"KG","skill":"officers_in_org","slots":{"org":"acm"},"group":"off-acm"}
+{"id":"kgcard1","query":"who is Ioannis Koutis","family":"KG","skill":"entity_card","slots":{"person":"Ioannis Koutis"},"group":"card-koutis"}
+{"id":"kgcard2","query":"tell me about Cristian Borcea","family":"KG","skill":"entity_card","slots":{"person":"Cristian Borcea"},"group":"card-borcea"}
+{"id":"kgres1","query":"what does Ioannis Koutis research","family":"KG","skill":"research_of_person","slots":{"person":"Ioannis Koutis"},"group":"res-koutis"}
+{"id":"kgres2","query":"what are Borcea's research areas","family":"KG","skill":"research_of_person","slots":{"person":"Cristian Borcea"},"group":"res-borcea"}
+{"id":"kgmetric1","query":"how many citations does Koutis have","family":"KG","skill":"metric_of_person","slots":{"person":"Koutis","metric":"citations"},"group":"metric-koutis"}
+{"id":"kgmetric2","query":"what is Koutis's h-index","family":"KG","skill":"metric_of_person","slots":{"person":"Koutis","metric":"h_index"},"group":"metric-koutis"}
+{"id":"kglink1","query":"what is Koutis's google scholar profile","family":"KG","skill":"link_of_person","slots":{"person":"Koutis","profile":"scholar"},"group":"link-koutis"}
+{"id":"kglink2","query":"linkedin for Cristian Borcea","family":"KG","skill":"link_of_person","slots":{"person":"Cristian Borcea","profile":"linkedin"},"group":"link-borcea"}
+{"id":"kgarea1","query":"who works on machine learning","family":"KG","skill":"people_by_research_area","slots":{"area":"machine learning"},"group":"area-ml"}
+{"id":"kgarea2","query":"which faculty do research in cybersecurity","family":"KG","skill":"people_by_research_area","slots":{"area":"cybersecurity"},"group":"area-cyber"}
+{"id":"kgareacount1","query":"how many faculty work on artificial intelligence","family":"KG","skill":"count_people_by_research_area","slots":{"area":"artificial intelligence"},"group":"areacount-ai"}
+{"id":"kgareas1","query":"what research areas are covered in computer science","family":"KG","skill":"areas_in_org","slots":{"org":"cs"},"group":"areas-cs"}
+{"id":"kgfacareas1","query":"what are the research areas of the professors in computer science","family":"KG","skill":"faculty_areas_in_department","slots":{"org":"cs"},"group":"facareas-cs"}
+{"id":"food1","query":"is there free food this week","family":"RAG","source":"food","group":"food-week"}
+{"id":"food2","query":"any free pizza on campus today","family":"RAG","source":"food","group":"food-pizza"}
+{"id":"food3","query":"where can I get free lunch","family":"RAG","source":"food","group":"food-lunch"}
+{"id":"event1","query":"what events are happening this week","family":"RAG","source":"event","group":"event-week"}
+{"id":"event2","query":"when is the next GSA event","family":"RAG","source":"event","group":"event-next"}
+{"id":"event3","query":"are there any workshops coming up","family":"RAG","source":"event","group":"event-workshop"}
+{"id":"neg-process1","query":"how do I become a dean","family":"RAG","source":"general","group":"neg-process"}
+{"id":"neg-process2","query":"who is responsible for officer elections","family":"RAG","source":"general","group":"neg-process"}
+{"id":"neg-prose1","query":"what is the dean's welcome message","family":"RAG","source":"general","group":"neg-prose"}
+{"id":"neg-cite1","query":"how do I cite a paper","family":"RAG","source":"general","group":"neg-cite"}
+{"id":"neg-web1","query":"what's on the GSA website","family":"RAG","source":"general","group":"neg-web"}
+{"id":"gen1","query":"what is the GSA","family":"RAG","source":"general","group":"gen-gsa"}
+{"id":"gen2","query":"how do I register for classes","family":"RAG","source":"general","group":"gen-register"}
+{"id":"gen3","query":"what is the graduate student association","family":"RAG","source":"general","group":"gen-gsa"}
+{"id":"gen4","query":"tell me about NJIT","family":"RAG","source":"general","group":"gen-njit"}
+{"id":"clar1","query":"who is the advisor","family":"CLARIFY","slots":{"missing":"org"},"group":"clar-advisor"}
+{"id":"clar2","query":"who is the chair","family":"CLARIFY","slots":{"missing":"org"},"group":"clar-chair"}
+{"id":"clar3","query":"tell me about the professor","family":"CLARIFY","slots":{"missing":"person"},"group":"clar-prof"}
+{"id":"cmd1","query":"clear","family":"COMMAND","group":"cmd-clear"}
+{"id":"cmd2","query":"reset","family":"COMMAND","group":"cmd-reset"}
+{"id":"cmd3","query":"help","family":"COMMAND","group":"cmd-help"}
+{"id":"cmd4","query":"start","family":"COMMAND","group":"cmd-start"}
