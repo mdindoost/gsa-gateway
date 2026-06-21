@@ -21,10 +21,18 @@ class ExemplarClassifier:
         self.mat: np.ndarray | None = None      # rows = exemplar vectors
         self.row_label: list[str] = []
 
-    def fit(self, exemplars: list[LabeledExample], encoder) -> "ExemplarClassifier":
-        self.row_label = [_label_of(e, self.level) for e in exemplars]
+    def fit(self, exemplars: list[LabeledExample], encoder, max_per_label=None) -> "ExemplarClassifier":
+        rows = exemplars
+        if max_per_label is not None:
+            by_label: dict[str, list] = {}
+            for e in exemplars:
+                by_label.setdefault(_label_of(e, self.level), []).append(e)
+            rows = []
+            for lab in sorted(by_label):
+                rows.extend(by_label[lab][:max_per_label])
+        self.row_label = [_label_of(e, self.level) for e in rows]
         self.labels = sorted(set(self.row_label))
-        self.mat = encoder([e.query for e in exemplars])
+        self.mat = encoder([e.query for e in rows])
         return self
 
     def predict(self, query: str, encoder) -> list[tuple[str, float]]:
