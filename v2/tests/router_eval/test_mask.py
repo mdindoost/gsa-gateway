@@ -23,3 +23,20 @@ def test_masked_encoder_equals_premasked():
     a = me(["faculty in cs"])
     b = enc([f"faculty in {ORG}"])
     assert np.allclose(a, b)
+
+
+def test_no_sentinel_re_match_from_pathological_slug():
+    # a future org slug literally equal to the sentinel bare word must not corrupt emitted sentinels
+    m = SlotMasker(org_terms=["org", "computer science"], person_terms=[])
+    assert m.mask("who teaches in computer science") == f"who teaches in {ORG}"
+
+
+def test_multiword_org_inside_sentence_with_punctuation():
+    m = SlotMasker(org_terms=["mechanical engineering"], person_terms=[])
+    assert m.mask("top 10 by citations in mechanical engineering, please") == \
+        f"top 10 by citations in {ORG}, please"
+
+
+def test_empty_term_lists_are_noop():
+    m = SlotMasker(org_terms=[], person_terms=[])
+    assert m.mask("who teaches in cs") == "who teaches in cs"

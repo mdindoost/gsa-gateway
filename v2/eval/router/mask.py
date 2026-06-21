@@ -15,22 +15,27 @@ PERSON = "<PERSON>"
 
 
 class SlotMasker:
-    """Replace known org/person surface forms in a query with sentinels (longest match first)."""
+    """Replace known org/person surface forms in a query with sentinels in a SINGLE pass.
+
+    One compiled alternation (longest term first so "computer science" wins over "science") scanned
+    over the ORIGINAL text once, so emitted sentinels are never re-scanned (no "<<ORG>>" corruption
+    when a term equals a sentinel bare word) and cost is O(query length), not O(terms x queries).
+    """
     def __init__(self, org_terms, person_terms):
         entries = ([(t, ORG) for t in org_terms if t and t.strip()]
                    + [(t, PERSON) for t in person_terms if t and t.strip()])
-        # longest first so "computer science" wins over "science", "Ioannis Koutis" over "Koutis"
+        # longest first so the alternation prefers the longer phrase at a given position
         entries.sort(key=lambda e: len(e[0]), reverse=True)
-        self._patterns = [
-            (re.compile(r"(?<!\w)" + re.escape(t) + r"(?!\w)", re.IGNORECASE), sent)
-            for t, sent in entries
-        ]
+        self._term_to_sent = {t.lower(): sent for t, sent in entries}
+        self._pattern = None
+        if entries:
+            alt = "|".join(re.escape(t) for t, _ in entries)
+            self._pattern = re.compile(r"(?<!\w)(" + alt + r")(?!\w)", re.IGNORECASE)
 
     def mask(self, query: str) -> str:
-        out = query
-        for pat, sent in self._patterns:
-            out = pat.sub(sent, out)
-        return out
+        if self._pattern is None:
+            return query
+        return self._pattern.sub(lambda m: self._term_to_sent[m.group(0).lower()], query)
 
 
 class MaskedEncoder:
