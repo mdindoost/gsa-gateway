@@ -74,8 +74,40 @@
 {"id":"b1-23","query":"what is the GSA travel award","family":"RAG","source":"general","group":"gen-travel-award"}
 {"id":"b1-24","query":"tell me about the data science program","family":"RAG","source":"general","group":"gen-ds-program"}
 {"id":"b1-25","query":"what is the MMI Workshop","family":"RAG","source":"general","group":"gen-mmi"}
-{"id":"b1-26","query":"njit parking permits","family":"LIVE","slots":{"topic":"parking","kb_candidate":true},"group":"live-parking"}
-{"id":"b1-27","query":"NJIT library hours","family":"LIVE","slots":{"topic":"library hours","kb_candidate":true},"group":"live-library-hours"}
+{"id":"b1-26","query":"njit parking permits","family":"RAG","source":"general","slots":{"topic":"parking","expected":"live","kb_candidate":true},"group":"live-parking"}
+{"id":"b1-27","query":"NJIT library hours","family":"RAG","source":"general","slots":{"topic":"library hours","expected":"live","kb_candidate":true},"group":"live-library-hours"}
 {"id":"b1-28","query":"How silly you are?","family":"OTHER","slots":{"reason":"social"},"group":"other-social"}
 {"id":"b1-29","query":"capital of iran","family":"OTHER","slots":{"reason":"out-of-scope"},"group":"other-oos"}
 {"id":"b1-30","query":"Talk about yourself and your abilities","family":"OTHER","slots":{"reason":"meta-about-bot"},"group":"other-meta"}
+{"id":"b2-01","query":"who is dean of ywcc","family":"KG","skill":"people_by_role","slots":{"role":"dean","org":"ywcc"},"group":"dean-ywcc"}
+{"id":"b2-02","query":"dean name? ywcc","family":"KG","skill":"people_by_role","slots":{"role":"dean","org":"ywcc"},"group":"dean-ywcc"}
+{"id":"b2-03","query":"Cs dean name","family":"KG","skill":"people_by_role","slots":{"role":"dean","org":"cs"},"group":"dean-cs"}
+{"id":"b2-04","query":"who is the president of gsa","family":"KG","skill":"people_by_role","slots":{"role":"president","org":"gsa"},"group":"pres-gsa"}
+{"id":"b2-05","query":"what is ywcc and which departments are in it?","family":"KG","skill":"org_departments","slots":{"org":"ywcc"},"group":"dept-ywcc"}
+{"id":"b2-06","query":"Which deprtment has ywcc","family":"KG","skill":"org_departments","slots":{"org":"ywcc"},"group":"dept-ywcc"}
+{"id":"b2-07","query":"Who are the cs professors","family":"KG","skill":"faculty_in_department","slots":{"org":"cs"},"group":"fac-cs2"}
+{"id":"b2-08","query":"Do you know and can list all the professors in ywcc","family":"KG","skill":"faculty_in_department","slots":{"org":"ywcc"},"group":"fac-ywcc"}
+{"id":"b2-09","query":"name cs department distinguished professors","family":"KG","skill":"faculty_in_department","slots":{"org":"cs","filter":"distinguished"},"group":"fac-cs-distinguished"}
+{"id":"b2-10","query":"name officers of gsa","family":"KG","skill":"officers_in_org","slots":{"org":"gsa"},"group":"off-gsa2"}
+{"id":"b2-11","query":"tell me who is david bader?","family":"KG","skill":"entity_card","slots":{"person":"David Bader"},"group":"card-bader"}
+{"id":"b2-12","query":"Who is julie ancis","family":"KG","skill":"entity_card","slots":{"person":"Julie Ancis"},"group":"card-ancis"}
+{"id":"b2-13","query":"who is Craig Gotsman","family":"KG","skill":"entity_card","slots":{"person":"Craig Gotsman"},"group":"card-gotsman"}
+{"id":"b2-14","query":"Who is mohammad dindoost","family":"KG","skill":"entity_card","slots":{"person":"Mohammad Dindoost"},"group":"card-dindoost"}
+{"id":"b2-15","query":"Bader research area?","family":"KG","skill":"research_of_person","slots":{"person":"David Bader"},"group":"res-bader"}
+{"id":"b2-16","query":"what is research area of Craig Gotsman","family":"KG","skill":"research_of_person","slots":{"person":"Craig Gotsman"},"group":"res-gotsman"}
+{"id":"b2-17","query":"borcea research","family":"KG","skill":"research_of_person","slots":{"person":"Borcea"},"group":"res-borcea2"}
+{"id":"b2-18","query":"can you give bader personal web site?","family":"KG","skill":"link_of_person","slots":{"person":"David Bader","profile":"website"},"group":"link-bader"}
+{"id":"b2-19","query":"Who works on graph","family":"KG","skill":"people_by_research_area","slots":{"area":"graph"},"group":"area-graph2"}
+{"id":"b2-20","query":"I want to work on graph theory who are working on it","family":"KG","skill":"people_by_research_area","slots":{"area":"graph theory"},"group":"area-graph2"}
+{"id":"b2-21","query":"is there any event for today?","family":"RAG","source":"event","group":"event-today"}
+{"id":"b2-22","query":"Last gsa event","family":"RAG","source":"event","group":"event-last"}
+{"id":"b2-23","query":"food","family":"RAG","source":"food","group":"food-bare"}
+{"id":"b2-24","query":"How much can a club spend on food per person at an event?","family":"RAG","source":"general","group":"food-policy"}
+{"id":"b2-25","query":"What is the lavender graduation","family":"RAG","source":"general","group":"gen-lavender"}
+{"id":"b2-26","query":"what is MMI?","family":"RAG","source":"general","group":"gen-mmi2"}
+{"id":"b2-27","query":"dinning hall hours","family":"RAG","source":"general","slots":{"topic":"dining hours","expected":"live","kb_candidate":true},"group":"live-dining"}
+{"id":"b2-28","query":"NJIT academic calendar","family":"RAG","source":"general","slots":{"topic":"academic calendar","expected":"live","kb_candidate":true},"group":"live-calendar"}
+{"id":"b2-29","query":"Who is the president","family":"CLARIFY","slots":{"missing":"org"},"group":"clar-president"}
+{"id":"b2-30","query":"Qrcode","family":"COMMAND","group":"cmd-qrcode"}
+{"id":"b2-31","query":"🤣","family":"OTHER","slots":{"reason":"social"},"group":"other-emoji"}
+{"id":"b2-32","query":"تو‌ کی هستی معرفی کن","family":"OTHER","slots":{"reason":"non-english"},"group":"other-persian"}
