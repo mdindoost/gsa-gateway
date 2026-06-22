@@ -53,7 +53,7 @@ DEFAULT_EVENT_BOOST = 1.2
 # low-signal. They stay embedded and are still reachable via an explicit item_types
 # whitelist or a publications-intent route — just not in general answers. Admin-tunable
 # via the `retriever.exclude_types` setting (comma-separated; empty string = exclude none).
-DEFAULT_EXCLUDE_TYPES = frozenset({"publication", "webpage"})
+DEFAULT_EXCLUDE_TYPES = frozenset({"publication", "webpage", "office_page"})
 # Candidate pool per leg for fusion — deliberately decoupled from `limit`.
 # "pool" = how wide we search; "limit" = how many we return. A boosted item that
 # is strong in only one leg must still enter the pool to be liftable. Never drops
