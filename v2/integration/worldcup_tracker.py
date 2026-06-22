@@ -175,7 +175,10 @@ class WorldCupTracker:
         for block in data.get("standings", []):
             g = block.get("group")
             if g:
-                out[g] = block.get("table", [])
+                # The standings endpoint labels groups "Group H" but the matches
+                # endpoint (and match['group']) uses "GROUP_H". Normalize to the
+                # matches format so kickoff/preview lookups by match['group'] resolve.
+                out[g.upper().replace(" ", "_")] = block.get("table", [])
         return out
 
     def _debug(self, total: int, matches: list) -> None:

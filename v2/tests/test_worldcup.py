@@ -254,6 +254,18 @@ def test_fetch_standings_keeps_only_grouped_blocks(tracker, monkeypatch):
     assert list(out) == ["GROUP_A"]
 
 
+def test_fetch_standings_normalizes_real_api_group_label(tracker, monkeypatch):
+    # The standings endpoint labels groups "Group H" but the matches endpoint (and
+    # match['group']) uses "GROUP_H". fetch_standings MUST key by the matches format
+    # so kickoff/preview lookups with match['group'] resolve. Real-API regression:
+    # the kick-off table was silently never appended because the keys didn't match.
+    async def fake_get(ep):
+        return {"standings": [{"group": "Group H", "table": [{"position": 1}]}]}
+    monkeypatch.setattr(tracker, "_get", fake_get)
+    out = asyncio.run(tracker.fetch_standings())
+    assert list(out) == ["GROUP_H"]                          # not "Group H"
+
+
 def _kickoff_runner(conn, tmp_path, monkeypatch, state_name):
     monkeypatch.setattr("v2.integration.worldcup_tracker.STATE_FILE", tmp_path / state_name)
     from v2.integration.worldcup_runner import WorldCupRunner
@@ -293,6 +305,29 @@ def test_kickoff_post_includes_group_standings(monkeypatch, tmp_path):
     content = rows[0]["content"]
     assert "KICK-OFF" in content                            # kick-off text kept
     assert "📊 **Group H**" in content                      # table appended
+    assert "1. Spain — 4 pts" in content
+
+
+def test_kickoff_table_resolves_real_standings_group_label(monkeypatch, tmp_path):
+    # Regression for the user-reported symptom: standings API returns "Group H",
+    # match['group'] is "GROUP_H". Before the key-normalization fix the lookup
+    # missed and the table silently never appended (kick-off post went out tableless).
+    conn = _org_conn()
+    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ksreal.json")
+
+    async def fake_check():
+        return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
+    runner.tracker.check_matches = fake_check
+    runner.tracker.check_previews = _no_previews
+
+    async def real_standings_get(ep):                        # real API group label
+        return {"standings": [{"group": "Group H", "table": SAMPLE_ROWS}]}
+    monkeypatch.setattr(runner.tracker, "_get", real_standings_get)
+
+    asyncio.run(runner._loop_once())
+
+    content = conn.execute("SELECT content FROM posts WHERE type='worldcup'").fetchone()["content"]
+    assert "📊 **Group H**" in content                       # table now appended
     assert "1. Spain — 4 pts" in content
 
 
