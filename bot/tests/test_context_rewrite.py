@@ -138,3 +138,10 @@ def test_build_rewrite_prompt_carries_history_and_message():
     # the rules the reviews required must be present in the instruction
     low = (sys_p + user_p).lower()
     assert "only" in low and "unchanged" in low   # resolve only from history; ambiguity→unchanged
+
+
+def test_rewrite_discarded_when_sentinel_entity_at_position_zero():
+    # [H2] a single hallucinated entity at sentence start must still be checked (not auto-skipped)
+    history = "user: who is Mark Cartwright\nassistant: a professor."
+    out = verify_rewrite("his position", "Oria position", history)   # Oria not in history
+    assert out == "his position"

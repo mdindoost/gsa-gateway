@@ -53,8 +53,8 @@ def _added_entities(s: str) -> list[str]:
     toks = re.findall(r"[A-Za-z][A-Za-z'.-]*", s or "")
     out = []
     for i, t in enumerate(toks):
-        if i == 0:                       # skip the sentence-initial capital
-            continue
+        if i == 0 and t.lower() in _STOP:   # skip a sentence-initial stopword/question word ONLY
+            continue                        # (a real entity at position 0 must still be checked) [H2]
         if t[0].isupper():
             e = re.sub(r"'s$", "", t, flags=re.I).strip("'.-").lower()
             if e:
