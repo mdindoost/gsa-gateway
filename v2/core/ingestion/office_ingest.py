@@ -34,8 +34,8 @@ def is_high_stakes(url: str, text: str) -> bool:
 
 
 def _slug_from_url(url: str) -> str:
-    tail = url.rstrip("/").rsplit("/", 1)[-1] or "index"
-    return "office/" + re.sub(r"[^a-z0-9]+", "-", tail.lower()).strip("-")[:70]
+    path = urlparse(url).path.strip("/") or "index"
+    return "office/" + re.sub(r"[^a-z0-9]+", "-", path.lower()).strip("-")[:70]
 
 
 def discover_candidate_hubs(seed_url: str, html: str, registered_urls: set[str]) -> list[str]:
