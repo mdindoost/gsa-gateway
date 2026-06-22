@@ -193,3 +193,8 @@ departments in math
 top 10 by citations in mechanical engineering
 who are the gsa officers
 how do I become faculty in cs
+
+# follow-up context (accuracy backlog #2 — conversational query rewrite)
+what is his position
+what about for BME?
+why didn't you list him

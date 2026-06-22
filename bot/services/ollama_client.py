@@ -360,6 +360,32 @@ class OllamaClient:
         except Exception:
             return query
 
+    async def rewrite_with_context(self, history: str, message: str) -> str:
+        """Resolve a conversation follow-up into a standalone question using history (temp 0.0).
+        Always returns a string — the original message on any failure. The deterministic safety
+        guards (entity-membership / ambiguity) live in context_rewrite.verify_rewrite, not here."""
+        from bot.core.context_rewrite import build_rewrite_prompt
+        system, prompt = build_rewrite_prompt(history, message)
+        payload = {
+            "model": self.model,
+            "system": system,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0.0, "num_predict": 80, "stop": ["\n", "Follow-up", "History"]},
+        }
+        try:
+            session = await self._get_session()
+            async with session.post(
+                self.generate_url, json=payload, timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    return message
+                data = await resp.json()
+                out = data.get("response", "").strip().strip("\"'")
+                return out if out else message
+        except Exception:
+            return message
+
     async def generate(self, prompt: str, system: str) -> Optional[str]:
         """General-purpose generate call (used by SummaryService)."""
         payload = {
