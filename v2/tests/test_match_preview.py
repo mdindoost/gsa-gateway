@@ -73,7 +73,7 @@ def full(**over):
 # ── full render ───────────────────────────────────────────────────────────────
 def test_full_preview_contains_all_blocks():
     out = full()
-    assert "🔮 MATCH PREVIEW" in out
+    assert "⏳ MATCH PREVIEW" in out
     assert "New Zealand vs" in out and "Egypt" in out
     assert "8:00 PM ET" in out and "Group G" in out and "Matchday 2" in out
     assert "📍 Kansas City" in out

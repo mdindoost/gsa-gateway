@@ -286,59 +286,17 @@ def _org_conn():
     return conn
 
 
-def test_kickoff_post_includes_group_standings(monkeypatch, tmp_path):
+def test_kickoff_post_has_no_table_and_skips_standings(monkeypatch, tmp_path):
+    # The group table moved to the pre-match PREVIEW post; the kick-off post is now
+    # just the kick-off text and must NOT fetch standings or append a table.
     conn = _org_conn()
     runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks1.json")
 
     async def fake_check():
         return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
     runner.tracker.check_matches = fake_check
-
-    async def fake_standings():
-        return {"GROUP_H": SAMPLE_ROWS}
-    runner.tracker.fetch_standings = fake_standings
-
-    asyncio.run(runner._loop_once())
-
-    rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
-    assert len(rows) == 1                                   # ONE combined post
-    content = rows[0]["content"]
-    assert "KICK-OFF" in content                            # kick-off text kept
-    assert "📊 **Group H**" in content                      # table appended
-    assert "1. Spain — 4 pts" in content
-
-
-def test_kickoff_table_resolves_real_standings_group_label(monkeypatch, tmp_path):
-    # Regression for the user-reported symptom: standings API returns "Group H",
-    # match['group'] is "GROUP_H". Before the key-normalization fix the lookup
-    # missed and the table silently never appended (kick-off post went out tableless).
-    conn = _org_conn()
-    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ksreal.json")
-
-    async def fake_check():
-        return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
-    runner.tracker.check_matches = fake_check
     runner.tracker.check_previews = _no_previews
 
-    async def real_standings_get(ep):                        # real API group label
-        return {"standings": [{"group": "Group H", "table": SAMPLE_ROWS}]}
-    monkeypatch.setattr(runner.tracker, "_get", real_standings_get)
-
-    asyncio.run(runner._loop_once())
-
-    content = conn.execute("SELECT content FROM posts WHERE type='worldcup'").fetchone()["content"]
-    assert "📊 **Group H**" in content                       # table now appended
-    assert "1. Spain — 4 pts" in content
-
-
-def test_kickoff_knockout_has_no_table(monkeypatch, tmp_path):
-    conn = _org_conn()
-    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks2.json")
-
-    async def fake_check():
-        return [{"type": "kickoff", "match": {"id": 7}, "minute": 0}]   # no group
-    runner.tracker.check_matches = fake_check
-
     called = []
     async def track():
         called.append(1)
@@ -349,51 +307,9 @@ def test_kickoff_knockout_has_no_table(monkeypatch, tmp_path):
 
     rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
     assert len(rows) == 1
-    assert "📊" not in rows[0]["content"]
-    assert called == []                                    # standings never fetched
-
-
-def test_kickoff_standings_failure_degrades_to_plain(monkeypatch, tmp_path):
-    conn = _org_conn()
-    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks3.json")
-
-    async def fake_check():
-        return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
-    runner.tracker.check_matches = fake_check
-
-    async def boom():
-        raise RuntimeError("api down")
-    runner.tracker.fetch_standings = boom
-
-    asyncio.run(runner._loop_once())                       # must NOT raise
-
-    rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
-    assert len(rows) == 1                                   # kick-off still posts
-    assert "KICK-OFF" in rows[0]["content"]
-    assert "📊" not in rows[0]["content"]
-
-
-def test_kickoff_standings_toggle_off(monkeypatch, tmp_path):
-    monkeypatch.setenv("FOOTBALL_KICKOFF_STANDINGS", "false")   # read in __init__
-    conn = _org_conn()
-    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks4.json")
-
-    async def fake_check():
-        return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
-    runner.tracker.check_matches = fake_check
-
-    called = []
-    async def track():
-        called.append(1)
-        return {}
-    runner.tracker.fetch_standings = track
-
-    asyncio.run(runner._loop_once())
-
-    rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
-    assert len(rows) == 1
-    assert "📊" not in rows[0]["content"]
-    assert called == []
+    assert "KICK-OFF" in rows[0]["content"]                 # kick-off text kept
+    assert "📊" not in rows[0]["content"]                   # NO table on kick-off
+    assert called == []                                     # standings never fetched on kick-off
 
 
 def test_goal_event_does_not_fetch_standings(monkeypatch, tmp_path):
@@ -421,7 +337,7 @@ def test_goal_event_does_not_fetch_standings(monkeypatch, tmp_path):
 import datetime as _dt
 
 UTC = _dt.timezone.utc
-KO = "2026-06-22T01:00:00Z"          # kickoff; T-90 window opens 2026-06-21T23:30Z
+KO = "2026-06-22T01:00:00Z"          # kickoff; default 5-min window opens 2026-06-22T00:55Z
 
 
 def mkp(mid=900, utc=KO, status="TIMED", group="GROUP_G"):
@@ -450,12 +366,12 @@ def test_upcoming_for_preview_uses_two_day_window_and_filters_status(tracker, mo
 
 
 def test_preview_fires_in_window(tracker):
-    now = _dt.datetime(2026, 6, 22, 0, 0, tzinfo=UTC)        # T-60, inside T-90 window
+    now = _dt.datetime(2026, 6, 22, 0, 57, tzinfo=UTC)       # T-3, inside the 5-min window
     assert types(drive_prev(tracker, [mkp()], now)) == ["preview"]
 
 
 def test_preview_not_before_window(tracker):
-    now = _dt.datetime(2026, 6, 21, 23, 0, tzinfo=UTC)       # T-120, before window
+    now = _dt.datetime(2026, 6, 22, 0, 50, tzinfo=UTC)       # T-10, before the 5-min window
     assert drive_prev(tracker, [mkp()], now) == []
 
 
@@ -464,23 +380,36 @@ def test_preview_not_after_kickoff(tracker):
     assert drive_prev(tracker, [mkp()], now) == []
 
 
+def test_preview_default_lead_is_5_minutes(tracker):
+    # No env override -> default lead is 5 min: fires at T-4, not at T-6.
+    assert types(drive_prev(tracker, [mkp()], _dt.datetime(2026, 6, 22, 0, 56, tzinfo=UTC))) == ["preview"]  # T-4
+    tracker.states.clear()
+    assert drive_prev(tracker, [mkp()], _dt.datetime(2026, 6, 22, 0, 54, tzinfo=UTC)) == []                  # T-6
+
+
+def test_preview_lead_is_configurable(tracker, monkeypatch):
+    monkeypatch.setenv("FOOTBALL_PREVIEW_LEAD_MIN", "90")
+    now = _dt.datetime(2026, 6, 22, 0, 0, tzinfo=UTC)        # T-60, inside a 90-min window
+    assert types(drive_prev(tracker, [mkp()], now)) == ["preview"]
+
+
 def test_preview_fires_once_only(tracker):
-    now = _dt.datetime(2026, 6, 22, 0, 0, tzinfo=UTC)
+    now = _dt.datetime(2026, 6, 22, 0, 57, tzinfo=UTC)
     assert types(drive_prev(tracker, [mkp()], now)) == ["preview"]
     assert drive_prev(tracker, [mkp()], now) == []           # second tick: already previewed
 
 
 def test_preview_toggle_off(tracker, monkeypatch):
     monkeypatch.setenv("FOOTBALL_PREVIEW_ENABLED", "false")
-    now = _dt.datetime(2026, 6, 22, 0, 0, tzinfo=UTC)
+    now = _dt.datetime(2026, 6, 22, 0, 57, tzinfo=UTC)
     assert drive_prev(tracker, [mkp()], now) == []
 
 
 def test_preview_fires_for_next_utc_day_kickoff(tracker):
-    # The match's utcDate (01:00Z) is the *next* UTC calendar day vs the US-evening
-    # window moment — the trigger must still fire (B1: not gated on "today").
-    now = _dt.datetime(2026, 6, 21, 23, 45, tzinfo=UTC)      # T-75, previous UTC day
-    assert types(drive_prev(tracker, [mkp()], now)) == ["preview"]
+    # Kickoff 00:02Z is the *next* UTC calendar day vs the window moment (23:59Z the
+    # day before) — the trigger must still fire across the UTC-day boundary (B1).
+    now = _dt.datetime(2026, 6, 21, 23, 59, tzinfo=UTC)      # T-3, previous UTC day
+    assert types(drive_prev(tracker, [mkp(utc="2026-06-22T00:02:00Z")], now)) == ["preview"]
 
 
 def test_fetch_teams_caches_nonempty(tracker, monkeypatch):

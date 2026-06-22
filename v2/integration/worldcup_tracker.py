@@ -343,11 +343,12 @@ class WorldCupTracker:
     async def check_previews(self, now: datetime.datetime | None = None) -> list[dict]:
         """Emit a one-time ``preview`` event per match in the [kickoff-LEAD, kickoff)
         window. Gated by ``FOOTBALL_PREVIEW_ENABLED`` (default on); lead minutes from
-        ``FOOTBALL_PREVIEW_LEAD_MIN`` (default 90). Fires once via ``preview_announced``;
-        the durable once-guard is the runner's persisted ``posts`` dedup row."""
+        ``FOOTBALL_PREVIEW_LEAD_MIN`` (default 5 — fires just as people sit down to
+        watch). Fires once via ``preview_announced``; the durable once-guard is the
+        runner's persisted ``posts`` dedup row."""
         if os.getenv("FOOTBALL_PREVIEW_ENABLED", "true").lower() == "false":
             return []
-        lead = int(os.getenv("FOOTBALL_PREVIEW_LEAD_MIN", "90"))
+        lead = int(os.getenv("FOOTBALL_PREVIEW_LEAD_MIN", "5"))
         now = now or datetime.datetime.now(datetime.timezone.utc)
         events: list[dict] = []
         for m in await self.upcoming_for_preview():

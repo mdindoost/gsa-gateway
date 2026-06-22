@@ -115,7 +115,7 @@ def build_match_preview(
 ) -> str:
     """Compose the full preview post. All inputs are pre-fetched by the caller."""
     home, away = match["homeTeam"], match["awayTeam"]
-    blocks: list[str] = ["🔮 MATCH PREVIEW"]
+    blocks: list[str] = ["⏳ MATCH PREVIEW"]
 
     # header: matchup + context + venue + referee
     header = [f"{team_label(home)} vs {team_label(away)}", _context_line(match, kickoff_et)]
