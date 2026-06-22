@@ -32,3 +32,17 @@ def test_harvest_chunks_generic_and_stages_high_stakes(tmp_path):
     live = conn.execute("SELECT COUNT(*) c FROM knowledge_items "
                         "WHERE type='office_page' AND is_active=1").fetchone()["c"]
     assert live >= 1                                  # the visitor page is live
+
+
+def test_commit_without_pre_tier_ok_is_blocked(tmp_path, capsys):
+    import scripts.harvest_office as ho
+    from v2.core.database.schema import create_all
+    db = str(tmp_path / "t.db")
+    create_all(db)
+    rc = ho.main(["--db", db, "--commit"])          # no --pre-tier-ok
+    assert rc == 2                                   # refused
+    # nothing written
+    import sqlite3
+    n = sqlite3.connect(db).execute(
+        "SELECT COUNT(*) FROM knowledge_items WHERE type='office_page'").fetchone()[0]
+    assert n == 0

@@ -50,7 +50,29 @@ def main(argv=None) -> int:
     ap.add_argument("--budget", type=int, default=60)
     ap.add_argument("--depth", type=int, default=3)
     ap.add_argument("--commit", action="store_true")
+    ap.add_argument("--pre-tier-ok", action="store_true",
+                    help="acknowledge office_page is not yet retrieval-isolated (Plan B); "
+                         "required to --commit until then")
     args = ap.parse_args(argv)
+
+    if args.commit and not args.pre_tier_ok:
+        print(
+            "\n"
+            "*** BLOCKED — office_page is NOT retrieval-isolated yet (Plan B not built) ***\n"
+            "\n"
+            "Committing to the live DB now would inject office_page chunks into the primary\n"
+            "answer corpus (retriever.DEFAULT_EXCLUDE_TYPES does not yet exclude 'office_page').\n"
+            "This would dilute and crowd the curated KB answers until Plan B ships.\n"
+            "\n"
+            "Options:\n"
+            "  1. Test against a dev copy:  --db /tmp/dev.db --commit --pre-tier-ok\n"
+            "  2. Wait for Plan B (retrieval-tier isolation) to ship, then run live.\n"
+            "  3. If Plan B IS shipped, pass --pre-tier-ok to confirm and proceed.\n"
+            "\n"
+            "No backup taken. No data written.\n",
+            file=__import__("sys").stderr,
+        )
+        return 2
 
     conn = get_connection(args.db)
     rows = (conn.execute("SELECT * FROM crawl_entry_points WHERE id=?", (args.entry_id,)).fetchall()
@@ -59,7 +81,7 @@ def main(argv=None) -> int:
     if not rows:
         return 0
     if not args.commit:
-        print("(dry run — pass --commit; a hardened backup is taken first)")
+        print("(dry run — pass --commit --pre-tier-ok; a hardened backup is taken first)")
         return 0
     bkp = hardened_backup(args.db, "pre-office-harvest")
     print(f"backup: {bkp.name}")
@@ -68,7 +90,8 @@ def main(argv=None) -> int:
         for row in rows:
             stats = harvest_entry_point(conn, row, fetch, budget=args.budget, depth=args.depth)
             print(f"  {row['url']}: {stats}")
-    print("next: python v2/scripts/embed_all.py  (then review staged high-stakes pages)")
+    print("next: python v2/scripts/embed_all.py  (then review staged high-stakes pages)"
+          "  (office_page is not retrieval-isolated until Plan B — verify on a dev DB)")
     return 0
 
 
