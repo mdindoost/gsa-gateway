@@ -34,15 +34,17 @@ def test_harvest_chunks_generic_and_stages_high_stakes(tmp_path):
     assert live >= 1                                  # the visitor page is live
 
 
-def test_commit_without_pre_tier_ok_is_blocked(tmp_path, capsys):
-    import scripts.harvest_office as ho
+def test_pre_tier_ok_flag_removed_and_office_page_isolated(tmp_path):
+    # The Plan A stopgap is retired: --pre-tier-ok is no longer a valid arg, because dilution
+    # is now prevented structurally (office_page excluded from the primary corpus, Plan B Task 1).
+    import pytest
+    from scripts.harvest_office import main
+    from v2.core.retrieval.retriever import DEFAULT_EXCLUDE_TYPES
     from v2.core.database.schema import create_all
+    assert "office_page" in DEFAULT_EXCLUDE_TYPES
     db = str(tmp_path / "t.db")
     create_all(db)
-    rc = ho.main(["--db", db, "--commit"])          # no --pre-tier-ok
-    assert rc == 2                                   # refused
-    # nothing written
-    import sqlite3
-    n = sqlite3.connect(db).execute(
-        "SELECT COUNT(*) FROM knowledge_items WHERE type='office_page'").fetchone()[0]
-    assert n == 0
+    # --pre-tier-ok should be unrecognized by argparse and cause SystemExit(2)
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--db", db, "--pre-tier-ok"])
+    assert exc_info.value.code == 2  # argparse error exit code
