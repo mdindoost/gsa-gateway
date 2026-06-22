@@ -231,7 +231,7 @@ The platform also includes the **AVA Judging system**.
 | v1 | **Binesh** (بینش) | "insight" | retired June 2026 |
 | v2 | **Kavosh** (کاوش) | "exploration / discovery" | **current — v2.1** |
 
-Brand first, codename second — students just say "GSA Gateway"; "Kavosh v2.x" in the technical sections refers to the current generation of the retrieval brain.
+In everyday use it's just **GSA Gateway**. *Kavosh* is the internal name for the current generation — so "Kavosh v2.x" in the technical sections just means today's version of the brain.
 
 ---
 
