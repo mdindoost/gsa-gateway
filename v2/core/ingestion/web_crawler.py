@@ -18,6 +18,7 @@ offline. See docs/superpowers/specs/2026-06-11-hybrid-knowledge-ingestion.md (Ph
 from __future__ import annotations
 
 import ipaddress
+import logging
 import re
 import socket
 import time
@@ -29,6 +30,9 @@ from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.request import Request
 
 from bs4 import BeautifulSoup
+from bs4.exceptions import ParserRejectedMarkup
+
+logger = logging.getLogger(__name__)
 
 UA = "GSA-Gateway-Bot/1.0 (+https://github.com/mdindoost/gsa-gateway)"
 DEFAULT_DEPTH = 2
@@ -148,7 +152,12 @@ def select_links(html: str, current_url: str, seed_url: str):
     non-HTML file URLs). Pure: no I/O."""
     follow: set[str] = set()
     files: set[str] = set()
-    soup = BeautifulSoup(html, "html.parser")
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except ParserRejectedMarkup:
+        logger.warning("select_links: malformed markup at %s, skipping link discovery",
+                       current_url, exc_info=True)
+        return follow, files
     for a in soup.find_all("a", href=True):
         href = a["href"]
         if href.startswith(("mailto:", "javascript:", "#", "tel:")):
@@ -169,8 +178,16 @@ def select_links(html: str, current_url: str, seed_url: str):
 
 
 def clean_text(html: str) -> str:
-    """Strip boilerplate (script/style/nav/header/footer) and return readable text."""
-    soup = BeautifulSoup(html, "html.parser")
+    """Strip boilerplate (script/style/nav/header/footer) and return readable text.
+
+    A malformed page (e.g. a bad marked section) makes html.parser raise bs4's
+    ParserRejectedMarkup; degrade to "" so the live-fallback path returns no spans and
+    falls back to the normal deflection instead of showing the user a generic error."""
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except ParserRejectedMarkup:
+        logger.warning("clean_text: malformed markup, returning empty text", exc_info=True)
+        return ""
     for tag in soup(["script", "style", "noscript", "nav", "header", "footer", "form"]):
         tag.decompose()
     return re.sub(r"\n\s*\n+", "\n\n",

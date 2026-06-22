@@ -31,6 +31,8 @@ import aiohttp
 from v2.core.database.schema import get_connection
 from v2.core.publishing.sources import EnqueueError, PostDraft, enqueue_post, platform_channels
 from v2.integration.worldcup_tracker import BASE_URL, DEBUG_FILE, format_event
+from v2.integration.match_preview import build_match_preview
+from v2.integration.daily_fixtures import _kickoff_et
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +87,8 @@ class MatchWatcher:
     def _fresh_ledger() -> dict:
         return {"started": False, "score": (0, 0), "finished": False,
                 "half": 1, "pending_half": False,
-                "score_updated": None, "correction_gen": 0}
+                "score_updated": None, "correction_gen": 0,
+                "preview_posted": False}
 
     @staticmethod
     def _normalize(st: dict) -> dict:
@@ -103,7 +106,9 @@ class MatchWatcher:
                 "score_updated": st.get("score_updated"),
                 # correction_gen: bumped on each downward correction so a re-scored line
                 # (0-1 disallowed → 0-0 → 0-1 again) gets a fresh goal dedup key.
-                "correction_gen": int(st.get("correction_gen", 0))}
+                "correction_gen": int(st.get("correction_gen", 0)),
+                # preview_posted: the pre-match preview (matchup + group table) fired once.
+                "preview_posted": bool(st.get("preview_posted", False))}
 
     def _match_state(self, match_id: int) -> dict:
         """Resume the persisted ledger for a match, or register a fresh one. The same
@@ -159,6 +164,43 @@ class MatchWatcher:
         m = next((x for x in data.get("matches", []) if x.get("id") == match_id), None) if data else None
         self._debug(key, m)
         return m
+
+    async def _fetch_standings(self, key: str) -> dict[str, list[dict]]:
+        """{group_token: [table_rows]} for the WC group stage, keyed in the MATCHES
+        format ('Group H' -> 'GROUP_H') so a lookup by ``match['group']`` resolves.
+        {} on any failure (never raises)."""
+        data = await self._get(key, f"{BASE_URL}/competitions/WC/standings")
+        out: dict[str, list[dict]] = {}
+        for block in (data or {}).get("standings", []):
+            g = block.get("group")
+            if g:
+                out[g.upper().replace(" ", "_")] = block.get("table", [])
+        return out
+
+    async def _post_preview(self, match_id: int, et_day: str) -> bool:
+        """Post the one-time pre-match preview (matchup + kickoff/group context + the
+        live group table) ~5 min before kickoff. Gated by ``FOOTBALL_PREVIEW_ENABLED``
+        (default on). Best-effort: returns False (no post) if disabled or the schedule
+        read is unavailable. The persisted ``{id}:preview`` dedup row is the durable
+        once-per-match guard on top of the ledger flag."""
+        if os.getenv("FOOTBALL_PREVIEW_ENABLED", "true").lower() == "false":
+            return False
+        match = await self._fetch_match(self.keys[0], match_id, et_day)
+        if not match:
+            return False
+        rows = (await self._fetch_standings(self.keys[0])).get(match.get("group") or "", [])
+        content = build_match_preview(match, rows, _kickoff_et(match.get("utcDate", "")))
+        try:
+            enqueue_post(self._conn, PostDraft(
+                org_id=self.org_id, content=content, type="worldcup",
+                channels=platform_channels(), discord_channel=self.channel,
+                source_type="worldcup", dedup_key=f"{match_id}:preview",
+                metadata={"event_type": "preview"}))
+            logger.info("MatchWatcher: posted preview for match %s", match_id)
+            return True
+        except EnqueueError as exc:
+            logger.warning("MatchWatcher: dropped preview: %s", exc)
+            return False
 
     def _debug(self, key: str, match: dict | None) -> None:
         """Append the raw read to logs/wc_api_debug.log when FOOTBALL_DEBUG_LOG=true."""
@@ -358,6 +400,14 @@ class MatchWatcher:
             logger.info("MatchWatcher: sleeping %.0fs until match %s window", wait, match_id)
             await asyncio.sleep(wait)
         state = self._match_state(match_id)   # resume the ledger if we were mid-match
+        # Pre-match preview (matchup + group table), once, ~5 min before kickoff.
+        if not state.get("preview_posted"):
+            try:
+                if await self._post_preview(match_id, et_day):
+                    state["preview_posted"] = True
+                    self.save_states()
+            except Exception:  # noqa: BLE001 - a bad preview must never block the watch
+                logger.exception("MatchWatcher: preview failed for %s", match_id)
         deadline = kickoff_utc + MATCH_MAX
         logger.info("MatchWatcher: watching match %s (resume score=%s half=%s)",
                     match_id, state["score"], state["half"])

@@ -8,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from v2.core.ingestion.web_crawler import (crawl_site, is_non_html, is_relevant,
+from v2.core.ingestion.web_crawler import (clean_text, crawl_site, is_non_html, is_relevant,
                                            is_safe_url, normalize_url, same_scope,
                                            same_site, scope_prefix, select_links)
 
@@ -113,3 +113,37 @@ def test_budget_backstop_records_note():
     res = crawl_site("http://x.edu/", lambda u: pages.get(u), max_depth=2, budget=5)
     assert len(res.pages) == 5
     assert "budget" in res.note
+
+
+# ── malformed-markup robustness (live-fallback parse-crash fix, 2026-06-22) ────────
+# A bad marked section makes html.parser raise bs4's ParserRejectedMarkup. clean_text +
+# select_links must degrade (empty result + WARNING log) instead of crashing the answer path.
+_MALFORMED = '<p>hi</p><![ofoo[ bar ]]>'
+
+
+def test_clean_text_malformed_markup_returns_empty(caplog):
+    import logging
+    with caplog.at_level(logging.WARNING):
+        assert clean_text(_MALFORMED) == ""          # degrades, does NOT raise
+    assert any("clean_text" in r.message for r in caplog.records)
+
+
+def test_clean_text_valid_html_still_strips():
+    # no regression: boilerplate removed, readable text returned
+    out = clean_text("<html><body><nav>menu</nav><p>Hello world</p><script>x()</script></body></html>")
+    assert "Hello world" in out and "menu" not in out and "x()" not in out
+
+
+def test_select_links_malformed_markup_returns_empty(caplog):
+    import logging
+    with caplog.at_level(logging.WARNING):
+        follow, files = select_links(_MALFORMED, "http://x.edu/", "http://x.edu/")
+    assert follow == set() and files == set()          # degrades, does NOT raise
+    assert any("select_links" in r.message for r in caplog.records)
+
+
+def test_crawl_site_survives_malformed_page():
+    # the seed page is malformed → crawl completes without raising (records an empty page)
+    res = crawl_site("http://x.edu/", lambda u: _MALFORMED, max_depth=1, budget=5)
+    assert res is not None
+    assert res.pages and res.pages[0].text == ""       # empty-but-recorded, no crash
