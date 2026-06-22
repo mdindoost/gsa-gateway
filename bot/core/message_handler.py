@@ -45,6 +45,13 @@ _CLARIFY_MSG = (
     "For example, name the department, person, or topic you mean."
 )
 
+# The intents the legacy handle() treats as whole-message commands (mirrors the v2.1 command layer).
+# Used only to label the LEGACY decision for shadow agreement (review F1).
+_LEGACY_COMMAND_INTENTS = {
+    INTENT_CLEAR_HISTORY, INTENT_GREETING, INTENT_FAREWELL, INTENT_THANKS,
+    INTENT_HELP, INTENT_IDENTITY, INTENT_FREE_MODE, INTENT_GSA_MODE,
+}
+
 FREE_MODE_SYSTEM_PROMPT = (
     "You are GSA Gateway (current version: Kavosh v2.0), NJIT's Graduate Student "
     "Association assistant. The student has switched to general chat mode. Answer helpfully "
@@ -154,8 +161,14 @@ class MessageHandler:
                 logger.debug("router-v21 decide failed (ignored)", exc_info=True)
             if decision is not None:
                 if botcfg.ROUTER_V21_SHADOW:
+                    try:
+                        cur_family = await self._legacy_family(clean_text, user_id)
+                    except Exception:  # noqa: BLE001 - shadow must never break the answer path
+                        cur_family = None
                     log_shadow({"message": clean_text[:200],
-                                "new_family": decision.family, "new_skill": decision.skill})
+                                "new_family": decision.family, "new_skill": decision.skill,
+                                "current_family": cur_family,
+                                "agree": (cur_family == decision.family) if cur_family else None})
                 elif decision.family != "COMMAND":
                     return await self._answer_decision(req, decision)
                 # ACT + COMMAND → fall through to the legacy command/intent handling below
@@ -396,6 +409,23 @@ class MessageHandler:
                     structured_answer.is_deterministic(result))
         finally:
             conn.close()
+
+    async def _legacy_family(self, clean_text: str, user_id: str) -> str:
+        """The family the LEGACY handler path would route this to — for shadow agreement (review F1).
+        Mirrors handle()'s legacy ordering: free → RAG (skips structured); else a structured answer
+        → KG; else a command intent → COMMAND; else RAG. Runs `_try_structured` (extra SQL), which is
+        acceptable in shadow (a temporary measurement mode, not the hot path)."""
+        mode = self.conversation_manager.get_mode(user_id) if self.conversation_manager else "gsa"
+        if mode != "free":
+            try:
+                if await self._try_structured(clean_text) is not None:
+                    return "KG"
+            except Exception:  # noqa: BLE001 - shadow measurement only
+                pass
+        intent = self.intent_detector.detect(clean_text)[0] if self.intent_detector else INTENT_QUESTION
+        if intent in _LEGACY_COMMAND_INTENTS:
+            return "COMMAND"
+        return "RAG"
 
     async def _answer_decision(self, req: MessageRequest, decision) -> MessageResponse:
         """ACT on a UnifiedRouter RouteDecision (ROUTER_V21 + flipped). KG runs the deterministic

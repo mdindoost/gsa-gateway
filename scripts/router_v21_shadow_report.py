@@ -34,6 +34,49 @@ def _percentile(xs, p):
     return s[k]
 
 
+def summarize_shadow(rows):
+    """Compute TRUE new-vs-current agreement (flip-gate Clause 2) from shadow records that carry
+    BOTH `new_family` and `current_family` (review F1). Returns total, comparable (rows with a
+    current_family), agreement rate, the new-family histogram, and a disagreement breakdown
+    {(current_family, new_family): count}. Older records lacking current_family count as
+    not-comparable (agreement can't include them)."""
+    total = comparable = agree = 0
+    new_hist = Counter()
+    disagreements = Counter()
+    for r in rows:
+        total += 1
+        nf = r.get("new_family")
+        new_hist[nf] += 1
+        cf = r.get("current_family")
+        if cf is None:
+            continue
+        comparable += 1
+        if cf == nf:
+            agree += 1
+        else:
+            disagreements[(cf, nf)] += 1
+    return {
+        "total": total,
+        "comparable": comparable,
+        "agreement_rate": (agree / comparable) if comparable else None,
+        "new_family_hist": dict(new_hist),
+        "disagreements": {f"{cf}->{nf}": c for (cf, nf), c in disagreements.items()},
+    }
+
+
+def _read_shadow(path):
+    rows = []
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rows.append(json.loads(line))
+        except Exception:  # noqa: BLE001
+            continue
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default="gsa_gateway.db")
@@ -70,22 +113,11 @@ def main():
         pairs.append((g, pred))
     m = score(pairs)
 
-    # 2. Shadow agreement (optional).
+    # 2. Shadow agreement (true new-vs-current — needs current_family in the records, review F1).
     shadow_summary = None
     sp = Path(args.shadow)
     if sp.exists():
-        fams = Counter()
-        total = 0
-        for line in sp.read_text().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                fams[json.loads(line).get("new_family")] += 1
-                total += 1
-            except Exception:  # noqa: BLE001
-                continue
-        shadow_summary = {"total": total, "by_family": dict(fams)}
+        shadow_summary = summarize_shadow(_read_shadow(sp))
 
     p95 = _percentile(latencies, 95)
     p50 = _percentile(latencies, 50)
@@ -103,8 +135,18 @@ def main():
     print(f"  wrong_confident_exact  : {m['wrong_confident_exact']}  (KG→KG wrong skill — anti-fab)")
     print(f"  false_honest_partial   : {m['false_honest_partial']}  (terminal skill on a non-terminal ask — anti-fab)")
     print()
-    print("--- Clause 2: shadow agreement (logs) ---")
-    print(f"  {shadow_summary}" if shadow_summary else "  (no shadow log yet — run with ROUTER_V21=1 ROUTER_V21_SHADOW=1 in production first)")
+    print("--- Clause 2: shadow agreement (new-vs-current on live traffic) ---")
+    if not shadow_summary:
+        print("  (no shadow log yet — run with ROUTER_V21=1 ROUTER_V21_SHADOW=1 in production first)")
+    elif shadow_summary["comparable"] == 0:
+        print(f"  {shadow_summary['total']} records but NONE carry current_family — re-run shadow on "
+              "the build with the F1 fix to get a comparable agreement number.")
+    else:
+        ar = shadow_summary["agreement_rate"]
+        print(f"  records {shadow_summary['total']}  comparable {shadow_summary['comparable']}  "
+              f"agreement {ar:.3f}")
+        print(f"  new-family histogram: {shadow_summary['new_family_hist']}")
+        print(f"  disagreements (current->new): {shadow_summary['disagreements']}")
     print()
     print("--- Clause 3: decide() latency over gold ---")
     print(f"  p50 {p50:.1f} ms   p95 {p95:.1f} ms" if p95 is not None else "  n/a")
