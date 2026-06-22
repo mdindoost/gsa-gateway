@@ -300,6 +300,16 @@ CREATE TABLE IF NOT EXISTS crawl_entry_points (
 ) STRICT;
 """
 
+OFFICE_PAGE_STATE = """
+CREATE TABLE IF NOT EXISTS office_page_state (
+    url             TEXT    PRIMARY KEY,
+    entry_point_id  INTEGER,
+    content_hash    TEXT    NOT NULL,
+    last_seen_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+) STRICT;
+"""
+
 PAGE_NODES = """
 CREATE TABLE IF NOT EXISTS page_nodes (
     raw_url   TEXT NOT NULL REFERENCES raw_pages(url),
@@ -509,6 +519,7 @@ _TABLE_DDL = [
     FRONTIER,
     PAGE_NODES,
     CRAWL_ENTRY_POINTS,
+    OFFICE_PAGE_STATE,
     JUDGING_EVENTS,
     JUDGING_JUDGES,
     JUDGING_PRESENTERS,
