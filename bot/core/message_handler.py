@@ -29,6 +29,7 @@ from bot.core.live_query import parse_explicit_live_search, LIVE_NOT_FOUND_MSG
 from bot.core.live_fallback import maybe_answer_live
 from v2.integration.njit_search import search as brave_search
 from v2.core.ingestion.explore import http_fetch
+from v2.core.retrieval.route_shadow import log_shadow
 import bot.config as botcfg
 
 logger = logging.getLogger(__name__)
@@ -37,8 +38,22 @@ _OFFICER_FIRST_NAMES = {
     "fernando", "mohammad", "mohith", "durvish", "nistha", "ritwik",
 }
 
+# Deterministic clarify template (v2.1 UnifiedRouter CLARIFY family). Abstention is BUILT-but-OFF
+# in Phase 1b, so this is reached only if a classifier ever returns CLARIFY directly.
+_CLARIFY_MSG = (
+    "I want to make sure I answer the right thing — could you rephrase or add a bit more detail? "
+    "For example, name the department, person, or topic you mean."
+)
+
+# The intents the legacy handle() treats as whole-message commands (mirrors the v2.1 command layer).
+# Used only to label the LEGACY decision for shadow agreement (review F1).
+_LEGACY_COMMAND_INTENTS = {
+    INTENT_CLEAR_HISTORY, INTENT_GREETING, INTENT_FAREWELL, INTENT_THANKS,
+    INTENT_HELP, INTENT_IDENTITY, INTENT_FREE_MODE, INTENT_GSA_MODE,
+}
+
 FREE_MODE_SYSTEM_PROMPT = (
-    "You are GSA Gateway (current version: Kavosh v2.0), NJIT's Graduate Student "
+    "You are GSA Gateway (current version: Kavosh v2.1), NJIT's Graduate Student "
     "Association assistant. The student has switched to general chat mode. Answer helpfully "
     "and conversationally. You may answer questions beyond GSA topics, but "
     "periodically remind students you can also help with GSA events, funding, "
@@ -97,6 +112,7 @@ class MessageHandler:
         rate_limiter,
         kb,
         config,
+        unified_router=None,
     ) -> None:
         self.retriever = retriever
         self.ollama = ollama
@@ -106,6 +122,7 @@ class MessageHandler:
         self.rate_limiter = rate_limiter
         self.kb = kb
         self.config = config
+        self.unified_router = unified_router    # Kavosh v2.1 UnifiedRouter (None unless ROUTER_V21)
 
     async def handle(self, req: MessageRequest) -> MessageResponse:
         user_id = req.user_id
@@ -123,10 +140,38 @@ class MessageHandler:
 
         # ── Explicit "search njit for X" ──────────────────────────────────────
         # The user literally asked to go to the live njit.edu site, so honor it directly —
-        # wins BEFORE the structured router and RAG (they'd answer a different question).
+        # wins BEFORE the structured router AND the v2.1 router (they'd answer a different
+        # question). This deterministic trigger must precede the ACT branch — review F2.
         explicit_topic = parse_explicit_live_search(clean_text)
         if explicit_topic is not None:
             return await self._answer_explicit_live(req, explicit_topic)
+
+        # ── Kavosh v2.1 UnifiedRouter ─────────────────────────────────────────
+        # ROUTER_V21 + SHADOW: compute the new decision and only LOG it (answer still comes
+        #   from the existing flow until the flip gate).
+        # ROUTER_V21 + not SHADOW (flipped): ACT on the decision. COMMAND falls through to the
+        #   legacy intent flow (same IntentDetector → identical handling, no duplication); all
+        #   other families are answered by _answer_decision. A decide() exception degrades to the
+        #   legacy path — the router never breaks the answer path.
+        if botcfg.ROUTER_V21 and self.unified_router is not None:
+            decision = None
+            try:
+                decision = self.unified_router.decide(clean_text)
+            except Exception:  # noqa: BLE001 - router must never break the answer path
+                logger.debug("router-v21 decide failed (ignored)", exc_info=True)
+            if decision is not None:
+                if botcfg.ROUTER_V21_SHADOW:
+                    try:
+                        cur_family = await self._legacy_family(clean_text, user_id)
+                    except Exception:  # noqa: BLE001 - shadow must never break the answer path
+                        cur_family = None
+                    log_shadow({"message": clean_text[:200],
+                                "new_family": decision.family, "new_skill": decision.skill,
+                                "current_family": cur_family,
+                                "agree": (cur_family == decision.family) if cur_family else None})
+                elif decision.family != "COMMAND":
+                    return await self._answer_decision(req, decision)
+                # ACT + COMMAND → fall through to the legacy command/intent handling below
 
         # ── Structured retrieval (enumerate/filter/traverse/count) ────────────
         # Tried BEFORE intent detection on purpose: phrasings like "list all CS
@@ -172,7 +217,7 @@ class MessageHandler:
                     "سلام · Hola · नमस्ते · 你好 · হ্যালো · ආයුබෝවන් · Olá · Merhaba · Hello\n"
                     "_Don't see your language? Ask Mohammad — he'll happily add it!_\n\n"
                     "Hi! I'm **GSA Gateway** — NJIT's Graduate Student Association assistant, and the "
-                    "wider NJIT community's too. _(Current version: **Kavosh v2.0** — کاوش, \"exploration.\")_\n\n"
+                    "wider NJIT community's too. _(Current version: **Kavosh v2.1** — کاوش, \"exploration.\")_\n\n"
                     "What I can help you explore:\n"
                     "- 🔬 **NJIT faculty across every college** — who works on a topic, their research areas & citations\n"
                     "- 🏫 **Departments, programs & who's who** — deans, chairs, directors\n"
@@ -222,7 +267,7 @@ class MessageHandler:
             if model_name:
                 text = (
                     "I'm **GSA Gateway**, NJIT's Graduate Student Association assistant — and the wider "
-                    "NJIT community's too. You're talking to my current version, **Kavosh v2.0** "
+                    "NJIT community's too. You're talking to my current version, **Kavosh v2.1** "
                     "(کاوش — *exploration, discovery*), successor to **Binesh** (*insight*), which retired "
                     "June 15, 2026.\n\n"
                     f"I run on **{model_name}** — a local language model on NJIT infrastructure, not a cloud "
@@ -242,7 +287,7 @@ class MessageHandler:
                 )
             else:
                 text = (
-                    "I'm **GSA Gateway** (current version: **Kavosh v2.0** — \"exploration\"), NJIT's Graduate "
+                    "I'm **GSA Gateway** (current version: **Kavosh v2.1** — \"exploration\"), NJIT's Graduate "
                     "Student Association assistant and a guide to the wider NJIT community — faculty, "
                     "research, departments, and GSA services. md724@njit.edu. "
                     "🛠️ Open source — contribute on [GitHub](https://github.com/mdindoost/gsa-gateway)."
@@ -327,6 +372,14 @@ class MessageHandler:
         if not ran:
             return None
         facts, suffix, deterministic = ran
+        return await self._compose_structured(text, facts, suffix, deterministic)
+
+    async def _compose_structured(self, text: str, facts: str, suffix: str,
+                                  deterministic: bool) -> str:
+        """Compose-suppression — SHARED by _try_structured and the v2.1 _answer_decision so the
+        anti-fab rule can't drift between the two paths. The LLM rephrases the Facts ONLY when the
+        answer is NOT deterministic (metric numbers must never be reworded); the deterministic
+        suffix (profile links / Scholar numbers) is appended VERBATIM, never handed to the LLM."""
         out = facts
         if self.ollama and not deterministic:   # metric numbers must not be reworded by the LLM
             composed = await self.ollama.compose_from_rows(text, facts)
@@ -335,6 +388,81 @@ class MessageHandler:
         if suffix:
             out = f"{out}\n\n{suffix}"
         return out
+
+    def _structured_from_route(self, skill: str, args: dict):
+        """SQL body for a DECIDED skill/args (no route() — the UnifiedRouter already resolved it).
+        Thread target. Returns (facts, suffix, deterministic) or None (empty → caller falls to RAG)."""
+        import sqlite3
+        from v2.core.retrieval import structured_answer
+        from v2.core.retrieval.router import Route
+        db_path = getattr(self.db, "db_path", None) if self.db else None
+        if not db_path:
+            return None
+        conn = sqlite3.connect(db_path, timeout=5)  # FTS+plain SQL only, no vec
+        try:
+            conn.execute("PRAGMA busy_timeout=5000")
+            result = structured_answer.run(conn, Route(skill=skill, args=dict(args or {})))
+            facts = structured_answer.format_answer(result)
+            if not facts:
+                return None
+            return (facts, structured_answer.deterministic_suffix(result),
+                    structured_answer.is_deterministic(result))
+        finally:
+            conn.close()
+
+    async def _legacy_family(self, clean_text: str, user_id: str) -> str:
+        """The family the LEGACY handler path would route this to — for shadow agreement (review F1).
+        Mirrors handle()'s legacy ordering: free → RAG (skips structured); else a structured answer
+        → KG; else a command intent → COMMAND; else RAG. Runs `_try_structured` (extra SQL), which is
+        acceptable in shadow (a temporary measurement mode, not the hot path)."""
+        mode = self.conversation_manager.get_mode(user_id) if self.conversation_manager else "gsa"
+        if mode != "free":
+            try:
+                if await self._try_structured(clean_text) is not None:
+                    return "KG"
+            except Exception:  # noqa: BLE001 - shadow measurement only
+                pass
+        intent = self.intent_detector.detect(clean_text)[0] if self.intent_detector else INTENT_QUESTION
+        if intent in _LEGACY_COMMAND_INTENTS:
+            return "COMMAND"
+        return "RAG"
+
+    async def _answer_decision(self, req: MessageRequest, decision) -> MessageResponse:
+        """ACT on a UnifiedRouter RouteDecision (ROUTER_V21 + flipped). KG runs the deterministic
+        structured answer (compose-suppression preserved via _compose_structured — numbers/links are
+        never reworded/hallucinated); an EMPTY structured result degrades to RAG (honest-partial,
+        never a fabricated answer). RAG/LIVE/CLARIFY/OTHER reuse the existing handlers (full
+        MessageResponse fidelity — source notes, buttons, live flag). COMMAND is handled by the
+        legacy flow and never reaches here."""
+        text = req.text.strip()
+        fam = decision.family
+        if fam == "KG":
+            # Free (general chat) mode skips the GSA structured path — the user wants the general
+            # LLM, so a KG decision degrades to the RAG pipeline (which handles free mode). Preserves
+            # the "free skips structured" invariant the legacy path enforces at handle(). [review F3]
+            mode = self.conversation_manager.get_mode(req.user_id) if self.conversation_manager else "gsa"
+            if mode == "free":
+                return await self._rag_pipeline(req, text, INTENT_QUESTION)
+            try:
+                ran = await asyncio.to_thread(self._structured_from_route,
+                                              decision.skill, decision.args)
+            except Exception as exc:  # noqa: BLE001 - never break; fall to RAG
+                logger.warning("router-v21 structured run errored, falling to RAG: %s", exc)
+                ran = None
+            if ran:
+                facts, suffix, deterministic = ran
+                return MessageResponse(
+                    text=await self._compose_structured(text, facts, suffix, deterministic))
+            return await self._rag_pipeline(req, text, INTENT_QUESTION)
+        if fam == "RAG":
+            rag_intent = INTENT_FOOD if decision.source == "food" else INTENT_QUESTION
+            return await self._rag_pipeline(req, text, rag_intent)
+        if fam == "LIVE":
+            return await self._answer_explicit_live(req, text)
+        if fam == "CLARIFY":
+            return MessageResponse(text=_CLARIFY_MSG)
+        # OTHER / anything unexpected → RAG (never fabricate)
+        return await self._rag_pipeline(req, text, INTENT_QUESTION)
 
     async def retry_question(self, req: MessageRequest) -> MessageResponse:
         """Re-run RAG at temperature=0.7 for the 🔄 retry button.

@@ -136,6 +136,14 @@ def _has_child_departments(conn, org_id: int) -> bool:
         (org_id,)).fetchone() is not None
 
 
+def _is_university_root(conn, org_id: int) -> bool:
+    """True for the university ROOT org (the only org with no parent). people_in_org enumerates
+    roles attached DIRECTLY to the org node; for the root that's just the President, so a bare
+    'people at njit' is a thin/misleading enumeration — let it fall through to RAG instead."""
+    row = conn.execute("SELECT parent_id FROM organizations WHERE id=?", (org_id,)).fetchone()
+    return row is not None and row[0] is None
+
+
 def _is_bare_name(q: str, person: dict) -> bool:
     """True when the (prefix-stripped) query is essentially just this person's name —
     every query token is one of the person's name tokens. 'guiling wang' -> True;
@@ -340,7 +348,7 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     if org_id is not None and _FACULTY_CUE.search(q):
         return Route("faculty_in_department", {"org_id": org_id})
 
-    if org_id is not None and _PEOPLE.search(q):
+    if org_id is not None and _PEOPLE.search(q) and not _is_university_root(conn, org_id):
         return Route("people_in_org", {"org_id": org_id})
 
     # ── person-centric branches (entity layer) ─────────────────────────────────

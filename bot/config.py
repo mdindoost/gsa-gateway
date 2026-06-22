@@ -140,3 +140,13 @@ config = load_config()
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 LIVE_ENABLED = os.getenv("LIVE_ENABLED", "1") == "1"
 LIVE_THRESHOLD = float(os.getenv("LIVE_THRESHOLD", "0.15"))
+
+
+# --- Kavosh v2.1 unified router (Phase 1b) ---
+# ROUTER_V21 master switch (default OFF). When on, the UnifiedRouter is built + consulted.
+# ROUTER_V21_SHADOW (default ON): compute+log the new decision but ACT on the current path
+# (flip to ACT by setting it 0 only after the flip-gate sign-off — the flag stays a kill-switch).
+# ROUTER_V21_SLOT_RECOVERY (default OFF): Phase-2 LLM slot-recovery sub-flag, out of Phase 1b.
+ROUTER_V21 = os.getenv("ROUTER_V21", "0").strip().lower() in ("1", "true", "yes", "on")
+ROUTER_V21_SHADOW = os.getenv("ROUTER_V21_SHADOW", "1").strip().lower() in ("1", "true", "yes", "on")
+ROUTER_V21_SLOT_RECOVERY = os.getenv("ROUTER_V21_SLOT_RECOVERY", "0").strip().lower() in ("1", "true", "yes", "on")

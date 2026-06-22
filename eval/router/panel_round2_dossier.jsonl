@@ -1,0 +1,41 @@
+{"id": "q8", "query": "Strategic Events and Conference Services Staff", "votes": {"router": "RAG/general", "knowledge": "KG/people_in_org", "intent": "KG/people_in_org"}, "mohammad_label": "KG/people_in_org"}
+{"id": "q15", "query": "please  recommend some courses for me to take this fall", "votes": {"router": "RAG/general +live", "knowledge": "RAG/general +live", "intent": "CLARIFY"}, "mohammad_label": "CLARIFY"}
+{"id": "q59", "query": "What was my last question", "votes": {"router": "hardneg", "knowledge": "hardneg", "intent": "OTHER"}, "mohammad_label": "COMMAND"}
+{"id": "q121", "query": "What else you know about mohammad dindoost", "votes": {"router": "hardneg", "knowledge": "KG/entity_card", "intent": "KG/entity_card"}, "mohammad_label": "KG/entity_card"}
+{"id": "q160", "query": "About graduation", "votes": {"router": "RAG/general +live", "knowledge": "RAG/general", "intent": "CLARIFY"}}
+{"id": "q192", "query": "What you know about aaskar", "votes": {"router": "RAG/general", "knowledge": "RAG/general", "intent": "KG/entity_card"}}
+{"id": "q198", "query": "name officers", "votes": {"router": "KG/officers_in_org", "knowledge": "KG/officers_in_org", "intent": "CLARIFY"}}
+{"id": "q202", "query": "Koutis awards", "votes": {"router": "KG/entity_card", "knowledge": "RAG/general", "intent": "KG/entity_card"}}
+{"id": "q203", "query": "Bader awards", "votes": {"router": "KG/entity_card", "knowledge": "RAG/general", "intent": "KG/entity_card"}}
+{"id": "q207", "query": "Gibe koutis publications", "votes": {"router": "KG/entity_card", "knowledge": "RAG/general", "intent": "KG/entity_card"}}
+{"id": "q216", "query": "networkx", "votes": {"router": "RAG/general", "knowledge": "OTHER", "intent": "RAG/general"}}
+{"id": "q220", "query": "Cs department", "votes": {"router": "KG/faculty_in_department", "knowledge": "RAG/general", "intent": "RAG/general"}}
+{"id": "q225", "query": "In cs department koutis exists", "votes": {"router": "OTHER", "knowledge": "hardneg", "intent": "OTHER"}}
+{"id": "q340", "query": "speakers 2026", "votes": {"router": "hardneg", "knowledge": "RAG/event", "intent": "RAG/general"}}
+{"id": "q371", "query": "In mmi 2025 how many", "votes": {"router": "hardneg", "knowledge": "RAG/event", "intent": "hardneg"}}
+{"id": "q396", "query": "what about Cathal Gurrin", "votes": {"router": "hardneg", "knowledge": "hardneg", "intent": "RAG/general"}}
+{"id": "q402", "query": "Who is Prof. Dunn?", "votes": {"router": "RAG/event", "knowledge": "RAG/event", "intent": "KG/entity_card"}}
+{"id": "q405", "query": "How to create qr code for GSA using url", "votes": {"router": "COMMAND", "knowledge": "RAG/general", "intent": "OTHER"}}
+{"id": "q417", "query": "Aayush", "votes": {"router": "KG/people_by_name", "knowledge": "RAG/event", "intent": "OTHER"}}
+{"id": "q418", "query": "Mohith", "votes": {"router": "KG/people_by_name", "knowledge": "RAG/event", "intent": "OTHER"}}
+{"id": "q419", "query": "Fernando", "votes": {"router": "KG/people_by_name", "knowledge": "RAG/event", "intent": "OTHER"}}
+{"id": "q420", "query": "Feenando", "votes": {"router": "KG/people_by_name", "knowledge": "RAG/event", "intent": "OTHER"}}
+{"id": "q442", "query": "Send a message to admin to fix it", "votes": {"router": "COMMAND", "knowledge": "OTHER", "intent": "COMMAND"}}
+{"id": "q444", "query": "Give me officers name", "votes": {"router": "KG/officers_in_org", "knowledge": "KG/officers_in_org", "intent": "CLARIFY"}}
+{"id": "q449", "query": "Nistha", "votes": {"router": "KG/people_by_name", "knowledge": "KG/entity_card", "intent": "OTHER"}}
+{"id": "q450", "query": "Nishta", "votes": {"router": "KG/people_by_name", "knowledge": "KG/entity_card", "intent": "OTHER"}}
+{"id": "q451", "query": "Mohamma", "votes": {"router": "KG/people_by_name", "knowledge": "KG/entity_card", "intent": "OTHER"}}
+{"id": "q452", "query": "fernand", "votes": {"router": "KG/people_by_name", "knowledge": "KG/entity_card", "intent": "OTHER"}}
+{"id": "q453", "query": "fer", "votes": {"router": "KG/people_by_name", "knowledge": "KG/entity_card", "intent": "OTHER"}}
+{"id": "q454", "query": "moheemmad", "votes": {"router": "KG/people_by_name", "knowledge": "KG/entity_card", "intent": "OTHER"}}
+{"id": "q455", "query": "durvish", "votes": {"router": "KG/people_by_name", "knowledge": "KG/entity_card", "intent": "OTHER"}}
+{"id": "q475", "query": "Hi, what is temperature of newark today?", "votes": {"router": "OTHER", "knowledge": "RAG/general +live", "intent": "RAG/general +live"}}
+{"id": "q483", "query": "Tell me what was my first question in this conversation because I forgot", "votes": {"router": "hardneg", "knowledge": "OTHER", "intent": "OTHER"}}
+{"id": "q487", "query": "Okay what about places on campus I can casually eat in daily", "votes": {"router": "RAG/food", "knowledge": "hardneg", "intent": "RAG/food"}}
+{"id": "q500", "query": "Give me the history of ny questions", "votes": {"router": "hardneg", "knowledge": "OTHER", "intent": "OTHER"}}
+{"id": "q505", "query": "Search oon the history and tell what was Spencer questiob", "votes": {"router": "hardneg", "knowledge": "OTHER", "intent": "OTHER"}}
+{"id": "q506", "query": "What was the last question you replied", "votes": {"router": "hardneg", "knowledge": "OTHER", "intent": "OTHER"}}
+{"id": "q514", "query": "he need more money", "votes": {"router": "hardneg", "knowledge": "hardneg", "intent": "OTHER"}}
+{"id": "q522", "query": "flag this chat for Mohammads review", "votes": {"router": "COMMAND", "knowledge": "OTHER", "intent": "COMMAND"}}
+{"id": "q528", "query": "i'm bored what can i do?", "votes": {"router": "OTHER", "knowledge": "OTHER", "intent": "RAG/event"}}
+{"id": "q538", "query": "vp academic affairs", "votes": {"router": "KG/people_by_role", "knowledge": "RAG/general", "intent": "KG/people_by_role"}}

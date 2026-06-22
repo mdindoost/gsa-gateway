@@ -185,3 +185,11 @@ search njit for library hours
 look up parking permits on njit
 what are the Van Houten library hours
 how do I apply for CPT
+
+# kavosh v2.1 router-v21 regression (decide() family routing — see bot/tests/test_router_v21_regression.py)
+how do I become a dean
+who is responsible for officer elections
+departments in math
+top 10 by citations in mechanical engineering
+who are the gsa officers
+how do I become faculty in cs

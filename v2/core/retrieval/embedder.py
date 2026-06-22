@@ -34,6 +34,24 @@ class Embedder:
         emb = data.get("embeddings")
         return emb[0] if emb and emb[0] else None
 
+    def _embed_batch(self, texts: list[str], timeout: int = 60) -> list[list[float] | None]:
+        """Embed many texts in ONE /api/embed call (Ollama accepts a list `input`). Used by the
+        router classifier fit (~500 exemplars at startup) to avoid serial HTTP round-trips."""
+        if not texts:
+            return []
+        payload = json.dumps({"model": self.model, "input": texts}).encode()
+        req = urllib.request.Request(
+            self.embed_url, data=payload, headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+        embs = data.get("embeddings") or []
+        # Pad/truncate defensively so the result aligns 1:1 with `texts`.
+        out: list[list[float] | None] = []
+        for i in range(len(texts)):
+            out.append(embs[i] if i < len(embs) and embs[i] else None)
+        return out
+
     @staticmethod
     def normalize(vec: list[float] | None) -> list[float] | None:
         if vec is None:

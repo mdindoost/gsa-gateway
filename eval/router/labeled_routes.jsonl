@@ -1,0 +1,634 @@
+{"id": "kgrank1", "query": "top 10 by citations in mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "mechanical engineering", "metric": "citations", "n": 10}, "group": "rank-me", "provenance": "seed"}
+{"id": "kgrank2", "query": "most cited professor in mechanical and industrial engineering", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "mie", "metric": "citations", "n": 1}, "group": "rank-me", "provenance": "seed"}
+{"id": "kgrank3", "query": "who has the highest h-index in computer science", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "cs", "metric": "h_index", "n": 1}, "group": "rank-cs", "provenance": "seed"}
+{"id": "kgrank4", "query": "top 5 most cited faculty in ying wu college of computing", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "ywcc", "metric": "citations", "n": 5}, "group": "rank-ywcc", "provenance": "seed"}
+{"id": "kgrole1", "query": "who is the dean of computing", "family": "KG", "skill": "people_by_role", "slots": {"role": "dean", "org": "ywcc"}, "group": "role-dean", "provenance": "seed"}
+{"id": "kgrole2", "query": "who is the dean of the ying wu college", "family": "KG", "skill": "people_by_role", "slots": {"role": "dean", "org": "ywcc"}, "group": "role-dean", "provenance": "seed"}
+{"id": "kgrole3", "query": "who is the chair of computer science", "family": "KG", "skill": "people_by_role", "slots": {"role": "chair", "org": "cs"}, "group": "role-chair", "provenance": "seed"}
+{"id": "kgfac1", "query": "who teaches in computer science", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "cs"}, "group": "fac-cs", "provenance": "seed"}
+{"id": "kgfac2", "query": "list the faculty in computer science", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "cs"}, "group": "fac-cs", "provenance": "seed"}
+{"id": "kgfac3", "query": "professors in mechanical engineering", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "mechanical engineering"}, "group": "fac-me", "provenance": "seed"}
+{"id": "kgfac4", "query": "show me the math department faculty", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "math"}, "group": "fac-math", "provenance": "seed"}
+{"id": "kgppl1", "query": "who is in the GSA", "family": "KG", "skill": "people_in_org", "slots": {"org": "gsa"}, "group": "ppl-gsa", "provenance": "seed"}
+{"id": "kgppl2", "query": "list everyone in the management school", "family": "KG", "skill": "people_in_org", "slots": {"org": "mtsm"}, "group": "ppl-mtsm", "provenance": "seed"}
+{"id": "kgoff1", "query": "who are the GSA officers", "family": "KG", "skill": "officers_in_org", "slots": {"org": "gsa"}, "group": "off-gsa", "provenance": "seed"}
+{"id": "kgoff2", "query": "who runs the GSA", "family": "KG", "skill": "officers_in_org", "slots": {"org": "gsa"}, "group": "off-gsa", "provenance": "seed"}
+{"id": "kgoff3", "query": "who are the officers of ACM", "family": "KG", "skill": "officers_in_org", "slots": {"org": "acm"}, "group": "off-acm", "provenance": "seed"}
+{"id": "kgcard1", "query": "who is Ioannis Koutis", "family": "KG", "skill": "entity_card", "slots": {"person": "Ioannis Koutis"}, "group": "card-koutis", "provenance": "seed"}
+{"id": "kgcard2", "query": "tell me about Cristian Borcea", "family": "KG", "skill": "entity_card", "slots": {"person": "Cristian Borcea"}, "group": "card-borcea", "provenance": "seed"}
+{"id": "kgres1", "query": "what does Ioannis Koutis research", "family": "KG", "skill": "research_of_person", "slots": {"person": "Ioannis Koutis"}, "group": "res-koutis", "provenance": "seed"}
+{"id": "kgres2", "query": "what are Borcea's research areas", "family": "KG", "skill": "research_of_person", "slots": {"person": "Cristian Borcea"}, "group": "res-borcea", "provenance": "seed"}
+{"id": "kgmetric1", "query": "how many citations does Koutis have", "family": "KG", "skill": "metric_of_person", "slots": {"person": "Koutis", "metric": "citations"}, "group": "metric-koutis", "provenance": "seed"}
+{"id": "kgmetric2", "query": "what is Koutis's h-index", "family": "KG", "skill": "metric_of_person", "slots": {"person": "Koutis", "metric": "h_index"}, "group": "metric-koutis", "provenance": "seed"}
+{"id": "kglink1", "query": "what is Koutis's google scholar profile", "family": "KG", "skill": "link_of_person", "slots": {"person": "Koutis", "profile": "scholar"}, "group": "link-koutis", "provenance": "seed"}
+{"id": "kglink2", "query": "linkedin for Cristian Borcea", "family": "KG", "skill": "link_of_person", "slots": {"person": "Cristian Borcea", "profile": "linkedin"}, "group": "link-borcea", "provenance": "seed"}
+{"id": "kgarea1", "query": "who works on machine learning", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "machine learning"}, "group": "area-ml", "provenance": "seed"}
+{"id": "kgarea2", "query": "which faculty do research in cybersecurity", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "cybersecurity"}, "group": "area-cyber", "provenance": "seed"}
+{"id": "kgareacount1", "query": "how many faculty work on artificial intelligence", "family": "KG", "skill": "count_people_by_research_area", "slots": {"area": "artificial intelligence"}, "group": "areacount-ai", "provenance": "seed"}
+{"id": "kgareas1", "query": "what research areas are covered in computer science", "family": "KG", "skill": "areas_in_org", "slots": {"org": "cs"}, "group": "areas-cs", "provenance": "seed"}
+{"id": "kgfacareas1", "query": "what are the research areas of the professors in computer science", "family": "KG", "skill": "faculty_areas_in_department", "slots": {"org": "cs"}, "group": "facareas-cs", "provenance": "seed"}
+{"id": "food1", "query": "is there free food this week", "family": "RAG", "source": "food", "group": "food-week", "provenance": "seed"}
+{"id": "food2", "query": "any free pizza on campus today", "family": "RAG", "source": "food", "group": "food-pizza", "provenance": "seed"}
+{"id": "food3", "query": "where can I get free lunch", "family": "RAG", "source": "food", "group": "food-lunch", "provenance": "seed"}
+{"id": "event1", "query": "what events are happening this week", "family": "RAG", "source": "event", "group": "event-week", "provenance": "seed"}
+{"id": "event2", "query": "when is the next GSA event", "family": "RAG", "source": "event", "group": "event-next", "provenance": "seed"}
+{"id": "event3", "query": "are there any workshops coming up", "family": "RAG", "source": "event", "group": "event-workshop", "provenance": "seed"}
+{"id": "neg-process1", "query": "how do I become a dean", "family": "RAG", "source": "general", "group": "neg-process", "provenance": "seed"}
+{"id": "neg-process2", "query": "who is responsible for officer elections", "family": "RAG", "source": "general", "group": "neg-process", "provenance": "seed"}
+{"id": "neg-prose1", "query": "what is the dean's welcome message", "family": "RAG", "source": "general", "group": "neg-prose", "provenance": "seed"}
+{"id": "neg-cite1", "query": "how do I cite a paper", "family": "RAG", "source": "general", "group": "neg-cite", "provenance": "seed"}
+{"id": "neg-web1", "query": "what's on the GSA website", "family": "RAG", "source": "general", "group": "neg-web", "provenance": "seed"}
+{"id": "gen1", "query": "what is the GSA", "family": "RAG", "source": "general", "group": "gen-gsa", "provenance": "seed"}
+{"id": "gen2", "query": "how do I register for classes", "family": "RAG", "source": "general", "group": "gen-register", "provenance": "seed"}
+{"id": "gen3", "query": "what is the graduate student association", "family": "RAG", "source": "general", "group": "gen-gsa", "provenance": "seed"}
+{"id": "gen4", "query": "tell me about NJIT", "family": "RAG", "source": "general", "group": "gen-njit", "provenance": "seed"}
+{"id": "clar1", "query": "who is the advisor", "family": "CLARIFY", "slots": {"missing": "org"}, "group": "clar-advisor", "provenance": "seed"}
+{"id": "clar2", "query": "who is the chair", "family": "CLARIFY", "slots": {"missing": "org"}, "group": "clar-chair", "provenance": "seed"}
+{"id": "clar3", "query": "tell me about the professor", "family": "CLARIFY", "slots": {"missing": "person"}, "group": "clar-prof", "provenance": "seed"}
+{"id": "cmd1", "query": "clear", "family": "COMMAND", "group": "cmd-clear", "provenance": "seed"}
+{"id": "cmd2", "query": "reset", "family": "COMMAND", "group": "cmd-reset", "provenance": "seed"}
+{"id": "cmd3", "query": "help", "family": "COMMAND", "group": "cmd-help", "provenance": "seed"}
+{"id": "cmd4", "query": "start", "family": "COMMAND", "group": "cmd-start", "provenance": "seed"}
+{"id": "b1-01", "query": "Top 10 by citations mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "mechanical engineering", "metric": "citations", "n": 10}, "group": "rank-mech-cite", "provenance": "real"}
+{"id": "b1-02", "query": "Most cited professor in mechanical and industrial", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "mie", "metric": "citations", "n": 1}, "group": "rank-mech-cite", "provenance": "real"}
+{"id": "b1-03", "query": "Top 5 ywcc h index", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "ywcc", "metric": "h_index", "n": 5}, "group": "rank-ywcc-h", "provenance": "real"}
+{"id": "b1-04", "query": "Min citation ywcc", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "ywcc", "metric": "citations", "order": "asc"}, "group": "rank-ywcc-cite-min", "provenance": "real"}
+{"id": "b1-05", "query": "Least h index cs", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "cs", "metric": "h_index", "order": "asc"}, "group": "rank-cs-h-min", "provenance": "real"}
+{"id": "b1-06", "query": "who has the most citation in cs department", "family": "KG", "skill": "top_people_by_metric", "slots": {"org": "cs", "metric": "citations", "n": 1}, "group": "rank-cs-cite", "provenance": "real"}
+{"id": "b1-07", "query": "what is Zhi Wei's h-index", "family": "KG", "skill": "metric_of_person", "slots": {"person": "Zhi Wei", "metric": "h_index"}, "group": "metric-zhiwei", "provenance": "real"}
+{"id": "b1-08", "query": "Koutis citation", "family": "KG", "skill": "metric_of_person", "slots": {"person": "Koutis", "metric": "citations"}, "group": "koutis-cite", "provenance": "real"}
+{"id": "b1-09", "query": "What is Andew Sohn's research area?", "family": "KG", "skill": "research_of_person", "slots": {"person": "Andrew Sohn"}, "group": "res-sohn", "provenance": "real"}
+{"id": "b1-10", "query": "Petras research field", "family": "KG", "skill": "research_of_person", "slots": {"person": "Petras"}, "group": "petras", "provenance": "real"}
+{"id": "b1-11", "query": "jamie payton research field", "family": "KG", "skill": "research_of_person", "slots": {"person": "Jamie Payton"}, "group": "res-payton", "provenance": "real"}
+{"id": "b1-12", "query": "what does Koutis work on", "family": "KG", "skill": "research_of_person", "slots": {"person": "Koutis"}, "group": "res-koutis", "provenance": "real"}
+{"id": "b1-13", "query": "Who is petras", "family": "KG", "skill": "entity_card", "slots": {"person": "Petras"}, "group": "petras", "provenance": "real"}
+{"id": "b1-14", "query": "koutis", "family": "KG", "skill": "entity_card", "slots": {"person": "Koutis"}, "group": "card-koutis", "provenance": "real"}
+{"id": "b1-15", "query": "Koutis's email", "family": "KG", "skill": "entity_card", "slots": {"person": "Koutis", "attr": "email"}, "group": "card-koutis", "provenance": "real"}
+{"id": "b1-16", "query": "oria linkedin", "family": "KG", "skill": "link_of_person", "slots": {"person": "Oria", "profile": "linkedin"}, "group": "link-oria", "provenance": "real"}
+{"id": "b1-17", "query": "What is koutis personal website", "family": "KG", "skill": "link_of_person", "slots": {"person": "Koutis", "profile": "website"}, "group": "link-koutis", "provenance": "real"}
+{"id": "b1-18", "query": "List all the people research is graph", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "graph"}, "group": "area-graph", "provenance": "real"}
+{"id": "b1-19", "query": "List of professors who research graphs", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "graph"}, "group": "area-graph", "provenance": "real"}
+{"id": "b1-20", "query": "Find an advisor machine learning", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "machine learning"}, "group": "area-ml-advisor", "provenance": "real"}
+{"id": "b1-21", "query": "All ywcc profssors research field", "family": "KG", "skill": "faculty_areas_in_department", "slots": {"org": "ywcc"}, "group": "facareas-ywcc", "provenance": "real"}
+{"id": "b1-22", "query": "How can I extend my PhD duration to 6 years?", "family": "RAG", "source": "general", "group": "gen-phd-extend", "provenance": "real"}
+{"id": "b1-23", "query": "what is the GSA travel award", "family": "RAG", "source": "general", "group": "gen-travel-award", "provenance": "real"}
+{"id": "b1-24", "query": "tell me about the data science program", "family": "RAG", "source": "general", "group": "gen-ds-program", "provenance": "real"}
+{"id": "b1-25", "query": "what is the MMI Workshop", "family": "RAG", "source": "general", "group": "gen-mmi", "provenance": "real"}
+{"id": "b1-26", "query": "njit parking permits", "family": "RAG", "source": "general", "slots": {"topic": "parking", "expected": "live", "kb_candidate": true}, "group": "live-parking", "provenance": "real"}
+{"id": "b1-27", "query": "NJIT library hours", "family": "RAG", "source": "general", "slots": {"topic": "library hours", "expected": "live", "kb_candidate": true}, "group": "live-library-hours", "provenance": "real"}
+{"id": "b1-28", "query": "How silly you are?", "family": "OTHER", "slots": {"reason": "social"}, "group": "other-social", "provenance": "real"}
+{"id": "b1-29", "query": "capital of iran", "family": "OTHER", "slots": {"reason": "out-of-scope"}, "group": "other-oos", "provenance": "real"}
+{"id": "b1-30", "query": "Talk about yourself and your abilities", "family": "OTHER", "slots": {"reason": "meta-about-bot"}, "group": "other-meta", "provenance": "real"}
+{"id": "b2-01", "query": "who is dean of ywcc", "family": "KG", "skill": "people_by_role", "slots": {"role": "dean", "org": "ywcc"}, "group": "dean-ywcc", "provenance": "real"}
+{"id": "b2-02", "query": "dean name? ywcc", "family": "KG", "skill": "people_by_role", "slots": {"role": "dean", "org": "ywcc"}, "group": "dean-ywcc", "provenance": "real"}
+{"id": "b2-03", "query": "Cs dean name", "family": "KG", "skill": "people_by_role", "slots": {"role": "dean", "org": "cs"}, "group": "dean-cs", "provenance": "real"}
+{"id": "b2-04", "query": "who is the president of gsa", "family": "KG", "skill": "people_by_role", "slots": {"role": "president", "org": "gsa"}, "group": "pres-gsa", "provenance": "real"}
+{"id": "b2-05", "query": "what is ywcc and which departments are in it?", "family": "KG", "skill": "org_departments", "slots": {"org": "ywcc"}, "group": "dept-ywcc", "provenance": "real"}
+{"id": "b2-06", "query": "Which deprtment has ywcc", "family": "KG", "skill": "org_departments", "slots": {"org": "ywcc"}, "group": "dept-ywcc", "provenance": "real"}
+{"id": "b2-07", "query": "Who are the cs professors", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "cs"}, "group": "fac-cs2", "provenance": "real"}
+{"id": "b2-08", "query": "Do you know and can list all the professors in ywcc", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "ywcc"}, "group": "fac-ywcc", "provenance": "real"}
+{"id": "b2-09", "query": "name cs department distinguished professors", "family": "KG", "skill": "faculty_in_department", "slots": {"org": "cs", "filter": "distinguished"}, "group": "fac-cs-distinguished", "provenance": "real"}
+{"id": "b2-10", "query": "name officers of gsa", "family": "KG", "skill": "officers_in_org", "slots": {"org": "gsa"}, "group": "off-gsa2", "provenance": "real"}
+{"id": "b2-11", "query": "tell me who is david bader?", "family": "KG", "skill": "entity_card", "slots": {"person": "David Bader"}, "group": "card-bader", "provenance": "real"}
+{"id": "b2-12", "query": "Who is julie ancis", "family": "KG", "skill": "entity_card", "slots": {"person": "Julie Ancis"}, "group": "card-ancis", "provenance": "real"}
+{"id": "b2-13", "query": "who is Craig Gotsman", "family": "KG", "skill": "entity_card", "slots": {"person": "Craig Gotsman"}, "group": "card-gotsman", "provenance": "real"}
+{"id": "b2-14", "query": "Who is mohammad dindoost", "family": "KG", "skill": "entity_card", "slots": {"person": "Mohammad Dindoost"}, "group": "card-dindoost", "provenance": "real"}
+{"id": "b2-15", "query": "Bader research area?", "family": "KG", "skill": "research_of_person", "slots": {"person": "David Bader"}, "group": "res-bader", "provenance": "real"}
+{"id": "b2-16", "query": "what is research area of Craig Gotsman", "family": "KG", "skill": "research_of_person", "slots": {"person": "Craig Gotsman"}, "group": "res-gotsman", "provenance": "real"}
+{"id": "b2-17", "query": "borcea research", "family": "KG", "skill": "research_of_person", "slots": {"person": "Borcea"}, "group": "res-borcea2", "provenance": "real"}
+{"id": "b2-18", "query": "can you give bader personal web site?", "family": "KG", "skill": "link_of_person", "slots": {"person": "David Bader", "profile": "website"}, "group": "link-bader", "provenance": "real"}
+{"id": "b2-19", "query": "Who works on graph", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "graph"}, "group": "area-graph2", "provenance": "real"}
+{"id": "b2-20", "query": "I want to work on graph theory who are working on it", "family": "KG", "skill": "people_by_research_area", "slots": {"area": "graph theory"}, "group": "area-graph2", "provenance": "real"}
+{"id": "b2-21", "query": "is there any event for today?", "family": "RAG", "source": "event", "group": "event-today", "provenance": "real"}
+{"id": "b2-22", "query": "Last gsa event", "family": "RAG", "source": "event", "group": "event-last", "provenance": "real"}
+{"id": "b2-23", "query": "food", "family": "RAG", "source": "food", "group": "food-bare", "provenance": "real"}
+{"id": "b2-24", "query": "How much can a club spend on food per person at an event?", "family": "RAG", "source": "general", "group": "food-policy", "provenance": "real"}
+{"id": "b2-25", "query": "What is the lavender graduation", "family": "RAG", "source": "general", "group": "gen-lavender", "provenance": "real"}
+{"id": "b2-26", "query": "what is MMI?", "family": "RAG", "source": "general", "group": "gen-mmi2", "provenance": "real"}
+{"id": "b2-27", "query": "dinning hall hours", "family": "RAG", "source": "general", "slots": {"topic": "dining hours", "expected": "live", "kb_candidate": true}, "group": "live-dining", "provenance": "real"}
+{"id": "b2-28", "query": "NJIT academic calendar", "family": "RAG", "source": "general", "slots": {"topic": "academic calendar", "expected": "live", "kb_candidate": true}, "group": "live-calendar", "provenance": "real"}
+{"id": "b2-29", "query": "Who is the president", "family": "CLARIFY", "slots": {"missing": "org"}, "group": "clar-president", "provenance": "real"}
+{"id": "b2-30", "query": "Qrcode", "family": "COMMAND", "group": "cmd-qrcode", "provenance": "real"}
+{"id": "b2-31", "query": "🤣", "family": "OTHER", "slots": {"reason": "social"}, "group": "other-emoji", "provenance": "real"}
+{"id": "b2-32", "query": "تو‌ کی هستی معرفی کن", "family": "OTHER", "slots": {"reason": "non-english"}, "group": "other-persian", "provenance": "real"}
+{"id": "t0", "query": "Tell me about Kavosh", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t1", "query": "You said “I searched NJIT's website but couldn't find anything on that. Try rephrasing, or contact a GSA officer at gsa-vpa@njit.edu.” which is completely wrong since it literally has the info:\n\nhttps://www.njit.edu/global/program-extensions", "family": "OTHER", "slots": {"note": "complaint"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t2", "query": "Njit website literally provides this information: https://www.njit.edu/global/program-extensions\n\nHow did you miss this?", "family": "OTHER", "slots": {"note": "complaint"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t3", "query": "I think Michael houle is ds lecturer", "family": "KG", "skill": "entity_card", "slots": {"note": "statement/correction; dual KG+OTHER; fact KG-verifiable"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t4", "query": "Hi, introduce yourself thoroughly", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t5", "query": "Strategic Events and Conference Services Staff", "family": "KG", "skill": "people_in_org", "slots": {"note": "org=strategic events and conference services"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t6", "query": "Parking fee", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t7", "query": "Parking hours", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t8", "query": "gsa travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t9", "query": "Parking hour time", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t10", "query": "how do I apply for CPT   (answers + “confirm with OGI” heads-up)", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t11", "query": "please  recommend some courses for me to take this fall", "family": "CLARIFY", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t12", "query": "Ranking citation ywcc top 5", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t13", "query": "What is his position", "family": "CLARIFY", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t14", "query": "search njit for parking permits", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t15", "query": "what are the hours of the Van Houten library", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t16", "query": "where can visitors park on campus", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t17", "query": "how do I pay my tuition", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t18", "query": "how do I apply for CPT", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t19", "query": "how do I contact the office of global initiatives", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t20", "query": "what is GWICS", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t21", "query": "how do I get funding to attend a conference", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t22", "query": "Top 10 by citation mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t23", "query": "Top 10 citation mechanical department", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t24", "query": "Top 10 in mechanical department", "family": "CLARIFY", "slots": {"note": "top-N with no metric specified"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t25", "query": "Top 10 citation in mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t26", "query": "Give me the citations mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t27", "query": "Who else in mechanical engineering citation you have", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "follow-up; needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t28", "query": "Wrong", "family": "OTHER", "slots": {"note": "feedback"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t29", "query": "Warren street fitness summer working hour", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t30", "query": "Wellness center working hiur summer", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t31", "query": "Silly Kavosh", "family": "OTHER", "slots": {"note": "social"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t32", "query": "Love you baby", "family": "OTHER", "slots": {"note": "social"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t33", "query": "My pay stub is low", "family": "OTHER", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t34", "query": "City md working hours", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t35", "query": "Search city md working hours", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t36", "query": "Search health care", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t37", "query": "Search for food", "family": "RAG", "source": "food", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t38", "query": "Travel award procedure", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t39", "query": "Most citation mechanical", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t40", "query": "Who has the most citation in mechanical", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t41", "query": "Prtras citation", "family": "KG", "skill": "metric_of_person", "slots": {"note": "clarify+kg; typo Prtras=Petras"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t42", "query": "Wrong answer", "family": "OTHER", "slots": {"note": "feedback"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t43", "query": "What was my last question", "family": "OTHER", "slots": {"note": "R15: no recall command implemented"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t44", "query": "The most h index cs", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t45", "query": "Who has the mist h index in cs", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "typo mist=most"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t46", "query": "The same question ece", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "clarify+kg follow-up ece"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t47", "query": "کی هستی", "family": "OTHER", "slots": {"note": "non-english"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t48", "query": "What is your llm engine", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t49", "query": "کی هستم", "family": "OTHER", "slots": {"note": "non-english"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t50", "query": "Tell me the story of gsa gateway", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t51", "query": "what time is in njit", "family": "OTHER", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t52", "query": "njit for parking permits", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t53", "query": "Search for koutis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t54", "query": "Parking", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t55", "query": "search courses for fall 2026", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t56", "query": "search for parking hours", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t57", "query": "search for it", "family": "CLARIFY", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t58", "query": "search koutis", "family": "KG", "skill": "entity_card", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t59", "query": "how do I get a parking permit at NJIT", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t60", "query": "Heidi Young research", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t61", "query": "you said research ares for him is multimedia database what else you can say?", "family": "KG", "skill": "research_of_person", "slots": {"note": "follow-up; dual KG+OTHER"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t62", "query": "oya tukel research field?", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t63", "query": "what is Kavosh?", "family": "OTHER", "slots": {"note": "about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t64", "query": "what is your version?", "family": "OTHER", "slots": {"note": "about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t65", "query": "سلام", "family": "OTHER", "slots": {"note": "non-english"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t66", "query": "Berenjian research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t67", "query": "Whi is smaneh berenjian", "family": "KG", "skill": "entity_card", "slots": {"note": "typo; dual KG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t68", "query": "What is koutis citation?", "family": "KG", "skill": "metric_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t69", "query": "Megjia xu", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t70", "query": "What about network?", "family": "CLARIFY", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t71", "query": "What are the steps for travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t72", "query": "Is there any time line for travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t73", "query": "How can i get it", "family": "RAG", "source": "general", "slots": {"note": "follow-up 'it'; dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t74", "query": "What is travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t75", "query": "What are the requirements to graduate as a BME PhD?", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t76", "query": "Ur bot is biased towards CS ppl", "family": "OTHER", "slots": {"note": "complaint; dual OTHER+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t77", "query": "What about for BME?", "family": "KG", "skill": "faculty_in_department", "slots": {"note": "follow-up BME; dual CLARIFY+KG"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t78", "query": "What's the quickest timeline to finish my PhD?", "family": "RAG", "source": "general", "slots": {"note": "dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t79", "query": "How do I finish my PhD in 1 semester?", "family": "RAG", "source": "general", "slots": {"note": "dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t80", "query": "how to apply to get  travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t81", "query": "how to apply to get aard", "family": "RAG", "source": "general", "slots": {"note": "dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t82", "query": "travel award date", "family": "RAG", "source": "general", "slots": {"note": "dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t83", "query": "travel award", "family": "RAG", "source": "general", "slots": {"note": "bare; dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t84", "query": "koutis all info", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t85", "query": "koutis info", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t86", "query": "koutis research area", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t87", "query": "What else you know about mohammad dindoost", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t88", "query": "Where is the capital of iran", "family": "OTHER", "slots": {"note": "out-of-scope"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t89", "query": "tell me more abuot Blake Haggerty", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t90", "query": "is John Pelesko provost?", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t91", "query": "who is the provost", "family": "KG", "skill": "people_by_role", "slots": {"note": "exact-role match required; 8 vice/assoc provosts also carry provost title"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t92", "query": "tell me more about Yan Xu", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t93", "query": "what is the bursar's office / how do I pay my bill", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t94", "query": "who is in the New Jersey School of Architecture", "family": "KG", "skill": "people_in_org", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t95", "query": "who’s in the civil engineering faculty", "family": "KG", "skill": "faculty_in_department", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t96", "query": "Name departments if newark college", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t97", "query": "Name njit colleges", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t98", "query": "Mmi organizers", "family": "RAG", "source": "general", "slots": {"note": "mmi organizers; he said RAG"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t99", "query": "What you know about mmi", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t100", "query": "Mmi mohammad dindoost", "family": "RAG", "source": "general", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t101", "query": "Do we have mohammad in njit", "family": "KG", "skill": "entity_card", "slots": {"note": "person existence check"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t102", "query": "Yes", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t103", "query": "110", "family": "OTHER", "slots": {"note": "bare number"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t104", "query": "Judge mide", "family": "COMMAND", "slots": {"note": "typo->judge mode"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t105", "query": "guiling wang research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t106", "query": "more about professor giling wang", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t107", "query": "more about professor wang", "family": "KG", "skill": "entity_card", "slots": {"note": "which wang; dual CLARIFY+KG"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t108", "query": "more", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t109", "query": "Guiling wang", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t110", "query": "Why you didnt list him", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t111", "query": "What about michael giorgio", "family": "KG", "skill": "entity_card", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t112", "query": "List all the michael", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t113", "query": "Do we have any michael in njit", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t114", "query": "How is lasha in ywcc", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t115", "query": "Hai phan research area", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t116", "query": "What is hai phan research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t117", "query": "Who is hai phan", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t118", "query": "I20 renew", "family": "RAG", "source": "general", "slots": {"note": "immigration"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t119", "query": "Judge mode", "family": "COMMAND", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "q1", "query": "Talk about yourself and your abilities", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q5", "query": "How can I extend my PhD duration to 6 years?", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q7", "query": "Min citation ywcc", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q12", "query": "What is Andew Sohn's research area?", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q16", "query": "Top 5 ywcc h index", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q25", "query": "what is Zhi Wei's h-index", "family": "KG", "skill": "metric_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q26", "query": "tell me about the data science program", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q28", "query": "who is the chair of computer science", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q30", "query": "what is the MMI Workshop", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q31", "query": "what is the GSA travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q32", "query": "Top 10 by citations mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q37", "query": "Most cited professor in mechanical and industrial", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q40", "query": "All ywcc profssors research field", "family": "KG", "skill": "faculty_areas_in_department", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q44", "query": "How silly you are?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q56", "query": "Petras research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q57", "query": "Who is petras", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q60", "query": "Least h index cs", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q72", "query": "njit parking permits", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q76", "query": "dinning hall hours", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q78", "query": "NJIT library hours", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q79", "query": "NJIT academic calendar", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q82", "query": "oria linkedin", "family": "KG", "skill": "link_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q88", "query": "jamie payton research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q89", "query": "Find an advisor machine learning", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q92", "query": "who has the most citation in cs department", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q93", "query": "What is koutis personal website", "family": "KG", "skill": "link_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q94", "query": "Koutis citation", "family": "KG", "skill": "metric_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q98", "query": "List all the people research is graph", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q99", "query": "List of professors who research graphs", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q114", "query": "koutis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q116", "query": "Koutis's email", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q117", "query": "what does Koutis work on", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q119", "query": "capital of iran", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q120", "query": "who is ioannis koutis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q154", "query": "What is the per-person food cost limit for a club event of 25 students?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q155", "query": "How much can a club spend on food per person at an event?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q156", "query": "Can a club use petty cash reimbursement?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q157", "query": "How to apply for opt", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q158", "query": "Tasks of vp academic affairs", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q159", "query": "What is the task of vop academic affairs of gsa", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q160", "query": "About graduation", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q162", "query": "When phd students graduate in December, do they walk in May?", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q163", "query": "When do December graduates walk?", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q164", "query": "What is the lavender graduation", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q165", "query": "What is the timeline of a PhD student from application to graduation", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q166", "query": "What is the management college", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q167", "query": "Explain phd student what they should do during education", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q168", "query": "I am a data science PhD student. I finished my third semester and one month ago I passed Qualification Exam. I need to take 9 credits for the next semester as courses. Beside that, do i also need to take 3 credits of Pre-doctoral dessertation?", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q169", "query": "I am a data science PhD student. I finished my third semester and one month ago I passed Qualification Exam. I need to take 9 credits for the next semester as courses. Beside that, do I also need to take 3 credits of Pre-doctoral dissertation?", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q170", "query": "Qrcode", "family": "COMMAND", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q171", "query": "can you give bader personal web site?", "family": "KG", "skill": "link_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q172", "query": "Bader research area?", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q173", "query": "bader research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q174", "query": "what about bader does he wrk on graph ?", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q175", "query": "what about bader does he wrk ongraph too?", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q176", "query": "what is the research field of Bader", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q177", "query": "tell me who is david bader?", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q178", "query": "tell me more about Koutis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q179", "query": "is there any event for today?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q180", "query": "if I want to travel to just attend a conference, does GSA support me? or should I have a paper to present?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q181", "query": "🤣", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q182", "query": "Also if you start by mentioning someone it will ignore", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q183", "query": "is there any fun activity or event?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q184", "query": "what is the research field of David Bader", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q185", "query": "For travel award what should I do", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q186", "query": "what is ICA", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q187", "query": "what was the most recent event of ICA?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q188", "query": "Tell me more about ICA", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q189", "query": "Ica president", "family": "KG", "skill": "officers_in_org", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q191", "query": "What is iranian club", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q192", "query": "What you know about aaskar", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q193", "query": "Name clubs", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q194", "query": "what is MMI?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q195", "query": "is the instagram account for gsa?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q196", "query": "how long the trvel award will tale approve", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q197", "query": "what is the process for travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q198", "query": "name officers", "family": "CLARIFY", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q199", "query": "what is gsa", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q200", "query": "Are there robotic labs at njit?", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q201", "query": "This info is off topic", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q202", "query": "Koutis awards", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q203", "query": "Bader awards", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q204", "query": "David bader research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q205", "query": "What is Koutis research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q206", "query": "Who is koutis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q207", "query": "Gibe koutis publications", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q209", "query": "Who is julie ancis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q210", "query": "cleer", "family": "COMMAND", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q211", "query": "what is ywcc and which departments are in it?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q212", "query": "in ywcc who are working on the graph reearch", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q213", "query": "in ywcc who are working on graph research area", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q214", "query": "who is david bader and what is his research area", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q215", "query": "david bader networkx", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q216", "query": "networkx", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q217", "query": "What does David Bader research?", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q218", "query": "Tell me about travel fund", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q219", "query": "I want to work on graph theory who are working on it", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q220", "query": "Cs department", "family": "KG", "skill": "faculty_in_department", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q222", "query": "List all professors working on graph in cs department", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q224", "query": "Who in cs department works on graph", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q225", "query": "In cs department koutis exists", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q226", "query": "food", "family": "RAG", "source": "food", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q227", "query": "name some events of gsa", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q228", "query": "how I can get the travel fund", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q229", "query": "name officers of gsa", "family": "KG", "skill": "officers_in_org", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q230", "query": "who is the president of gsa", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q231", "query": "Cs department who works on graph", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q232", "query": "Koutis research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q234", "query": "تو‌ کی هستی معرفی کن", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q235", "query": "اسمت چیه", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q236", "query": "Who are the cs professors", "family": "KG", "skill": "faculty_in_department", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q239", "query": "Do you know and can list all the professors in ywcc", "family": "KG", "skill": "faculty_in_department", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q240", "query": "Do you know and can list all the professors in gitc", "family": "KG", "skill": "people_in_org", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q242", "query": "list all the people on cs department working on graph", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q244", "query": "what is koutis research", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q245", "query": "tell me about koutis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q247", "query": "who is dean of ywcc", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q248", "query": "whi is working on graph research", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q249", "query": "Name of phd students work on graph", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q251", "query": "Who are the people working on graph research", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q253", "query": "Who works on graph is ywcc", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q254", "query": "Who is koutis and what is hid research", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q256", "query": "What you kno about the clearwater", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q258", "query": "Tell me about MMI workshop", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q259", "query": "Which deprtment has ywcc", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q260", "query": "What you know about ywcc", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q261", "query": "Hula means hi", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q262", "query": "Hula", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q264", "query": "Campus resources", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q265", "query": "Are you alive", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q266", "query": "Who works on graph", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q267", "query": "I am looking someine in cs department working on graph", "family": "KG", "skill": "people_by_research_area", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q268", "query": "Cristean boreca firld of research", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q270", "query": "In cs department who is cristean", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q271", "query": "Dean ywcc", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q272", "query": "Yiannis koutis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q273", "query": "Yiannis research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q274", "query": "what is research area of Craig Gotsman", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q275", "query": "who is Craig Gotsman", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q276", "query": "borcea research", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q277", "query": "what is vorcea research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q278", "query": "cristian borcea", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q279", "query": "vincent oria", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q280", "query": "dean name? ywcc", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q281", "query": "dean ywcc name", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q282", "query": "Mmi lecturers", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q283", "query": "name cs department distinguished professors", "family": "KG", "skill": "faculty_in_department", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q284", "query": "Ywcc dean name", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q285", "query": "Yecc dean name", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q286", "query": "Cs dean name", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q287", "query": "Clearwater should be in your kb", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q288", "query": "Clearwater", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q289", "query": "Last gsa event", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q290", "query": "Dindoost", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q291", "query": "Who is mohammad dindoost", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q292", "query": "سوال قبلی که پرسیدم چی بود", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q293", "query": "Tell me a story befoee night", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q294", "query": "Whatsapp", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q295", "query": "Give me a code to sort any array", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q296", "query": "یه کد بده که یه ارایه رو مرتب کنه", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q297", "query": "میتونی برام کد بزنی", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q298", "query": "چیا بلدی خب", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q299", "query": "تو کی هستی اصلا", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q300", "query": "هلو", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q301", "query": "در مورد خودت توضیح بده", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q302", "query": "بستنی سنتی یا پاستوریزه", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q303", "query": "فارسی بادی بهونی", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q304", "query": "میتونی فارسی بخونی؟", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q305", "query": "who handles GSA finances", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q306", "query": "what is MMI workshop", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q307", "query": "what are the penalties for clubs", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q308", "query": "how do I apply for travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q309", "query": "who is the GSA president", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q310", "query": "wht is the tallest tree in the world", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q311", "query": "mmi?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q312", "query": "alive?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q313", "query": "which mode you are", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q314", "query": "do you know where will be the worldcup?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q315", "query": "How long does it take to answer my question", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q316", "query": "میشه بهم بگید بستنی کاکائویی مفید تره یا وانیل", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q317", "query": "میتونی جواب سوالای منو بدی؟", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q318", "query": "How can you help me", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q319", "query": "Give me simple python code that calculate the surface of triangle", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q320", "query": "What is 2+4", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q321", "query": "give me the best seller of book 2023", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q322", "query": "give me names of best seller book of 202", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q323", "query": "what is mmi", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q324", "query": "How many prompt each session you can save", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q325", "query": "officers name in gsa?", "family": "KG", "skill": "officers_in_org", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q326", "query": "What is yiur name", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q327", "query": "Do you support spanish?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q328", "query": "Tell me about concrete sampling and testing", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q329", "query": "Hellooooo", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q330", "query": "Goodbye", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q331", "query": "What fun activiy gsa has", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q332", "query": "Fun gsa", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q333", "query": "GSA officers", "family": "KG", "skill": "officers_in_org", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q334", "query": "List the speakers of MMI 2026 and the Officers of GSA", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q335", "query": "If you send any message with starting a mention it assumes your are talking eith him. see:", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q336", "query": "it should say that the deadline had already passed", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q337", "query": "MMI 2026 registeration", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q338", "query": "How do I register for MMI 2026?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q339", "query": "list the speakers of mmi 2026", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q340", "query": "speakers 2026", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q341", "query": "mmi series", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q342", "query": "fund gsa mmi", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q343", "query": "Register mmi 2026", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q344", "query": "Which speakers were from Rutgers", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q345", "query": "List of 2026 talks", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q346", "query": "Mmi talks about llm", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q347", "query": "Mmi llm", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q348", "query": "Based in mmi whi is working on llm", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q349", "query": "who are the GSA adminstration?", "family": "KG", "skill": "officers_in_org", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q350", "query": "what is ur name", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q351", "query": "GSA events", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q352", "query": "Artificial Intelligence", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q353", "query": "my name is AJ", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q354", "query": "Who is cathal gurrin what he talked about", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q355", "query": "What vincent did in mmi", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q356", "query": "Who is vincent oria", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q357", "query": "Vincent", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q358", "query": "Did we have overlap between speakers 2025 and 2026", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q359", "query": "Tell me about Sohrab Namazi Nia", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q360", "query": "Who was Mmi 2026 first speaker", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q361", "query": "How are you?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q362", "query": "Hru?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q363", "query": "Hiiiii", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q364", "query": "Sayoh talk", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q365", "query": "Sayoh talk i mean", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q367", "query": "Satoh 2026", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q368", "query": "Satoh talk 2025", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q369", "query": "Satoh talks", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q370", "query": "Professor yan sun talk", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q372", "query": "How many people talked in mmi", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q373", "query": "Mmi 2026 speakers list", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q374", "query": "Mmi", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q375", "query": "Professors from rutgers", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q376", "query": "Stevens mmi", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q377", "query": "Semenova", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q378", "query": "Speaker 2025", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q380", "query": "Whats is mmi 2026", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q381", "query": "Is the gsa logo?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q382", "query": "Test", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q383", "query": "What is the Rashomon Effect?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q385", "query": "Tell me about a talk in 2025 which one you choose", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q386", "query": "What topi satoh vovered in 2025", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q387", "query": "Who spoke on mmi 2026", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q388", "query": "Can I apply for a GSA travel award to attend MMI 2027?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q389", "query": "Based on what Semenova presented, why might a doctor prefer to see a set of models rather than just the single best-performing one?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q390", "query": "Where did Prof. Enrique Dunn do his postdoctoral fellowship before joining Stevens?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q391", "query": "Who are the three people who organized MMI 2026, and what are their respective institutions and roles?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q392", "query": "Which talks at MMI 2026 directly addressed bias or fairness in AI, and what were their approaches?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q393", "query": "What is InstructEx and what problem does it solve?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q394", "query": "How many speakers came from Stevens Institute of Technology at MMI 2026 and what did each present?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q395", "query": "Which NJIT professors were invited speakers at MMI 2026 — not chairs, actual invited talks", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q397", "query": "Who appeared as a speaker at both MMI 2025 and MMI 2026?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q398", "query": "What is MARCuS?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q399", "query": "What talks happened Day 2?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q400", "query": "Which speakers covered explainability?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q401", "query": "What did Singh talk about", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q402", "query": "Who is Prof. Dunn?", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q403", "query": "Mmi fund", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q404", "query": "Mmi 2026 travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q405", "query": "How to create qr code for GSA using url", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q406", "query": "Mmi 2026 day 2 schedule", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q407", "query": "Mmi 2026 schedule", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q408", "query": "Dunn which university", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q409", "query": "Mmi 2026 Speakers name", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q411", "query": "How many speakers mmi rutgers", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q414", "query": "How many speakers mmi from stevens", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q415", "query": "Name njit speakers in mmi 2026", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q416", "query": "Who organizes MMI 2026 and how do \n        I get funding to attend?\"", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q417", "query": "Aayush", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q418", "query": "Mohith", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q419", "query": "Fernando", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q420", "query": "Feenando", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q421", "query": "What is gaa", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q422", "query": "lol", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q423", "query": "lol @Spencer \nlol @Spencer", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q424", "query": "lol @Spencer 😂", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q426", "query": "how to DM you", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q427", "query": "Mathcafe?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q428", "query": "How does the free chat work?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q429", "query": "Mmi 2025 speakers", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q430", "query": "Mmi how many years", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q431", "query": "Mmi speakers", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q432", "query": "Mmi what is it", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q433", "query": "Gsa", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q434", "query": "What is ucan?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q435", "query": "Good night", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q436", "query": "gn", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q437", "query": "plz pay attention to who tags who..", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q438", "query": "Damn🤣", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q439", "query": "I did some changes on the logic part", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q440", "query": "u got a sense of humor too?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q441", "query": "😂", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q442", "query": "Send a message to admin to fix it", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q443", "query": "You have vp communication why you missed", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q444", "query": "Give me officers name", "family": "CLARIFY", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q445", "query": "Who is gsa communication", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q446", "query": "Money", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q447", "query": "Still working? Llm is off?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q448", "query": "what is the travel award?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q449", "query": "Nistha", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q450", "query": "Nishta", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q451", "query": "Mohamma", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q452", "query": "fernand", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q453", "query": "fer", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q454", "query": "moheemmad", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q455", "query": "durvish", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q456", "query": "Mohammad?", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q457", "query": "Mohammad", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q458", "query": "mohith?", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q459", "query": "mohith gsa?", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q460", "query": "who is fernando in gsa?", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q461", "query": "fun", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q462", "query": "workshop", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q463", "query": "travel", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q464", "query": "Who spoke at MMI 2025", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q465", "query": "Who spoke at MMI", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q466", "query": "workshop?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q467", "query": "financial aids", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q468", "query": "What is travel award?\n👍\nClick to react\n🤣\nClick to react\n💯\nClick to react\nAdd Reaction\nEdit\nForward\nMore\n\nM.\nWhat is travel award?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q469", "query": "I think the llm is off i should restart it", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q470", "query": "Pizza", "family": "RAG", "source": "food", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q471", "query": "What is travel award?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q472", "query": "What is the GSA soul", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q473", "query": "I need to have my full time certification", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q474", "query": "Free food?", "family": "RAG", "source": "food", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q475", "query": "Hi, what is temperature of newark today?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q477", "query": "Travel award?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q478", "query": "how do graduate research day travel awards work?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q479", "query": "in need money", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q480", "query": "are you able to help me with a website design", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q483", "query": "Tell me what was my first question in this conversation because I forgot", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q486", "query": "List all events within the next 5 months", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q487", "query": "Okay what about places on campus I can casually eat in daily", "family": "RAG", "source": "food", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q493", "query": "Where can I go to have some food?", "family": "RAG", "source": "food", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q494", "query": "I am asking about you not gsa", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q495", "query": "What you can do", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q497", "query": "Drink", "family": "RAG", "source": "food", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q498", "query": "Gsa hospitality", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q499", "query": "my baby has some brain LOL", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q500", "query": "Give me the history of ny questions", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q505", "query": "Search oon the history and tell what was Spencer questiob", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q506", "query": "What was the last question you replied", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q507", "query": "He was talking to me not you", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q508", "query": "Tell me about gsa", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q509", "query": "What resources does gsa provide?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q510", "query": "Tell me about upcoming gsa events", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q512", "query": "How can I access GSA member?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q513", "query": "what if I speak with you in Spanish or Persian could you undrestand", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q514", "query": "he need more money", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q515", "query": "how and who can help  to get travel awarad?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q518", "query": "Can u send me the documents? Where r they located", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q519", "query": "How many documents do u have access to", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q520", "query": "When is the next gsa event", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q521", "query": "Can u help me write python code to do merge sort", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q522", "query": "flag this chat for Mohammads review", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q523", "query": "you are too slow change the timing", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q525", "query": "how i can start a new chat here?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q526", "query": "what is math cafe in the channel", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q527", "query": "wrong answer i didnt mean it think carefuly and give me better answer", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q528", "query": "i'm bored what can i do?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q529", "query": "introduce yourself and let me know your knowledge base", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q530", "query": "what is your name? who you are?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q531", "query": "what is GSA mission? goals? mistakes? suceess?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q532", "query": "name people in GSA", "family": "KG", "skill": "people_in_org", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q534", "query": "are you silly?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q535", "query": "i need money for my research", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q536", "query": "what are  NJIT GSA UCAN HIGHLANDER", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q537", "query": "name gsa officers", "family": "KG", "skill": "officers_in_org", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q538", "query": "vp academic affairs", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q539", "query": "who is gsa president now", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q540", "query": "how I can involve on GSA", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q541", "query": "explain travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q542", "query": "what is the date?", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q543", "query": "how do I apply for a travel award?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q545", "query": "what are the penalties for clubs?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q546", "query": "how to make $10000000", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q547", "query": "funds", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q551", "query": "fund", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q552", "query": "How to make $10000000\n👍\nClick to react\n💯\nClick to react\n😆\nClick to react\nAdd Reaction\nReply\nForward\nMore\nMay 24, 2026", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q553", "query": "Silly question", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q554", "query": "How to make money", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q555", "query": "Officers", "family": "KG", "skill": "officers_in_org", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q556", "query": "Explain funds", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q557", "query": "What are the penalties", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q558", "query": "conference fund", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q559", "query": "how to make a million dollars after graduating as an F1 PhD?", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q560", "query": "how do i get ravel award", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q561", "query": "what is 3mrp", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q562", "query": "events", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q563", "query": "gsa office", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q564", "query": "who the GSA officers", "family": "KG", "skill": "officers_in_org", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q565", "query": "who is academic affair?", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q566", "query": "Who is the GSA president?", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q567", "query": "What is GSA and how can I join?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q568", "query": "how do I register for a GSA event?", "family": "RAG", "source": "event", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q569", "query": "How do I join or become a GSA member?", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
+{"id": "q570", "query": "what is the GSA", "family": "RAG", "source": "general", "provenance": "real", "split": "train", "annotator": "panel"}
