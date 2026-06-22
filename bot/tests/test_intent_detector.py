@@ -337,3 +337,33 @@ def test_greeting_spanish_hola(detector):
 
 def test_greeting_chinese_nihao(detector):
     assert detector.detect("你好")[0] == INTENT_GREETING
+
+
+# ── Identity intent: "introduce yourself" + cousins (accuracy backlog #7) ──────
+@pytest.mark.parametrize("msg", [
+    "Hi, introduce yourself thoroughly",
+    "can you introduce yourself",
+    "introduce yourself thoroughly please",
+    "describe yourself",
+    "tell me who you are",
+])
+def test_identity_introduce_and_cousins(detector, msg):
+    intent, conf = detector.detect(msg)
+    assert intent == INTENT_IDENTITY and conf == 1.0
+
+
+@pytest.mark.parametrize("msg", [
+    "how do I introduce myself at networking events",      # myself, not yourself
+    "describe your research areas",                          # "your X", not "yourself"
+    "describe the GSA funding process",
+    "how do I present myself professionally at a career fair",
+    "tips to present yourself in an interview",              # the dropped "present yourself" guard
+])
+def test_identity_does_not_over_trigger(detector, msg):
+    intent, _ = detector.detect(msg)
+    assert intent != INTENT_IDENTITY
+
+
+def test_what_can_you_do_still_help(detector):
+    intent, _ = detector.detect("what can you do")
+    assert intent == INTENT_HELP
