@@ -245,9 +245,10 @@ def crawl_site(seed_url: str, fetch, max_depth: int = DEFAULT_DEPTH,
     return res
 
 
-def make_fetcher(timeout: int = TIMEOUT):
-    """A real fetcher: SSRF-guarded, project UA, robots.txt-aware, redirect-revalidated,
-    HTML-only, size-capped. Returns html|None."""
+def fetch_with_status(timeout: int = TIMEOUT):
+    """Like make_fetcher but returns (html|None, status|None). status is the HTTP code
+    (200/404/410/…) or None on a transport error (timeout/DNS/SSRF-block), so a transient
+    failure is distinguishable from a real 404 — the [SE3] retire guard (Plan C)."""
     opener = urllib.request.build_opener(_SafeRedirect())
     robots_cache: dict[str, urllib.robotparser.RobotFileParser | None] = {}
 
@@ -257,26 +258,34 @@ def make_fetcher(timeout: int = TIMEOUT):
         if rp == "miss":
             rp = urllib.robotparser.RobotFileParser()
             try:
-                rp.set_url(host + "/robots.txt")
-                rp.read()
-            except Exception:  # noqa: BLE001 - no robots = allowed
+                rp.set_url(host + "/robots.txt"); rp.read()
+            except Exception:  # noqa: BLE001
                 rp = None
             robots_cache[host] = rp
         return rp is None or rp.can_fetch(UA, url)
 
-    def fetch(url: str) -> str | None:
-        if not is_safe_url(url):           # SSRF guard BEFORE any network call (incl. robots)
-            return None
+    def fetch(url: str):
+        if not is_safe_url(url):
+            return None, None
         if not _allowed(url):
-            return None
+            return None, None
         try:
             req = Request(url, headers={"User-Agent": UA})
             with opener.open(req, timeout=timeout) as r:
                 ctype = r.headers.get("Content-Type", "")
+                status = getattr(r, "status", None) or r.getcode()
                 if "html" not in ctype.lower():
-                    return None
-                return r.read(MAX_FETCH_BYTES).decode("utf-8", "ignore")
-        except Exception:  # noqa: BLE001 - one dead page shouldn't break the crawl
-            return None
+                    return None, status
+                return r.read(MAX_FETCH_BYTES).decode("utf-8", "ignore"), status
+        except urllib.error.HTTPError as e:       # 404/410/5xx carry a real status
+            return None, e.code
+        except Exception:  # noqa: BLE001 - transport error: status unknown
+            return None, None
 
     return fetch
+
+
+def make_fetcher(timeout: int = TIMEOUT):
+    """A real fetcher returning html|None (backward-compatible). Robots/SSRF/UA/HTML-only."""
+    inner = fetch_with_status(timeout)
+    return lambda url: inner(url)[0]
