@@ -75,12 +75,13 @@ def _team_block(match_team: dict, team: dict | None) -> str | None:
 
 
 def _h2h_line(h2h: dict | None, home: dict, away: dict) -> str:
-    """Honest-partial head-to-head. Empty/unknown -> first-meeting line."""
-    first_meeting = "First competitive meeting at a World Cup."
+    """Honest-partial head-to-head. Empty / unrecognised / internally inconsistent
+    aggregate -> the honest no-meetings line (never a misleading scoreline)."""
+    no_meetings = "No previous World Cup meetings."
     agg = (h2h or {}).get("aggregates") or {}
     n = agg.get("numberOfMatches")
     if not n:
-        return first_meeting
+        return no_meetings
     a_home, a_away = agg.get("homeTeam") or {}, agg.get("awayTeam") or {}
     home_id, away_id = home.get("id"), away.get("id")
     # Orient the aggregate to THIS match's home/away (the API orients to the queried
@@ -90,8 +91,14 @@ def _h2h_line(h2h: dict | None, home: dict, away: dict) -> str:
     elif a_home.get("id") == away_id and a_away.get("id") == home_id:
         hw, aw = a_away.get("wins", 0), a_home.get("wins", 0)
     else:
-        return first_meeting
+        return no_meetings
     draws = a_home.get("draws", 0)
+    # Consistency guard: every match is a home-win, away-win, or draw, so the counts
+    # MUST sum to numberOfMatches. The live feed sometimes counts a just-finished
+    # fixture in `numberOfMatches` but not yet in W/D/L (observed NZL–Egypt 2026-06-22:
+    # n=1, all W/D/L=0) — a line whose numbers don't sum would mislead, so fall back.
+    if hw + aw + draws != n:
+        return no_meetings
     drword = "draw" if draws == 1 else "draws"
     return (f"Played {n} · {home.get('name')} {hw}–{aw} {away.get('name')} "
             f"· {draws} {drword}")

@@ -89,14 +89,29 @@ def test_squad_counts_render_and_sum_to_total():
 
 
 # ── head-to-head: honest-partial ──────────────────────────────────────────────
-def test_h2h_empty_renders_first_meeting():
+def test_h2h_empty_renders_no_meetings():
     out = full(h2h={})
-    assert "First competitive meeting" in out
+    assert "No previous World Cup meetings" in out
 
 
 def test_h2h_empty_when_zero_matches():
     out = full(h2h={"aggregates": {"numberOfMatches": 0}})
-    assert "First competitive meeting" in out
+    assert "No previous World Cup meetings" in out
+
+
+def test_h2h_inconsistent_aggregate_falls_back():
+    # numberOfMatches says 1 but W/D/L all zero — the API counted the just-finished
+    # fixture in the count but hasn't folded it into the results yet. The numbers
+    # don't sum, so DON'T render a misleading "Played 1 · 0–0 · 0 draws" line;
+    # fall back to the honest no-meetings line (observed live: NZL–Egypt, 2026-06-22).
+    h2h = {"aggregates": {
+        "numberOfMatches": 1,
+        "homeTeam": {"id": 783, "wins": 0, "draws": 0, "losses": 0},
+        "awayTeam": {"id": 825, "wins": 0, "draws": 0, "losses": 0},
+    }}
+    out = full(h2h=h2h)
+    assert "No previous World Cup meetings" in out
+    assert "Played 1" not in out
 
 
 def test_h2h_present_aligned_orientation():
@@ -110,7 +125,7 @@ def test_h2h_present_aligned_orientation():
     assert "Played 4" in out
     assert "New Zealand 1–2 Egypt" in out
     assert "1 draw" in out
-    assert "First competitive meeting" not in out
+    assert "No previous World Cup meetings" not in out
 
 
 def test_h2h_present_reversed_orientation_is_corrected():
@@ -125,14 +140,14 @@ def test_h2h_present_reversed_orientation_is_corrected():
     assert "New Zealand 1–2 Egypt" in out
 
 
-def test_h2h_neither_id_matches_falls_back_to_first_meeting():
+def test_h2h_neither_id_matches_falls_back_to_no_meetings():
     h2h = {"aggregates": {
         "numberOfMatches": 4,
         "homeTeam": {"id": 999, "wins": 1, "draws": 1, "losses": 2},
         "awayTeam": {"id": 888, "wins": 2, "draws": 1, "losses": 1},
     }}
     out = full(h2h=h2h)
-    assert "First competitive meeting" in out
+    assert "No previous World Cup meetings" in out
 
 
 def test_h2h_single_draw_singular_wording():
