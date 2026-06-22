@@ -13,11 +13,11 @@ if str(REPO) not in sys.path:
 
 from scripts._area_tag_migrate import hardened_backup
 from v2.core.database.schema import get_connection
-from v2.core.graph.orgs import ensure_org, sync_org_nodes
+from v2.core.graph.orgs import sync_org_nodes
 from v2.core.ingestion import entry_point_store as eps
 from v2.core.ingestion.office_ingest import ingest_office_page
 from v2.core.ingestion.office_quality import dedup_boilerplate, is_low_quality
-from v2.core.ingestion.web_crawler import clean_text, crawl_site, fetch_with_status
+from v2.core.ingestion.web_crawler import crawl_site, fetch_with_status
 
 
 def harvest_entry_point(conn, ep_row, fetch, *, budget: int = 60, depth: int = 3) -> dict:
@@ -26,8 +26,10 @@ def harvest_entry_point(conn, ep_row, fetch, *, budget: int = 60, depth: int = 3
     res = crawl_site(seed, lambda u: fetch(u)[0], max_depth=depth, budget=budget,
                      relevance_gated=False)
     pages = dedup_boilerplate([(p.url, p.text) for p in res.pages])
-    org_id = ensure_org(conn, slug=ep_row["org_slug"], name=ep_row["org_slug"].upper(),
-                        parent_slug=ep_row["parent_slug"], type=ep_row["org_type"])
+    row = conn.execute("SELECT id FROM organizations WHERE slug=?", (ep_row["org_slug"],)).fetchone()
+    if not row:
+        raise ValueError(f"org slug {ep_row['org_slug']!r} not found — create the office org before harvesting it")
+    org_id = row[0]
     stats = {"pages": len(pages), "chunked": 0, "staged": 0, "dropped": 0}
     for url, text in pages:
         if is_low_quality(text):
