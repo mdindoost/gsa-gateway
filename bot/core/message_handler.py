@@ -24,6 +24,7 @@ from bot.services.intent_detector import (
 )
 from bot.services.retriever import SOURCE_FRIENDLY_NAMES
 from bot.core.headsup import apply_headsup
+from bot.core.context_rewrite import resolve_query
 from bot.core.deflection import looks_like_deflection
 from bot.core.live_query import parse_explicit_live_search, LIVE_NOT_FOUND_MSG
 from bot.core.live_fallback import maybe_answer_live
@@ -138,6 +139,19 @@ class MessageHandler:
         if not clean_text:
             return MessageResponse(text="")
 
+        # ── Contextual follow-up resolution (accuracy backlog #2) ─────────────
+        # Resolve a follow-up ("what is his position") into a standalone query using conversation
+        # history, BEFORE routing/retrieval. `clean_text` stays the ORIGINAL (display, logging,
+        # history, compose); `resolved_query` drives the router + retriever ONLY. Gated to follow-up
+        # signals + history (one LLM call), skipped in free mode, passthrough on any doubt; a
+        # hallucinated antecedent is discarded by the entity-membership guard. Spec 2026-06-22.
+        mode = self.conversation_manager.get_mode(user_id) if self.conversation_manager else "gsa"
+        resolved_query = clean_text
+        if mode != "free" and self.ollama and self.conversation_manager:
+            _max_turns = getattr(self.config, "conversation_max_turns", 5)
+            _hist = self.conversation_manager.get_history(user_id, max_turns=_max_turns)
+            resolved_query, _ = await resolve_query(clean_text, _hist, self.ollama)
+
         # ── Explicit "search njit for X" ──────────────────────────────────────
         # The user literally asked to go to the live njit.edu site, so honor it directly —
         # wins BEFORE the structured router AND the v2.1 router (they'd answer a different
@@ -156,13 +170,13 @@ class MessageHandler:
         if botcfg.ROUTER_V21 and self.unified_router is not None:
             decision = None
             try:
-                decision = self.unified_router.decide(clean_text)
+                decision = self.unified_router.decide(resolved_query)
             except Exception:  # noqa: BLE001 - router must never break the answer path
                 logger.debug("router-v21 decide failed (ignored)", exc_info=True)
             if decision is not None:
                 if botcfg.ROUTER_V21_SHADOW:
                     try:
-                        cur_family = await self._legacy_family(clean_text, user_id)
+                        cur_family = await self._legacy_family(resolved_query, user_id)
                     except Exception:  # noqa: BLE001 - shadow must never break the answer path
                         cur_family = None
                     log_shadow({"message": clean_text[:200],
@@ -170,7 +184,7 @@ class MessageHandler:
                                 "current_family": cur_family,
                                 "agree": (cur_family == decision.family) if cur_family else None})
                 elif decision.family != "COMMAND":
-                    return await self._answer_decision(req, decision)
+                    return await self._answer_decision(req, decision, resolved_query)
                 # ACT + COMMAND → fall through to the legacy command/intent handling below
 
         # ── Structured retrieval (enumerate/filter/traverse/count) ────────────
@@ -180,9 +194,9 @@ class MessageHandler:
         # so descriptive questions fall straight through to the unchanged RAG path.
         # GSA-MODE ONLY: in free (general chat) mode the user wants the general LLM,
         # NOT a GSA structured answer — skip structured so free mode isn't identical to GSA.
-        mode = self.conversation_manager.get_mode(user_id) if self.conversation_manager else "gsa"
+        # (mode already resolved above for the contextual-rewrite gate)
         if mode != "free":
-            structured = await self._try_structured(clean_text)
+            structured = await self._try_structured(resolved_query)
             if structured is not None:
                 return MessageResponse(text=structured)
 
@@ -316,7 +330,7 @@ class MessageHandler:
             )
 
         # ── RAG pipeline ──────────────────────────────────────────────────────
-        return await self._rag_pipeline(req, clean_text, intent)
+        return await self._rag_pipeline(req, clean_text, intent, resolved_query=resolved_query)
 
     async def _try_structured(self, text: str) -> Optional[str]:
         """Answer enumerate/filter/traverse/count questions from structured DB queries
@@ -427,7 +441,8 @@ class MessageHandler:
             return "COMMAND"
         return "RAG"
 
-    async def _answer_decision(self, req: MessageRequest, decision) -> MessageResponse:
+    async def _answer_decision(self, req: MessageRequest, decision,
+                               resolved_query: str | None = None) -> MessageResponse:
         """ACT on a UnifiedRouter RouteDecision (ROUTER_V21 + flipped). KG runs the deterministic
         structured answer (compose-suppression preserved via _compose_structured — numbers/links are
         never reworded/hallucinated); an EMPTY structured result degrades to RAG (honest-partial,
@@ -442,7 +457,7 @@ class MessageHandler:
             # the "free skips structured" invariant the legacy path enforces at handle(). [review F3]
             mode = self.conversation_manager.get_mode(req.user_id) if self.conversation_manager else "gsa"
             if mode == "free":
-                return await self._rag_pipeline(req, text, INTENT_QUESTION)
+                return await self._rag_pipeline(req, text, INTENT_QUESTION, resolved_query=resolved_query)
             try:
                 ran = await asyncio.to_thread(self._structured_from_route,
                                               decision.skill, decision.args)
@@ -453,10 +468,10 @@ class MessageHandler:
                 facts, suffix, deterministic = ran
                 return MessageResponse(
                     text=await self._compose_structured(text, facts, suffix, deterministic))
-            return await self._rag_pipeline(req, text, INTENT_QUESTION)
+            return await self._rag_pipeline(req, text, INTENT_QUESTION, resolved_query=resolved_query)
         if fam == "RAG":
             rag_intent = INTENT_FOOD if decision.source == "food" else INTENT_QUESTION
-            return await self._rag_pipeline(req, text, rag_intent)
+            return await self._rag_pipeline(req, text, rag_intent, resolved_query=resolved_query)
         if fam == "LIVE":
             return await self._answer_explicit_live(req, text)
         if fam == "CLARIFY":
@@ -513,7 +528,10 @@ class MessageHandler:
         clean_text: str,
         intent: str,
         temperature: float = 0.3,
+        resolved_query: str | None = None,
     ) -> MessageResponse:
+        # `clean_text` stays the ORIGINAL (display/log/history/compose). `resolved_query` (a
+        # context-resolved follow-up) drives RETRIEVAL only; None/equal → today's behavior. [backlog #2]
         user_id = req.user_id
         try:
             # Free mode: skip RAG entirely, go direct to LLM
@@ -553,15 +571,17 @@ class MessageHandler:
                 max_turns = getattr(self.config, "conversation_max_turns", 5)
                 history = self.conversation_manager.get_history(user_id, max_turns=max_turns)
 
-            # Expand short/officer queries
-            words = clean_text.split()
-            core = clean_text.strip("?!.,").strip().lower()
+            # Expand short/officer queries. Retrieval is built from the context-resolved query
+            # (`base_q`); clean_text stays original for compose/log/history.
+            base_q = resolved_query or clean_text
+            words = base_q.split()
+            core = base_q.strip("?!.,").strip().lower()
             matched_officer = next(
                 (name for name in _OFFICER_FIRST_NAMES if name in core.split() or core == name),
                 None,
             )
             is_officer_query = matched_officer is not None
-            search_query = clean_text
+            search_query = base_q
             contact_filter = None
 
             if is_officer_query:
@@ -571,8 +591,9 @@ class MessageHandler:
                 )
                 contact_filter = "contact"
             elif self.ollama and len(words) <= 3 and intent not in (INTENT_FOOD, INTENT_SOCIAL):
-                expanded = await self.ollama.expand_query(clean_text)
-                if expanded and expanded.lower() != clean_text.lower():
+                # history-less short-query expansion — only when NOT already context-resolved
+                expanded = await self.ollama.expand_query(base_q)
+                if expanded and expanded.lower() != base_q.lower():
                     search_query = expanded
 
             # Retrieve
@@ -626,10 +647,10 @@ class MessageHandler:
             attempted_live = False   # auto-fire ran this turn (regardless of result)
             is_canned_deflection = False   # tag-at-source: our own "no info" reply
             if botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY and self.ollama and self.retriever:
-                relevance = self.retriever.top_relevance(clean_text, chunks) if chunks else None
+                relevance = self.retriever.top_relevance(base_q, chunks) if chunks else None
                 if (not chunks) or (relevance is not None and relevance < botcfg.LIVE_THRESHOLD):
                     attempted_live = True
-                    live = await self.live_search(clean_text)   # single seam (provider wiring + gate)
+                    live = await self.live_search(base_q)   # single seam (provider wiring + gate)
                     if live is not None:
                         response_text = live.text
                         source_note = live.source_url
@@ -641,8 +662,14 @@ class MessageHandler:
             if used_live:
                 pass
             elif chunks and self.ollama:
+                # Compose sees the ORIGINAL wording for fidelity, plus the resolved query (when a
+                # follow-up was rewritten) so the question it answers matches the retrieved chunks
+                # — avoids the split-brain where compose resolves a pronoun differently. [RA3]
+                compose_question = clean_text
+                if resolved_query and resolved_query != clean_text:
+                    compose_question = f"{clean_text}\n(resolved for retrieval: {resolved_query})"
                 ai_resp = await self.ollama.generate_answer(
-                    question=clean_text,
+                    question=compose_question,
                     chunks=chunks,
                     conversation_history=history,
                     temperature=temperature,
