@@ -1,6 +1,6 @@
 """Shared answer-footer rendering — ONE source of truth for both connectors.
 
-Every answer gets a brand line ("💡 GSA Gateway · Kavosh v2.0 · <provenance>"). The source is
+Every answer gets a brand line ("💡 GSA Gateway · Kavosh v2.1 · <provenance>"). The source is
 shown as a CLICKABLE "Source" (never the raw URL): Telegram renders an <a> tag, Discord a
 masked markdown link in the embed description (its footer can't hold links). A friendly-name
 source (KB answers, e.g. "GSA FAQ") stays a plain "Source: <name>" label.
@@ -10,7 +10,7 @@ from __future__ import annotations
 import html
 from typing import Optional
 
-BRAND = "💡 GSA Gateway · Kavosh v2.0"
+BRAND = "💡 GSA Gateway · Kavosh v2.1"
 
 
 def provenance_label(*, used_ai: bool, is_live: bool) -> Optional[str]:
