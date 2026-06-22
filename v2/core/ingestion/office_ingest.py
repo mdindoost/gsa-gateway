@@ -14,8 +14,10 @@ from bs4.exceptions import ParserRejectedMarkup
 from v2.core.ingestion.gsa_docs import upsert_doc_items
 from v2.core.ingestion.web_crawler import is_non_html, normalize_url, same_site, scope_prefix
 
-_HIGH_STAKES_URL = re.compile(r"opt|cpt|i-?20|i-?765|sevis|visa|deadline|tuition|bursar|"
-                              r"billing|fee|payment|refund", re.I)
+_HIGH_STAKES_URL = re.compile(
+    r"\b(opt|cpt|i-?20|i-?765|sevis|visas?|tuition|billing|payment|refund|deadlines?|fees?)\b",
+    re.I,
+)
 _DOLLAR = re.compile(r"\$\s?\d")
 _SECTION_ROOT = re.compile(r"^/[a-z0-9][a-z0-9-]*/?$")   # exactly one path segment
 

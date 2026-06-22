@@ -9,10 +9,27 @@ from v2.core.ingestion.office_ingest import ingest_office_page, is_high_stakes
 
 
 def test_high_stakes_classifier():
+    # --- existing cases (must stay green) ---
     assert is_high_stakes("https://www.njit.edu/global/opt-cpt", "Apply for OPT ...")
-    assert is_high_stakes("https://www.njit.edu/registrar/schedule", "Your balance is $750 due by Nov 15.")
+    # TEXT-branch: $-amount + payment-intent keyword
+    assert is_high_stakes("https://www.njit.edu/registrar/schedule",
+                          "Your balance is $750 due by Nov 15.")
+    # clearly not high-stakes
     assert not is_high_stakes("https://www.njit.edu/parking/visitor-parking",
                               "Visitor parking is in the Lock Street Deck.")
+
+    # --- new Gate-2 cases ---
+    # bursar CONTACT page: office name in URL but no procedure → now LIVE (False)
+    assert not is_high_stakes("https://www.njit.edu/bursar/contact-us",
+                              "Contact the Office of the Bursar at 973-596-2877.")
+    # bursar PAYMENT PLAN page: "payment" in URL → still staged (True)
+    assert is_high_stakes("https://www.njit.edu/bursar/payment-plan",
+                          "Set up a payment plan.")
+    # OPT/CPT procedure page → staged (True)
+    assert is_high_stakes("https://www.njit.edu/global/opt-cpt", "Apply for OPT.")
+    # "coffee" must NOT match as a "fee" substring → live (False)
+    assert not is_high_stakes("https://www.njit.edu/dining/coffee-bar",
+                              "The coffee bar is open.")
 
 
 def test_generic_page_goes_live_as_office_page(tmp_path):
