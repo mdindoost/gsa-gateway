@@ -20,7 +20,6 @@ from v2.core.publishing.sources import PostDraft, EnqueueError, enqueue_post, pl
 from v2.integration.worldcup_tracker import WorldCupTracker, format_event
 from v2.integration.match_preview import build_match_preview
 from v2.integration.daily_fixtures import _kickoff_et
-from v2.integration.wc_schedule import venue_for
 
 logger = logging.getLogger(__name__)
 
@@ -149,17 +148,11 @@ class WorldCupRunner:
         return enqueued
 
     async def _build_preview(self, match: dict) -> str:
-        """Gather the preview's inputs (teams, h2h, standings, venue, kickoff) and
-        render via the pure ``build_match_preview`` formatter."""
-        teams = await self.tracker.fetch_teams()
-        home = teams.get((match.get("homeTeam") or {}).get("name"))
-        away = teams.get((match.get("awayTeam") or {}).get("name"))
-        h2h = await self.tracker.fetch_h2h(match.get("id"))
+        """Gather the preview's inputs (group standings + kickoff time) and render
+        via the pure ``build_match_preview`` formatter."""
         rows = (await self.tracker.fetch_standings()).get(match.get("group") or "", [])
-        venue = venue_for((match.get("homeTeam") or {}).get("name") or "",
-                          (match.get("awayTeam") or {}).get("name") or "")
         kickoff_et = _kickoff_et(match.get("utcDate", ""))
-        return build_match_preview(match, home, away, h2h, rows, venue, kickoff_et)
+        return build_match_preview(match, rows, kickoff_et)
 
     async def _loop(self):
         while self._running:

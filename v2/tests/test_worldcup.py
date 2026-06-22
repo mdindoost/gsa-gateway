@@ -412,40 +412,6 @@ def test_preview_fires_for_next_utc_day_kickoff(tracker):
     assert types(drive_prev(tracker, [mkp(utc="2026-06-22T00:02:00Z")], now)) == ["preview"]
 
 
-def test_fetch_teams_caches_nonempty(tracker, monkeypatch):
-    calls = []
-    async def fake_get(ep, *a, **k):
-        calls.append(ep)
-        return {"teams": [{"id": 783, "name": "New Zealand"}]}
-    monkeypatch.setattr(tracker, "_get", fake_get)
-    a = asyncio.run(tracker.fetch_teams())
-    b = asyncio.run(tracker.fetch_teams())
-    assert a["New Zealand"]["id"] == 783 and b == a
-    assert len(calls) == 1                                   # memoized after success
-
-
-def test_fetch_teams_does_not_cache_empty(tracker, monkeypatch):
-    calls = []
-    async def fake_get(ep, *a, **k):
-        calls.append(ep)
-        return {}                                            # flaky/empty response
-    monkeypatch.setattr(tracker, "_get", fake_get)
-    asyncio.run(tracker.fetch_teams())
-    asyncio.run(tracker.fetch_teams())
-    assert len(calls) == 2                                   # not cached → retried
-
-
-def test_fetch_h2h_hits_head2head_endpoint(tracker, monkeypatch):
-    seen = {}
-    async def fake_get(ep, *a, **k):
-        seen["ep"] = ep
-        return {"aggregates": {"numberOfMatches": 3}}
-    monkeypatch.setattr(tracker, "_get", fake_get)
-    res = asyncio.run(tracker.fetch_h2h(537366))
-    assert "537366/head2head" in seen["ep"]
-    assert res["aggregates"]["numberOfMatches"] == 3
-
-
 def test_load_state_defaults_preview_announced(tmp_path, monkeypatch):
     import json
     sf = tmp_path / "s.json"
@@ -474,22 +440,14 @@ def test_runner_enqueues_preview_post(monkeypatch, tmp_path):
         return []
     async def one_preview():
         return [{"type": "preview", "match": {
-            "id": 900, "group": "GROUP_G", "matchday": 2, "referees": [],
+            "id": 900, "group": "GROUP_G", "matchday": 2,
             "utcDate": KO, "homeTeam": {"id": 783, "name": "New Zealand"},
             "awayTeam": {"id": 825, "name": "Egypt"}}}]
-    async def teams():
-        return {"New Zealand": {"id": 783, "name": "New Zealand",
-                                "coach": {"name": "Bazeley"}, "squad": []},
-                "Egypt": {"id": 825, "name": "Egypt",
-                          "coach": {"name": "Hassan"}, "squad": []}}
-    async def h2h(mid):
-        return {}
     async def standings():
-        return {"GROUP_G": []}
+        return {"GROUP_G": [{"position": 1, "team": {"name": "New Zealand"},
+                             "points": 1, "goalDifference": 0}]}
     runner.tracker.check_matches = no_matches
     runner.tracker.check_previews = one_preview
-    runner.tracker.fetch_teams = teams
-    runner.tracker.fetch_h2h = h2h
     runner.tracker.fetch_standings = standings
 
     asyncio.run(runner._loop_once())
@@ -501,5 +459,6 @@ def test_runner_enqueues_preview_post(monkeypatch, tmp_path):
     ).fetchall()
     assert len(rows) == 1                                   # exactly one preview, deduped
     assert "MATCH PREVIEW" in rows[0]["content"]
+    assert "📊 **Group G**" in rows[0]["content"]           # table present
     assert rows[0]["k"] == "worldcup:900:preview"
     assert rows[0]["et"] == "preview"

@@ -116,10 +116,6 @@ class WorldCupTracker:
         # free tier returns no goals array, so calling it on every score change
         # just burns the rate-limit budget. Off by default — flip on if upgraded.
         self.unfold_goals = os.getenv("FOOTBALL_UNFOLD_GOALS", "false").lower() == "true"
-        # Squad/coach roster (/competitions/WC/teams) — memoized for the process
-        # lifetime, but ONLY a successful, non-empty result is cached (a flaky {}
-        # must not permanently zero out previews). name -> team entry.
-        self._teams_cache: dict[str, dict] = {}
         self.load_state()
 
     def _next_headers(self, extra: dict | None = None) -> dict:
@@ -380,21 +376,6 @@ class WorldCupTracker:
                 kickoff_announced=False, halftime_announced=False, second_half_announced=False,
                 fulltime_announced=False, stage=m.get("stage", ""), group=m.get("group", "") or "",
                 utc_date=m.get("utcDate", ""), preview_announced=True)
-
-    async def fetch_teams(self) -> dict[str, dict]:
-        """name -> /competitions/WC/teams entry (squad + coach). Memoized on first
-        SUCCESS only — a flaky {} is returned but NOT cached, so the next call retries."""
-        if self._teams_cache:
-            return self._teams_cache
-        data = await self._get("/competitions/WC/teams")
-        teams = {t["name"]: t for t in data.get("teams", []) if t.get("name")}
-        if teams:
-            self._teams_cache = teams
-        return teams
-
-    async def fetch_h2h(self, match_id: int) -> dict:
-        """Raw /matches/{id}/head2head payload ({} on any error — never raises)."""
-        return await self._get(f"/matches/{match_id}/head2head")
 
 
 # ── unified rich-text formatting (one message, both platforms) ───────────────
