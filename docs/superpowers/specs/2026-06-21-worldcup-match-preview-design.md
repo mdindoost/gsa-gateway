@@ -2,8 +2,14 @@
 
 **Date:** 2026-06-21
 **Owner:** Mohammad Dindoost
-**Status:** Design approved (layout + "counts only, no Key names"); **rev 2** — senior-eng review
-applied (B1/B2/B3/S1 fixes below). Awaiting focused re-review → build.
+**Status:** **rev 3 — SHIPPED into MatchWatcher.** Scope narrowed by owner during build to:
+matchup + kickoff/group context + **group table** only (H2H/squads/coaches/venue/referee cut —
+the free API's H2H is unreliable and the rest added noise). Engine corrected: the live poller is
+**`MatchWatcher`** (not the dormant `WorldCupRunner`/`worldcup_tracker.check_matches`), so the
+preview was (re)built there. Fires ~5 min before kickoff (`PRE_KICKOFF_LEAD`). See §11 addendum.
+
+> **rev 1/2 history (below) targeted `WorldCupRunner` — that engine is dormant; those edits were
+> reverted to `eab3a38`. The reusable `match_preview.build_match_preview` formatter was kept.**
 **Branch:** `worktree-worldcup-match-preview` (isolated worktree; not main).
 **Related:** `v2/integration/worldcup_runner.py`, `worldcup_tracker.py`, `wc_schedule.py`,
 `bot/services/worldcup_embeds.py`, the WC live-tracker work.
@@ -213,3 +219,32 @@ then Phase B once the parallel agent merges. Watch one real fixture, confirm sin
       abbreviation mapping built (factual, just longer than the mockup). Flagged, not silently changed.
 - [ ] **Deferred:** Phase B scheduler does not pre-`scheduled_for` the post at exactly T-90; it posts on
       the first poll tick inside the window (≤ poll interval late). Acceptable; note for future tightening.
+
+## 11. Addendum (rev 3) — final implementation in MatchWatcher
+
+**Engine:** `bot/main.py` runs `MatchWatcher` ("replaces the constant WorldCupRunner"). It already
+idles until `PRE_KICKOFF_LEAD = 5 min` before kickoff — the natural home for a pre-match preview.
+
+**What shipped:**
+- `v2/integration/match_preview.py` — pure `build_match_preview(match, standings_rows, kickoff_et)`:
+  `⏳ MATCH PREVIEW` + `{home} vs {away}` + `kickoff · group · matchday` + the group table
+  (`format_standings`). Channel-safe (no fences/tables), GroupMe-stripped bold.
+- `v2/integration/match_watcher.py`:
+  - `_fetch_standings(key)` — `{GROUP_X: rows}`, group key normalized `Group H` → `GROUP_H`.
+  - `_post_preview(match_id, et_day, kickoff_utc)` — gated by `FOOTBALL_PREVIEW_ENABLED` (default on),
+    fetches the fixture + standings, enqueues one post (`dedup_key={id}:preview`, `event_type=preview`)
+    to Discord+Telegram+GroupMe via `platform_channels()`. Best-effort (False if disabled/unavailable).
+  - `preview_posted` ledger flag (in `_fresh_ledger`/`_normalize`, persisted) — fire-once; the
+    durable `posts` dedup row is the cross-restart guard. Wired into `_watch` after the pre-kickoff sleep.
+
+**Cut (loudly, on purpose):** head-to-head (free API returns empty/inconsistent — see the NZL–Egypt
+and Argentina–Austria findings), squads, coaches, venue, referee, odds, lineups.
+
+**Reverted:** the rev-1/2 `WorldCupRunner`/`worldcup_tracker`/`test_worldcup` edits (dormant engine).
+
+**Config:** `FOOTBALL_PREVIEW_ENABLED` (default `true`). Lead time follows MatchWatcher's existing
+`PRE_KICKOFF_LEAD` (5 min) — no separate env.
+
+**Tests:** `_fetch_standings` key-norm, `_post_preview` (post-once + dedup, toggle off, skip when
+fixture unavailable), `preview_posted` ledger default/roundtrip, + the `match_preview` formatter suite.
+Full-suite failing set identical to baseline (zero regressions).
