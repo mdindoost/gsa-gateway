@@ -18,6 +18,7 @@ All functions take a sqlite3 connection (caller opens it; see the integration la
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections import Counter
 
@@ -265,20 +266,37 @@ def top_people_by_metric(conn: sqlite3.Connection, org_id: int, field_key: str,
     return {"ranked": ranked, "with_metric": len(ranked), "total_in_org": total}
 
 
+# A trailing redundant facet word on an extracted area ("graph research", "graph research areas").
+# Stripping it is the fallback when the full phrase matches nobody — see _research_entities. The
+# leading \s+ guarantees it only ever drops a TRAILING word, never a bare/leading "research".
+_FACET_SUFFIX = re.compile(r"\s+research(?:\s+areas?)?$", re.I)
+
+
 def _research_entities(conn: sqlite3.Connection, area: str, org_id: int | None) -> set[str]:
-    params: list = [_fts_query(area), *_RESEARCH_TYPES]
-    org_clause = ""
-    if org_id is not None:
-        ids = sorted(org_descendants(conn, org_id))
-        org_clause = " AND k.org_id IN (%s)" % ",".join("?" * len(ids))
-        params += ids
-    q = (
-        "SELECT DISTINCT json_extract(k.metadata,'$.entity_id') "
-        "FROM knowledge_fts f JOIN knowledge_items k ON k.id=f.rowid "
-        "WHERE f.search_text MATCH ? AND k.is_active=1 "
-        f"AND k.type IN ({','.join('?' * len(_RESEARCH_TYPES))})" + org_clause +
-        " AND json_extract(k.metadata,'$.entity_id') IS NOT NULL")
-    return {r[0] for r in conn.execute(q, params) if r[0]}
+    def _lookup(term: str) -> set[str]:
+        params: list = [_fts_query(term), *_RESEARCH_TYPES]
+        org_clause = ""
+        if org_id is not None:
+            ids = sorted(org_descendants(conn, org_id))
+            org_clause = " AND k.org_id IN (%s)" % ",".join("?" * len(ids))
+            params += ids
+        q = (
+            "SELECT DISTINCT json_extract(k.metadata,'$.entity_id') "
+            "FROM knowledge_fts f JOIN knowledge_items k ON k.id=f.rowid "
+            "WHERE f.search_text MATCH ? AND k.is_active=1 "
+            f"AND k.type IN ({','.join('?' * len(_RESEARCH_TYPES))})" + org_clause +
+            " AND json_extract(k.metadata,'$.entity_id') IS NOT NULL")
+        return {r[0] for r in conn.execute(q, params) if r[0]}
+
+    result = _lookup(area)
+    # Fallback (backlog #6A): "graph research" matches nobody as a phrase, but the user means the area
+    # "graph". ONLY when the full term is empty AND ends in a redundant facet word, retry once on the
+    # stripped term — so a legit field like "operations research" (which resolves) is never broadened.
+    if not result:
+        stripped = _FACET_SUFFIX.sub("", area or "").strip()
+        if stripped and stripped.lower() != (area or "").strip().lower():
+            result = _lookup(stripped)
+    return result
 
 
 def people_by_research_area(conn: sqlite3.Connection, area: str,
