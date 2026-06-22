@@ -10,7 +10,7 @@ from v2.core.ingestion.office_ingest import ingest_office_page, is_high_stakes
 
 def test_high_stakes_classifier():
     assert is_high_stakes("https://www.njit.edu/global/opt-cpt", "Apply for OPT ...")
-    assert is_high_stakes("https://www.njit.edu/bursar/fees", "Tuition is $X due by ...")
+    assert is_high_stakes("https://www.njit.edu/registrar/schedule", "Your balance is $750 due by Nov 15.")
     assert not is_high_stakes("https://www.njit.edu/parking/visitor-parking",
                               "Visitor parking is in the Lock Street Deck.")
 
