@@ -15,14 +15,29 @@ class RouteClassifier:
     def __init__(self, exemplars, encode_fn, masker):
         self.encode_fn = encode_fn
         self.masker = masker
-        self.row_label = [fam for _q, fam in exemplars]
         masked = [masker.mask(q) for q, _fam in exemplars]
-        self.mat = encode_fn(masked) if masked else np.zeros((0, 0))
+        raw = encode_fn(masked) if masked else []
+        # Drop any exemplar whose embed failed (None) — with its label — so `mat` is a CLEAN float
+        # matrix. A single None left in here would make np.array ragged/object-dtype and every
+        # decide() matmul would raise (then get silently swallowed → classifier dead). [review F6]
+        rows: list = []
+        labels: list = []
+        for vec, (_q, fam) in zip(raw, exemplars):
+            if vec is None:
+                continue
+            rows.append(np.asarray(vec, dtype=float))
+            labels.append(fam)
+        self.row_label = labels
+        self.mat = np.array(rows, dtype=float) if rows else np.zeros((0, 0))
 
     def ranked(self, query: str):
         if self.mat.shape[0] == 0:
             return []
-        q = self.encode_fn([self.masker.mask(query)])[0]
+        enc = self.encode_fn([self.masker.mask(query)])
+        q = enc[0] if len(enc) else None
+        if q is None:                       # query embed failed → cannot classify; degrade gracefully
+            return []
+        q = np.asarray(q, dtype=float)
         sims = self.mat @ q
         best: dict[str, float] = {}
         for lab, s in zip(self.row_label, sims):
