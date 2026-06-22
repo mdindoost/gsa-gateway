@@ -25,8 +25,8 @@ def due_entry_points(conn, now=None):
         "SELECT * FROM crawl_entry_points WHERE status='active' AND aspect='office' "
         "AND crawl_interval_days IS NOT NULL "
         "AND (last_crawled_at IS NULL OR "
-        "     julianday('now') - julianday(last_crawled_at) >= crawl_interval_days) "
-        "ORDER BY id").fetchall()
+        "     julianday(?) - julianday(last_crawled_at) >= crawl_interval_days) "
+        "ORDER BY id", (now or "now",)).fetchall()
 
 
 def main(argv=None) -> int:

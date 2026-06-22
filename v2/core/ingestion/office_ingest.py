@@ -112,7 +112,7 @@ def retire_404(conn, *, org_id, fetch, seen_urls):
         _html, status = fetch(url)
         if status in (404, 410):
             conn.execute("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
-                         "WHERE source_url=? AND type='office_page' AND created_by='crawler'", (url,))
+                         "WHERE source_url=? AND type='office_page' AND created_by='crawler' AND org_id=?", (url, org_id))
             conn.execute("DELETE FROM office_page_state WHERE url=?", (url,))
             retired += 1
     return {"checked": checked, "retired": retired}

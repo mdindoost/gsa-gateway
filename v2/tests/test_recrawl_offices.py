@@ -27,3 +27,16 @@ def test_due_selects_never_crawled_and_stale_only(tmp_path):
         conn.execute("UPDATE crawl_entry_points SET last_crawled_at=datetime('now','-30 days') WHERE id=?", (stale,))
     due_ids = {r["id"] for r in due_entry_points(conn)}
     assert never in due_ids and stale in due_ids and fresh not in due_ids
+
+
+def test_null_interval_excluded(tmp_path):
+    """A never-crawled active office entry point with crawl_interval_days=None is excluded."""
+    conn = create_all(str(tmp_path / "t.db"))
+    with conn:
+        ensure_org(conn, slug="eos2", name="EOS2", parent_slug=None, type="university")
+        no_interval = eps.add_seed(conn, url="https://www.njit.edu/no-interval/",
+                                   scope_prefix="/no-interval/",
+                                   org_slug="eos2", parent_slug="njit", org_type="office",
+                                   crawl_interval_days=None)
+    due_ids = {r["id"] for r in due_entry_points(conn)}
+    assert no_interval not in due_ids
