@@ -488,8 +488,8 @@ def test_post_preview_enqueues_table_once(monkeypatch):
     monkeypatch.setattr(mw, "_fetch_match", fake_match)
     monkeypatch.setattr(mw, "_fetch_standings", fake_standings)
 
-    assert asyncio.run(mw._post_preview(7, "2026-06-11", None)) is True
-    assert asyncio.run(mw._post_preview(7, "2026-06-11", None)) is True   # dedup at posts layer
+    assert asyncio.run(mw._post_preview(7, "2026-06-11")) is True
+    assert asyncio.run(mw._post_preview(7, "2026-06-11")) is True   # dedup at posts layer
 
     rows = mw._conn.execute(
         "SELECT content, json_extract(metadata,'$._dedup_key') AS k, "
@@ -509,7 +509,7 @@ def test_post_preview_toggle_off(monkeypatch):
     async def boom(*a, **k):
         raise AssertionError("must not fetch when disabled")
     monkeypatch.setattr(mw, "_fetch_match", boom)
-    assert asyncio.run(mw._post_preview(7, "2026-06-11", None)) is False
+    assert asyncio.run(mw._post_preview(7, "2026-06-11")) is False
     assert mw._conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0] == 0
 
 
@@ -518,5 +518,17 @@ def test_post_preview_skipped_when_match_unavailable(monkeypatch):
     async def no_match(key, mid, day):
         return None
     monkeypatch.setattr(mw, "_fetch_match", no_match)
-    assert asyncio.run(mw._post_preview(7, "2026-06-11", None)) is False
+    assert asyncio.run(mw._post_preview(7, "2026-06-11")) is False
     assert mw._conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0] == 0
+
+
+# ── readability: blank line after the header on the live event posts ─────────
+def test_event_posts_have_blank_line_after_header():
+    from v2.integration.worldcup_tracker import format_event
+    ko = format_event({"type": "kickoff", "match": mk("IN_PLAY")})
+    assert "**KICK-OFF!**\n\n" in ko
+    goal = format_event({"type": "goal", "scoring_team": {"name": "Egypt"},
+                         "match": mk("IN_PLAY", 0, 1)})
+    assert "**GOAL!** 🇪🇬 Egypt\n\n" in goal
+    ft = format_event({"type": "fulltime", "match": mk("FINISHED", 2, 1)})
+    assert "**FULL-TIME**\n\n" in ft

@@ -40,7 +40,7 @@ def full(**over):
 
 def test_preview_has_header_matchup_context_and_table():
     out = full()
-    assert "⏳ MATCH PREVIEW" in out
+    assert "⏳ **MATCH PREVIEW**" in out
     assert "Argentina vs" in out and "Austria" in out
     assert "1:00 PM ET" in out and "Group J" in out and "Matchday 2" in out
     assert "📊 **Group J**" in out

@@ -177,8 +177,7 @@ class MatchWatcher:
                 out[g.upper().replace(" ", "_")] = block.get("table", [])
         return out
 
-    async def _post_preview(self, match_id: int, et_day: str,
-                            kickoff_utc: datetime.datetime | None) -> bool:
+    async def _post_preview(self, match_id: int, et_day: str) -> bool:
         """Post the one-time pre-match preview (matchup + kickoff/group context + the
         live group table) ~5 min before kickoff. Gated by ``FOOTBALL_PREVIEW_ENABLED``
         (default on). Best-effort: returns False (no post) if disabled or the schedule
@@ -404,7 +403,7 @@ class MatchWatcher:
         # Pre-match preview (matchup + group table), once, ~5 min before kickoff.
         if not state.get("preview_posted"):
             try:
-                if await self._post_preview(match_id, et_day, kickoff_utc):
+                if await self._post_preview(match_id, et_day):
                     state["preview_posted"] = True
                     self.save_states()
             except Exception:  # noqa: BLE001 - a bad preview must never block the watch

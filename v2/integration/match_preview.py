@@ -31,7 +31,7 @@ def _context_line(match: dict, kickoff_et: str) -> str:
 def build_match_preview(match: dict, standings_rows: list[dict], kickoff_et: str) -> str:
     """Compose the preview post: header + matchup + context, then the group table."""
     home, away = match["homeTeam"], match["awayTeam"]
-    header = (f"⏳ MATCH PREVIEW\n{team_label(home)} vs {team_label(away)}\n"
+    header = (f"⏳ **MATCH PREVIEW**\n\n{team_label(home)} vs {team_label(away)}\n"
               f"{_context_line(match, kickoff_et)}")
     blocks = [header]
     table = format_standings(match.get("group") or "", standings_rows or [])

@@ -363,21 +363,21 @@ def format_event(ev: dict) -> str:
     etype = ev["type"]
     if etype == "kickoff":
         ctx = _context(match)
-        head = f"⚽ **KICK-OFF!**\n{team_label(match['homeTeam'])} vs {team_label(match['awayTeam'])}"
+        head = f"⚽ **KICK-OFF!**\n\n{team_label(match['homeTeam'])} vs {team_label(match['awayTeam'])}"
         return f"{head}\nThe match is underway! 🌍" + (f"\n_{ctx}_" if ctx else "")
     if etype == "goal":
         tail = f"\n_{ev['half_label']}_" if ev.get("half_label") else ""
         if ev.get("scorer"):
             minute = f" {ev['minute']}'" if ev.get("minute") else ""
-            return f"🥅 **GOAL!** {flag(ev.get('team',''))} {ev['scorer']}{minute}\n{_score_line(match)}{tail}"
+            return f"🥅 **GOAL!** {flag(ev.get('team',''))} {ev['scorer']}{minute}\n\n{_score_line(match)}{tail}"
         scorer_team = ev.get("scoring_team", {})
-        return f"🥅 **GOAL!** {team_label(scorer_team)}\n{_score_line(match)}{tail}"
+        return f"🥅 **GOAL!** {team_label(scorer_team)}\n\n{_score_line(match)}{tail}"
     if etype == "correction":
-        return f"⚠️ **Score correction**\n{_score_line(match)}"
+        return f"⚠️ **Score correction**\n\n{_score_line(match)}"
     if etype == "halftime":
-        return f"⏸️ **HALF-TIME**\n{_score_line(match)}"
+        return f"⏸️ **HALF-TIME**\n\n{_score_line(match)}"
     if etype == "second_half":
-        return f"▶️ **Second half underway**\n{_score_line(match)}"
+        return f"▶️ **Second half underway**\n\n{_score_line(match)}"
     if etype == "fulltime":
-        return f"🏁 **FULL-TIME**\n{_score_line(match)}"
+        return f"🏁 **FULL-TIME**\n\n{_score_line(match)}"
     return f"{team_label(match['homeTeam'])} vs {team_label(match['awayTeam'])}"
