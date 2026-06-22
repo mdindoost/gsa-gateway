@@ -91,7 +91,7 @@ MAX_PAGE_CHARS = 150_000  # backstop: skip a data-dump page (e.g. a 300KB syllab
 # Non-HTML we record (so the URL isn't lost) but do not parse yet.
 _NON_HTML_EXT = (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".ps", ".zip", ".gz",
                  ".tar", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".mp4", ".mov",
-                 ".bib")
+                 ".bib", ".css", ".js", ".woff", ".woff2", ".ttf", ".ico")
 
 
 def _host(url: str) -> str:
@@ -147,16 +147,16 @@ def is_relevant(anchor: str, url: str) -> bool:
     return any(kw in hay for kw in RELEVANCE)
 
 
-def select_links(html: str, current_url: str, seed_url: str):
-    """From one page, return (relevant same-site HTML links to follow, recorded
-    non-HTML file URLs). Pure: no I/O."""
+def select_links(html: str, current_url: str, seed_url: str, relevance_gated: bool = True):
+    """From one page: (HTML links to follow, recorded non-HTML files). Pure. When
+    relevance_gated=False (aspect='office'), follow ALL same-scope HTML links (the people
+    vocabulary would harvest ~1–2 pages of an office tree) — assets still dropped. [SE1]"""
     follow: set[str] = set()
     files: set[str] = set()
     try:
         soup = BeautifulSoup(html, "html.parser")
     except ParserRejectedMarkup:
-        logger.warning("select_links: malformed markup at %s, skipping link discovery",
-                       current_url, exc_info=True)
+        logger.warning("select_links: malformed markup at %s", current_url, exc_info=True)
         return follow, files
     for a in soup.find_all("a", href=True):
         href = a["href"]
@@ -165,14 +165,16 @@ def select_links(html: str, current_url: str, seed_url: str):
         url = normalize_url(href, current_url)
         if not urlparse(url).scheme.startswith("http"):
             continue
-        if not same_scope(seed_url, url):           # same host AND under the personal path
+        if not same_scope(seed_url, url):
             continue
         anchor = a.get_text(" ", strip=True)
         if is_non_html(url):
-            if is_relevant(anchor, url):
-                files.add(url)          # e.g. a CV PDF — record, don't parse
+            if relevance_gated and is_relevant(anchor, url):
+                files.add(url)
+            elif not relevance_gated:
+                pass                            # office: skip non-HTML files (prose only)
             continue
-        if is_relevant(anchor, url):
+        if (not relevance_gated) or is_relevant(anchor, url):
             follow.add(url)
     return follow, files
 
@@ -211,7 +213,8 @@ class CrawlResult:
 
 
 def crawl_site(seed_url: str, fetch, max_depth: int = DEFAULT_DEPTH,
-               budget: int = DEFAULT_BUDGET, delay: float = 0.0) -> CrawlResult:
+               budget: int = DEFAULT_BUDGET, delay: float = 0.0,
+               relevance_gated: bool = True) -> CrawlResult:
     """BFS over the site. ``fetch(url) -> html|None`` is injected (real fetcher does
     UA + robots + timeout; tests pass a dict-backed stub). Relevance-gated, same-site,
     depth- and budget-bounded, dedup + loop-guarded."""
@@ -231,7 +234,7 @@ def crawl_site(seed_url: str, fetch, max_depth: int = DEFAULT_DEPTH,
             continue
         res.pages.append(CrawledPage(url=url, text=text, depth=depth))
         if depth < max_depth:
-            follow, nf = select_links(html, url, seed)
+            follow, nf = select_links(html, url, seed, relevance_gated=relevance_gated)
             files |= nf
             for u in sorted(follow):
                 if u not in visited:
