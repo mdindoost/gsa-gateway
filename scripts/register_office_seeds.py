@@ -27,6 +27,9 @@ WAVE1 = [
     dict(url="https://www.njit.edu/global/", scope_prefix="/global/", org_slug="ogi"),
     dict(url="https://www.njit.edu/bursar/", scope_prefix="/bursar/", org_slug="bursar"),
     dict(url="https://www.njit.edu/registrar/", scope_prefix="/registrar/", org_slug="registrar"),
+    # Wave-2 additions (the registry grows; re-running register is idempotent)
+    dict(url="https://www.njit.edu/healthservices/", scope_prefix="/healthservices/",
+         org_slug="health-services", org_name="NJIT Health Services"),
 ]
 INTERVAL_DAYS = 30          # owner-tunable recurrence cadence
 
@@ -52,7 +55,8 @@ def main(argv=None) -> int:
     ap.add_argument("--db", default=str(REPO / "gsa_gateway.db"))
     ap.add_argument("--commit", action="store_true")
     args = ap.parse_args(argv)
-    print(f"register Wave-1: {len(WAVE1)} entry points → orgs eos/ogi/bursar/registrar")
+    _orgs = ",".join(sorted({ep["org_slug"] for ep in WAVE1}))
+    print(f"register offices: {len(WAVE1)} entry points → orgs {_orgs}")
     if not args.commit:
         print("(dry run — pass --commit; a hardened backup is taken first)")
         return 0

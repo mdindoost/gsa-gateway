@@ -38,5 +38,6 @@ def test_register_is_idempotent(tmp_path):
         ensure_org(conn, slug="njit", name="NJIT", parent_slug=None, type="university")
         register(conn)
         register(conn)                              # second run must not duplicate
+    from scripts.register_office_seeds import WAVE1
     n = conn.execute("SELECT COUNT(*) c FROM crawl_entry_points").fetchone()["c"]
-    assert n == 7
+    assert n == len(WAVE1)                          # one row per registered office entry point
