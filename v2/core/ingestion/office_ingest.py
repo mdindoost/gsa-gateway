@@ -57,3 +57,27 @@ def ingest_office_page(conn: sqlite3.Connection, *, org_id: int, url: str, title
         "entry_point_id=excluded.entry_point_id, last_seen_at=datetime('now')",
         (url, entry_point_id, h))
     return n, leg
+
+
+def retire_404(conn, *, org_id, fetch, seen_urls):
+    """Deactivate office_page docs that are CONFIRMED gone (HTTP 404/410). Source/type-scoped.
+    NEVER retires on an empty crawl (seen_urls empty = transient failure) or a transport error
+    (status None). spec §4.5 [SE3]."""
+    if not seen_urls:
+        return {"checked": 0, "retired": 0}
+    existing = [r[0] for r in conn.execute(
+        "SELECT DISTINCT source_url FROM knowledge_items "
+        "WHERE type='office_page' AND created_by='crawler' AND org_id=? AND is_active=1 "
+        "AND source_url IS NOT NULL", (org_id,)).fetchall()]
+    checked = retired = 0
+    for url in existing:
+        if url in seen_urls:
+            continue                                    # just successfully crawled — alive
+        checked += 1
+        _html, status = fetch(url)
+        if status in (404, 410):
+            conn.execute("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
+                         "WHERE source_url=? AND type='office_page' AND created_by='crawler'", (url,))
+            conn.execute("DELETE FROM office_page_state WHERE url=?", (url,))
+            retired += 1
+    return {"checked": checked, "retired": retired}
