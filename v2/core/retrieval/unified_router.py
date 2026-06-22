@@ -103,10 +103,13 @@ class UnifiedRouter:
         top = ranked[0][0] if ranked else "RAG"
         if top == "KG":
             return self.resolve_kg(message)        # the inverse-FN guard is REMOVED (Task C3 deferred)
-        if top == "RAG":
+        if top in ("RAG", "CLARIFY"):
+            # Abstention is BUILT-but-OFF in Phase 1b, so a classifier CLARIFY must degrade to RAG
+            # (identical to today, never a rephrase prompt that reads worse). When abstention is
+            # wired later, CLARIFY becomes a deliberate outcome again. [flip-gate review 2026-06-22]
             return RouteDecision(family="RAG", source=self._rag_outcome(message),
                                  score=ranked[0][1])
         if top == "LIVE":
             return RouteDecision(family="LIVE", score=ranked[0][1])
-        # CLARIFY / OTHER / a COMMAND family from the classifier
+        # OTHER / a COMMAND family from the classifier
         return RouteDecision(family=top, score=(ranked[0][1] if ranked else None))

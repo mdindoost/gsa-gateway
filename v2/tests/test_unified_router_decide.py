@@ -32,3 +32,13 @@ def test_rag_top_becomes_general(monkeypatch):
     r = UnifiedRouter(":memory:", _Clf([("RAG", 0.9), ("KG", 0.1)]), IntentDetector())
     d = r.decide("what is the constitution about")
     assert d.family == "RAG" and d.source == "general"
+
+
+def test_clarify_top_degrades_to_rag(monkeypatch):
+    # Abstention is BUILT-but-OFF in Phase 1b, so a classifier CLARIFY must behave EXACTLY like
+    # RAG (never a rephrase prompt that's worse than today's RAG). [flip-gate review, 2026-06-22]
+    import v2.core.retrieval.router as sr
+    monkeypatch.setattr(sr, "route", lambda c, q: None)
+    r = UnifiedRouter(":memory:", _Clf([("CLARIFY", 0.9), ("RAG", 0.1)]), IntentDetector())
+    d = r.decide("what is the constitution about")
+    assert d.family == "RAG" and d.source == "general"
