@@ -78,6 +78,8 @@ class GSABot(commands.Bot):
         self.v2_worldcup_runner = None
         self.v2_fixtures_runner = None
         self._fixtures_conn = None
+        self.v2_failure_digest_runner = None
+        self._failure_digest_conn = None
         # Dashboard control plane — supervised child process (always-on backend)
         self.dashboard_proc = None
 
@@ -270,6 +272,47 @@ class GSABot(commands.Bot):
                             self._fixtures_conn.close()
                             self._fixtures_conn = None
                             self.v2_fixtures_runner = None
+
+            # Active failure digest (accuracy backlog #3) — admin-only push of 👎 + low-confidence.
+            failure_digest = os.getenv("FAILURE_DIGEST_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+            if failure_digest and self.v2_failure_digest_runner is None:
+                chan = os.getenv("FAILURE_DIGEST_CHANNEL", "").strip()
+                if not chan:
+                    # R4 privacy guard: the digest contains user questions — refuse to start without an
+                    # explicit admin channel (never fall back to default/student broadcast channels).
+                    logger.warning("FAILURE_DIGEST_ENABLED set but FAILURE_DIGEST_CHANNEL unset — "
+                                   "refusing to start (digest contains user questions; admin channel required)")
+                else:
+                    from v2.core.database.schema import get_connection
+                    from v2.core.publishing.sources import SourceRunner, platform_channels
+                    from v2.integration.failure_digest import FailureDigestSource
+                    org_slug = os.getenv("FAILURE_DIGEST_ORG_SLUG", "gsa")
+                    hour = int(os.getenv("FAILURE_DIGEST_HOUR_ET", "9"))
+                    period = int(os.getenv("FAILURE_DIGEST_PERIOD_DAYS", "1"))
+                    plats = [p.strip() for p in os.getenv("FAILURE_DIGEST_PLATFORMS", "").split(",") if p.strip()]
+                    self._failure_digest_conn = get_connection("gsa_gateway.db")
+                    row = self._failure_digest_conn.execute(
+                        "SELECT id FROM organizations WHERE slug=?", (org_slug,)).fetchone()
+                    if row is None:
+                        logger.warning("failure digest: org slug '%s' not found — skipping", org_slug)
+                        self._failure_digest_conn.close()
+                        self._failure_digest_conn = None
+                    else:
+                        try:
+                            source = FailureDigestSource(
+                                self._failure_digest_conn, org_id=row["id"],
+                                channels=plats or platform_channels(), discord_channel=chan,
+                                period_days=period, post_hour_et=hour)
+                            self.v2_failure_digest_runner = SourceRunner(
+                                self._failure_digest_conn, source, interval=3600)
+                            await self.v2_failure_digest_runner.start()
+                            logger.info("V2 failure digest active (channel #%s, %02d:00 ET, every %dd)",
+                                        chan, hour, period)
+                        except Exception:  # noqa: BLE001 - never let wiring crash startup
+                            logger.exception("failure digest runner failed to start")
+                            self._failure_digest_conn.close()
+                            self._failure_digest_conn = None
+                            self.v2_failure_digest_runner = None
         else:
             logger.info("V2 Scheduler disabled (default)")
 
@@ -310,6 +353,10 @@ class GSABot(commands.Bot):
             await self.v2_fixtures_runner.stop()
         if self._fixtures_conn:
             self._fixtures_conn.close()
+        if self.v2_failure_digest_runner:
+            await self.v2_failure_digest_runner.stop()
+        if self._failure_digest_conn:
+            self._failure_digest_conn.close()
         if self.v2_worldcup_runner:
             await self.v2_worldcup_runner.stop()
         if self.v2_scheduler_runner:
