@@ -131,6 +131,14 @@ class MessageHandler:
         if not clean_text:
             return MessageResponse(text="")
 
+        # ── Explicit "search njit for X" ──────────────────────────────────────
+        # The user literally asked to go to the live njit.edu site, so honor it directly —
+        # wins BEFORE the structured router AND the v2.1 router (they'd answer a different
+        # question). This deterministic trigger must precede the ACT branch — review F2.
+        explicit_topic = parse_explicit_live_search(clean_text)
+        if explicit_topic is not None:
+            return await self._answer_explicit_live(req, explicit_topic)
+
         # ── Kavosh v2.1 UnifiedRouter ─────────────────────────────────────────
         # ROUTER_V21 + SHADOW: compute the new decision and only LOG it (answer still comes
         #   from the existing flow until the flip gate).
@@ -151,13 +159,6 @@ class MessageHandler:
                 elif decision.family != "COMMAND":
                     return await self._answer_decision(req, decision)
                 # ACT + COMMAND → fall through to the legacy command/intent handling below
-
-        # ── Explicit "search njit for X" ──────────────────────────────────────
-        # The user literally asked to go to the live njit.edu site, so honor it directly —
-        # wins BEFORE the structured router and RAG (they'd answer a different question).
-        explicit_topic = parse_explicit_live_search(clean_text)
-        if explicit_topic is not None:
-            return await self._answer_explicit_live(req, explicit_topic)
 
         # ── Structured retrieval (enumerate/filter/traverse/count) ────────────
         # Tried BEFORE intent detection on purpose: phrasings like "list all CS
