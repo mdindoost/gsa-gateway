@@ -282,6 +282,24 @@ CREATE TABLE IF NOT EXISTS frontier (
 ) STRICT;
 """
 
+CRAWL_ENTRY_POINTS = """
+CREATE TABLE IF NOT EXISTS crawl_entry_points (
+    id              INTEGER PRIMARY KEY,
+    url             TEXT    NOT NULL UNIQUE,
+    scope_prefix    TEXT    NOT NULL DEFAULT '',
+    aspect          TEXT    NOT NULL DEFAULT 'office',
+    org_slug        TEXT,
+    parent_slug     TEXT,
+    org_type        TEXT    NOT NULL DEFAULT 'office',
+    status          TEXT    NOT NULL DEFAULT 'candidate',
+    source          TEXT    NOT NULL DEFAULT 'discovered',
+    discovered_from_url TEXT,
+    last_crawled_at TEXT,
+    crawl_interval_days INTEGER,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+) STRICT;
+"""
+
 PAGE_NODES = """
 CREATE TABLE IF NOT EXISTS page_nodes (
     raw_url   TEXT NOT NULL REFERENCES raw_pages(url),
@@ -490,6 +508,7 @@ _TABLE_DDL = [
     EDGES,
     FRONTIER,
     PAGE_NODES,
+    CRAWL_ENTRY_POINTS,
     JUDGING_EVENTS,
     JUDGING_JUDGES,
     JUDGING_PRESENTERS,
