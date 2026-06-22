@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Reusable eval: run eval/questions.txt through the REAL bot pipeline (KB + live fallback),
 # auto-judge accuracy, and print a coverage + accuracy + gaps report. Edit eval/questions.txt
-# to add questions. Pass-through args go to eval_run.py (e.g. --limit 20).
+# to add questions. Args pass through to BOTH eval_run (e.g. --limit 20) and eval_report (the gate).
 #
-#   bash scripts/eval.sh            # full run
-#   bash scripts/eval.sh --limit 20 # quick subset
+#   bash scripts/eval.sh                              # full run, report only
+#   bash scripts/eval.sh --limit 20                  # quick subset
+#   bash scripts/eval.sh --min-answered 90 --min-correct 80   # GATE: exit non-zero on regression
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PY=.venv/bin/python
@@ -21,4 +22,4 @@ $PY scripts/eval_judge.py
 echo ">> removing eval questions from analytics (id > $WM)..."
 $PY -c "from bot.config import config; from bot.services.database import Database; d=Database(config.database_path); d.connect(); d.conn.execute('DELETE FROM questions WHERE id > $WM'); d.conn.commit(); d.close()"
 
-$PY scripts/eval_report.py
+$PY scripts/eval_report.py "$@"

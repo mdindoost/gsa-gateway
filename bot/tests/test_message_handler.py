@@ -335,3 +335,65 @@ async def test_gsa_mode_still_uses_rag(mock_services):
     h = MessageHandler(**mock_services)
     await h.handle(MessageRequest(user_id="u1", text="what is the travel award?", platform="discord"))
     mock_services["retriever"].retrieve.assert_called()  # called once for curated + once for office tier on miss
+
+
+# ── Contextual follow-up resolution (accuracy backlog #2) — wiring integration ─
+def _rag_chunk():
+    c = MagicMock()
+    c.text = "Mark Cartwright is a professor in Informatics."
+    c.source_file = "x.md"; c.section_title = "Mark Cartwright"; c.relevance_score = 0.8
+    return c
+
+
+@pytest.mark.asyncio
+async def test_followup_resolved_query_reaches_retriever(handler, monkeypatch):
+    import bot.config as botcfg
+    monkeypatch.setattr(botcfg, "LIVE_ENABLED", False)  # sidestep the pre-existing live-block mock issue
+    handler.conversation_manager.get_mode = MagicMock(return_value="gsa")
+    handler.conversation_manager.get_history = MagicMock(return_value=[
+        {"role": "user", "content": "who is Mark Cartwright"},
+        {"role": "assistant", "content": "Mark Cartwright is a professor in Informatics."},
+    ])
+    handler.ollama = AsyncMock()
+    handler.ollama.rewrite_with_context = AsyncMock(return_value="what is Mark Cartwright's position")
+    handler.ollama.expand_query = AsyncMock(return_value=None)
+    handler.ollama.generate_answer = AsyncMock(return_value="He is a professor.")
+    handler.retriever.retrieve = AsyncMock(return_value=[_rag_chunk()])
+    handler.intent_detector.detect.return_value = (INTENT_QUESTION, 0.9)
+
+    await handler.handle(MessageRequest(user_id="u1", text="what is his position", platform="discord"))
+
+    handler.ollama.rewrite_with_context.assert_awaited_once()
+    assert "Cartwright" in str(handler.retriever.retrieve.call_args)   # retrieval used the RESOLVED query
+
+
+@pytest.mark.asyncio
+async def test_standalone_question_is_not_rewritten(handler, monkeypatch):
+    import bot.config as botcfg
+    monkeypatch.setattr(botcfg, "LIVE_ENABLED", False)
+    handler.conversation_manager.get_mode = MagicMock(return_value="gsa")
+    handler.conversation_manager.get_history = MagicMock(return_value=[{"role": "user", "content": "hi"}])
+    handler.ollama = AsyncMock()
+    handler.ollama.rewrite_with_context = AsyncMock(return_value="SHOULD NOT BE CALLED")
+    handler.ollama.expand_query = AsyncMock(return_value=None)
+    handler.ollama.generate_answer = AsyncMock(return_value="ans")
+    handler.retriever.retrieve = AsyncMock(return_value=[_rag_chunk()])
+    handler.intent_detector.detect.return_value = (INTENT_QUESTION, 0.9)
+
+    await handler.handle(MessageRequest(user_id="u1", text="who is the GSA president", platform="discord"))
+
+    handler.ollama.rewrite_with_context.assert_not_called()   # gate did not fire → zero LLM rewrite call
+
+
+@pytest.mark.asyncio
+async def test_free_mode_skips_rewrite(handler):
+    handler.conversation_manager.get_mode = MagicMock(return_value="free")
+    handler.conversation_manager.get_history = MagicMock(return_value=[
+        {"role": "user", "content": "who is Mark Cartwright"}])
+    handler.ollama = AsyncMock()
+    handler.ollama.rewrite_with_context = AsyncMock(return_value="x")
+    handler.ollama.generate = AsyncMock(return_value="free chat answer")
+
+    await handler.handle(MessageRequest(user_id="u1", text="what is his position", platform="discord"))
+
+    handler.ollama.rewrite_with_context.assert_not_called()   # free mode → no rewrite

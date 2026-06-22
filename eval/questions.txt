@@ -212,3 +212,17 @@ who is the parking director
 how do I contact the bursar
 where is the registrar office
 what does the office of global initiatives do
+# (NOTE: conversation follow-ups like "what is his position" are NOT eval lines — they need history to
+#  be meaningful and are covered by multi-turn unit fixtures in v2/tests/test_context_rewrite.py [RA4].)
+
+# real-traffic-failures (from 👎 + low-confidence — accuracy backlog #4; standalone-answerable only)
+How can I extend my PhD duration to 6 years?
+What is the timeline of a PhD student from application to graduation?
+What is lavender graduation at NJIT?
+When do December graduates walk at commencement?
+What is the Martin Tuchman School of Management?
+What are Ioannis Koutis's awards?
+What is Hai Phan's research area?
+Who are the faculty working on graph research?
+How do I register for the MMI Workshop?
+What upcoming workshops or seminars are in computer science at NJIT?
