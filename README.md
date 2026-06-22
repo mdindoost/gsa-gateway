@@ -224,9 +224,9 @@ The platform also includes the **AVA Judging system**.
 
 ## The name
 
-**GSA Gateway** is the product. **Kavosh** is the assistant — the one that actually answers you. Think *Claude → Opus*: GSA Gateway is the platform, Kavosh is who's talking, and "v2.x" is the version — people say "Kavosh v2.1" the way you'd say "Opus 4.1."
+**GSA Gateway** is the product. **Kavosh** is the assistant — the one that actually answers you.
 
-Each assistant has carried a Persian name:
+Each assistant has carried a name:
 
 | Generation | Name | Meaning | Status |
 |---|---|---|---|
