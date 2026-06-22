@@ -130,6 +130,11 @@ IDENTITY_PATTERNS = [
     r"what'?s your name",
     r"\byour name\b",
     r"tell me about yourself",
+    r"introduce yourself",          # backlog #7 — "Hi, introduce yourself thoroughly" was → statement → RAG
+    r"describe yourself",
+    r"tell me who you are",
+    # NOTE: "present yourself" deliberately NOT added — collides with the career question
+    # "how do I present yourself professionally" (review 2026-06-22).
     r"are you (an? )?(chatgpt|gpt|ai|bot|llm)",
     r"what model are you",
     r"which (llm|model)",
