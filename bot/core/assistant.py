@@ -122,8 +122,12 @@ async def build_assistant(config, db, kb, rate_limiter) -> Assistant:
     if botcfg.ROUTER_V21:
         from v2.core.retrieval.embedder import Embedder as V2Embedder
         try:
+            # Use the SAME db path the handler's structured path reads (db.db_path), so the
+            # classifier/masker + _route and _structured_from_route never query different DBs
+            # (e.g. when DATABASE_PATH is overridden) — review F5.
+            router_db_path = getattr(db, "db_path", None) or config.database_path
             unified_router = maybe_build_unified_router(
-                db_path="gsa_gateway.db", embedder=V2Embedder(), intent_detector=intent_detector)
+                db_path=router_db_path, embedder=V2Embedder(), intent_detector=intent_detector)
         except Exception:  # noqa: BLE001 - never block startup; router stays off on failure
             logger.exception("router-v21 build failed; falling back to legacy routing")
 
