@@ -52,11 +52,14 @@ class V2RetrieverShim:
         self._sem = asyncio.Semaphore(max_concurrency)  # serialize v2 sqlite access
 
     # ── v1 Retriever interface ────────────────────────────────────────────────
-    async def retrieve(self, query, conversation_history=None, source_type_filter=None, query_vec=None):
+    async def retrieve(self, query, conversation_history=None, source_type_filter=None,
+                       query_vec=None, item_types=None):
         # Retrieval uses the CURRENT question only. Conversation history is for
         # GENERATION context (Ollama, via message_handler) — prepending it here
         # pollutes the search query on topic switches (e.g. MMI → finances).
-        item_types = _FILTER_MAP.get(source_type_filter) if source_type_filter else None
+        # Explicit item_types wins; otherwise derive from source_type_filter via _FILTER_MAP.
+        if item_types is None and source_type_filter:
+            item_types = _FILTER_MAP.get(source_type_filter)
         async with self._sem:
             return await asyncio.to_thread(self._retrieve_sync, query, item_types, query_vec)
 
