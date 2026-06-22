@@ -140,6 +140,10 @@ config = load_config()
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 LIVE_ENABLED = os.getenv("LIVE_ENABLED", "1") == "1"
 LIVE_THRESHOLD = float(os.getenv("LIVE_THRESHOLD", "0.15"))
+# Office-tier (local prose fallback) relevance floor. The office prose corpus
+# (type='office_page') is consulted only on a primary KB miss, and only adopted when its best
+# chunk clears this floor — else fall through to the live njit.edu fallback. Default = LIVE_THRESHOLD.
+OFFICE_THRESHOLD = float(os.getenv("OFFICE_THRESHOLD", str(LIVE_THRESHOLD)))
 
 
 # --- Kavosh v2.1 unified router (Phase 1b) ---
