@@ -282,6 +282,9 @@ class GSABot(commands.Bot):
                     # explicit admin channel (never fall back to default/student broadcast channels).
                     logger.warning("FAILURE_DIGEST_ENABLED set but FAILURE_DIGEST_CHANNEL unset — "
                                    "refusing to start (digest contains user questions; admin channel required)")
+                elif not v2_sched:
+                    logger.warning("FAILURE_DIGEST_ENABLED set but V2_SCHEDULER_ENABLED is off — "
+                                   "digests would queue but never deliver; skipping")
                 else:
                     from v2.core.database.schema import get_connection
                     from v2.core.publishing.sources import SourceRunner, platform_channels
