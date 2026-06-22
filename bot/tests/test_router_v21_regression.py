@@ -7,8 +7,25 @@ import os
 import sqlite3
 import pytest
 
-pytestmark = pytest.mark.skipif(not os.path.exists("gsa_gateway.db"),
-                                reason="needs the live KG (read-only)")
+
+def _has_live_kg(path="gsa_gateway.db"):
+    """True only for a POPULATED KG — guards against the 0-byte gsa_gateway.db placeholder a git
+    worktree leaves behind (a bare os.path.exists would let these run against an empty DB and fail
+    spuriously with 'no such table')."""
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return False
+    try:
+        c = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            c.execute("SELECT 1 FROM organizations LIMIT 1")
+            return True
+        finally:
+            c.close()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+pytestmark = pytest.mark.skipif(not _has_live_kg(), reason="needs the live KG (read-only, populated)")
 
 CASES = [
     pytest.param("how do I become a dean", "RAG", id="become-dean"),       # no org+role match → None → RAG
