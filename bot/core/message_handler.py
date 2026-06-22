@@ -407,6 +407,12 @@ class MessageHandler:
         text = req.text.strip()
         fam = decision.family
         if fam == "KG":
+            # Free (general chat) mode skips the GSA structured path — the user wants the general
+            # LLM, so a KG decision degrades to the RAG pipeline (which handles free mode). Preserves
+            # the "free skips structured" invariant the legacy path enforces at handle(). [review F3]
+            mode = self.conversation_manager.get_mode(req.user_id) if self.conversation_manager else "gsa"
+            if mode == "free":
+                return await self._rag_pipeline(req, text, INTENT_QUESTION)
             try:
                 ran = await asyncio.to_thread(self._structured_from_route,
                                               decision.skill, decision.args)
