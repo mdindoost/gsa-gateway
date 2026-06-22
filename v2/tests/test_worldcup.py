@@ -45,11 +45,6 @@ def types(events):
     return [e["type"] for e in events]
 
 
-async def _no_previews():
-    """Stub for runner tests that exercise only the live-event path."""
-    return []
-
-
 def test_single_key(tmp_path, monkeypatch):
     monkeypatch.setattr(wt, "STATE_FILE", tmp_path / "s.json")
     t = wt.WorldCupTracker("solo")
@@ -166,7 +161,6 @@ def test_worldcup_runner_enqueues_a_post(monkeypatch, tmp_path):
         return [{"type": "goal", "match": {"id": 42}, "minute": 23,
                  "scoring_team": {"name": "Brazil"}}]
     runner.tracker.check_matches = fake_check
-    runner.tracker.check_previews = _no_previews
     # format_event is imported into the runner module's namespace; patch it there
     monkeypatch.setattr("v2.integration.worldcup_runner.format_event",
                         lambda ev: "GOOOOOAL Brazil 1-0")
@@ -201,7 +195,6 @@ def test_runner_posts_consecutive_free_tier_goals(monkeypatch, tmp_path):
     async def c1(): return [goal(1)]
     async def c2(): return [goal(2)]
     runner.tracker.check_matches = c1
-    runner.tracker.check_previews = _no_previews
     asyncio.run(runner._loop_once())
     runner.tracker.check_matches = c2
     asyncio.run(runner._loop_once())
@@ -254,18 +247,6 @@ def test_fetch_standings_keeps_only_grouped_blocks(tracker, monkeypatch):
     assert list(out) == ["GROUP_A"]
 
 
-def test_fetch_standings_normalizes_real_api_group_label(tracker, monkeypatch):
-    # The standings endpoint labels groups "Group H" but the matches endpoint (and
-    # match['group']) uses "GROUP_H". fetch_standings MUST key by the matches format
-    # so kickoff/preview lookups with match['group'] resolve. Real-API regression:
-    # the kick-off table was silently never appended because the keys didn't match.
-    async def fake_get(ep):
-        return {"standings": [{"group": "Group H", "table": [{"position": 1}]}]}
-    monkeypatch.setattr(tracker, "_get", fake_get)
-    out = asyncio.run(tracker.fetch_standings())
-    assert list(out) == ["GROUP_H"]                          # not "Group H"
-
-
 def _kickoff_runner(conn, tmp_path, monkeypatch, state_name):
     monkeypatch.setattr("v2.integration.worldcup_tracker.STATE_FILE", tmp_path / state_name)
     from v2.integration.worldcup_runner import WorldCupRunner
@@ -286,16 +267,35 @@ def _org_conn():
     return conn
 
 
-def test_kickoff_post_has_no_table_and_skips_standings(monkeypatch, tmp_path):
-    # The group table moved to the pre-match PREVIEW post; the kick-off post is now
-    # just the kick-off text and must NOT fetch standings or append a table.
+def test_kickoff_post_includes_group_standings(monkeypatch, tmp_path):
     conn = _org_conn()
     runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks1.json")
 
     async def fake_check():
         return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
     runner.tracker.check_matches = fake_check
-    runner.tracker.check_previews = _no_previews
+
+    async def fake_standings():
+        return {"GROUP_H": SAMPLE_ROWS}
+    runner.tracker.fetch_standings = fake_standings
+
+    asyncio.run(runner._loop_once())
+
+    rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
+    assert len(rows) == 1                                   # ONE combined post
+    content = rows[0]["content"]
+    assert "KICK-OFF" in content                            # kick-off text kept
+    assert "📊 **Group H**" in content                      # table appended
+    assert "1. Spain — 4 pts" in content
+
+
+def test_kickoff_knockout_has_no_table(monkeypatch, tmp_path):
+    conn = _org_conn()
+    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks2.json")
+
+    async def fake_check():
+        return [{"type": "kickoff", "match": {"id": 7}, "minute": 0}]   # no group
+    runner.tracker.check_matches = fake_check
 
     called = []
     async def track():
@@ -307,9 +307,51 @@ def test_kickoff_post_has_no_table_and_skips_standings(monkeypatch, tmp_path):
 
     rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
     assert len(rows) == 1
-    assert "KICK-OFF" in rows[0]["content"]                 # kick-off text kept
-    assert "📊" not in rows[0]["content"]                   # NO table on kick-off
-    assert called == []                                     # standings never fetched on kick-off
+    assert "📊" not in rows[0]["content"]
+    assert called == []                                    # standings never fetched
+
+
+def test_kickoff_standings_failure_degrades_to_plain(monkeypatch, tmp_path):
+    conn = _org_conn()
+    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks3.json")
+
+    async def fake_check():
+        return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
+    runner.tracker.check_matches = fake_check
+
+    async def boom():
+        raise RuntimeError("api down")
+    runner.tracker.fetch_standings = boom
+
+    asyncio.run(runner._loop_once())                       # must NOT raise
+
+    rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
+    assert len(rows) == 1                                   # kick-off still posts
+    assert "KICK-OFF" in rows[0]["content"]
+    assert "📊" not in rows[0]["content"]
+
+
+def test_kickoff_standings_toggle_off(monkeypatch, tmp_path):
+    monkeypatch.setenv("FOOTBALL_KICKOFF_STANDINGS", "false")   # read in __init__
+    conn = _org_conn()
+    runner = _kickoff_runner(conn, tmp_path, monkeypatch, "ks4.json")
+
+    async def fake_check():
+        return [{"type": "kickoff", "match": {"id": 7, "group": "GROUP_H"}, "minute": 0}]
+    runner.tracker.check_matches = fake_check
+
+    called = []
+    async def track():
+        called.append(1)
+        return {}
+    runner.tracker.fetch_standings = track
+
+    asyncio.run(runner._loop_once())
+
+    rows = conn.execute("SELECT * FROM posts WHERE type='worldcup'").fetchall()
+    assert len(rows) == 1
+    assert "📊" not in rows[0]["content"]
+    assert called == []
 
 
 def test_goal_event_does_not_fetch_standings(monkeypatch, tmp_path):
@@ -320,7 +362,6 @@ def test_goal_event_does_not_fetch_standings(monkeypatch, tmp_path):
         return [{"type": "goal", "match": {"id": 42}, "minute": 23,
                  "scoring_team": {"name": "Brazil"}}]
     runner.tracker.check_matches = fake_check
-    runner.tracker.check_previews = _no_previews
 
     called = []
     async def track():
@@ -331,134 +372,3 @@ def test_goal_event_does_not_fetch_standings(monkeypatch, tmp_path):
     asyncio.run(runner._loop_once())
 
     assert called == []                                    # only kick-offs fetch standings
-
-
-# ── pre-match preview (Phase B) ──────────────────────────────────────────────
-import datetime as _dt
-
-UTC = _dt.timezone.utc
-KO = "2026-06-22T01:00:00Z"          # kickoff; default 5-min window opens 2026-06-22T00:55Z
-
-
-def mkp(mid=900, utc=KO, status="TIMED", group="GROUP_G"):
-    return {"id": mid, "status": status, "utcDate": utc, "stage": "GROUP_STAGE",
-            "group": group, "homeTeam": {"id": 783, "name": "New Zealand"},
-            "awayTeam": {"id": 825, "name": "Egypt"}}
-
-
-def drive_prev(t, matches, now):
-    async def feed():
-        return matches
-    t.upcoming_for_preview = feed
-    return asyncio.run(t.check_previews(now=now))
-
-
-def test_upcoming_for_preview_uses_two_day_window_and_filters_status(tracker, monkeypatch):
-    seen = {}
-    async def fake_get(ep, *a, **k):
-        seen["ep"] = ep
-        return {"matches": [mkp(900, status="TIMED"), mkp(2, status="FINISHED"),
-                            mkp(3, status="SCHEDULED")]}
-    monkeypatch.setattr(tracker, "_get", fake_get)
-    res = asyncio.run(tracker.upcoming_for_preview())
-    assert "dateFrom=" in seen["ep"] and "dateTo=" in seen["ep"]
-    assert {m["id"] for m in res} == {900, 3}      # TIMED + SCHEDULED, not FINISHED
-
-
-def test_preview_fires_in_window(tracker):
-    now = _dt.datetime(2026, 6, 22, 0, 57, tzinfo=UTC)       # T-3, inside the 5-min window
-    assert types(drive_prev(tracker, [mkp()], now)) == ["preview"]
-
-
-def test_preview_not_before_window(tracker):
-    now = _dt.datetime(2026, 6, 22, 0, 50, tzinfo=UTC)       # T-10, before the 5-min window
-    assert drive_prev(tracker, [mkp()], now) == []
-
-
-def test_preview_not_after_kickoff(tracker):
-    now = _dt.datetime(2026, 6, 22, 1, 30, tzinfo=UTC)       # T+30, past kickoff
-    assert drive_prev(tracker, [mkp()], now) == []
-
-
-def test_preview_default_lead_is_5_minutes(tracker):
-    # No env override -> default lead is 5 min: fires at T-4, not at T-6.
-    assert types(drive_prev(tracker, [mkp()], _dt.datetime(2026, 6, 22, 0, 56, tzinfo=UTC))) == ["preview"]  # T-4
-    tracker.states.clear()
-    assert drive_prev(tracker, [mkp()], _dt.datetime(2026, 6, 22, 0, 54, tzinfo=UTC)) == []                  # T-6
-
-
-def test_preview_lead_is_configurable(tracker, monkeypatch):
-    monkeypatch.setenv("FOOTBALL_PREVIEW_LEAD_MIN", "90")
-    now = _dt.datetime(2026, 6, 22, 0, 0, tzinfo=UTC)        # T-60, inside a 90-min window
-    assert types(drive_prev(tracker, [mkp()], now)) == ["preview"]
-
-
-def test_preview_fires_once_only(tracker):
-    now = _dt.datetime(2026, 6, 22, 0, 57, tzinfo=UTC)
-    assert types(drive_prev(tracker, [mkp()], now)) == ["preview"]
-    assert drive_prev(tracker, [mkp()], now) == []           # second tick: already previewed
-
-
-def test_preview_toggle_off(tracker, monkeypatch):
-    monkeypatch.setenv("FOOTBALL_PREVIEW_ENABLED", "false")
-    now = _dt.datetime(2026, 6, 22, 0, 57, tzinfo=UTC)
-    assert drive_prev(tracker, [mkp()], now) == []
-
-
-def test_preview_fires_for_next_utc_day_kickoff(tracker):
-    # Kickoff 00:02Z is the *next* UTC calendar day vs the window moment (23:59Z the
-    # day before) — the trigger must still fire across the UTC-day boundary (B1).
-    now = _dt.datetime(2026, 6, 21, 23, 59, tzinfo=UTC)      # T-3, previous UTC day
-    assert types(drive_prev(tracker, [mkp(utc="2026-06-22T00:02:00Z")], now)) == ["preview"]
-
-
-def test_load_state_defaults_preview_announced(tmp_path, monkeypatch):
-    import json
-    sf = tmp_path / "s.json"
-    sf.write_text(json.dumps({"42": {                        # flag-less (pre-feature) state row
-        "match_id": 42, "home_team": "A", "away_team": "B", "home_score": 0,
-        "away_score": 0, "status": "scheduled", "minute": 0, "goals_announced": [],
-        "kickoff_announced": False, "halftime_announced": False,
-        "second_half_announced": False, "fulltime_announced": False,
-        "stage": "", "group": "", "utc_date": ""}}))
-    monkeypatch.setattr(wt, "STATE_FILE", sf)
-    t = wt.WorldCupTracker("k")
-    assert t.states[42].preview_announced is False           # defaulted, state NOT wiped
-
-
-def test_runner_enqueues_preview_post(monkeypatch, tmp_path):
-    monkeypatch.setattr("v2.integration.worldcup_tracker.STATE_FILE", tmp_path / "wcp.json")
-    from v2.integration.worldcup_runner import WorldCupRunner
-    conn = create_all(":memory:")
-    conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(2,'GSA','gsa','gsa')")
-    conn.commit()
-    runner = WorldCupRunner(registry=None, api_key="k", channel="world-cup-2026",
-                            db_path=":memory:", org_slug="gsa")
-    runner._conn = conn; runner.org_id = 2; runner.allowed = {"discord", "telegram"}
-
-    async def no_matches():
-        return []
-    async def one_preview():
-        return [{"type": "preview", "match": {
-            "id": 900, "group": "GROUP_G", "matchday": 2,
-            "utcDate": KO, "homeTeam": {"id": 783, "name": "New Zealand"},
-            "awayTeam": {"id": 825, "name": "Egypt"}}}]
-    async def standings():
-        return {"GROUP_G": [{"position": 1, "team": {"name": "New Zealand"},
-                             "points": 1, "goalDifference": 0}]}
-    runner.tracker.check_matches = no_matches
-    runner.tracker.check_previews = one_preview
-    runner.tracker.fetch_standings = standings
-
-    asyncio.run(runner._loop_once())
-    asyncio.run(runner._loop_once())   # second tick must NOT double-post (dedup)
-
-    rows = conn.execute(
-        "SELECT content, json_extract(metadata,'$._dedup_key') AS k, "
-        "json_extract(metadata,'$.event_type') AS et FROM posts WHERE type='worldcup'"
-    ).fetchall()
-    assert len(rows) == 1                                   # exactly one preview, deduped
-    assert "MATCH PREVIEW" in rows[0]["content"]
-    assert "📊 **Group G**" in rows[0]["content"]           # table present
-    assert rows[0]["k"] == "worldcup:900:preview"
-    assert rows[0]["et"] == "preview"

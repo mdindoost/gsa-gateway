@@ -174,13 +174,15 @@ def test_save_then_load_roundtrips_ledger(tmp_path):
     w1 = _w_with_state(tmp_path)
     w1._states[537336] = {"started": True, "score": (4, 0), "finished": False,
                           "half": 2, "pending_half": False,
-                          "score_updated": "2026-06-18T20:00:00Z", "correction_gen": 0}
+                          "score_updated": "2026-06-18T20:00:00Z", "correction_gen": 0,
+                          "preview_posted": True}
     w1.save_states()
     w2 = _w_with_state(tmp_path)
     w2.load_states()
     assert w2._states[537336] == {"started": True, "score": (4, 0), "finished": False,
                                   "half": 2, "pending_half": False,
-                                  "score_updated": "2026-06-18T20:00:00Z", "correction_gen": 0}
+                                  "score_updated": "2026-06-18T20:00:00Z", "correction_gen": 0,
+                                  "preview_posted": True}
 
 
 def test_match_state_returns_fresh_for_unknown_match(tmp_path):
@@ -188,7 +190,8 @@ def test_match_state_returns_fresh_for_unknown_match(tmp_path):
     st = w._match_state(99)
     assert st == {"started": False, "score": (0, 0), "finished": False,
                   "half": 1, "pending_half": False,
-                  "score_updated": None, "correction_gen": 0}
+                  "score_updated": None, "correction_gen": 0,
+                  "preview_posted": False}
     assert w._states[99] is st        # registered so a later save persists it
 
 
@@ -434,3 +437,86 @@ def test_catch_none_when_all_stale(monkeypatch):
     m = asyncio.run(watcher._catch(42, "2026-06-11"))
     assert m is None
     assert len(n) == 6 + 12        # 6 primary + 12 burst, all stale
+
+
+# ── pre-match preview (matchup + group table at T-5) ─────────────────────────
+from v2.core.database.schema import create_all   # noqa: E402
+
+
+def _conn_org():
+    conn = create_all(":memory:")
+    conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(2,'GSA','gsa','gsa')")
+    conn.commit()
+    return conn
+
+
+def _preview_match():
+    return {"id": 7, "group": "GROUP_H", "matchday": 2,
+            "utcDate": "2026-06-11T19:00:00Z",
+            "homeTeam": {"id": 1, "name": "Spain"}, "awayTeam": {"id": 2, "name": "Uruguay"}}
+
+
+PREVIEW_ROWS = [
+    {"position": 1, "team": {"name": "Spain"}, "points": 4, "goalDifference": 4},
+    {"position": 2, "team": {"name": "Uruguay"}, "points": 1, "goalDifference": -1},
+]
+
+
+def test_fresh_ledger_and_normalize_have_preview_posted():
+    assert MatchWatcher._fresh_ledger()["preview_posted"] is False
+    # a pre-feature record (no preview_posted) normalizes to False, never KeyErrors
+    assert MatchWatcher._normalize({"started": True})["preview_posted"] is False
+
+
+def test_fetch_standings_normalizes_group_key(monkeypatch):
+    mw = w()
+    async def fake_get(key, url):
+        assert url.endswith("/competitions/WC/standings")
+        return {"standings": [{"group": "Group H", "table": [{"position": 1}]},
+                              {"group": None, "table": [{"position": 1}]}]}   # knockout dropped
+    monkeypatch.setattr(mw, "_get", fake_get)
+    out = asyncio.run(mw._fetch_standings("k"))
+    assert list(out) == ["GROUP_H"]                 # "Group H" -> matches-format "GROUP_H"
+
+
+def test_post_preview_enqueues_table_once(monkeypatch):
+    mw = w(); mw._conn = _conn_org(); mw.org_id = 2
+    async def fake_match(key, mid, day):
+        return _preview_match()
+    async def fake_standings(key):
+        return {"GROUP_H": PREVIEW_ROWS}
+    monkeypatch.setattr(mw, "_fetch_match", fake_match)
+    monkeypatch.setattr(mw, "_fetch_standings", fake_standings)
+
+    assert asyncio.run(mw._post_preview(7, "2026-06-11", None)) is True
+    assert asyncio.run(mw._post_preview(7, "2026-06-11", None)) is True   # dedup at posts layer
+
+    rows = mw._conn.execute(
+        "SELECT content, json_extract(metadata,'$._dedup_key') AS k, "
+        "json_extract(metadata,'$.event_type') AS et FROM posts WHERE type='worldcup'"
+    ).fetchall()
+    assert len(rows) == 1                            # one preview, deduped
+    assert "MATCH PREVIEW" in rows[0]["content"]
+    assert "📊 **Group H**" in rows[0]["content"]    # the group table
+    assert "Spain vs" in rows[0]["content"]
+    assert rows[0]["k"] == "worldcup:7:preview"
+    assert rows[0]["et"] == "preview"
+
+
+def test_post_preview_toggle_off(monkeypatch):
+    monkeypatch.setenv("FOOTBALL_PREVIEW_ENABLED", "false")
+    mw = w(); mw._conn = _conn_org(); mw.org_id = 2
+    async def boom(*a, **k):
+        raise AssertionError("must not fetch when disabled")
+    monkeypatch.setattr(mw, "_fetch_match", boom)
+    assert asyncio.run(mw._post_preview(7, "2026-06-11", None)) is False
+    assert mw._conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0] == 0
+
+
+def test_post_preview_skipped_when_match_unavailable(monkeypatch):
+    mw = w(); mw._conn = _conn_org(); mw.org_id = 2
+    async def no_match(key, mid, day):
+        return None
+    monkeypatch.setattr(mw, "_fetch_match", no_match)
+    assert asyncio.run(mw._post_preview(7, "2026-06-11", None)) is False
+    assert mw._conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0] == 0

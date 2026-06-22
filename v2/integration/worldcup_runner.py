@@ -17,9 +17,7 @@ import os
 
 from v2.core.database.schema import get_connection
 from v2.core.publishing.sources import PostDraft, EnqueueError, enqueue_post, platform_channels
-from v2.integration.worldcup_tracker import WorldCupTracker, format_event
-from v2.integration.match_preview import build_match_preview
-from v2.integration.daily_fixtures import _kickoff_et
+from v2.integration.worldcup_tracker import WorldCupTracker, format_event, format_standings
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +31,9 @@ class WorldCupRunner:
         self.db_path = db_path
         self.org_slug = org_slug
         self.interval = interval
-        # The group table is shown in the pre-match PREVIEW post (see _enqueue_previews),
-        # not on kick-off, so the two don't duplicate it.
+        # On a group-stage kick-off, append that group's table to the kick-off post
+        # (one combined post). Default on; FOOTBALL_KICKOFF_STANDINGS=false disables.
+        self.kickoff_standings = os.getenv("FOOTBALL_KICKOFF_STANDINGS", "true").lower() != "false"
         self._conn = None
         self.org_id = None
         self.allowed = set(platform_channels())
@@ -88,7 +87,18 @@ class WorldCupRunner:
             # disambiguate same-key events within one tick (e.g. two goals that
             # land on the same scoreline in a single poll) so none are dropped
             dedup_key = base_key if seen_keys[base_key] == 1 else f"{base_key}#{seen_keys[base_key]}"
+            # On a group-stage kick-off, append that group's table to the SAME post.
+            # Failure-isolated: any standings error degrades to the plain kick-off
+            # post (content is assigned before the try); knockout matches (no group)
+            # and the toggle-off case fall through untouched.
             content = format_event(ev)
+            if ev_type == "kickoff" and match.get("group") and self.kickoff_standings:
+                try:
+                    table = (await self.tracker.fetch_standings()).get(match["group"])
+                    if table:
+                        content = content + "\n\n" + format_standings(match["group"], table)
+                except Exception:  # noqa: BLE001 - never let standings break the kick-off post
+                    logger.exception("World Cup: kickoff standings failed; posting plain kick-off")
             draft = PostDraft(
                 org_id=self.org_id,
                 content=content,
@@ -104,55 +114,9 @@ class WorldCupRunner:
                 enqueued += 1
             except EnqueueError as exc:
                 logger.warning("World Cup: dropped invalid event draft: %s", exc)
-        enqueued += await self._enqueue_previews()
         if enqueued:
             logger.info("V2 World Cup: enqueued %d post(s)", enqueued)
         return enqueued
-
-    async def _enqueue_previews(self) -> int:
-        """Pre-match previews (squads + coaches + head-to-head ~90 min before kickoff).
-
-        Separate fetch window from the live events; fully failure-isolated so a bad
-        preview never affects live scoring. The persisted ``posts`` dedup row
-        (``{id}:preview``) is the durable once-per-match guard."""
-        enqueued = 0
-        try:
-            previews = await self.tracker.check_previews()
-        except Exception:  # noqa: BLE001 - previews must never break the tick
-            logger.exception("World Cup: check_previews failed")
-            return 0
-        for pv in previews:
-            match = pv.get("match") or {}
-            try:
-                content = await self._build_preview(match)
-            except Exception:  # noqa: BLE001 - one bad preview must not stop the rest
-                logger.exception("World Cup: building preview failed for %s", match.get("id"))
-                continue
-            if not content:
-                continue
-            draft = PostDraft(
-                org_id=self.org_id,
-                content=content,
-                type="worldcup",
-                channels=[c for c in platform_channels() if c in self.allowed],
-                discord_channel=self.channel,
-                source_type="worldcup",
-                dedup_key=f"{match.get('id')}:preview",
-                metadata={"event_type": "preview"},
-            )
-            try:
-                enqueue_post(self._conn, draft, allowed_channels=self.allowed)
-                enqueued += 1
-            except EnqueueError as exc:
-                logger.warning("World Cup: dropped invalid preview draft: %s", exc)
-        return enqueued
-
-    async def _build_preview(self, match: dict) -> str:
-        """Gather the preview's inputs (group standings + kickoff time) and render
-        via the pure ``build_match_preview`` formatter."""
-        rows = (await self.tracker.fetch_standings()).get(match.get("group") or "", [])
-        kickoff_et = _kickoff_et(match.get("utcDate", ""))
-        return build_match_preview(match, rows, kickoff_et)
 
     async def _loop(self):
         while self._running:
