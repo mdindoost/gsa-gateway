@@ -128,7 +128,17 @@ During a crawl, links that look like *other office hubs* (heuristic: a section r
 They complement; an office page contributes prose to the KB while any people on it are still handled by the people-crawler. No double-ownership (different aspects, different targets).
 
 ## 6. Scope phases
-- **Phase 1 (this spec):** office/service hubs on `www.njit.edu`. Starter set (candidate): `/global/`, `/parking/` (EOS), `/registrar/` (deepen), `/bursar/`, `/dining/` (or the vendor), `/studentlife/`, library services, `/ist/` (IT), recreation/WEC, financial aid, career development. Each a registered `aspect="office"` entry point.
+- **Phase 1 (this spec):** office/service hubs on `www.njit.edu`, each a registered `aspect="office"`
+  entry point. **Starter set resolved in two waves (D5, owner 2026-06-22):**
+  - **Wave 1 (prove the system + biggest wins):** **`/parking/` (EOS), `/global/` (OGI), `/bursar/`,
+    `/registrar/` (deepen).** Chosen to exercise every risky path on a small high-value set —
+    multisite/multi-prefix (parking), high-stakes extract-only (global/bursar/registrar), and the
+    dilution tier. Parking is **entry-point #1** (recon ready — see the `feat/eos-parking-knowledge`
+    branch + its reconciliation note).
+  - **Wave 2 (after Wave 1 verifies in chat):** `/ist/` (IT), `/studentlife/`, recreation/WEC,
+    financial aid, career development — plus **dining + library services ONLY if each has a real
+    `www.njit.edu` hub** (vendor/subdomain hosts → Phase 2). Each Wave-2 hub URL is confirmed
+    `www.njit.edu` at build time before it's registered.
 - **Phase 2 (future, designed-for):** extend the registry to **all `*.njit.edu` subdomains** (the full mirror, [[project_full_njit_mirror]]) — same registry, same crawl, same tier; self-extension discovers subdomains. No re-architecture, just scale + a subdomain-discovery seed.
 
 ## 7. Anti-fabrication / quality
@@ -142,7 +152,10 @@ They complement; an office page contributes prose to the KB while any people on 
 - **D2 — tier mechanism:** ✅ **dedicated `office_page` type + "primary-miss → office-fallback"** (separate tier; no dilution).
 - **D3 — self-extension activation:** ✅ **gated** — discovered hubs land as `candidate` rows; owner/gated job activates.
 - **D4 — recurrence cadence:** **OWNER-CONFIGURABLE** — `crawl_interval_days` is a per-entry-point setting Mohammad sets; the build exposes it (default left blank/owner-set), not hardcoded. Job is dashboard-triggerable + schedulable.
-- **D5 — Phase-1 starter office set:** PENDING owner confirm/trim — see §6 proposed list.
+- **D5 — Phase-1 starter office set:** ✅ **RESOLVED (owner, 2026-06-22) — two waves (see §6).**
+  Wave 1 = **parking/EOS, global/OGI, bursar, registrar (deepen)** (covers multisite + high-stakes
+  extract-only + dilution-tier on a small high-value set; parking = entry-point #1, recon ready).
+  Wave 2 = IT/student-life/rec/financial-aid/career (+ dining/library iff a `www.njit.edu` hub).
 
 ## 9. Risks
 - **Corpus dilution** — mitigated by the separate tier (§4.4); the single most important thing to get right.
@@ -162,8 +175,10 @@ They complement; an office page contributes prose to the KB while any people on 
       (`is_live=False`, `attempted_live=False`) — [RA6]
 - [ ] Recurring change-detected re-crawl (gated job + CLI), owner-set `crawl_interval` — [D4]
 - [ ] Self-extension: discovered hubs → `candidate` rows (gated activation)
-- [ ] Phase-1 starter offices harvested + verified in chat (parking, global, dining, …); OPT/CPT/parking Qs
-      added to `eval/questions.txt` **as a gate, not a footnote** — [RA3]
+- [ ] Phase-1 **Wave 1** offices harvested + verified in chat (**parking/EOS, global/OGI, bursar,
+      registrar-deepen**); OPT/CPT + parking Qs added to `eval/questions.txt` **as a gate, not a
+      footnote** — [RA3, D5]. Wave 2 (IT/student-life/rec/fin-aid/career, +dining/library iff www hub)
+      after Wave 1 verifies.
 - [ ] (DEFERRED, flagged) Phase 2 = full `*.njit.edu` subdomain mirror; people entry-point migration
 
 ---
