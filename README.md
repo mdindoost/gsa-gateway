@@ -224,14 +224,14 @@ The platform also includes the **AVA Judging system**.
 
 ## The name
 
-*GSA Gateway* is the product; each generation of the assistant carries a Persian codename.
+**GSA Gateway** is the product. **Kavosh** is the assistant — the one that actually answers you. Think *Claude → Opus*: GSA Gateway is the platform, Kavosh is who's talking, and "v2.x" is the version — people say "Kavosh v2.1" the way you'd say "Opus 4.1."
 
-| Generation | Codename | Meaning | Status |
+Each assistant has carried a Persian name:
+
+| Generation | Name | Meaning | Status |
 |---|---|---|---|
 | v1 | **Binesh** (بینش) | "insight" | retired June 2026 |
 | v2 | **Kavosh** (کاوش) | "exploration / discovery" | **current — v2.1** |
-
-In everyday use it's just **GSA Gateway**. *Kavosh* is the internal name for the current generation — so "Kavosh v2.x" in the technical sections just means today's version of the brain.
 
 ---
 
