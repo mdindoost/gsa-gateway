@@ -56,7 +56,7 @@ async def main() -> None:
     ap.add_argument("--questions", default=str(REPO / "eval" / "questions.txt"))
     ap.add_argument("--out", default=str(REPO / "eval" / "results.jsonl"))
     ap.add_argument("--limit", type=int, default=0)
-    args = ap.parse_args()
+    args, _ = ap.parse_known_args()   # tolerate eval_report's gate flags (--min-answered/--min-correct)
 
     qs = load_questions(args.questions)
     if args.limit:
