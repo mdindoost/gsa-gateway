@@ -619,23 +619,34 @@ class MessageHandler:
                     source_type_filter=contact_filter,
                 )
 
-            # KB miss -> live njit.edu fallback (grounded, extractive). Fires when there is no
-            # usable KB chunk OR the best chunk's reranker relevance is below threshold. No-ops
-            # without a Brave key; LIVE_ENABLED=0 disables it (kill-switch). See live_fallback.py.
+            # Primary miss → LOCAL office tier BEFORE the live njit.edu fallback (precedence
+            # ladder). "primary miss" reuses the existing signal: no usable chunk OR best
+            # reranked relevance < LIVE_THRESHOLD. The office prose corpus (type='office_page',
+            # excluded from the primary retrieve) is searched in ISOLATION and adopted only when
+            # its OWN floor (OFFICE_THRESHOLD) is cleared — else we fall through to live.
             used_live = False
-            attempted_live = False   # auto-fire ran this turn (regardless of result)
-            is_canned_deflection = False   # tag-at-source: our own "no info" reply
-            if botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY and self.ollama and self.retriever:
-                relevance = self.retriever.top_relevance(clean_text, chunks) if chunks else None
-                if (not chunks) or (relevance is not None and relevance < botcfg.LIVE_THRESHOLD):
-                    attempted_live = True
-                    live = await self.live_search(clean_text)   # single seam (provider wiring + gate)
-                    if live is not None:
-                        response_text = live.text
-                        source_note = live.source_url
-                        used_ai = True
-                        used_live = True
-                        logger.info("live njit.edu fallback answered from %s", live.source_url)
+            used_office = False
+            attempted_live = False
+            is_canned_deflection = False
+            relevance = self.retriever.top_relevance(clean_text, chunks) if (self.retriever and chunks) else None
+            primary_miss = (not chunks) or (relevance is not None and relevance < botcfg.LIVE_THRESHOLD)
+            if primary_miss and self.retriever:
+                office_chunks = await self.retriever.retrieve(
+                    query=search_query, conversation_history=history, item_types=["office_page"])
+                office_rel = self.retriever.top_relevance(clean_text, office_chunks) if office_chunks else None
+                if office_chunks and office_rel is not None and office_rel >= botcfg.OFFICE_THRESHOLD:
+                    chunks = office_chunks            # generate from local office prose (KB)
+                    used_office = True
+            if (primary_miss and not used_office and botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
+                    and self.ollama and self.retriever):
+                attempted_live = True
+                live = await self.live_search(clean_text)   # single seam (provider wiring + gate)
+                if live is not None:
+                    response_text = live.text
+                    source_note = live.source_url
+                    used_ai = True
+                    used_live = True
+                    logger.info("live njit.edu fallback answered from %s", live.source_url)
 
             # Generate
             if used_live:
@@ -676,6 +687,11 @@ class MessageHandler:
                     "- Use /contact to find the right officer"
                 )
                 is_canned_deflection = True
+
+            # Office answers surface the authoritative njit.edu page as the verify-link (RA6),
+            # mirroring the live-fallback's source_url note.
+            if used_office and chunks:
+                source_note = getattr(chunks[0], "source_url", None) or source_note
 
             # Deflection offer (offer-only — NEVER auto-fire). Detect a confident deflection:
             # tag-at-source (the canned no-info branch above) OR a narrow phrase-match on the

@@ -30,8 +30,12 @@ def mock_services():
     config = MagicMock()
     config.conversation_max_turns = 5
 
+    retriever = AsyncMock()
+    # top_relevance is synchronous — prevent AsyncMock from wrapping it as a coroutine
+    retriever.top_relevance = MagicMock(return_value=0.9)
+
     return {
-        "retriever": AsyncMock(),
+        "retriever": retriever,
         "ollama": None,
         "conversation_manager": conversation_manager,
         "intent_detector": intent_detector,
@@ -330,4 +334,4 @@ async def test_gsa_mode_still_uses_rag(mock_services):
     mock_services["intent_detector"].detect.return_value = (INTENT_QUESTION, 0.9)
     h = MessageHandler(**mock_services)
     await h.handle(MessageRequest(user_id="u1", text="what is the travel award?", platform="discord"))
-    mock_services["retriever"].retrieve.assert_called_once()
+    mock_services["retriever"].retrieve.assert_called()  # called once for curated + once for office tier on miss
