@@ -88,6 +88,7 @@ class MatchState:
     stage: str
     group: str
     utc_date: str
+    preview_announced: bool = False
 
 
 def flag(name: str) -> str:
@@ -115,6 +116,10 @@ class WorldCupTracker:
         # free tier returns no goals array, so calling it on every score change
         # just burns the rate-limit budget. Off by default — flip on if upgraded.
         self.unfold_goals = os.getenv("FOOTBALL_UNFOLD_GOALS", "false").lower() == "true"
+        # Squad/coach roster (/competitions/WC/teams) — memoized for the process
+        # lifetime, but ONLY a successful, non-empty result is cached (a flaky {}
+        # must not permanently zero out previews). name -> team entry.
+        self._teams_cache: dict[str, dict] = {}
         self.load_state()
 
     def _next_headers(self, extra: dict | None = None) -> dict:
@@ -218,7 +223,8 @@ class WorldCupTracker:
                     halftime_announced=f.get("halftime_announced", False),
                     second_half_announced=f.get("second_half_announced", False),
                     fulltime_announced=f.get("fulltime_announced", False),
-                    stage=f.get("stage", ""), group=f.get("group", ""), utc_date=f.get("utc_date", ""))
+                    stage=f.get("stage", ""), group=f.get("group", ""), utc_date=f.get("utc_date", ""),
+                    preview_announced=f.get("preview_announced", False))
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             logger.warning("Could not load worldcup state: %s", exc)
             self.states = {}
@@ -312,10 +318,79 @@ class WorldCupTracker:
                 kickoff_announced=kickoff_announced, halftime_announced=halftime_announced,
                 second_half_announced=second_half_announced, fulltime_announced=fulltime_announced,
                 stage=match.get("stage", ""), group=match.get("group", "") or "",
-                utc_date=match.get("utcDate", ""))
+                utc_date=match.get("utcDate", ""),
+                preview_announced=prev.preview_announced if prev else False)
 
         self.save_state()
         return events
+
+    # ── pre-match preview (separate window + trigger) ──────────────────────────
+    async def upcoming_for_preview(self) -> list[dict]:
+        """TIMED/SCHEDULED matches over a 2-day UTC window [today, today+1].
+
+        The preview fires ~90 min BEFORE kickoff, and a US-evening kickoff has its
+        ``utcDate`` on the NEXT UTC day — so this canNOT ride on ``get_todays_matches``
+        (today-only). Same dateFrom/dateTo window ``daily_fixtures.fetch_fixtures`` uses."""
+        today = datetime.date.today()
+        nxt = today + datetime.timedelta(days=1)
+        data = await self._get(
+            f"/competitions/WC/matches?dateFrom={today.isoformat()}&dateTo={nxt.isoformat()}")
+        return [m for m in data.get("matches", []) if m.get("status") in ("TIMED", "SCHEDULED")]
+
+    async def check_previews(self, now: datetime.datetime | None = None) -> list[dict]:
+        """Emit a one-time ``preview`` event per match in the [kickoff-LEAD, kickoff)
+        window. Gated by ``FOOTBALL_PREVIEW_ENABLED`` (default on); lead minutes from
+        ``FOOTBALL_PREVIEW_LEAD_MIN`` (default 90). Fires once via ``preview_announced``;
+        the durable once-guard is the runner's persisted ``posts`` dedup row."""
+        if os.getenv("FOOTBALL_PREVIEW_ENABLED", "true").lower() == "false":
+            return []
+        lead = int(os.getenv("FOOTBALL_PREVIEW_LEAD_MIN", "90"))
+        now = now or datetime.datetime.now(datetime.timezone.utc)
+        events: list[dict] = []
+        for m in await self.upcoming_for_preview():
+            mid = m.get("id")
+            prev = self.states.get(mid)
+            if prev and prev.preview_announced:
+                continue
+            try:
+                kickoff = datetime.datetime.fromisoformat(
+                    (m.get("utcDate") or "").replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+            if kickoff - datetime.timedelta(minutes=lead) <= now < kickoff:
+                events.append({"type": "preview", "match": m})
+                self._mark_previewed(m)
+        if events:
+            self.save_state()
+        return events
+
+    def _mark_previewed(self, m: dict) -> None:
+        mid = m["id"]
+        prev = self.states.get(mid)
+        if prev:
+            prev.preview_announced = True
+        else:
+            self.states[mid] = MatchState(
+                match_id=mid, home_team=m["homeTeam"]["name"], away_team=m["awayTeam"]["name"],
+                home_score=0, away_score=0, status="scheduled", minute=0, goals_announced=[],
+                kickoff_announced=False, halftime_announced=False, second_half_announced=False,
+                fulltime_announced=False, stage=m.get("stage", ""), group=m.get("group", "") or "",
+                utc_date=m.get("utcDate", ""), preview_announced=True)
+
+    async def fetch_teams(self) -> dict[str, dict]:
+        """name -> /competitions/WC/teams entry (squad + coach). Memoized on first
+        SUCCESS only — a flaky {} is returned but NOT cached, so the next call retries."""
+        if self._teams_cache:
+            return self._teams_cache
+        data = await self._get("/competitions/WC/teams")
+        teams = {t["name"]: t for t in data.get("teams", []) if t.get("name")}
+        if teams:
+            self._teams_cache = teams
+        return teams
+
+    async def fetch_h2h(self, match_id: int) -> dict:
+        """Raw /matches/{id}/head2head payload ({} on any error — never raises)."""
+        return await self._get(f"/matches/{match_id}/head2head")
 
 
 # ── unified rich-text formatting (one message, both platforms) ───────────────
