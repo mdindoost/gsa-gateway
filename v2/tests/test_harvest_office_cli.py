@@ -29,6 +29,7 @@ def test_harvest_chunks_generic_and_stages_high_stakes(tmp_path):
         stats = harvest_entry_point(conn, row, _fetch, budget=10, depth=2)
     assert stats["pages"] >= 2
     assert stats["staged"] >= 1                       # the $-fees page staged
+    assert "retired" in stats and "candidates" in stats and "unchanged" in stats
     live = conn.execute("SELECT COUNT(*) c FROM knowledge_items "
                         "WHERE type='office_page' AND is_active=1").fetchone()["c"]
     assert live >= 1                                  # the visitor page is live

@@ -15,13 +15,15 @@ from scripts._area_tag_migrate import hardened_backup
 from v2.core.database.schema import get_connection
 from v2.core.graph.orgs import sync_org_nodes
 from v2.core.ingestion import entry_point_store as eps
-from v2.core.ingestion.office_ingest import ingest_office_page
+from v2.core.ingestion.office_ingest import (
+    discover_candidate_hubs, ingest_office_page, retire_404)
 from v2.core.ingestion.office_quality import dedup_boilerplate, is_low_quality
 from v2.core.ingestion.web_crawler import crawl_site, fetch_with_status
 
 
 def harvest_entry_point(conn, ep_row, fetch, *, budget: int = 60, depth: int = 3) -> dict:
-    """Crawl one entry point's sub-tree, quality-gate, ingest. fetch(url)->(html|None,status)."""
+    """Crawl one entry point: crawl_site → quality gate → change-detected ingest → retire 404s →
+    discover candidate hubs. fetch(url)->(html|None,status)."""
     seed = ep_row["url"]
     res = crawl_site(seed, lambda u: fetch(u)[0], max_depth=depth, budget=budget,
                      relevance_gated=False)
@@ -30,14 +32,26 @@ def harvest_entry_point(conn, ep_row, fetch, *, budget: int = 60, depth: int = 3
     if not row:
         raise ValueError(f"org slug {ep_row['org_slug']!r} not found — create the office org before harvesting it")
     org_id = row[0]
-    stats = {"pages": len(pages), "chunked": 0, "staged": 0, "dropped": 0}
+    stats = {"pages": len(pages), "chunk": 0, "staged": 0, "unchanged": 0, "dropped": 0,
+             "retired": 0, "candidates": 0}
+    seen_urls: set[str] = set()
     for url, text in pages:
         if is_low_quality(text):
             stats["dropped"] += 1
             continue
+        seen_urls.add(url)
         title = (text.splitlines()[0][:80] if text.strip() else url)
-        n, leg = ingest_office_page(conn, org_id=org_id, url=url, title=title, text=text)
-        stats["chunked" if leg == "chunk" else "staged"] += 1
+        _n, leg = ingest_office_page(conn, org_id=org_id, url=url, title=title, text=text,
+                                     entry_point_id=ep_row["id"])
+        stats[leg] += 1                                  # 'chunk' | 'staged' | 'unchanged'
+    stats["retired"] = retire_404(conn, org_id=org_id, fetch=fetch, seen_urls=seen_urls)["retired"]
+    # self-extension: classify the hub's outbound links into candidate office hubs (gated)
+    hub_html, _ = fetch(seed)
+    if hub_html:
+        registered = {r[0] for r in conn.execute("SELECT url FROM crawl_entry_points").fetchall()}
+        for cand in discover_candidate_hubs(seed, hub_html, registered):
+            eps.upsert_candidate(conn, url=cand, discovered_from_url=seed)
+            stats["candidates"] += 1
     eps.mark_crawled(conn, ep_row["id"])
     sync_org_nodes(conn)
     return stats
