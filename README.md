@@ -222,6 +222,19 @@ The platform also includes the **AVA Judging system**.
 
 ---
 
+## The name
+
+*GSA Gateway* is the product; each generation of the assistant carries a Persian codename.
+
+| Generation | Codename | Meaning | Status |
+|---|---|---|---|
+| v1 | **Binesh** (بینش) | "insight" | retired June 2026 |
+| v2 | **Kavosh** (کاوش) | "exploration / discovery" | **current — v2.1** |
+
+Brand first, codename second — students just say "GSA Gateway"; "Kavosh v2.x" in the technical sections refers to the current generation of the retrieval brain.
+
+---
+
 ## Maintainer
 
 Built and maintained by **Mohammad Dindoost** — VP Academic Affairs, NJIT Graduate Student Association.
