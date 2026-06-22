@@ -1,4 +1,4 @@
-import asyncio
+import pytest
 from unittest.mock import MagicMock, patch
 from bot.core.message_handler import MessageHandler, MessageRequest
 
@@ -11,7 +11,8 @@ def _handler(unified):
     return h
 
 
-def test_shadow_logs_but_does_not_change_answer(monkeypatch):
+@pytest.mark.asyncio
+async def test_shadow_logs_but_does_not_change_answer(monkeypatch):
     monkeypatch.setattr("bot.config.ROUTER_V21", True, raising=False)
     monkeypatch.setattr("bot.config.ROUTER_V21_SHADOW", True, raising=False)
     unified = MagicMock()
@@ -24,8 +25,8 @@ def test_shadow_logs_but_does_not_change_answer(monkeypatch):
         h.conversation_manager = MagicMock(); h.conversation_manager.get_mode.return_value = "gsa"
         monkeypatch.setattr("bot.core.message_handler.parse_explicit_live_search", lambda t: None)
         h.intent_detector = MagicMock(); h.intent_detector.detect.return_value = ("question", 0.9)
-        out = asyncio.get_event_loop().run_until_complete(
-            h.handle(MessageRequest(user_id="u", text="who teaches cs", platform="discord")))
+        out = await h.handle(
+            MessageRequest(user_id="u", text="who teaches cs", platform="discord"))
     assert logsh.called                      # shadow logged
     unified.decide.assert_called_once()       # new router consulted
     # answer still from the existing path (rag pipeline), unchanged by shadow
