@@ -29,6 +29,12 @@ TOPICS: tuple[Topic, ...] = (
           ("assistantship", "stipend", "fellowship", "teaching assistant",
            "research assistant", "ta", "ra", "ta position", "ra position",
            "tuition waiver")),
+    # EOS / parking — fees, hours, lockout numbers are volatile; point users to the office
+    # to self-verify the KB snapshot (re-crawl staleness mitigation). Lowest priority.
+    Topic("operations", "NJIT Parking Services / EOS office",
+          ("parking", "park", "parking permit", "permit", "shuttle", "campus transportation",
+           "lockout", "locksmith", "mailroom", "mail room", "photo id", "photo-id", "id card",
+           "visitor parking", "zipcar")),
 )
 
 _COMPILED: tuple[tuple[Topic, "re.Pattern[str]"], ...] = tuple(
