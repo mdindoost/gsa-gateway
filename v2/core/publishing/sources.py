@@ -69,6 +69,20 @@ class PostDraft:
     created_by: str | None = None
 
 
+def auto_delete_hours(conn, org_id) -> int:
+    """The opt-in auto-delete window, in hours: the ``default.auto_delete_hours`` setting,
+    falling back to 24 (the key is NOT seeded by ``create_all``, so this code default is the real
+    guarantee), clamped to Telegram's deletable range 1..48 (a bot can only delete its own message
+    within ~48h). Shared by WorldCup and the dashboard pre-fill so the number lives in one place."""
+    from v2.core.database.queries import get_setting_typed
+    n = get_setting_typed(conn, org_id, "default.auto_delete_hours", 24)
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        n = 24
+    return max(1, min(48, n))
+
+
 class EnqueueError(ValueError):
     """Raised when a draft fails validation. Never reaches the connectors."""
 

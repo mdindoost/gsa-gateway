@@ -352,6 +352,7 @@ ROOT_SETTINGS = [
     ("org.timezone", "America/New_York", "string", "Timezone"),
     ("default.platforms", json.dumps(["discord", "telegram"]), "json", "Default platforms"),
     ("default.send_time", "09:00", "string", "Default send time"),
+    ("default.auto_delete_hours", "24", "int", "Auto-delete window (hours, 1-48) when a post opts in"),
     ("reminders.default", json.dumps([
         {"offset": 7, "unit": "days", "channels": ["discord", "telegram"]},
         {"offset": 1, "unit": "days", "channels": ["discord", "telegram"]},
