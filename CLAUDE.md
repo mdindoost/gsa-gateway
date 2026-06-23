@@ -110,8 +110,20 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
 **Bots** (`bot/main.py` loads cogs): **all-conversational** — the only slash command is
 `/qrcode` (Discord) / `/qrcode` + `/start` (Telegram). Everything else is answered by chat
 (`bot/commands/chat.py` `on_message` → `bot/core/message_handler.py`, which calls the
-structured router then the v2 retriever via `v2/integration/retriever_shim.py`). WorldCup is
-a separate live-scores integration.
+structured router then the v2 retriever via `v2/integration/retriever_shim.py`).
+
+**WorldCup** is a separate live-scores integration. **The live engine is `v2/integration/match_watcher.py`
+(`MatchWatcher`)** — a schedule-driven burst-and-rest poller started in `bot/main.py` under
+`V2_WORLDCUP_ENABLED`; it posts kick-off / goal / full-time (gated by `FOOTBALL_*` env). It enqueues posts
+the v2 scheduler delivers. Supporting (live): `match_preview.py` (T-5 preview), `wc_schedule.py`,
+`daily_fixtures.py` (9am fixtures digest, `WC_FIXTURES_ENABLED`), and `worldcup_tracker.py` **for its helper
+functions only** (`BASE_URL`, `DEBUG_FILE`, `format_event`, `team_label`, `format_standings`). Match status
+note: football-data reports in-play as **either `IN_PLAY` or `LIVE`** (varies per match) — `match_watcher.LIVE`
+holds both; treat them identically. **DEAD / do-not-use (v1-era, replaced by MatchWatcher — 0 live importers):**
+`v2/integration/worldcup_runner.py` (`WorldCupRunner`), `bot/services/worldcup_tracker.py`,
+`bot/services/football_client.py`, and the inert `bot/commands/worldcup.py` `/worldcup` cog +
+`bot/services/worldcup_embeds.py` (deps never wired). Touch `match_watcher.py` for live-score behavior, NOT
+the `bot/services/*` files.
 
 **Modes (unified, `bot/core/modes/`):** 5 user modes through ONE registry — **gsa** (default) +
 **free** (general chat, skips GSA knowledge) + **judge / presenter / audience** (judging). `Mode`
@@ -139,7 +151,7 @@ gsa-gateway/
 │   ├── commands/
 │   │   ├── qrcode_cmd.py        /qrcode (Discord) — branded QR; uses bot/services/qr.py
 │   │   ├── chat.py              on_message — free-form Q&A in #ask-gsa + DMs (the main UX)
-│   │   └── worldcup.py          /worldcup — live scores (separate feature)
+│   │   └── worldcup.py          /worldcup cog — INERT/dead (deps unwired); live engine is v2/…/match_watcher.py
 │   ├── connectors/telegram_connector.py   Telegram bot (only /start + /qrcode; rest conversational)
 │   ├── core/
 │   │   ├── assistant.py         Wires the V2RetrieverShim + Ollama; builds the shared ConversationModeStore

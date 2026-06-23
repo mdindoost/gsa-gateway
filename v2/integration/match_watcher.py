@@ -36,7 +36,9 @@ from v2.integration.daily_fixtures import _kickoff_et
 
 logger = logging.getLogger(__name__)
 
-LIVE = {"IN_PLAY", "PAUSED"}      # carries the live score
+LIVE = {"IN_PLAY", "LIVE", "PAUSED"}   # carries the live score. "LIVE" is the football-data status
+                                       # some matches report instead of "IN_PLAY" (e.g. England v
+                                       # Ghana 2026-06-23); treated as in-play (not a PAUSED break).
 DONE = {"FINISHED"}               # end-of-game signal (may or may not carry the final score)
 CATCHABLE = LIVE | DONE
 

@@ -57,3 +57,45 @@ def test_in_game_progression_keeps_real_order():
     assert ev1[0]["match"]["score"]["fullTime"] == {"home": 0, "away": 1}
     ev2 = w._process(_live(1, 1), st)
     assert ev2[0]["match"]["score"]["fullTime"] == {"home": 1, "away": 1}
+
+
+# ── The feed reports SOME matches with status="LIVE" instead of "IN_PLAY"
+#    (England v Ghana, 2026-06-23). "LIVE" must be treated exactly like IN_PLAY. ──
+def _live_str(h, a, status="LIVE", home="England", away="Ghana"):
+    return {"status": status, "homeTeam": {"name": home}, "awayTeam": {"name": away},
+            "score": {"fullTime": {"home": h, "away": a}}}
+
+
+def test_live_status_is_catchable():
+    from v2.integration.match_watcher import CATCHABLE, LIVE
+    assert "LIVE" in LIVE          # recognized as a live status
+    assert "LIVE" in CATCHABLE     # so _catch() returns the read instead of discarding it
+
+
+def test_live_status_fires_kickoff():
+    st = _fresh()
+    ev = _w()._process(_live_str(0, 0), st)
+    assert _types(ev) == ["kickoff"]
+    assert st["started"]
+
+
+def test_live_status_announces_goals():
+    w, st = _w(), _fresh()
+    w._process(_live_str(0, 0), st)          # kickoff
+    ev = w._process(_live_str(1, 0), st)     # England scores
+    assert _types(ev) == ["goal"]
+    assert ev[0]["match"]["score"]["fullTime"] == {"home": 1, "away": 0}
+
+
+def test_live_paused_live_advances_to_second_half():
+    # The feed uses LIVE for in-play and PAUSED for the break (England v Ghana 2026-06-23,
+    # LIVE→PAUSED at half-time). The PAUSED→LIVE transition must still advance the half so
+    # 2nd-half goals are labeled correctly.
+    w, st = _w(), _fresh()
+    w._process(_live_str(0, 0), st)                          # 1st-half kick-off (LIVE)
+    w._process(_live_str(0, 0, status="PAUSED"), st)         # half-time
+    assert st["pending_half"] is True
+    ev = w._process(_live_str(1, 0), st)                     # 2nd half resumes (LIVE) + a goal
+    assert st["half"] == 2
+    assert _types(ev) == ["goal"]
+    assert ev[0]["half_label"] == "Second Half"
