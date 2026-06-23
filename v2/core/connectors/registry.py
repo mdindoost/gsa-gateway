@@ -68,6 +68,19 @@ class ConnectorRegistry:
                      post.id, ok, len(results), ",".join(r.platform for r in results))
         return list(results)
 
+    async def delete_delivery(self, platform: str, channel, message_id) -> DeliveryResult:
+        """Unsend ONE delivered message via its platform connector. Never raises. Unknown or
+        disabled platform → a failed result (the deleter records it, never crashes the sweep)."""
+        connector = self._connectors.get(platform)
+        if connector is None or not connector.enabled:
+            return DeliveryResult(False, platform, channel=channel, message_id=message_id,
+                                  error="no connector")
+        try:
+            return await connector.delete_message(channel, message_id)
+        except Exception as exc:  # noqa: BLE001
+            return DeliveryResult(False, platform, channel=channel, message_id=message_id,
+                                  error=str(exc))
+
     async def health_check_all(self) -> dict[str, bool]:
         connectors = self.get_enabled()
         async def _safe(c):
