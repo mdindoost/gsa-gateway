@@ -37,5 +37,14 @@ class DiscordClientAdapter:
             msg = await ch.send(content=content)
         return msg.id
 
+    async def delete_message(self, channel, message_id):
+        ch = self._resolve(channel)
+        if ch is None:
+            raise RuntimeError(f"Discord channel '{channel}' not found")
+        try:
+            await ch.get_partial_message(int(message_id)).delete()
+        except discord.NotFound:
+            return  # already gone — goal state achieved, treat as success
+
     async def ping(self) -> bool:
         return self.bot.is_ready()

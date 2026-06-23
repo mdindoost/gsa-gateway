@@ -37,6 +37,17 @@ class DiscordConnector(BaseConnector):
         except Exception as exc:  # noqa: BLE001
             return DeliveryResult(False, self.name, channel=channel, error=str(exc))
 
+    async def delete_message(self, channel, message_id) -> DeliveryResult:
+        if self.client is None:
+            return DeliveryResult(False, self.name, channel=channel, message_id=message_id,
+                                  error="discord client not wired")
+        try:
+            await self.client.delete_message(channel, message_id)
+            return DeliveryResult(True, self.name, channel=channel, message_id=message_id)
+        except Exception as exc:  # noqa: BLE001
+            return DeliveryResult(False, self.name, channel=channel, message_id=message_id,
+                                  error=str(exc))
+
     async def send_text(self, content, channel, metadata=None):
         return await self._send(channel, content)
 

@@ -90,6 +90,13 @@ class BaseConnector(ABC):
     @abstractmethod
     async def health_check(self) -> bool: ...
 
+    async def delete_message(self, channel: str | None, message_id: str) -> DeliveryResult:
+        """Unsend a previously delivered message. Default: unsupported (send-only platforms
+        like GroupMe inherit this). Platforms that CAN delete override it. Never raises —
+        returns a DeliveryResult; the deleter maps it to a per-delivery delete_status."""
+        return DeliveryResult(False, self.name, channel=channel, message_id=message_id,
+                              error="delete unsupported")
+
     def format_content(self, content: str, signature: str | None) -> str:
         """Platform-specific formatting. Default: append the signature on a blank
         line. Discord/Telegram override for markdown vs HTML."""
