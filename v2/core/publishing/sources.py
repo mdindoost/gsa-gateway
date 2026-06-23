@@ -61,6 +61,7 @@ class PostDraft:
     channels: list[str] = field(default_factory=list)     # registered connector names
     discord_channel: str | None = None
     scheduled_for: str | None = None                      # "YYYY-MM-DD HH:MM:SS" UTC, None = asap
+    delete_at: str | None = None                          # UTC "YYYY-MM-DD HH:MM:SS"; None = keep forever
     source_type: str = "generator"
     source_id: int | None = None                          # natural dedup key when integer
     dedup_key: str | None = None                          # fallback dedup key when no source_id
@@ -147,11 +148,11 @@ def enqueue_post(conn, draft: "PostDraft", *, allowed_channels=None) -> int:
     # 4) insert
     cur = conn.execute(
         "INSERT INTO posts(org_id, type, title, content, channels, discord_channel, "
-        "scheduled_for, status, source_type, source_id, metadata, created_by) "
-        "VALUES (?,?,?,?,?,?,?,'scheduled',?,?,?,?)",
+        "scheduled_for, delete_at, status, source_type, source_id, metadata, created_by) "
+        "VALUES (?,?,?,?,?,?,?,?,'scheduled',?,?,?,?)",
         (draft.org_id, draft.type, draft.title, content,
          json.dumps(draft.channels or []), draft.discord_channel, draft.scheduled_for,
-         draft.source_type, draft.source_id, meta_json, draft.created_by),
+         draft.delete_at, draft.source_type, draft.source_id, meta_json, draft.created_by),
     )
     conn.commit()
     logger.info("enqueue_post: queued post id=%s type=%s org=%s key=%s",
