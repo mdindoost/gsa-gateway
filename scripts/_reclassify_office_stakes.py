@@ -48,8 +48,13 @@ STAKES_DECISION: dict[str, str] = {
 }
 
 
-def reclassify(conn, decisions: dict[str, str]) -> dict:
-    """Apply the decision map per source_url across all of a page's office_page chunks."""
+def reclassify(conn, decisions: dict[str, str], generic_only: bool = False) -> dict:
+    """Apply the decision map per source_url across all of a page's office_page chunks.
+
+    When generic_only=True, only 'generic' decisions are applied (activate those pages).
+    Every 'high' decision is skipped entirely — those rows stay is_active=0, stakes='high',
+    awaiting Plan 2's verbatim-serve path before activation.
+    """
     gen = hi = 0
     for url, decision in decisions.items():
         if decision == "generic":
@@ -59,11 +64,13 @@ def reclassify(conn, decisions: dict[str, str]) -> dict:
                 "WHERE source_url=? AND type='office_page'", (url,)).rowcount
             gen += 1 if n else 0
         elif decision == "high":
-            conn.execute(
+            if generic_only:
+                continue  # defer high activation to Plan 2
+            n = conn.execute(
                 "UPDATE knowledge_items SET is_active=1, "
                 "metadata=json_set(metadata,'$.stakes','high'), updated_at=datetime('now') "
-                "WHERE source_url=? AND type='office_page'", (url,))
-            hi += 1
+                "WHERE source_url=? AND type='office_page'", (url,)).rowcount
+            hi += 1 if n else 0
     return {"generic_pages": gen, "high_pages": hi}
 
 
@@ -71,10 +78,14 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(REPO / "gsa_gateway.db"))
     ap.add_argument("--commit", action="store_true")
+    ap.add_argument("--generic-only", action="store_true",
+                    help="Apply only generic (activate) decisions; skip high-stakes pages "
+                         "(leave them staged for Plan 2's verbatim-serve path)")
     args = ap.parse_args(argv)
     g = sum(1 for v in STAKES_DECISION.values() if v == "generic")
     h = sum(1 for v in STAKES_DECISION.values() if v == "high")
-    print(f"reclassify: {g} generic (activate) + {h} high (keep staged-tag) pages")
+    mode_note = " (generic-only: high-stakes pages left staged for Plan 2)" if args.generic_only else ""
+    print(f"reclassify: {g} generic (activate) + {h} high (keep staged-tag) pages{mode_note}")
     if not args.commit:
         print("(dry run — pass --commit; a hardened backup is taken first)")
         return 0
@@ -82,7 +93,7 @@ def main(argv=None) -> int:
     print(f"backup: {bkp.name}")
     conn = get_connection(args.db)
     with conn:
-        print("  ", reclassify(conn, STAKES_DECISION))
+        print("  ", reclassify(conn, STAKES_DECISION, generic_only=args.generic_only))
     print("next: python v2/scripts/embed_all.py  (the activated generic chunks need vectors)")
     return 0
 

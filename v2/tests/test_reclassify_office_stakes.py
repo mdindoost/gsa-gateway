@@ -29,8 +29,23 @@ def test_reclassify_activates_generic_and_tags_high(tmp_path):
     assert all(r["is_active"] == 1 and r["s"] is None for r in g)          # generic: active, no stakes
     h = conn.execute("SELECT is_active, json_extract(metadata,'$.stakes') s FROM knowledge_items WHERE source_url=?", (HI,)).fetchone()
     assert h["is_active"] == 1 and h["s"] == "high"                        # high: active, stakes kept
-    # metadata not clobbered:
+    # metadata not clobbered (HI):
     assert conn.execute("SELECT json_extract(metadata,'$.doc_id') FROM knowledge_items WHERE source_url=?", (HI,)).fetchone()[0] == "gsa-doc/x"
+    # metadata not clobbered (GEN): json_remove must not touch doc_id
+    assert conn.execute("SELECT json_extract(metadata,'$.doc_id') FROM knowledge_items WHERE source_url=? LIMIT 1", (GEN,)).fetchone()[0] == "gsa-doc/x"
+
+
+def test_generic_only_skips_high(tmp_path):
+    conn = create_all(str(tmp_path / "t.db"))
+    with conn:
+        oid = ensure_org(conn, slug="eos", name="EOS", parent_slug=None, type="office")
+        _ins(conn, oid, GEN, "high", 0)   # generic page, staged
+        _ins(conn, oid, HI,  "high", 0)   # high page, staged
+        reclassify(conn, {GEN: "generic", HI: "high"}, generic_only=True)
+    g = conn.execute("SELECT is_active, json_extract(metadata,'$.stakes') s FROM knowledge_items WHERE source_url=?", (GEN,)).fetchone()
+    assert g["is_active"] == 1 and g["s"] is None   # generic: activated, stakes dropped
+    h = conn.execute("SELECT is_active, json_extract(metadata,'$.stakes') s FROM knowledge_items WHERE source_url=?", (HI,)).fetchone()
+    assert h["is_active"] == 0 and h["s"] == "high"  # high: UNTOUCHED — still staged for Plan 2
 
 
 def test_reclassify_is_idempotent(tmp_path):
