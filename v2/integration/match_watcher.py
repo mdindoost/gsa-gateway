@@ -211,6 +211,7 @@ class MatchWatcher:
                 org_id=self.org_id, content=content, type="worldcup",
                 channels=platform_channels(), discord_channel=self.channel,
                 source_type="worldcup", dedup_key=f"{match_id}:preview",
+                delete_at=self._wc_delete_at(),
                 metadata={"event_type": "preview"}))
             logger.info("MatchWatcher: posted preview for match %s", match_id)
             return True
@@ -376,12 +377,20 @@ class MatchWatcher:
             return f"{match_id}:{stem}{s['home']}-{s['away']}"
         return f"{match_id}:{ev['type']}:"
 
+    def _wc_delete_at(self) -> str:
+        """WorldCup posts flood the channel, so they auto-delete after the configured window
+        (default.auto_delete_hours, default 24, clamped 1..48). Absolute UTC delete_at."""
+        from v2.core.publishing.sources import auto_delete_hours
+        hours = auto_delete_hours(self._conn, self.org_id)
+        return (_utcnow() + datetime.timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+
     def _post(self, match_id: int, ev: dict) -> None:
         try:
             enqueue_post(self._conn, PostDraft(
                 org_id=self.org_id, content=format_event(ev), type="worldcup",
                 channels=platform_channels(), discord_channel=self.channel,
                 source_type="worldcup", dedup_key=self._dedup_key(match_id, ev),
+                delete_at=self._wc_delete_at(),
                 metadata={"event_type": ev["type"]}))
             logger.info("MatchWatcher: posted %s for match %s", ev["type"], match_id)
         except EnqueueError as exc:
