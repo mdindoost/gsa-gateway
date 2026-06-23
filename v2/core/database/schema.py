@@ -125,8 +125,10 @@ CREATE TABLE IF NOT EXISTS post_deliveries (
     id         INTEGER PRIMARY KEY,
     post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     platform   TEXT    NOT NULL,              -- discord|telegram|…
-    channel    TEXT,
-    message_id TEXT,                          -- platform message id (resend/audit)
+    channel    TEXT,                          -- per-platform: discord=channel NAME, telegram=resolved
+                                               -- chat_id, groupme=setting (used as-is by that platform's
+                                               -- delete_message; the deleter never interprets it)
+    message_id TEXT,                          -- platform message id (resend/audit/unsend)
     status     TEXT    NOT NULL CHECK (status IN ('success','failed','skipped')),
     error      TEXT,
     sent_at    TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -549,6 +551,15 @@ _COLUMN_MIGRATIONS = [
     # judging_events — audience voting
     ("judging_events",     "audience_voting",  "TEXT NOT NULL DEFAULT 'closed'"),
     ("judging_events",     "audience_top_n",   "INTEGER NOT NULL DEFAULT 1"),
+    # scheduled post-deletion (2026-06-23): platform unsend + per-delivery outcome. delete_status
+    # values written by code: 'deleted'|'delete_unsupported'|'delete_failed'|'not_applicable' (CHECK
+    # omitted — SQLite ALTER ADD COLUMN can't add it to an existing table; PostDeleter is the sole writer).
+    ("posts",           "delete_at",       "TEXT"),
+    ("posts",           "deleted_at",      "TEXT"),
+    ("post_deliveries", "delete_status",   "TEXT"),
+    ("post_deliveries", "deleted_at",      "TEXT"),
+    ("post_deliveries", "delete_error",    "TEXT"),
+    ("post_deliveries", "delete_attempts", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
