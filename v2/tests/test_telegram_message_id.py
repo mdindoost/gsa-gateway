@@ -71,3 +71,33 @@ def test_connector_delivery_carries_real_id_and_chat():
     assert r.success
     assert r.message_id == "42"                  # real, deletable id
     assert r.channel == "-1001234567890"         # the EXACT chat the message went to
+
+
+def test_connector_media_path_also_captures_real_id():
+    # send_media funnels through the same _send → adapter tuple, so it captures the id too
+    conn = TelegramConnector(client=_FakeClient((7, -5)))
+    r = _run(conn.send_media("x", "/tmp/p.png", "c"))
+    assert r.success and r.message_id == "7" and r.channel == "-5"
+
+
+def test_registry_persists_real_telegram_id_and_chat():
+    # Phase 0's whole point is persistence: the REAL id+chat must land in post_deliveries.
+    from v2.core.database.schema import create_all
+    from v2.core.connectors.registry import ConnectorRegistry
+    from v2.core.connectors.base import Post
+    conn = create_all(":memory:")
+    conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'N','njit','university')")
+    conn.execute("INSERT INTO posts(id,org_id,type,content,channels,status) "
+                 "VALUES(1,1,'broadcast','hi','[\"telegram\"]','sending')")
+    conn.commit()
+    reg = ConnectorRegistry(conn=conn)
+    reg.register(TelegramConnector(client=_FakeClient((42, -1001234567890))))
+    post = Post(id=1, content="hi", channels=["telegram"],
+                platform_channels={"telegram": "setting-value"})
+    _run(reg.publish(post))
+    row = conn.execute(
+        "SELECT platform, message_id, channel FROM post_deliveries WHERE post_id=1").fetchone()
+    assert row["platform"] == "telegram"
+    assert row["message_id"] == "42"
+    assert row["channel"] == "-1001234567890"     # the real chat, not the setting value
+    conn.close()
