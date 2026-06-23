@@ -198,6 +198,13 @@ gsa-gateway/
 - **`source` tags everything.** `'crawler'` (YWCC/NJIT, auto) vs `'dashboard'` (manual GSA/
   clubs). The crawler reconcile and `run_explore.py --reset` only touch `source='crawler'`,
   so manual data is never clobbered.
+- **HARD LINE — post records are immortal** (Mohammad, 2026-06-23): every `posts` / `post_deliveries`
+  row is kept **forever** — the permanent audit of who sent what, how, where, and when. Auto-deletion
+  (the scheduled-deletion feature) removes ONLY the delivered message FROM the platform (Telegram/
+  Discord/GroupMe) and **marks** the DB record (e.g. `deleted_at` / a `deleted` status) — it NEVER
+  deletes, anonymizes, or hard-removes the post/delivery rows. "Delete" = unsend on the platform, not
+  forget in our DB. Applies even to privacy-sensitive posts (qual-exam notices): the message leaves the
+  channel, the record stays.
 - **All-conversational.** Only `/qrcode` is a slash command. Don't reintroduce lookup
   commands; route questions through the chat/RAG path.
 - **Never insert `search_text`** — it's a generated column (`title || ' ' || content`).
