@@ -15,7 +15,7 @@ from v2.core.ingestion.gsa_docs import upsert_doc_items
 from v2.core.ingestion.web_crawler import is_non_html, normalize_url, same_site, scope_prefix
 
 _HIGH_STAKES_URL = re.compile(
-    r"(opt|cpt|i-?20|i-?765|sevis|visas?|h-?1b|\bj-?1[a-z]*|j-?2|"
+    r"\b(opt|cpt|i-?20|i-?765|sevis|visas?|h-?1b|\bj-?1[a-z]*|j-?2|"
     r"tuition|payment|payments|pay-?plan|plan-options|refund|e-?refund|remission|"
     r"parking-fees|tax-information|"
     r"important-dates|critical-due-dates|due-dates|deadlines?)\b", re.I)
