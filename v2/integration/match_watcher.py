@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 # "LIVE" (varies per match: England v Ghana 2026-06-23 used "LIVE", Portugal v Uzbekistan used
 # "IN_PLAY"); both normalize to "in_play". Adding a future synonym = one entry here. Any status NOT
 # in the map (SCHEDULED/TIMED/SUSPENDED/POSTPONED/CANCELLED/unknown) → None → uncatchable, ignored.
+# Note: a match stuck in an uncatchable state mid-window (e.g. SUSPENDED) is intentionally not caught —
+# it may resume — so _watch just polls until its MATCH_MAX deadline. That's by design, not a missed map.
 _CANON = {
     "IN_PLAY": "in_play", "LIVE": "in_play",   # in-play synonyms unify here
     "PAUSED":  "paused",                        # break (half-time) — drives half tracking

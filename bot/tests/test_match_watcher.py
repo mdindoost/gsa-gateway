@@ -94,6 +94,29 @@ def test_awarded_status_posts_fulltime():
     assert ev[0]["match"]["score"]["fullTime"] == {"home": 3, "away": 0}
 
 
+def test_awarded_with_empty_score_falls_back_to_tracked():
+    # An AWARDED payload with no score must not crash; it falls back to the tracked score
+    # (per-side MAX), so a forfeit caught with an empty payload posts the known score, not garbage.
+    st = _fresh()
+    st["score"] = (3, 0)                                  # tracked from earlier
+    m = {"status": "AWARDED", "homeTeam": {"name": "A"}, "awayTeam": {"name": "B"},
+         "score": {"fullTime": {"home": None, "away": None}}}
+    ev = _w()._process(m, st)
+    assert _types(ev) == ["fulltime"]
+    assert ev[0]["match"]["score"]["fullTime"] == {"home": 3, "away": 0}
+
+
+def test_unmapped_status_yields_no_events():
+    # SUSPENDED (and any unmapped status) is uncatchable → _process must produce no events
+    # and not advance state, so the synonym-agnostic boundary holds at the branch level too.
+    st = _fresh()
+    for status in ("SUSPENDED", "POSTPONED", "CANCELLED", "TIMED"):
+        m = {"status": status, "homeTeam": {"name": "A"}, "awayTeam": {"name": "B"},
+             "score": {"fullTime": {"home": 1, "away": 0}}}
+        assert _w()._process(m, _fresh()) == []
+    assert not st["started"] and not st["finished"]
+
+
 def test_live_status_fires_kickoff():
     st = _fresh()
     ev = _w()._process(_live_str(0, 0), st)
