@@ -30,6 +30,8 @@ WAVE1 = [
     # Wave-2 additions (the registry grows; re-running register is idempotent)
     dict(url="https://www.njit.edu/healthservices/", scope_prefix="/healthservices/",
          org_slug="health-services", org_name="NJIT Health Services"),
+    dict(url="https://www.njit.edu/life/", scope_prefix="/life/",
+         org_slug="campus-life", org_name="NJIT Campus Life"),
 ]
 INTERVAL_DAYS = 30          # owner-tunable recurrence cadence
 
