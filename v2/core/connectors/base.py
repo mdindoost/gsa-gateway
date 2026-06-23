@@ -30,6 +30,9 @@ class DeliveryResult:
     channel: str | None = None
     error: str | None = None
     sent_at: datetime = field(default_factory=_utcnow)
+    # For DELETE results: True = a permanent failure the deleter must NOT retry (e.g. Telegram
+    # no-delete-rights / >48h expiry). False (default) = retryable/transient. Unused by sends.
+    terminal: bool = False
 
     @property
     def status(self) -> str:

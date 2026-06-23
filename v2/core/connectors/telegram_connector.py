@@ -58,6 +58,33 @@ class TelegramConnector(BaseConnector):
         except Exception as exc:  # noqa: BLE001
             return DeliveryResult(False, self.name, channel=channel, error=str(exc))
 
+    async def delete_message(self, channel, message_id) -> DeliveryResult:
+        """Unsend a Telegram message, classifying telegram.error into a deletion outcome:
+        not-found → success (already gone); no-rights / >48h expiry → terminal (don't retry);
+        rate-limit / network → transient (retry)."""
+        from telegram.error import BadRequest, Forbidden  # local import: keep base import-light
+        if self.client is None:
+            return DeliveryResult(False, self.name, channel=channel, message_id=message_id,
+                                  error="telegram client not wired", terminal=True)
+        try:
+            await self.client.delete_message(channel, message_id)
+            return DeliveryResult(True, self.name, channel=channel, message_id=message_id)
+        except Forbidden as exc:                      # bot lacks Delete-Messages rights → terminal
+            return DeliveryResult(False, self.name, channel=channel, message_id=message_id,
+                                  error=f"forbidden: {exc}", terminal=True)
+        except BadRequest as exc:
+            msg = str(exc).lower()
+            if "not found" in msg:                    # already gone = goal achieved
+                return DeliveryResult(True, self.name, channel=channel, message_id=message_id)
+            if "message can't be deleted" in msg or "message can not be deleted" in msg:
+                return DeliveryResult(False, self.name, channel=channel, message_id=message_id,
+                                      error=f"expired: {exc}", terminal=True)   # >48h window
+            return DeliveryResult(False, self.name, channel=channel, message_id=message_id,
+                                  error=f"bad request: {exc}", terminal=False)
+        except Exception as exc:  # noqa: BLE001 - RetryAfter/NetworkError/TimedOut → transient
+            return DeliveryResult(False, self.name, channel=channel, message_id=message_id,
+                                  error=str(exc), terminal=False)
+
     async def send_text(self, content, channel, metadata=None):
         return await self._send(channel, content)
 

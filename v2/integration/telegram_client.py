@@ -25,5 +25,10 @@ class TelegramClientAdapter:
             raise RuntimeError("Telegram broadcast failed (no target or send error)")
         return (msg.message_id, msg.chat.id)
 
+    async def delete_message(self, channel, message_id):
+        # channel is the real chat_id Phase 0 stored. Lets telegram.error propagate so the
+        # TelegramConnector can classify terminal vs transient.
+        return await self.broadcaster.delete(channel, message_id)
+
     async def ping(self) -> bool:
         return self.broadcaster is not None

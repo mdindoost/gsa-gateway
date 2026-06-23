@@ -46,6 +46,14 @@ class TelegramBroadcaster:
             logger.warning("Telegram broadcast error: %s", exc)
             return None
 
+    async def delete(self, chat_id, message_id) -> bool:
+        """Unsend a previously-sent message. Returns True on success and lets the
+        ``telegram.error`` PROPAGATE on failure, so the connector can classify it
+        (terminal: no-rights/expiry vs transient: rate-limit/network). message_id is
+        coerced to int (Telegram's API types it as int)."""
+        await self._bot.delete_message(chat_id=chat_id, message_id=int(message_id))
+        return True
+
     async def broadcast_photo(
         self,
         photo_path: str,
