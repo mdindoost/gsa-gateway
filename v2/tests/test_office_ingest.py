@@ -31,6 +31,19 @@ def test_high_stakes_classifier():
     assert not is_high_stakes("https://www.njit.edu/dining/coffee-bar",
                               "The coffee bar is open.")
 
+    # --- new Task 1 cases (tighten URL rule to procedure/figure slugs) ---
+    B = "https://www.njit.edu/"
+    # clearly GENERIC by URL (must be False unless the $-text rule fires):
+    for p in ["parking/2026-summer-hours", "parking/late-night-lyft-program", "mailroom/amazon-lockers-njit",
+              "mailroom/types-mail", "parking/event-game-day-parking", "registrar/frequently-asked-questions"]:
+        assert is_high_stakes(B+p, "general info, no dollar amounts") is False, p
+    # clearly GENUINE by URL:
+    for p in ["bursar/payment-options", "bursar/tuition-and-fee-schedule", "global/opt-reporting",
+              "global/j1students", "bursar/employee-tuition-remission", "parking/employee-parking-fees"]:
+        assert is_high_stakes(B+p, "prose") is True, p
+    # the $-text rule still catches a $-amount FAQ even on a benign URL:
+    assert is_high_stakes(B+"registrar/anything", "Your balance is $750 due by Nov 15.") is True
+
 
 def test_generic_page_goes_live_as_office_page(tmp_path):
     conn = create_all(str(tmp_path / "t.db"))
