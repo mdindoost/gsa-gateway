@@ -108,6 +108,9 @@ _RESEARCH_CUE = re.compile(r"\b(research|works?\s+on|working\s+on|studies|studyi
 # Ranking cue for a METRIC ranking ("who has the MOST citations", "TOP 5 by h-index"). Narrowed
 # (RAG review) — leading/largest/greatest never naturally rank citations, only add false positives.
 _RANK_CUE = re.compile(r"\b(most|top|highest|ranked?|rank)\b")
+# Descending-direction words for a metric ranking ("LEAST cited", "FEWEST citations"). Kept SEPARATE
+# from _RANK_CUE on purpose — the ascending (Bug A) path depends on _RANK_CUE NOT matching these.
+_DESC_DIR = re.compile(r"\b(least|fewest|lowest|bottom)\b")
 _TOPN = re.compile(r"\btop\s+(\d+)\b|\b(\d+)\s+most\b")
 _PERSON_INTENT = re.compile(
     r"\b(who(?:'s|\s+is|\s+are)|tell\s+me\s+about|info(?:rmation)?\s+on|"
@@ -142,6 +145,15 @@ def _is_university_root(conn, org_id: int) -> bool:
     'people at njit' is a thin/misleading enumeration — let it fall through to RAG instead."""
     row = conn.execute("SELECT parent_id FROM organizations WHERE id=?", (org_id,)).fetchone()
     return row is not None and row[0] is None
+
+
+def _root_org_id(conn: sqlite3.Connection) -> int | None:
+    """The university ROOT org id (the active org with no parent) — used to default a bare
+    university-wide metric ranking ("most cited professor") to NJIT-wide. None if misconfigured
+    (no root), in which case the caller must NOT route (never run with org_id=None)."""
+    row = conn.execute(
+        "SELECT id FROM organizations WHERE parent_id IS NULL AND is_active=1 LIMIT 1").fetchone()
+    return row[0] if row else None
 
 
 def _is_bare_name(q: str, person: dict) -> bool:
@@ -297,10 +309,30 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     mm = profile_fields.match_metric(q)
     if mm is not None:
         field_key, metric = mm
-        if org_id is not None and _RANK_CUE.search(q):
-            return Route("top_people_by_metric",
-                         {"org_id": org_id, "field_key": field_key,
-                          "metric_key": metric.key, "n": _parse_topn(q)})
+        # A person/faculty cue gates the ranking branches (both descending decline and the no-org
+        # default), so a metric alias on a NON-people question ("most cited PAPER", "fewest citations
+        # needed to graduate") falls through to RAG instead of a people ranking/decline.
+        person_cue = bool(_FACULTY_CUE.search(q) or _PERSON_INTENT.search(q))
+        # Bug B (position-1): a descending-direction ranking of people is unsupported (Scholar coverage
+        # is partial; "least cited" over a partial set is misleading + unkind). Decline deterministically
+        # — never RAG, never a roster dump — so no person is ever named as "least <metric>".
+        if person_cue and _DESC_DIR.search(q):
+            return Route("metric_descending_unsupported",
+                         {"field_key": field_key, "metric_key": metric.key})
+        if _RANK_CUE.search(q):
+            if org_id is not None:
+                return Route("top_people_by_metric",
+                             {"org_id": org_id, "field_key": field_key,
+                              "metric_key": metric.key, "n": _parse_topn(q)})
+            # Bug A: no org named, but a person/faculty cue → default to the NJIT root (university-wide;
+            # "most cited professor" means NJIT-wide). org_defaulted flags the answer to invite narrowing.
+            if person_cue:
+                root = _root_org_id(conn)
+                if root is not None:
+                    return Route("top_people_by_metric",
+                                 {"org_id": root, "field_key": field_key,
+                                  "metric_key": metric.key, "n": _parse_topn(q),
+                                  "org_defaulted": True})
         person = _resolve_person(conn, q, named)
         if isinstance(person, Route):
             return person

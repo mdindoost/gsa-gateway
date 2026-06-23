@@ -53,7 +53,12 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
     if skill == "top_people_by_metric":
         r = skills.top_people_by_metric(conn, a["org_id"], a["field_key"], a["metric_key"])
         return {"skill": skill, "org_name": org_name, "field_key": a["field_key"],
-                "metric_key": a["metric_key"], "n": a.get("n", 1), **r}
+                "metric_key": a["metric_key"], "n": a.get("n", 1),
+                "org_defaulted": a.get("org_defaulted", False), **r}
+    if skill == "metric_descending_unsupported":
+        # No DB query — a deterministic decline (mirrors person_disambig). field/metric come straight
+        # from the route so format_answer can name the metric + offer the highest-ranked alternative.
+        return {"skill": skill, "field_key": a["field_key"], "metric_key": a["metric_key"]}
     if skill == "link_of_person":
         r = entity.link_of_person(conn, a["entity_id"], a["field_key"])
         return {"skill": skill, "field_key": a["field_key"], **r}
@@ -93,7 +98,8 @@ def _join(names: list[str]) -> str:
 
 # Deterministic answers whose NUMBERS must never be reworded by the LLM — the caller skips
 # compose_from_rows for these (their format_answer output IS the final answer).
-_DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric", "link_of_person"})
+_DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric", "link_of_person",
+                                   "metric_descending_unsupported"})
 
 
 def is_deterministic(result: dict) -> bool:
@@ -197,13 +203,27 @@ def format_answer(result: dict) -> str:
         sel = _top_with_ties(ranked, n)
         vstr = lambda v: _fmt_metrics(fk, {result["metric_key"]: v})  # noqa: E731
         if len(sel) == 1:
-            return (f"I have Scholar {noun} for {cov}{caveat}. "
-                    f"The highest is {sel[0][0]} ({vstr(sel[0][1])}).")
-        listed = "; ".join(f"{i}. {nm} ({vstr(v)})" for i, (nm, v) in enumerate(sel, 1))
-        if len(ranked) < n:                        # asked for more than exist with metrics
-            return (f"You asked for the top {n}, but I only have Scholar {noun} for "
-                    f"{cov}{caveat}: {listed}.")
-        return f"Top {len(sel)} in {org} by {noun} — I have metrics for {cov}{caveat}: {listed}."
+            ans = (f"I have Scholar {noun} for {cov}{caveat}. "
+                   f"The highest is {sel[0][0]} ({vstr(sel[0][1])}).")
+        else:
+            listed = "; ".join(f"{i}. {nm} ({vstr(v)})" for i, (nm, v) in enumerate(sel, 1))
+            if len(ranked) < n:                    # asked for more than exist with metrics
+                ans = (f"You asked for the top {n}, but I only have Scholar {noun} for "
+                       f"{cov}{caveat}: {listed}.")
+            else:
+                ans = f"Top {len(sel)} in {org} by {noun} — I have metrics for {cov}{caveat}: {listed}."
+        if result.get("org_defaulted"):            # bare "most cited professor" → defaulted NJIT-wide
+            ans += (" This is university-wide. Want a specific college or department? "
+                    "Just name it (e.g. 'most cited in YWCC').")
+        return ans
+
+    if skill == "metric_descending_unsupported":
+        # Deterministic decline (in _DETERMINISTIC_SKILLS → no LLM). Names NO person; offers the
+        # highest-ranked alternative; coverage kept qualitative (no baked numbers — they drift).
+        noun = _metric_noun(result["metric_key"])
+        return (f"I can only rank people by highest {noun} (e.g. most cited, top h-index), not "
+                f"lowest — and my Scholar coverage is partial, so a 'least {noun}' ranking wouldn't "
+                f"be meaningful. Want the most {noun} instead?")
 
     if skill == "link_of_person":
         # Deterministic + TERMINAL: a present URL or an honest-empty line — never "" (which would

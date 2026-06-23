@@ -88,3 +88,91 @@ def test_most_cited_research_area_routes_to_area_skill_not_metric(conn):
 
 def test_bare_metric_word_falls_through(conn):
     assert route(conn, "citations") is None
+
+
+# ── Bug A: bare/university-wide metric ranking (no org named) → default to NJIT root ──
+def test_most_cited_professor_no_org_defaults_to_root(conn):
+    r = route(conn, "who is the most cited professor")
+    assert r.skill == "top_people_by_metric"
+    assert r.args["org_id"] == 1
+    assert r.args["metric_key"] == "citations"
+    assert r.args["n"] == 1
+    assert r.args.get("org_defaulted") is True
+
+
+def test_highest_h_index_professor_no_org_defaults_to_root(conn):
+    r = route(conn, "highest h-index professor")
+    assert r.skill == "top_people_by_metric"
+    assert r.args["org_id"] == 1
+    assert r.args["metric_key"] == "h_index"
+    assert r.args.get("org_defaulted") is True
+
+
+def test_top_5_most_cited_faculty_no_org_defaults_to_root(conn):
+    r = route(conn, "top 5 most cited faculty")
+    assert r.skill == "top_people_by_metric"
+    assert r.args["org_id"] == 1
+    assert r.args["n"] == 5
+    assert r.args.get("org_defaulted") is True
+
+
+def test_who_is_most_cited_person_intent_satisfies_gate(conn):
+    # no "professor"/"faculty" word, but "who is" (_PERSON_INTENT) is the cue
+    r = route(conn, "who is the most cited")
+    assert r.skill == "top_people_by_metric"
+    assert r.args["org_id"] == 1
+    assert r.args.get("org_defaulted") is True
+
+
+def test_explicit_org_ranking_is_not_flagged_defaulted(conn):
+    r = route(conn, "who is the most cited at njit")
+    assert r.skill == "top_people_by_metric"
+    assert r.args["org_id"] == 1
+    assert r.args.get("org_defaulted") in (False, None)   # org explicitly named → no nudge
+
+
+def test_dept_ranking_stays_scoped_not_root(conn):
+    r = route(conn, "most cited professor in cs")
+    assert r.skill == "top_people_by_metric"
+    assert r.args["org_id"] != 1                          # CS, not the root
+
+
+# ── Bug A scope gate: metric+rank+no-org WITHOUT a person/faculty cue → RAG (None) ──
+def test_most_cited_paper_no_person_cue_falls_through(conn):
+    assert route(conn, "most cited paper") is None
+
+
+def test_top_citation_award_no_person_cue_falls_through(conn):
+    assert route(conn, "top citation award") is None
+
+
+# ── Bug B (Option 3): descending-metric + person cue → deterministic decline ──
+def test_least_cited_professor_at_njit_declines(conn):
+    r = route(conn, "least cited professor at njit")
+    assert r.skill == "metric_descending_unsupported"
+    assert r.args["metric_key"] == "citations"
+
+
+def test_least_cited_professor_no_org_declines(conn):
+    r = route(conn, "least cited professor")
+    assert r.skill == "metric_descending_unsupported"
+
+
+def test_fewest_citations_professor_declines(conn):
+    r = route(conn, "professor with the fewest citations at njit")
+    assert r.skill == "metric_descending_unsupported"
+
+
+def test_lowest_h_index_professor_declines(conn):
+    r = route(conn, "lowest h-index professor at njit")
+    assert r.skill == "metric_descending_unsupported"
+    assert r.args["metric_key"] == "h_index"
+
+
+# ── Bug B gate: descending + metric WITHOUT a person/faculty cue → RAG (None) ──
+def test_fewest_citations_to_graduate_is_not_a_decline(conn):
+    assert route(conn, "fewest citations needed to graduate") is None
+
+
+def test_papers_with_fewest_citations_is_not_a_decline(conn):
+    assert route(conn, "papers with the fewest citations") is None

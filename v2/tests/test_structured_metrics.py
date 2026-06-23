@@ -87,6 +87,32 @@ def test_deterministic_suffix_does_not_double_fire_on_metric_skills():
     assert deterministic_suffix(_top([("A", 1)], 1, 1)) is None
 
 
+# ── metric_descending_unsupported (Bug B, Option 3) ────────────────────────────
+def _decline(metric_key="citations"):
+    return {"skill": "metric_descending_unsupported",
+            "field_key": "scholar", "metric_key": metric_key}
+
+
+def test_descending_decline_names_no_person_and_offers_most():
+    out = format_answer(_decline("citations"))
+    assert out != ""                                     # TERMINAL — must not fall to RAG
+    assert "citations" in out.lower()
+    assert "most" in out.lower()                         # offers the highest alternative
+    # no specific person named, and no baked coverage numbers
+    assert "koutis" not in out.lower()
+    assert "211" not in out and "1,076" not in out and "1076" not in out
+
+
+def test_descending_decline_uses_metric_noun():
+    out = format_answer(_decline("h_index"))
+    assert "h-index" in out.lower()
+
+
+def test_descending_decline_is_deterministic():
+    # must be in _DETERMINISTIC_SKILLS so the LLM is never invoked to reword it
+    assert is_deterministic(_decline()) is True
+
+
 # ── link_of_person rendering (Facet B) ─────────────────────────────────────────
 def _link(url, label="LinkedIn", name="Vincent Oria", field_key="linkedin"):
     return {"skill": "link_of_person", "name": name, "field_label": label,
