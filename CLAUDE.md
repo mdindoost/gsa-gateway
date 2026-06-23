@@ -223,6 +223,25 @@ gsa-gateway/
   entity_id (and an EMPTY decomposition never retires a present person's KB — transient-fetch guard).
   Departures drop a fully-departed person's KB across ALL sources.
 - **Never fabricate an unheld attribute** (honest-partial) — see the anti-fabrication rule in Retrieval.
+- **HARD LINE — evidence before any state claim** (Mohammad, 2026-06-23): NEVER assert the live DB or code is
+  untouched / rolled back / in any given state without PROVING it first — checksum/diff/query against a known
+  reference (e.g. a `.backups/` snapshot, `git log`, a row count). (Caught: I twice claimed the live DB was
+  untouched during the office-tier rollback; a checksum vs the pre-office backup proved I HAD written it.)
+- **HARD LINE — NJIT web content is served VERBATIM, never withheld** (Mohammad, 2026-06-23): NJIT-sourced
+  content is authoritative — serve the real text VERBATIM. NEVER stage/withhold/decline/redact, and NEVER drop
+  or alter a figure that literally appears on the page. The source link + heads-up cover staleness. (Strengthens
+  [[feedback_njit_source_keep_live]] into a hard line; the decline-for-volatile branch that violated this is why
+  the whole office-shadowing build was rolled back 2026-06-23.)
+- **HARD LINE — crawl/recrawl is data-bringing ONLY, separated from usage** (Mohammad, 2026-06-23): the crawl/
+  recrawl layer's SOLE job is to bring data from the web, clean it, and put it into KB or KG.
+  - **Cleaning = MECHANICAL only** (allowed): strip HTML/markup, nav/boilerplate/scripts/styles, control &
+    garbage characters, fix encoding/whitespace. The actual human-readable text — sentences, wording, numbers,
+    figures, order — passes through UNCHANGED.
+  - **FORBIDDEN: any human-style rewriting** — no summarizing, paraphrasing, rewording, condensing, truncating,
+    "improving", or selecting/dropping content for meaning. If a human would call it editing, the crawler must
+    not do it.
+  - **No usage decisions in the crawler** — no serving/gating/staging/decline/`is_active` logic. HOW data is
+    used belongs to the retrieval/serving layer, strictly separate. One direction: clean → store.
 - **EXPERT-REVIEW HARD GATE** (Mohammad, 2026-06-19): build/ship NOTHING non-trivial — including bug
   FIXES — without (a) a senior-engineer review AND, for retrieval/answer changes, a RAG/LLM-researcher
   review, AND (b) Mohammad's approval. Flow: design → expert review(s) → he approves → build TDD →
