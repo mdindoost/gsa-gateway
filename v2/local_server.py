@@ -898,11 +898,13 @@ class GatewayHandler(BaseHTTPRequestHandler):
         if not b.get("org_id"):
             raise ValueError("org_id is required")
         scheduled = b.get("scheduled_for") or None  # null = send asap
+        delete_at = b.get("delete_at") or None       # null = keep forever (auto-delete off)
         cur = conn.execute(
             "INSERT INTO posts(org_id,type,title,content,channels,discord_channel,scheduled_for,"
-            "status,source_type,signature,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "delete_at,status,source_type,signature,created_by,created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (b["org_id"], b.get("type", "one_time"), b.get("title"), b["content"],
-             json.dumps(b.get("channels", [])), b.get("discord_channel"), scheduled,
+             json.dumps(b.get("channels", [])), b.get("discord_channel"), scheduled, delete_at,
              b.get("status", "scheduled"), b.get("source_type", "manual"),
              b.get("signature"), b.get("created_by", "dashboard"), utc_now()))
         needs_reindex = False

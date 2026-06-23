@@ -1222,6 +1222,7 @@ function renderNewPostForm() {
         </div>
         <div class="muted utc-hint" id="onetime-utc"></div>
         <label class="checkrow"><input type="checkbox" id="f-now"> Send immediately</label>
+        <div class="field" style="margin-top:10px"><label>Auto-delete at (optional — unsends from the channel; the record is kept forever)</label><input type="datetime-local" id="f-delete-at"></div>
       </div>
 
       <div id="grp-recurring" class="mode-grp" hidden style="margin-top:14px">
@@ -1512,11 +1513,13 @@ function submitForm() {
     const date = val("f-date"), time = val("f-time");
     if (!now && !date) { toast("Pick a date or check Send immediately", false); return; }
     const scheduledForUTC = now ? null : PL.localToUTC(`${date} ${time}`, tz);
+    const da = val("f-delete-at");
+    const deleteAtUTC = da ? PL.localToUTC(da.replace("T", " "), tz) : null;  // null = keep forever
     patch = PL.buildPostPatch({ orgId, content, platforms, discordChannel, signature,
       scheduledForUTC: scheduledForUTC || PL.nowUTC(), type: "one_time", sourceType: "manual", addToKb }, tz);
     server = { path: "/posts", body: { org_id: orgId, type: "one_time", content,
       channels: platforms, discord_channel: discordChannel, scheduled_for: scheduledForUTC,
-      signature, source_type: "manual", add_to_kb: addToKb } };
+      delete_at: deleteAtUTC, signature, source_type: "manual", add_to_kb: addToKb } };
   } else if (FormState.type === "recurring") {
     if (!content) { toast("Content is required", false); return; }
     const rec = collectRecurrence();
