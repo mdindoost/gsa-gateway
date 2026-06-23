@@ -562,6 +562,12 @@ _COLUMN_MIGRATIONS = [
     ("post_deliveries", "delete_attempts", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
+# Indexes that reference migration-added columns (run AFTER _COLUMN_MIGRATIONS in create_all).
+_POST_MIGRATION_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_posts_delete_due ON posts(delete_at) "
+    "WHERE delete_at IS NOT NULL AND deleted_at IS NULL",
+]
+
 
 def load_sqlite_vec(conn: sqlite3.Connection) -> None:
     """Load the sqlite-vec extension into a connection (needed for vec0)."""
@@ -608,6 +614,11 @@ def create_all(db_path: str) -> sqlite3.Connection:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
             except sqlite3.OperationalError:
                 pass                                   # column already exists — idempotent
+        # Indexes over migration-added columns — MUST run after the ALTERs above (the columns
+        # don't exist yet when the main INDEXES loop runs). Partial index keeps the deletion
+        # poll (delete_at<=now AND deleted_at IS NULL) cheap on a growing posts table.
+        for ddl in _POST_MIGRATION_INDEXES:
+            conn.execute(ddl)
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations(version) VALUES (?);",
             (SCHEMA_VERSION,),
