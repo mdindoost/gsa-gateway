@@ -67,9 +67,31 @@ def _live_str(h, a, status="LIVE", home="England", away="Ghana"):
 
 
 def test_live_status_is_catchable():
-    from v2.integration.match_watcher import CATCHABLE, LIVE
-    assert "LIVE" in LIVE          # recognized as a live status
-    assert "LIVE" in CATCHABLE     # so _catch() returns the read instead of discarding it
+    from v2.integration.match_watcher import _canon, _CATCHABLE_CANON
+    assert _canon("LIVE") == "in_play"          # recognized as in-play (synonym of IN_PLAY)
+    assert _canon("LIVE") in _CATCHABLE_CANON   # so _catch() returns the read instead of discarding it
+
+
+def test_canon_normalizes_all_known_statuses():
+    from v2.integration.match_watcher import _canon
+    assert _canon("IN_PLAY") == "in_play"
+    assert _canon("LIVE") == "in_play"          # the two in-play synonyms unify here
+    assert _canon("PAUSED") == "paused"
+    assert _canon("FINISHED") == "done"
+    assert _canon("AWARDED") == "done"          # forfeit/administrative result → end-of-match
+    # uncatchable (unchanged behavior): not in-play, not done → ignored by _catch
+    for s in ("SCHEDULED", "TIMED", "SUSPENDED", "POSTPONED", "CANCELLED", "WHATEVER"):
+        assert _canon(s) is None
+
+
+def test_awarded_status_posts_fulltime():
+    st = _fresh()
+    m = {"status": "AWARDED", "homeTeam": {"name": "A"}, "awayTeam": {"name": "B"},
+         "score": {"fullTime": {"home": 3, "away": 0}}}
+    ev = _w()._process(m, st)
+    assert _types(ev) == ["fulltime"]
+    assert st["finished"]
+    assert ev[0]["match"]["score"]["fullTime"] == {"home": 3, "away": 0}
 
 
 def test_live_status_fires_kickoff():
@@ -99,3 +121,25 @@ def test_live_paused_live_advances_to_second_half():
     assert st["half"] == 2
     assert _types(ev) == ["goal"]
     assert ev[0]["half_label"] == "Second Half"
+
+
+def test_fulltime_from_live_only_feed():
+    # A match tracked entirely via LIVE (never IN_PLAY) must still resolve at FINISHED.
+    w, st = _w(), _fresh()
+    w._process(_live_str(0, 0), st)                          # LIVE kick-off
+    w._process(_live_str(1, 0), st)                          # LIVE goal -> 1-0
+    fin = {"status": "FINISHED", "homeTeam": {"name": "England"},
+           "awayTeam": {"name": "Ghana"}, "score": {"fullTime": {"home": 1, "away": 0}}}
+    ev = w._process(fin, st)
+    assert _types(ev) == ["fulltime"]
+    assert st["finished"]
+    assert ev[0]["match"]["score"]["fullTime"] == {"home": 1, "away": 0}
+
+
+def test_live_mid_match_join_baselines_silently():
+    # The phantom-goal guard must hold for the LIVE synonym too: joining at 1-1 (past
+    # KICKOFF_GRACE → near_kickoff False) adopts the score silently, no kickoff, no goals.
+    st = _fresh()
+    events = _w()._process(_live_str(1, 1), st)
+    assert events == []
+    assert st["started"] and st["score"] == (1, 1)

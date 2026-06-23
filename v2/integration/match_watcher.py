@@ -36,11 +36,23 @@ from v2.integration.daily_fixtures import _kickoff_et
 
 logger = logging.getLogger(__name__)
 
-LIVE = {"IN_PLAY", "LIVE", "PAUSED"}   # carries the live score. "LIVE" is the football-data status
-                                       # some matches report instead of "IN_PLAY" (e.g. England v
-                                       # Ghana 2026-06-23); treated as in-play (not a PAUSED break).
-DONE = {"FINISHED"}               # end-of-game signal (may or may not carry the final score)
-CATCHABLE = LIVE | DONE
+# Canonical match states — the SINGLE place that maps football-data's raw status strings to the
+# states the watcher acts on. football-data reports an in-progress match as EITHER "IN_PLAY" or
+# "LIVE" (varies per match: England v Ghana 2026-06-23 used "LIVE", Portugal v Uzbekistan used
+# "IN_PLAY"); both normalize to "in_play". Adding a future synonym = one entry here. Any status NOT
+# in the map (SCHEDULED/TIMED/SUSPENDED/POSTPONED/CANCELLED/unknown) → None → uncatchable, ignored.
+_CANON = {
+    "IN_PLAY": "in_play", "LIVE": "in_play",   # in-play synonyms unify here
+    "PAUSED":  "paused",                        # break (half-time) — drives half tracking
+    "FINISHED": "done", "AWARDED": "done",      # end-of-match (AWARDED = forfeit/administrative)
+}
+_CATCHABLE_CANON = {"in_play", "paused", "done"}   # states _catch() returns; rest are ignored
+
+
+def _canon(status: str | None) -> str | None:
+    """football-data raw status → canonical state (in_play / paused / done), or None if the
+    watcher doesn't act on it. The one source of truth for in-play-synonym handling."""
+    return _CANON.get(status)
 
 PRE_KICKOFF_LEAD = datetime.timedelta(minutes=5)
 REST_SECONDS = 1 * 60             # rest after a successful catch — matches the API's ~1-min
@@ -253,10 +265,11 @@ class MatchWatcher:
         kickoff) decides what a non-0-0 FIRST live read means: a genuine start the API
         reported late (announce kickoff) vs. a mid-match restart (stay silent)."""
         status, (h, a) = self._parse(match)
+        canon = _canon(status)
         read_lu, carried = self._read_meta(match)
         score_lu = state.get("score_updated")
         events: list[dict] = []
-        if status in DONE:
+        if canon == "done":
             if not state["finished"]:
                 state["finished"] = True
                 # The FINISHED payload OFTEN carries the true final score — the free API can
@@ -273,7 +286,7 @@ class MatchWatcher:
                 events.append({"type": "fulltime",
                                "match": self._with_score(match, final)})
             return events
-        if status in LIVE:
+        if canon in ("in_play", "paused"):
             # Half tracking — derived purely from the PAUSED→IN_PLAY transitions (the free
             # tier's `minute` is unreliable, so we never trust it). PAUSED is a break, so the
             # first IN_PLAY read AFTER one advances the half; goals revealed AT a PAUSED read
@@ -281,7 +294,7 @@ class MatchWatcher:
             # it. Each goal stamps the current half — we no longer post a separate half-time msg.
             state.setdefault("half", 1)
             state.setdefault("pending_half", False)
-            if status == "PAUSED":
+            if canon == "paused":
                 state["pending_half"] = True
             elif state["pending_half"]:
                 state["half"] += 1
@@ -383,14 +396,14 @@ class MatchWatcher:
             if not self._running:
                 return None
             m = await self._fetch_match(self.keys[0], match_id, et_day)
-            if m and m.get("status") in CATCHABLE:
+            if m and _canon(m.get("status")) in _CATCHABLE_CANON:
                 return m
             await asyncio.sleep(PRIMARY_INTERVAL)
         for i in range(BURST_TRIES):                  # backup key used only here
             if not self._running:
                 return None
             m = await self._fetch_match(self.keys[i % len(self.keys)], match_id, et_day)
-            if m and m.get("status") in CATCHABLE:
+            if m and _canon(m.get("status")) in _CATCHABLE_CANON:
                 return m
             await asyncio.sleep(BURST_INTERVAL)
         return None
@@ -437,7 +450,7 @@ class MatchWatcher:
         cand = []
         for m in matches:
             ud = m.get("utcDate")
-            if not ud or m.get("status") in DONE or m.get("id") in finished_ids:
+            if not ud or _canon(m.get("status")) == "done" or m.get("id") in finished_ids:
                 continue
             try:
                 ko = datetime.datetime.fromisoformat(ud.replace("Z", "+00:00")).replace(tzinfo=None)
