@@ -2,7 +2,8 @@
 
 Transport is dependency-injected like the Discord one: ``client`` exposes
 
-    async send_message(channel, content, *, parse_mode='HTML', media_path=None) -> message_id
+    async send_message(channel, content, *, parse_mode='HTML', media_path=None)
+        -> (message_id, chat_id)   # the REAL ids of the sent message, for unsend/audit
     async ping() -> bool
 
 Telegram renders HTML, so ``format_content`` converts the markdown we store
@@ -47,8 +48,13 @@ class TelegramConnector(BaseConnector):
             return DeliveryResult(False, self.name, channel=channel,
                                   error="telegram client not wired")
         try:
-            mid = await self.client.send_message(channel, content, parse_mode="HTML", **kw)
-            return DeliveryResult(True, self.name, message_id=str(mid), channel=channel)
+            # The adapter returns the REAL (message_id, chat_id) of the sent message. Store the
+            # actual chat_id in `channel` (the exact chat the message went to) so a later unsend
+            # targets it precisely — scheduled-deletion Phase 0.
+            message_id, chat_id = await self.client.send_message(
+                channel, content, parse_mode="HTML", **kw)
+            return DeliveryResult(True, self.name, message_id=str(message_id),
+                                  channel=str(chat_id))
         except Exception as exc:  # noqa: BLE001
             return DeliveryResult(False, self.name, channel=channel, error=str(exc))
 

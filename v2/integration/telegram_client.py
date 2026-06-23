@@ -18,10 +18,12 @@ class TelegramClientAdapter:
 
     async def send_message(self, channel, content, parse_mode="HTML", media_path=None, **kw):
         # TelegramConnector already produced HTML; broadcast to the configured target.
-        ok = await self.broadcaster.broadcast(content, parse_mode=parse_mode)
-        if not ok:
+        # Return the REAL (message_id, chat_id) so post_deliveries persists a deletable id
+        # (scheduled-deletion Phase 0) — not the old "telegram-broadcast" sentinel.
+        msg = await self.broadcaster.broadcast(content, parse_mode=parse_mode)
+        if msg is None:
             raise RuntimeError("Telegram broadcast failed (no target or send error)")
-        return "telegram-broadcast"
+        return (msg.message_id, msg.chat.id)
 
     async def ping(self) -> bool:
         return self.broadcaster is not None

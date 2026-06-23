@@ -268,7 +268,7 @@ def test_no_crash_when_get_match_returns_empty():
 
 
 def test_telegram_broadcast_skipped_no_config():
-    """broadcast() returns False when no target is configured."""
+    """broadcast() returns None when no target is configured (was False; now Message|None)."""
     from bot.services.telegram_broadcaster import TelegramBroadcaster
 
     with patch("bot.services.telegram_broadcaster.config") as mock_cfg:
@@ -280,19 +280,42 @@ def test_telegram_broadcast_skipped_no_config():
             broadcaster.broadcast("hello")
         )
 
-    assert result is False
+    assert result is None
     broadcaster._bot.send_message.assert_not_called()
 
 
-def test_telegram_broadcast_photo_fallback():
-    """broadcast_photo falls back to text when image file is missing."""
+def test_telegram_broadcast_returns_sent_message():
+    """broadcast() returns the sent telegram.Message (real message_id + chat) on success —
+    Phase 0 of scheduled deletion: we must persist the real id, not a sentinel."""
     from bot.services.telegram_broadcaster import TelegramBroadcaster
 
+    sent = MagicMock(message_id=4242)
+    sent.chat.id = -1001234567890
     with patch("bot.services.telegram_broadcaster.config") as mock_cfg:
         mock_cfg.telegram_broadcast_target = "-1001234567890"
         broadcaster = TelegramBroadcaster.__new__(TelegramBroadcaster)
         broadcaster._bot = MagicMock()
-        broadcaster._bot.send_message = AsyncMock(return_value=True)
+        broadcaster._bot.send_message = AsyncMock(return_value=sent)
+
+        result = asyncio.get_event_loop().run_until_complete(
+            broadcaster.broadcast("hello")
+        )
+
+    assert result is sent
+    assert result.message_id == 4242 and result.chat.id == -1001234567890
+
+
+def test_telegram_broadcast_photo_fallback():
+    """broadcast_photo falls back to text when image file is missing, returning the Message."""
+    from bot.services.telegram_broadcaster import TelegramBroadcaster
+
+    sent = MagicMock(message_id=99)
+    sent.chat.id = -1001234567890
+    with patch("bot.services.telegram_broadcaster.config") as mock_cfg:
+        mock_cfg.telegram_broadcast_target = "-1001234567890"
+        broadcaster = TelegramBroadcaster.__new__(TelegramBroadcaster)
+        broadcaster._bot = MagicMock()
+        broadcaster._bot.send_message = AsyncMock(return_value=sent)
 
         result = asyncio.get_event_loop().run_until_complete(
             broadcaster.broadcast_photo(
@@ -301,6 +324,6 @@ def test_telegram_broadcast_photo_fallback():
             )
         )
 
-    # Should fall back to send_message (not send_photo)
+    # Should fall back to send_message (not send_photo) and return that Message
     broadcaster._bot.send_message.assert_called_once()
-    assert result is True
+    assert result is sent
