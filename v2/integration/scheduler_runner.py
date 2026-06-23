@@ -34,7 +34,7 @@ class SchedulerRunner:
         self._conn = get_connection(self.db_path)   # loop thread
         self.registry.conn = self._conn             # so deliveries are logged
         publisher = PostPublisher(self._conn, self.registry, SignatureService(self._conn))
-        self._scheduler = Scheduler(self._conn, publisher)
+        self._scheduler = Scheduler(self._conn, publisher, registry=self.registry)
         self._running = True
         self._task = asyncio.create_task(self._loop())
 

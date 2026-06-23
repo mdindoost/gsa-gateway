@@ -117,9 +117,13 @@ def reminder_fire_time(date_str, time_str, offset_value, offset_unit) -> datetim
 # ── scheduler ────────────────────────────────────────────────────────────────
 
 class Scheduler:
-    def __init__(self, conn, publisher):
+    def __init__(self, conn, publisher, registry=None):
         self.conn = conn
         self.publisher = publisher
+        # Optional deleter: unsends posts whose delete_at has passed. None in pure-materialize
+        # contexts/tests; the SchedulerRunner supplies the registry so it runs in production.
+        from v2.core.publishing.deleter import PostDeleter
+        self.deleter = PostDeleter(conn, registry) if registry is not None else None
 
     async def tick(self, now: datetime | None = None) -> dict:
         # UTC-canonical: scheduled_for / event datetimes are stored UTC, so "now"
@@ -129,8 +133,13 @@ class Scheduler:
         templates = self.materialize_templates(now_dt)
         reminders = self.materialize_event_reminders(now_dt)
         published = await self.publisher.publish_due(now_dt.strftime(_FMT))
+        # Unsend due posts AFTER publishing (disjoint rows: 'sent' vs 'scheduled'; explicit order).
+        deleted = await self.deleter.delete_due(now_dt.strftime(_FMT)) if self.deleter else {}
         result = {"templates_materialized": templates,
-                  "reminders_materialized": reminders, **published}
+                  "reminders_materialized": reminders, **published,
+                  "deleted": deleted.get("deleted", 0),
+                  "delete_unsupported": deleted.get("unsupported", 0),
+                  "delete_failed": deleted.get("failed", 0)}
         logger.debug("scheduler tick: %s", result)
         return result
 
