@@ -61,6 +61,11 @@ class PostDeleter:
             result = await self.registry.delete_delivery(d["platform"], d["channel"], d["message_id"])
             err = result.error or ""
             err_l = err.lower()
+            # 404 = success (message already gone = goal achieved). The PRIMARY signal is
+            # result.success — Discord's adapter catches discord.NotFound and returns success, so it
+            # never relies on the string match. The "not found"/"unknown message" substrings are a
+            # SECONDARY defensive fallback for connectors that surface a 404 only as an error string;
+            # tighten/replace with a structured signal if more delete-capable connectors are added.
             if result.success or "not found" in err_l or "unknown message" in err_l:
                 self._mark(d["id"], "deleted", None, d["delete_attempts"])
                 summary["deleted"] += 1

@@ -78,6 +78,90 @@ def test_not_found_counts_as_deleted():
     conn.close()
 
 
+class _MidRegistry:
+    """Returns a result keyed by message_id (for multi-delivery posts on one platform)."""
+    def __init__(self, by_mid):
+        self.by_mid = by_mid
+        self.calls = []
+
+    async def delete_delivery(self, platform, channel, message_id):
+        self.calls.append((platform, channel, message_id))
+        return self.by_mid[message_id]
+
+
+def test_transient_error_bumps_attempts_and_retries():
+    conn = create_all(":memory:")
+    _seed(conn)
+    reg = _FakeRegistry({"discord": DeliveryResult(False, "discord", error="503 service unavailable")})
+    out = _run(PostDeleter(conn, reg).delete_due(now="2025-01-01 00:00:00"))
+    assert out["deleted"] == 0 and out["failed"] == 0
+    d = conn.execute("SELECT delete_status, delete_attempts, delete_error FROM post_deliveries WHERE id=1").fetchone()
+    assert d["delete_status"] is None            # left NULL to retry next tick
+    assert d["delete_attempts"] == 1
+    assert "503" in d["delete_error"]
+    p = conn.execute("SELECT deleted_at FROM posts WHERE id=1").fetchone()
+    assert p["deleted_at"] is None               # rollup blocked while a delivery is still retrying
+    conn.close()
+
+
+def test_attempts_cap_marks_delete_failed():
+    conn = create_all(":memory:")
+    _seed(conn)
+    conn.execute("UPDATE post_deliveries SET delete_attempts=4 WHERE id=1")  # one below the cap
+    conn.commit()
+    reg = _FakeRegistry({"discord": DeliveryResult(False, "discord", error="503")})
+    out = _run(PostDeleter(conn, reg).delete_due(now="2025-01-01 00:00:00"))
+    assert out["failed"] == 1
+    d = conn.execute("SELECT delete_status, delete_attempts FROM post_deliveries WHERE id=1").fetchone()
+    assert d["delete_status"] == "delete_failed" and d["delete_attempts"] == 5
+    p = conn.execute("SELECT deleted_at FROM posts WHERE id=1").fetchone()
+    assert p["deleted_at"] is not None           # all deliveries terminal now -> rolled up
+    conn.close()
+
+
+def test_failed_send_is_not_applicable_no_registry_call():
+    conn = create_all(":memory:")
+    _seed(conn)
+    conn.execute("UPDATE post_deliveries SET status='failed' WHERE id=1")  # was never delivered
+    conn.commit()
+    reg = _FakeRegistry({"discord": DeliveryResult(True, "discord")})
+    _run(PostDeleter(conn, reg).delete_due(now="2025-01-01 00:00:00"))
+    assert reg.calls == []                        # nothing to unsend
+    d = conn.execute("SELECT delete_status FROM post_deliveries WHERE id=1").fetchone()
+    assert d["delete_status"] == "not_applicable"
+    conn.close()
+
+
+def test_telegram_broadcast_sentinel_is_not_applicable():
+    conn = create_all(":memory:")
+    _seed(conn)
+    conn.execute("UPDATE post_deliveries SET platform='telegram', message_id='telegram-broadcast' WHERE id=1")
+    conn.commit()
+    reg = _FakeRegistry({"telegram": DeliveryResult(False, "telegram", error="x")})
+    _run(PostDeleter(conn, reg).delete_due(now="2025-01-01 00:00:00"))
+    assert reg.calls == []                        # sentinel id is not deletable -> not routed
+    d = conn.execute("SELECT delete_status FROM post_deliveries WHERE id=1").fetchone()
+    assert d["delete_status"] == "not_applicable"
+    conn.close()
+
+
+def test_transient_delivery_blocks_post_rollup():
+    conn = create_all(":memory:")
+    _seed(conn)  # delivery id=1: discord, mid 999
+    conn.execute("INSERT INTO post_deliveries(id,post_id,platform,channel,message_id,status) "
+                 "VALUES(2,1,'discord','gsa','888','success')")
+    conn.commit()
+    reg = _MidRegistry({"999": DeliveryResult(True, "discord"),
+                        "888": DeliveryResult(False, "discord", error="503")})
+    _run(PostDeleter(conn, reg).delete_due(now="2025-01-01 00:00:00"))
+    assert conn.execute("SELECT delete_status FROM post_deliveries WHERE id=1").fetchone()["delete_status"] == "deleted"
+    d2 = conn.execute("SELECT delete_status, delete_attempts FROM post_deliveries WHERE id=2").fetchone()
+    assert d2["delete_status"] is None and d2["delete_attempts"] == 1
+    p = conn.execute("SELECT deleted_at FROM posts WHERE id=1").fetchone()
+    assert p["deleted_at"] is None               # one delivery still retrying -> post not rolled up
+    conn.close()
+
+
 def test_deleter_issues_no_DELETE_statements():
     # immortal-records guard: trace every SQL the deleter runs; none may be a DELETE.
     conn = create_all(":memory:")

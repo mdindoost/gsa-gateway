@@ -133,7 +133,7 @@ for post in due:
 - [ ] Immortal-records guard (deleter UPDATE-only + test).
 - [ ] Telegram override + 48h window guard (Phase 2).
 - [ ] GroupMe best-effort `delete_unsupported` throughout.
-- [ ] **Deferred (flag explicitly):** cancel/extend pending deletions in the dashboard; auto-generation of the 1-week/1-day reminder posts (separate feature); chunked-message multi-id deletion (no chunking exists today).
+- [ ] **Deferred (flag explicitly):** cancel/extend pending deletions in the dashboard; auto-generation of the 1-week/1-day reminder posts (separate feature); chunked-message multi-id deletion (no chunking exists today); **the dashboard OFFLINE `changes.sql` export path does NOT carry `delete_at`** — only the live server path (`_post_post`) does. Owner decision (2026-06-23): accepted, server-mode is the only path used; not building the offline path.
 
 ## 11. Out of scope
 - The reminder *generator* (auto-creating 1-week/1-day posts from an event) — separate feature; this design only honors a `delete_at` on whatever posts exist.
