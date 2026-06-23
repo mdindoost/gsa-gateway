@@ -72,6 +72,10 @@ class PostDeleter:
             elif "unsupported" in err_l:
                 self._mark(d["id"], "delete_unsupported", err, d["delete_attempts"])
                 summary["unsupported"] += 1
+            elif getattr(result, "terminal", False):
+                # permanent failure (e.g. Telegram no-delete-rights / >48h expiry) — do NOT retry
+                self._mark(d["id"], "delete_failed", err, d["delete_attempts"])
+                summary["failed"] += 1
             elif d["delete_attempts"] + 1 >= MAX_ATTEMPTS:
                 self._mark(d["id"], "delete_failed", err, d["delete_attempts"] + 1)
                 summary["failed"] += 1

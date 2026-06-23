@@ -145,6 +145,20 @@ def test_telegram_broadcast_sentinel_is_not_applicable():
     conn.close()
 
 
+def test_terminal_failure_is_delete_failed_without_retry():
+    # a terminal result (e.g. Telegram no-rights / >48h expiry) must NOT burn retries
+    conn = create_all(":memory:")
+    _seed(conn)
+    reg = _FakeRegistry({"discord": DeliveryResult(False, "discord",
+                                                   error="forbidden: no rights", terminal=True)})
+    out = _run(PostDeleter(conn, reg).delete_due(now="2025-01-01 00:00:00"))
+    assert out["failed"] == 1
+    d = conn.execute("SELECT delete_status, delete_attempts FROM post_deliveries WHERE id=1").fetchone()
+    assert d["delete_status"] == "delete_failed"
+    assert d["delete_attempts"] == 0           # terminal → no retry, no increments
+    conn.close()
+
+
 def test_transient_delivery_blocks_post_rollup():
     conn = create_all(":memory:")
     _seed(conn)  # delivery id=1: discord, mid 999
