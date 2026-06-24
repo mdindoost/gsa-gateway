@@ -67,7 +67,8 @@ def main(argv=None) -> int:
         print(f"\n# {seed}")
         res = eos_crawl.extract_entry(seed, fetch)
         results.append(res)
-        print(f"  staff={len(res.staff)}  prose={len(res.prose)}  skipped={len(res.skipped)}")
+        trunc = "  ⚠ TRUNCATED (hit budget)" if res.truncated else ""
+        print(f"  staff={len(res.staff)}  prose={len(res.prose)}  skipped={len(res.skipped)}{trunc}")
         for s in res.staff:
             print(f"    * {s.name} — {s.title} — {s.phone} — {s.email}")
         for p in sorted(res.prose, key=lambda x: x.source_url):

@@ -1,6 +1,7 @@
-"""TDD: drop site-wide RECURRING assets (e.g. the Late Night Lyft PDF that appears in an
-announcement block on nearly every page). A page-specific asset (e.g. the campus map) is
-kept; an asset appearing on many pages is chrome, removed from all.
+"""TDD: drop ONLY site-wide near-universal chrome assets (e.g. the Late Night Lyft PDF on
+nearly every page). Per the 2026-06-23 verbatim hard line, an asset on a MINORITY of pages
+(a real form/rate-sheet shared by a few pages) must NEVER be stripped. Threshold: an asset
+is chrome only when it appears on >= n-1 of n pages AND n >= 5 (small crawls strip nothing).
 """
 import sys
 from pathlib import Path
@@ -9,32 +10,31 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from v2.core.ingestion.eos_crawl import extract_entry
+from v2.core.ingestion.eos_crawl import ProsePage, _strip_recurring_assets
 
-SEED = "https://www.njit.edu/parking/"
-
-
-def _page(h1, body, links):
-    a = "".join(f'<a href="{u}">{t}</a>' for u, t in links)
-    return f'<div role="main"><h1>{h1}</h1><p>{body}</p>{a}</div>'
+LYFT = ("https://x/lyft.pdf", "Lyft")
+FORM = ("https://x/form.pdf", "Form")
 
 
-def _result():
-    lyft = ("/parking/files/lyft.pdf", "Late Night Lyft")  # recurring on every page
-    pages = {
-        SEED: _page("Hub", "hub text", [("/parking/a", "A"), ("/parking/b", "B"), lyft]),
-        "https://www.njit.edu/parking/a": _page("A", "alpha text", [lyft, ("/parking/files/a.pdf", "A doc")]),
-        "https://www.njit.edu/parking/b": _page("B", "beta text", [lyft, ("/parking/files/b.pdf", "B doc")]),
-    }
-    return extract_entry(SEED, lambda u: pages.get(u))
+def _pg(i, files):
+    return ProsePage(f"T{i}", f"body {i}", f"https://x/p{i}", files=tuple(files))
 
 
-def test_recurring_asset_removed_everywhere():
-    all_files = {u for p in _result().prose for u, _ in p.files}
-    assert not any(u.endswith("/lyft.pdf") for u in all_files)
+def test_strips_near_universal_keeps_minority():
+    pages = [_pg(i, [LYFT] + ([FORM] if i < 3 else [])) for i in range(6)]  # lyft 6/6, form 3/6
+    _strip_recurring_assets(pages)
+    allf = {u for p in pages for u, _ in p.files}
+    assert "https://x/lyft.pdf" not in allf       # near-universal chrome -> stripped
+    assert "https://x/form.pdf" in allf            # minority (3/6) legit asset -> KEPT
 
 
-def test_page_specific_assets_kept():
-    all_files = {u for p in _result().prose for u, _ in p.files}
-    assert any(u.endswith("/a.pdf") for u in all_files)
-    assert any(u.endswith("/b.pdf") for u in all_files)
+def test_no_strip_below_five_pages():
+    pages = [_pg(i, [LYFT]) for i in range(4)]      # 4 pages, lyft on all
+    _strip_recurring_assets(pages)
+    assert any("lyft" in u for p in pages for u, _ in p.files)  # n<5 -> nothing stripped
+
+
+def test_strips_n_minus_one():
+    pages = [_pg(i, [LYFT] if i > 0 else []) for i in range(6)]  # lyft on 5/6
+    _strip_recurring_assets(pages)
+    assert not any("lyft" in u for p in pages for u, _ in p.files)  # >= n-1 -> stripped

@@ -41,3 +41,14 @@ def test_extract_prose_drops_site_chrome():
 
 def test_extract_prose_starts_at_heading():
     assert _page().content.startswith("Visitor Parking")
+
+
+def test_extract_prose_is_exactly_mechanical_clean_no_rewrite():
+    # Strong verbatim guard: content must be EXACTLY clean_text of the main region — proves
+    # no summarize/paraphrase/reorder/drop ever creeps in (hard line #3). If someone later
+    # adds any text transformation to extract_prose, this fails.
+    from bs4 import BeautifulSoup
+    from v2.core.ingestion.web_crawler import clean_text
+    from v2.core.ingestion.eos_crawl import _main_region
+    expected = clean_text(str(_main_region(BeautifulSoup(FIXTURE.read_text(), "html.parser"))))
+    assert _page().content == expected

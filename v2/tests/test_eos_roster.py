@@ -41,6 +41,16 @@ def test_parse_roster_rejoins_split_email():
     assert e.title == "Coordinator"
 
 
+def test_parse_roster_alternate_heading_anchor():
+    # other sites title the block differently — a single literal anchor would miss them.
+    text = ("Mailroom\nStaff Directory\n"
+            "Jane Doe\nSupervisor\nPhone# 973-000-1234\nmail to:\njane.doe@njit.edu\n"
+            "Popular Searches\nRegistrar")
+    staff = parse_roster(text)
+    assert len(staff) == 1
+    assert staff[0].name == "Jane Doe" and staff[0].email == "jane.doe@njit.edu"
+
+
 def test_parse_roster_all_emails():
     assert {s.email for s in _staff()} == {
         "gjini@njit.edu",

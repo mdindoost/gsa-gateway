@@ -142,6 +142,26 @@ re-walk saved URLs → content-hash diff → re-embed changed → reconcile new/
 
 ## Goals checklist (to verify at completion)
 
-- [ ] G1 EOS org under njit · [ ] G2 staff as people w/ roles+contact · [ ] G3 service pages verbatim KB,
-  embedded, RAG-answerable · [ ] G4 supervised manifest gate · [ ] G5 recrawl diff+reconcile ·
-  [ ] G6 uniform output. Each deferral (ND1–ND6) shipped-as-deferred and stated, not silently dropped.
+- [x] G1 EOS org under njit (⚠ location stored in page content, NOT as an org attr — minor partial)
+- [x] G2 staff as people w/ roles+contact (roster anchors broadened for other sites)
+- [x] G3 service pages verbatim KB (`type='policy'`, in served corpus), embedded, RAG-answerable
+- [x] G4 supervised manifest gate (CLI dry-run; manifest is stdout, not a file — minor deviation)
+- [~] **G5 recrawl — PARTIAL, DEFERRED-WITH-FLAG:** content-hash diff + version-bump of CHANGED pages is
+  BUILT (re-run no-ops unchanged). **Departure reconciliation (retiring REMOVED pages / departed staff)
+  is NOT built** — a page/person that disappears from njit.edu leaves a stale `is_active=1` row. **SAFE for
+  the FIRST crawl** (nothing to reconcile). **Do NOT advertise as a repeatable recrawl until built.** Build
+  later by reusing `explore.py reconcile_departures` keyed on `metadata.natural_key`. [[project_eos_crawl_build]]
+- [x] G6 uniform department-model output
+- Non-goals ND1–ND6 all honored (ND4 PDF-skip; PDF-content extraction is a separate future TODO,
+  [[project_pdf_extraction_todo]]).
+
+## Post-review status (2026-06-23)
+
+Built TDD (35 tests). BOTH hard-gate reviews done: **RAG/anti-fab = SAFE-TO-SHIP (no blockers)**;
+**senior-eng = SHIP-WITH-FIXES**. Folded: recurring-asset stripper tightened to near-universal-only
+(`k≥n-1 & n≥5`) so it can't drop a minority-shared legit asset (hard-line fix); roster anchors broadened;
+`extract_entry` parses once (no classify double-parse); budget truncation flagged on `EntryResult` + CLI;
+verbatim guarded by an exact-mechanical-clean test. **DEFERRED (loud):** G5 departure-reconcile (above).
+Remaining nits accepted: version-history chain (cosmetic), `sync_org_nodes` per-seed (cheap at scale),
+cross-seed title `merge=False`, `_main_region` whole-soup fallback (caught in manifest review).
+**Awaiting owner sign-off → gated live write (first crawl).**

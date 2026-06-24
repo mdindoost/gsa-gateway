@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -23,11 +24,16 @@ from v2.core.graph.project import project_appointment
 from v2.core.ingestion.people_editor import _slug
 from v2.core.ingestion.web_crawler import clean_text, normalize_url, select_links
 
+logger = logging.getLogger(__name__)
+
 EOS_SLUG = "eos"
 EOS_NAME = "Environmental & Operational Services"
 
 _EMAIL = re.compile(r"^[A-Za-z0-9._%+-]+@njit\.edu$", re.I)
 _PHONE = re.compile(r"Phone#\s*([0-9][0-9\-]+)", re.I)
+# Headings that introduce a staff roster (sites title the block differently).
+_ROSTER_ANCHORS = ("department staff", "staff directory", "our staff", "our team",
+                   "department contacts", "office staff")
 # Site-chrome markers that can follow the staff block in clean_text output.
 _BLOCK_END = ("popular searches", "in this section")
 
@@ -70,6 +76,7 @@ class EntryResult:
     staff: list[StaffRecord]
     prose: list[ProsePage]
     skipped: list[str]   # pages with no readable content (flag, never stored)
+    truncated: bool = False   # hit the page budget with links still queued
 
 
 def _canon(url: str) -> str:
@@ -87,14 +94,14 @@ def _in_scope(seed_path: str, url_path: str) -> bool:
     return url_path.rstrip("/") == sp or url_path.startswith(sp + "/")
 
 
-def crawl_entry(seed: str, fetch, max_depth: int = 4, budget: int = 300):
+def crawl_entry(seed: str, fetch, max_depth: int = 4, budget: int = 300, stats: dict | None = None):
     """DFS from ``seed``, following links UNDER THE SEED'S OWN PATH deep. Yields ``(url, html)``.
 
     Reuses the web_crawler spine (``select_links`` for asset-dropping link extraction) but keeps
     RAW HTML (which ``crawl_site`` discards) and applies an EOS-specific seed-prefix scope so a
     landing-page seed can't wander the whole site. Scheme canonicalized to https; depth- and
-    budget-bounded, dedup + loop-guarded. ``fetch(url) -> html|None`` is injected.
-    """
+    budget-bounded, dedup + loop-guarded. ``fetch(url) -> html|None`` is injected. If ``stats`` is
+    given, ``stats['truncated']`` is set True when the budget is hit with links still queued."""
     seed = _canon(normalize_url(seed, seed))
     seed_path = urlparse(seed).path
     seen = {seed}
@@ -111,6 +118,11 @@ def crawl_entry(seed: str, fetch, max_depth: int = 4, budget: int = 300):
                 if u not in seen and _in_scope(seed_path, urlparse(u).path):
                     seen.add(u)
                     stack.append((u, depth + 1))
+    if stats is not None:
+        stats["truncated"] = bool(stack)               # links left unfetched -> truncated
+        if stack:
+            logger.warning("crawl_entry: hit budget %d at %s; %d links not followed",
+                           budget, seed, len(stack))
 
 
 def _url_rank(url: str) -> tuple[int, int]:
@@ -127,42 +139,45 @@ def extract_entry(seed: str, fetch, max_depth: int = 4, budget: int = 300) -> En
     seen_emails: set[str] = set()
     by_hash: dict[str, ProsePage] = {}
     order: list[str] = []
-    for url, html in crawl_entry(seed, fetch, max_depth=max_depth, budget=budget):
-        kind = classify_page(html)
-        if kind == "staff-roster":
-            for s in parse_roster(clean_text(html)):
+    stats: dict = {}
+    for url, html in crawl_entry(seed, fetch, max_depth=max_depth, budget=budget, stats=stats):
+        # Parse ONCE per page, then branch (roster takes precedence over prose).
+        staff = parse_roster(clean_text(html))
+        if staff:
+            for s in staff:
                 if s.email not in seen_emails:
                     seen_emails.add(s.email)
                     res.staff.append(s)
-        elif kind == "prose":
-            page = extract_prose(url, html)
-            if page is None:
-                continue
-            h = hashlib.sha1(page.content.encode("utf-8")).hexdigest()
-            if h not in by_hash:
-                by_hash[h] = page
-                order.append(h)
-            elif _url_rank(page.source_url) < _url_rank(by_hash[h].source_url):
-                by_hash[h] = page                       # prefer the cleaner alias URL
-        else:
+            continue
+        page = extract_prose(url, html)
+        if page is None:
             res.skipped.append(url)
+            continue
+        h = hashlib.sha1(page.content.encode("utf-8")).hexdigest()
+        if h not in by_hash:
+            by_hash[h] = page
+            order.append(h)
+        elif _url_rank(page.source_url) < _url_rank(by_hash[h].source_url):
+            by_hash[h] = page                           # prefer the cleaner alias URL
     res.prose = [by_hash[h] for h in order]
     _strip_recurring_assets(res.prose)
+    res.truncated = stats.get("truncated", False)
     return res
 
 
 def _strip_recurring_assets(pages: list[ProsePage]) -> None:
-    """Remove site-wide RECURRING assets (e.g. an announcement PDF that appears on most
-    pages) — they're chrome, not page content. An asset is recurring when it appears on
-    >= 3 pages AND on more than half of them; page-specific assets (the campus map) stay.
+    """Remove ONLY site-wide near-universal chrome assets (e.g. an announcement PDF stamped
+    on nearly every page). Per the 2026-06-23 verbatim hard line, an asset on a MINORITY of
+    pages (a real form/rate-sheet shared by a few) must never be dropped — so we strip an
+    asset only when it appears on >= n-1 of n pages AND n >= 5 (small crawls strip nothing).
     Mutates ``pages`` in place (frozen dataclasses are replaced)."""
     n = len(pages)
-    if n < 3:
+    if n < 5:
         return
     files = Counter(u for p in pages for u, _ in p.files)
     images = Counter(u for p in pages for u, _ in p.images)
     recurring = {
-        u for c in (files, images) for u, k in c.items() if k >= 3 and k > n / 2
+        u for c in (files, images) for u, k in c.items() if k >= n - 1
     }
     if not recurring:
         return
@@ -233,10 +248,15 @@ def parse_roster(text: str) -> list[StaffRecord]:
     line break (``local\\n@njit.edu``) are rejoined first.
     """
     low = text.lower()
-    start = low.find("department staff")
+    start = -1
+    for anchor in _ROSTER_ANCHORS:
+        i = low.find(anchor)
+        if i != -1:
+            start = i + len(anchor)
+            break
     if start == -1:
         return []
-    block = text[start + len("department staff"):]
+    block = text[start:]
     for marker in _BLOCK_END:
         i = block.lower().find(marker)
         if i != -1:
