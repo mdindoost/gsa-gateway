@@ -5,6 +5,10 @@ Dry-run by default (crawls + prints the manifest, no DB writes). --commit takes 
 backup first, then writes via ist_crawl.ingest_ist and commits. DB-only change -> no bot
 restart needed; run embed_all afterwards (or pass --embed).
 
+Recrawl detects content changes only — removed pages / departed staff are NOT retired
+(ND6, departure reconciliation deferred; see the spec). Safe for the first crawl; do not
+advertise as a fully repeatable recrawl until departure reconciliation is built.
+
 Gated workflow:  cp gsa_gateway.db /tmp/dev.db
                  python scripts/crawl_ist.py --db /tmp/dev.db            # dev dry-run
                  python scripts/crawl_ist.py --db /tmp/dev.db --commit   # dev write, inspect

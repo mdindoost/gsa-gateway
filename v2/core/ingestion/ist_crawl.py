@@ -308,7 +308,9 @@ def ingest_ist(conn, result: EntryResult, source: str = "crawler") -> dict:
       - prose -> knowledge_items type='policy' (IN the served corpus, NOT office_page),
         keyed by source_url, content-hash for recrawl change detection, figures in metadata.
     Idempotent: unchanged pages are skipped; changed pages version-bump (old deactivated).
-    Does NOT commit (caller owns the transaction)."""
+    Recrawl is change-detection ONLY — removed pages and departed staff are NOT retired
+    (ND6; departure reconciliation deferred — see the spec). Does NOT commit (caller owns
+    the transaction)."""
     org_id = ensure_org(conn, IST_SLUG, IST_NAME, parent_slug="njit", type="office")
     sync_org_nodes(conn)
 
