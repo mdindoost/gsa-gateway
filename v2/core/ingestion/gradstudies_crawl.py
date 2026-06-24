@@ -44,10 +44,11 @@ _TITLE_CUES = ("provost", "dean", "director", "coordinator", "manager", "assista
 @dataclass(frozen=True)
 class StaffRecord:
     name: str
-    title: str
+    title: str            # the primary (first) title line
     phone: str
     email: str
     unit: str = ""        # functional sub-section header on contact.php (e.g. "Graduate Student Awards")
+    titles: tuple[str, ...] = ()   # ALL published title lines (a person may list >1) — never dropped
 
 
 _ASSET_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".gif")
@@ -247,6 +248,11 @@ def extract_prose(url: str, html: str) -> ProsePage | None:
 
 
 def _is_title(line: str) -> bool:
+    """A roster line is a TITLE if it carries a role cue (or a parenthetical). This cue list is
+    the KNOWN BOUNDARY of the parser: a real staffer whose title carries NO cue word (e.g. a
+    bare "Bursar"/"Registrar"), or a person whose surname IS a cue word, won't be recognized and
+    that record surfaces as a WARNING for the owner to hand-fix — anti-fab: warn, never fabricate
+    a name/title, never silent-drop. The real GSO contact.php has no such cases (all titles cue)."""
     low = line.lower()
     return "(" in line or any(c in low for c in _TITLE_CUES)
 
@@ -303,11 +309,11 @@ def parse_roster(text: str) -> tuple[list[StaffRecord], list[str]]:
             name = head[t - 1]
             if t - 2 >= 0:                               # a section header leads this chunk
                 current_unit = head[t - 2]               # update; persists to later members
-            title = head[t]                              # first title line
+            titles = tuple(head[t:])                     # ALL title lines (>=1) — none dropped
             if name not in seen:
                 seen.add(name)
-                records.append(StaffRecord(name=name, title=title, phone=phone,
-                                           email=email, unit=current_unit))
+                records.append(StaffRecord(name=name, title=titles[0], phone=phone,
+                                           email=email, unit=current_unit, titles=titles))
             chunk = []
         else:
             chunk.append(ln)
@@ -340,7 +346,7 @@ def ingest_gradstudies(conn, result: EntryResult, source: str = "crawler") -> di
         key = f"{source}/{GRAD_SLUG}/{_slug(s.name)}"
         pid = project_appointment(
             conn, person_key=key, name=s.name, org_id=org_id, category="staff",
-            titles=[s.title], source_section=(s.unit or "contacts"), source=source)
+            titles=list(s.titles) or [s.title], source_section=(s.unit or "contacts"), source=source)
         _merge_person_attrs(conn, pid, {"email": s.email, "phone": s.phone})
 
     inserted = updated = unchanged = 0

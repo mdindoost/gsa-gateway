@@ -71,6 +71,8 @@ def main(argv=None) -> int:
             fig = f"  [img:{len(p.images)} file:{len(p.files)}]" if (p.images or p.files) else ""
             print(f"    - {p.title[:44]:44} | {len(p.content):5}ch | "
                   f"{p.source_url.replace('https://www.njit.edu', '')}{fig}")
+            for u, txt in p.files:                       # ND5: enumerate flagged PDF/asset links
+                print(f"        · file (page+link only, content not extracted): {u}")
         for u in res.skipped:
             print(f"    ! SKIP (no content): {u}")
         for w in res.warnings:

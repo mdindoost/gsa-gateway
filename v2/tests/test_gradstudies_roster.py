@@ -13,6 +13,9 @@ def test_parses_named_staff_with_inline_contact():
 
     z = by["Sotirios G. Ziavras, D.Sc."]
     assert z.title == "Vice Provost for Graduate Studies and Dean of the Graduate Faculty"
+    # BOTH published titles captured, not just the first (G2 never-drop-silently)
+    assert z.titles == ("Vice Provost for Graduate Studies and Dean of the Graduate Faculty",
+                        "Professor of Electrical and Computer Engineering")
     assert z.phone == "973-596-3462"
     assert z.email == "ziavras@njit.edu"
     assert z.unit == ""                                   # top group, no section header

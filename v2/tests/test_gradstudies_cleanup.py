@@ -17,13 +17,19 @@ def _seed():
                      "version,is_active,created_by) VALUES(?,?,?,?,?,?,1,1,?)",
                      (oid, "policy", title, "c", meta, url, cb))
 
-    ins("migration", "stub", "https://graduatestudies.njit.edu")                    # retire: dead stub
-    ins("njit-crawl", "OGS — Forms", "https://www.njit.edu/graduatestudies/forms")  # retire: superseded
-    for _ in range(4):
-        ins("dashboard", "Ph.D. Credit Requirements",
-            "https://www.njit.edu/graduatestudies/content/new-phd-credit-requirements")  # dedup 3
-    ins("dashboard", "Hand-written GSA note", "https://internal/manual-only")        # KEEP: not on site
-    ins("crawler", "Forms", "https://www.njit.edu/graduatestudies/forms")            # KEEP: new source
+    PHD = "https://www.njit.edu/graduatestudies/content/new-phd-credit-requirements"
+    FORMS = "https://www.njit.edu/graduatestudies/forms"
+    # the new crawler source of truth (whole pages) — KEPT
+    ins("crawler", "PhD Credit Requirements", PHD)
+    ins("crawler", "Forms", FORMS)
+    # stale rows the crawler supersedes — RETIRE
+    ins("migration", "stub", "https://graduatestudies.njit.edu")                    # dead subdomain
+    ins("njit-crawl", "OGS — Forms", FORMS)                                          # superseded
+    for _ in range(4):                                                               # 4 partial chunks
+        ins("dashboard", "Ph.D. Credit Requirements", PHD)                          # of a crawler page
+    # genuinely manual rows (no crawler overlap) — KEPT
+    ins("dashboard", "Hand-written GSA note", "https://internal/manual-only")        # off-site URL
+    ins("dashboard", "Another manual note", None)                                   # NULL url (manual)
     conn.commit()
     return conn
 
@@ -34,9 +40,13 @@ def test_select_retire():
     conn = _seed()
     retire = mod.select_retire(conn)
     reasons = {(r["created_by"], r["reason"]) for r in retire}
+    retired_urls = {r["source_url"] for r in retire}
     assert ("migration", "dead-subdomain-stub") in reasons
     assert ("njit-crawl", "superseded-by-crawler") in reasons
-    assert sum(1 for r in retire if r["created_by"] == "dashboard") == 3   # dedup keeps 1 of 4
-    # never retire the manual-only row or any crawler row
-    assert all(r["source_url"] != "https://internal/manual-only" for r in retire)
+    # ALL 4 dashboard chunks on the crawler-covered PhD page are retired (not just 3 of 4)
+    assert sum(1 for r in retire if r["created_by"] == "dashboard") == 4
+    # genuinely manual rows survive: off-site URL and NULL url
+    assert "https://internal/manual-only" not in retired_urls
+    assert None not in retired_urls                       # NULL-url manual row never dedup-collided
+    # crawler rows are never retired
     assert all(r["created_by"] != "crawler" for r in retire)

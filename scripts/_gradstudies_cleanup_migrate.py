@@ -27,30 +27,39 @@ GS_SLUG = "graduate-studies"
 
 
 def select_retire(conn) -> list[dict]:
-    """Rows to deactivate. migration + njit-crawl rows are superseded by the crawler; duplicate
-    dashboard rows (same source_url) collapse to the lowest id. crawler rows and manual-only
-    dashboard rows are never touched."""
+    """Rows to deactivate so GSO ends with ONE clean crawler source:
+      - every ``migration`` row (the dead graduatestudies.njit.edu subdomain stub);
+      - every ``njit-crawl`` row (the older one-off pass, now superseded);
+      - every ``dashboard`` row whose ``source_url`` is a live /graduatestudies/ page the
+        crawler now covers (a whole-page crawler row exists for that URL) — these are
+        paraphrased/chunked versions of pages we now hold verbatim, NOT manual-only.
+    KEPT: every ``crawler`` row, and any ``dashboard`` row with NO crawler overlap (genuinely
+    manual — e.g. an internally-authored note or a row with no live-site URL incl. NULL).
+    This is a CURATION decision — it lives OUTSIDE the crawler (hard line)."""
     oid = conn.execute("SELECT id FROM organizations WHERE slug=?", (GS_SLUG,)).fetchone()[0]
+    crawler_urls = {r[0] for r in conn.execute(
+        "SELECT DISTINCT source_url FROM knowledge_items "
+        "WHERE is_active=1 AND org_id=? AND created_by='crawler'", (oid,)) if r[0]}
     rows = conn.execute(
         "SELECT id, created_by, title, source_url FROM knowledge_items "
         "WHERE is_active=1 AND org_id=?", (oid,)).fetchall()
     retire: list[dict] = []
-    dash_by_url: dict[str, list[int]] = {}
     for rid, cb, title, url in rows:
+        if cb == "crawler":
+            continue                                     # the new source of truth — never retired
         if cb == "migration":
+            reason = ("dead-subdomain-stub" if url and "graduatestudies.njit.edu" in url
+                      else "superseded-by-crawler")
             retire.append({"id": rid, "created_by": cb, "title": title,
-                           "source_url": url, "reason": "dead-subdomain-stub"})
+                           "source_url": url, "reason": reason})
         elif cb == "njit-crawl":
             retire.append({"id": rid, "created_by": cb, "title": title,
                            "source_url": url, "reason": "superseded-by-crawler"})
-        elif cb == "dashboard":
-            dash_by_url.setdefault(url, []).append(rid)
-        # crawler rows are NEVER retired here
-    # dedup dashboard rows sharing a source_url: keep the lowest id, retire the rest
-    for url, ids in dash_by_url.items():
-        for rid in sorted(ids)[1:]:
-            retire.append({"id": rid, "created_by": "dashboard", "title": "(duplicate)",
-                           "source_url": url, "reason": "duplicate-dashboard-row"})
+        elif cb == "dashboard" and url in crawler_urls:
+            # a dashboard row on a page the crawler now holds verbatim → not manual-only
+            retire.append({"id": rid, "created_by": cb, "title": title,
+                           "source_url": url, "reason": "superseded-by-crawler"})
+        # dashboard rows NOT on a crawler-covered URL (incl. NULL url) are manual-only → KEPT
     return retire
 
 
