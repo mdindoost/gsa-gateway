@@ -15,7 +15,7 @@ import json
 import logging
 import re
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -81,6 +81,7 @@ class EntryResult:
     prose: list[ProsePage]
     skipped: list[str]   # pages with no readable content (flag, never stored)
     truncated: bool = False   # hit the page budget with links still queued
+    warnings: list[str] = field(default_factory=list)   # unparseable roster rows (flag, never drop silently)
 
 
 def _canon(url: str) -> str:
@@ -136,26 +137,28 @@ def _url_rank(url: str) -> tuple[int, int]:
 
 
 def extract_entry(seed: str, fetch, max_depth: int = 4, budget: int = 300) -> EntryResult:
-    """Crawl one EOS entry point and extract: roster pages -> staff (KG), prose pages ->
-    KB, empty shells -> skipped (flagged). Prose is deduped by content hash (collapsing
-    .php / clean-URL aliases), keeping the cleanest URL. Brings data only; no DB writes."""
+    """Crawl the GSO entry point and extract: contact.php -> staff (KG), every page -> prose
+    (KB), empty shells -> skipped (flagged). COVERAGE RULE: unlike EOS, a roster page is NOT
+    dropped from prose — contact.php's office-contact prose (email/phone/hours/appointment
+    steps) is kept too. Prose deduped by content hash (collapsing .php / clean-URL aliases),
+    keeping the cleanest URL. Brings data only; no DB writes."""
     res = EntryResult(seed=_canon(normalize_url(seed, seed)), staff=[], prose=[], skipped=[])
     seen_emails: set[str] = set()
     by_hash: dict[str, ProsePage] = {}
     order: list[str] = []
     stats: dict = {}
     for url, html in crawl_entry(seed, fetch, max_depth=max_depth, budget=budget, stats=stats):
-        # Parse ONCE per page, then branch (roster takes precedence over prose).
-        staff = parse_roster(clean_text(html))
-        if staff:
-            for s in staff:
-                if s.email not in seen_emails:
-                    seen_emails.add(s.email)
-                    res.staff.append(s)
-            continue
+        staff, warns = parse_roster(clean_text(html))
+        res.warnings.extend(warns)
+        for s in staff:
+            if s.email not in seen_emails:
+                seen_emails.add(s.email)
+                res.staff.append(s)
+        # COVERAGE RULE: do NOT `continue` on a roster page — keep its prose too.
         page = extract_prose(url, html)
         if page is None:
-            res.skipped.append(url)
+            if not staff:
+                res.skipped.append(url)
             continue
         h = hashlib.sha1(page.content.encode("utf-8")).hexdigest()
         if h not in by_hash:
@@ -196,9 +199,9 @@ def _strip_recurring_assets(pages: list[ProsePage]) -> None:
 def classify_page(html: str) -> str:
     """Decide how a page should be handled: ``staff-roster`` (people → KG),
     ``prose`` (content → KB), or ``skip-empty`` (no readable main content → flag, never
-    store). Roster takes precedence — the contacts page also carries address prose, but
-    it is the people source."""
-    if parse_roster(clean_text(html)):
+    store). Roster takes precedence for the LABEL — but note the contacts page also yields
+    prose (kept), see extract_entry. ``parse_roster`` now returns ``(records, warnings)``."""
+    if parse_roster(clean_text(html))[0]:
         return "staff-roster"
     if extract_prose("", html) is not None:
         return "prose"
