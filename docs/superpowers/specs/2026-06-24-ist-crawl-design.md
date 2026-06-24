@@ -153,8 +153,9 @@ re-walk saved URLs → content-hash diff → re-embed changed → report (no dep
 - Fetch errors / non-200 → flag in manifest, skip (no partial fabricated content).
 - JS-shell empty-clean → `skip:js-shell`, flagged, never faked.
 - `unknown` page type → flagged, never guessed into a type.
-- Key-Contacts parse: emit a Person only when name + ≥1 contact field parse cleanly; ambiguous rows or a
-  contacts-shaped page yielding 0 records → **warn + ask owner**, not invented.
+- Key-Contacts parse (anchored on the `View Profile` delimiter): emit a Person from the name + title lines
+  immediately above each delimiter; a delimiter whose lines don't parse cleanly → **warn + ask owner**,
+  never silently dropped and never invented (no fabricated phone/email — the page has none).
 - Verbatim guarantee: prose stored == mechanically-cleaned page text; a test asserts no rewriting
   (exact-mechanical-clean / token-subsequence).
 - Off-host wandering: a test asserts DFS never leaves `ist.njit.edu`.
@@ -162,7 +163,9 @@ re-walk saved URLs → content-hash diff → re-embed changed → report (no dep
 ## Testing (TDD, mirrors the EOS suite)
 
 New `v2/tests/test_ist_*.py` with **real saved `ist.njit.edu` HTML fixtures**:
-- T1. Key-Contacts parser → the IST contacts (name/title/phone/email) from the `/about-ist` fixture.
+- T1. Key-Contacts parser → the IST contacts (name/title/**unit**, NO phone/email) from the
+  **`/ist-key-contacts`** fixture, anchored on the `View Profile` delimiter; unparseable rows surfaced as
+  warnings, not dropped.
 - T2. Prose cleaner → verbatim in/out (no added words; exact-mechanical-clean).
 - T3. Discovery scope → stays on `ist.njit.edu`; drops off-host (`www`/`myucid`/`servicedesk`/external)
   + CSS/JS/PDF/asset links.
