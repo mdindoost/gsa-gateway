@@ -301,33 +301,23 @@ def parse_roster(text: str) -> tuple[list[StaffRecord], list[str]]:
     return records, warnings
 
 
-def _merge_person_attrs(conn, pid: int, updates: dict) -> None:
-    """Merge contact fields into a Person node's attrs (preserving anything already set)."""
-    row = conn.execute("SELECT attrs FROM nodes WHERE id=?", (pid,)).fetchone()
-    attrs = json.loads(row[0]) if row and row[0] else {}
-    for k, v in updates.items():
-        if v:
-            attrs[k] = v
-    conn.execute("UPDATE nodes SET attrs=?, updated_at=datetime('now') WHERE id=?",
-                 (json.dumps(attrs), pid))
-
-
-def ingest_eos(conn, result: EntryResult, source: str = "crawler") -> dict:
-    """Write an EntryResult into the DB under ONE 'eos' org (under njit):
-      - staff -> Person + has_role(category='staff') + contact attrs (KG)
+def ingest_ist(conn, result: EntryResult, source: str = "crawler") -> dict:
+    """Write an EntryResult under the existing 'ist' org (under njit):
+      - staff -> Person + has_role(category='staff', unit as source_section); NO contact (the
+        /ist-key-contacts page carries no phone/email — anti-fab, omit rather than invent).
       - prose -> knowledge_items type='policy' (IN the served corpus, NOT office_page),
         keyed by source_url, content-hash for recrawl change detection, figures in metadata.
     Idempotent: unchanged pages are skipped; changed pages version-bump (old deactivated).
     Does NOT commit (caller owns the transaction)."""
-    org_id = ensure_org(conn, EOS_SLUG, EOS_NAME, parent_slug="njit", type="office")
+    org_id = ensure_org(conn, IST_SLUG, IST_NAME, parent_slug="njit", type="office")
     sync_org_nodes(conn)
 
     for s in result.staff:
-        key = f"{source}/{EOS_SLUG}/{_slug(s.name)}"
-        pid = project_appointment(
+        key = f"{source}/{IST_SLUG}/{_slug(s.name)}"
+        project_appointment(
             conn, person_key=key, name=s.name, org_id=org_id, category="staff",
-            titles=[s.title], source_section="contacts", source=source)
-        _merge_person_attrs(conn, pid, {"email": s.email, "phone": s.phone})
+            titles=[s.title], source_section=(s.unit or "key-contacts"), source=source)
+        # No contact merge: the IST key-contacts page has no phone/email to write (anti-fab).
 
     inserted = updated = unchanged = 0
     for p in result.prose:
@@ -337,7 +327,7 @@ def ingest_eos(conn, result: EntryResult, source: str = "crawler") -> dict:
             "content_hash": ch,
             "images": [list(i) for i in p.images],
             "files": [list(f) for f in p.files],
-            "source": "eos_crawl",
+            "source": "ist_crawl",
         }
         row = conn.execute(
             "SELECT id, json_extract(metadata,'$.content_hash') FROM knowledge_items "
