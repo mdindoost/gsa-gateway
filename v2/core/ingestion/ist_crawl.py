@@ -87,24 +87,24 @@ def _canon(url: str) -> str:
     return re.sub(r"^http://", "https://", url)
 
 
-def _in_scope(seed_path: str, url_path: str) -> bool:
-    """An EOS office site is bounded by the SEED's OWN path prefix — NOT the shared crawler's
-    parent-dir scope (which resolves a non-directory seed like /environmentalsafety to "/" and
-    crawls the whole university). Follow the seed page itself and its subtree only."""
-    sp = seed_path.rstrip("/")
-    return url_path.rstrip("/") == sp or url_path.startswith(sp + "/")
+def _in_scope(seed_host: str, url: str) -> bool:
+    """IST is ONE subdomain — scope is host-match (every ist.njit.edu page), NOT a path
+    prefix (EOS's per-seed path-prefix scope rejected IST's sibling links). select_links
+    already host-bounds, but we guard explicitly so a stray off-host link (www / servicedesk
+    / myucid / external) is never followed."""
+    return urlparse(url).netloc == seed_host
 
 
-def crawl_entry(seed: str, fetch, max_depth: int = 4, budget: int = 300, stats: dict | None = None):
-    """DFS from ``seed``, following links UNDER THE SEED'S OWN PATH deep. Yields ``(url, html)``.
+def crawl_entry(seed: str, fetch, max_depth: int = 4, budget: int = 400, stats: dict | None = None):
+    """DFS from ``seed``, following EVERY same-host link deep. Yields ``(url, html)``.
 
     Reuses the web_crawler spine (``select_links`` for asset-dropping link extraction) but keeps
-    RAW HTML (which ``crawl_site`` discards) and applies an EOS-specific seed-prefix scope so a
-    landing-page seed can't wander the whole site. Scheme canonicalized to https; depth- and
+    RAW HTML (which ``crawl_site`` discards) and applies a host-match scope so the whole IST
+    subdomain is walked from the homepage seed. Scheme canonicalized to https; depth- and
     budget-bounded, dedup + loop-guarded. ``fetch(url) -> html|None`` is injected. If ``stats`` is
     given, ``stats['truncated']`` is set True when the budget is hit with links still queued."""
     seed = _canon(normalize_url(seed, seed))
-    seed_path = urlparse(seed).path
+    seed_host = urlparse(seed).netloc
     seen = {seed}
     stack: list[tuple[str, int]] = [(seed, 0)]
     while stack and len(seen) <= budget:
@@ -116,7 +116,7 @@ def crawl_entry(seed: str, fetch, max_depth: int = 4, budget: int = 300, stats: 
         if depth < max_depth:
             follow, _ = select_links(html, url, seed, relevance_gated=False)
             for u in sorted((_canon(u) for u in follow), reverse=True):  # https, deterministic
-                if u not in seen and _in_scope(seed_path, urlparse(u).path):
+                if u not in seen and _in_scope(seed_host, u):
                     seen.add(u)
                     stack.append((u, depth + 1))
     if stats is not None:
