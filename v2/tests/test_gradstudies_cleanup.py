@@ -1,9 +1,11 @@
 import importlib
+import json
 import sys
 from pathlib import Path
 
 from v2.core.database.schema import create_all
-from v2.core.graph.orgs import ensure_org
+from v2.core.graph.orgs import ensure_org, sync_org_nodes
+from v2.core.graph.project import project_appointment
 
 
 def _seed():
@@ -50,3 +52,32 @@ def test_select_retire():
     assert None not in retired_urls                       # NULL-url manual row never dedup-collided
     # crawler rows are never retired
     assert all(r["created_by"] != "crawler" for r in retire)
+
+
+def test_select_retire_people():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    mod = importlib.import_module("scripts._gradstudies_cleanup_migrate")
+    conn = create_all(":memory:")
+    ensure_org(conn, "njit", "New Jersey Institute of Technology", None, "university")
+    oid = ensure_org(conn, "graduate-studies", "Graduate Studies", "njit", "office")
+    sync_org_nodes(conn)
+
+    def add_person(key, name, email):
+        pid = project_appointment(conn, person_key=key, name=name, org_id=oid,
+                                  category="staff", titles=["X"], source_section="contacts",
+                                  source=key.split("/")[0])
+        conn.execute("UPDATE nodes SET attrs=? WHERE id=?", (json.dumps({"email": email}), pid))
+        return pid
+
+    # crawler set (the new source of truth)
+    add_person("crawler/graduate-studies/ester-flaim", "Ester Flaim", "ester.flaim@njit.edu")
+    # dashboard dupe (same email) → retire ; dashboard non-dupe (no crawler match) → KEEP
+    dupe = add_person("dashboard/graduate-studies/ester-flaim", "Ester Flaim", "ester.flaim@njit.edu")
+    keep = add_person("dashboard/graduate-studies/jane-manual", "Jane Manual", "jane.manual@njit.edu")
+    conn.commit()
+
+    people = mod.select_retire_people(conn)
+    ids = {p["person_id"] for p in people}
+    assert dupe in ids                      # email matches a crawler person → superseded
+    assert keep not in ids                  # no crawler match → left for manual review
+    assert all(p["reason"] == "superseded-by-crawler" for p in people)
