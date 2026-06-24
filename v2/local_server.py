@@ -1032,8 +1032,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 raise ValueError("default.auto_delete_hours must be an integer")
             if not (1 <= n <= 48):
                 raise ValueError("default.auto_delete_hours must be between 1 and 48")
-        # Upsert: the live DB may have no row for a never-seeded key (settings has no UNIQUE(org_id,key),
-        # so a plain UPDATE would silently no-op). Create it if absent, else update in place.
+        # Upsert: the live DB may have no row for a never-seeded key, and a plain UPDATE would
+        # silently no-op. Create it if absent, else update in place. (settings has UNIQUE(org_id,key),
+        # so the exists-check can't race into a duplicate.)
         exists = conn.execute(
             "SELECT 1 FROM settings WHERE org_id=? AND key=? LIMIT 1", (org_id, key)).fetchone()
         if exists:

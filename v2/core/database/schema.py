@@ -621,8 +621,9 @@ def create_all(db_path: str) -> sqlite3.Connection:
             conn.execute(ddl)
         # Idempotent seed: the auto-delete default must exist on the ROOT org so the dashboard
         # Settings tab can edit it (the live DB was migrated before this key existed, and
-        # `seed_settings` only runs at v1→v2 migration). NOT EXISTS guard = safe on every startup
-        # (settings has no UNIQUE(org_id,key)). Code readers still fall back to 24 via get_setting.
+        # `seed_settings` only runs at v1→v2 migration). The NOT EXISTS guard makes it idempotent on
+        # every startup (settings DOES have UNIQUE(org_id,key), so this also can't duplicate). Code
+        # readers still fall back to 24 via get_setting regardless of whether the row exists.
         conn.execute(
             "INSERT INTO settings(org_id,key,value,type,description,updated_by) "
             "SELECT o.id, 'default.auto_delete_hours', '24', 'int', "

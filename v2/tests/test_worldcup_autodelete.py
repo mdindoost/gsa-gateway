@@ -40,14 +40,36 @@ def _watcher_with_db():
     return w
 
 
-def test_worldcup_post_sets_delete_at_about_24h():
+def _about_24h(delete_at):
     import datetime
+    da = datetime.datetime.strptime(delete_at, "%Y-%m-%d %H:%M:%S")
+    delta_h = (da - datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)).total_seconds() / 3600
+    return 23 < delta_h < 25
+
+
+def test_worldcup_post_sets_delete_at_about_24h():
     w = _watcher_with_db()
     ev = {"type": "kickoff", "match": {"homeTeam": {"name": "England"}, "awayTeam": {"name": "Ghana"}}}
     w._post(537411, ev)
     row = w._conn.execute("SELECT delete_at FROM posts ORDER BY id DESC LIMIT 1").fetchone()
-    assert row["delete_at"] is not None
-    da = datetime.datetime.strptime(row["delete_at"], "%Y-%m-%d %H:%M:%S")
-    delta_h = (da - datetime.datetime.utcnow()).total_seconds() / 3600
-    assert 23 < delta_h < 25                          # ~24h out
+    assert row["delete_at"] is not None and _about_24h(row["delete_at"])
+    w._conn.close()
+
+
+def test_worldcup_preview_also_sets_delete_at():
+    # the SECOND enqueue site (_post_preview) must auto-delete too. Call the REAL method with only
+    # its network/render bits stubbed, so a future edit that drops delete_at here fails this test.
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+    w = _watcher_with_db()
+    w.keys = ["k"]
+    match = {"homeTeam": {"name": "England"}, "awayTeam": {"name": "Ghana"},
+             "group": "GROUP_L", "utcDate": "2026-06-23T20:00:00Z"}
+    with patch.object(w, "_fetch_match", AsyncMock(return_value=match)), \
+         patch.object(w, "_fetch_standings", AsyncMock(return_value={"GROUP_L": []})), \
+         patch("v2.integration.match_watcher.build_match_preview", return_value="preview-body"):
+        ok = asyncio.get_event_loop().run_until_complete(w._post_preview(537411, "2026-06-23"))
+    assert ok is True
+    row = w._conn.execute("SELECT delete_at FROM posts WHERE content='preview-body'").fetchone()
+    assert row is not None and row["delete_at"] is not None and _about_24h(row["delete_at"])
     w._conn.close()
