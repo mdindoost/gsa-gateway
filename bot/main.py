@@ -219,9 +219,10 @@ class GSABot(commands.Bot):
             if v2_wc and self.v2_worldcup_runner is None:
                 key = os.getenv("FOOTBALL_API_KEY", "")
                 if key:
-                    # MatchWatcher: schedule-driven burst-and-rest poller (replaces
-                    # the constant WorldCupRunner). Enqueues start/score/full-time
-                    # posts; the v2 scheduler delivers them. Idle between games.
+                    # MatchWatcher: schedule-driven active-set poller (replaces the
+                    # constant WorldCupRunner). Watches every simultaneously-live match
+                    # at once; enqueues start/score/full-time posts the v2 scheduler
+                    # delivers. Idle between game windows.
                     from v2.integration.match_watcher import MatchWatcher
                     chan = os.getenv("FOOTBALL_CHANNEL", "world-cup-2026")
                     org_slug = os.getenv("FOOTBALL_ORG_SLUG", "gsa")

@@ -1,18 +1,22 @@
-"""MatchWatcher — schedule-driven, burst-and-rest World Cup live poller.
+"""MatchWatcher — schedule-driven, active-set World Cup live poller.
 
-A lighter strategy than the constant-polling WorldCupRunner, tuned to the free
-tier's intermittent freshness (most reads are stale; only ~1 in 5 carries the
-live state):
+Watches EVERY simultaneously-live match at once (the group-finale days run two
+games per group in parallel). One shared fetch per tick carries the live state of
+every game that day, so concurrency costs no extra API calls — the tick loop fans
+that single payload out to a per-match state machine + ledger (both keyed by
+match_id, so they never interfere).
 
-  * Idle until ~5 min before a game — no API calls between games.
-  * Catch phase: poll the PRIMARY key every 10s to grab one live read. If a full
-    minute yields none, BURST across all keys (primary first; the backup key is
-    used only here) until one live read is caught.
-  * First live read  -> "kick-off" (start) post.
-    Higher score      -> the new scoreline (goal) post.
-    FINISHED          -> full-time post using the STORED score (the FINISHED read
-                         carries no score!), then stop watching this match.
-  * Score is stored MONOTONICALLY, so a stale/empty read can never erase it.
+  * Active set: a match enters ~5 min before kickoff and leaves when it finishes
+    or hits its MATCH_MAX deadline. No API calls between match windows (one cheap
+    schedule read per idle sleep).
+  * Each tick: ONE shared day fetch -> run every active match's state machine ->
+    post events -> persist once. Adaptive cadence: HOT (~2s) right when events are
+    likely (a window just opened / a goal or half-resume just fired), COOL (~25s)
+    otherwise, keeping the average under the free tier's 10 req/min/key cap.
+  * First live read -> "kick-off"; higher score -> the new scoreline (goal);
+    FINISHED -> full-time (the FINISHED read may carry no score, so the STORED
+    score is the fallback). Score is stored MONOTONICALLY, so a stale/empty read
+    can never erase it and a steady cadence is safe.
 
 Kickoff times come from the API (``utcDate`` is static schedule data and reliable,
 unlike the live status/score).
@@ -41,14 +45,14 @@ logger = logging.getLogger(__name__)
 # "LIVE" (varies per match: England v Ghana 2026-06-23 used "LIVE", Portugal v Uzbekistan used
 # "IN_PLAY"); both normalize to "in_play". Adding a future synonym = one entry here. Any status NOT
 # in the map (SCHEDULED/TIMED/SUSPENDED/POSTPONED/CANCELLED/unknown) → None → uncatchable, ignored.
-# Note: a match stuck in an uncatchable state mid-window (e.g. SUSPENDED) is intentionally not caught —
-# it may resume — so _watch just polls until its MATCH_MAX deadline. That's by design, not a missed map.
+# Note: a match stuck in an uncatchable state mid-window (e.g. SUSPENDED) is intentionally a no-op —
+# it may resume — so the tick loop just keeps polling it until its MATCH_MAX deadline. By design.
 _CANON = {
     "IN_PLAY": "in_play", "LIVE": "in_play",   # in-play synonyms unify here
     "PAUSED":  "paused",                        # break (half-time) — drives half tracking
     "FINISHED": "done", "AWARDED": "done",      # end-of-match (AWARDED = forfeit/administrative)
 }
-_CATCHABLE_CANON = {"in_play", "paused", "done"}   # states _catch() returns; rest are ignored
+_CATCHABLE_CANON = {"in_play", "paused", "done"}   # the states _process acts on; rest are ignored
 
 
 def _canon(status: str | None) -> str | None:
@@ -57,13 +61,19 @@ def _canon(status: str | None) -> str | None:
     return _CANON.get(status)
 
 PRE_KICKOFF_LEAD = datetime.timedelta(minutes=5)
-REST_SECONDS = 1 * 60             # rest after a successful catch — matches the API's ~1-min
-                                  # score-refresh cadence; ≤1 min lag, ~1 read/min (10% of cap)
-PRIMARY_TRIES = 6                 # primary-key reads (~1 min at 10s) before bursting
-PRIMARY_INTERVAL = 10
-BURST_TRIES = 12                  # rapid reads across all keys
-BURST_INTERVAL = 2
+IDLE_SLEEP = 10 * 60              # no window open → recheck the schedule in 10 min (one cheap
+                                  # full-list read per sleep; lookahead ≥ this so a window can't
+                                  # open during a sleep we slept past)
 DEFAULT_STATE_FILE = Path(__file__).resolve().parent.parent / "data" / "match_watcher_state.json"
+# Adaptive shared-fetch cadence (one fetch/tick serves EVERY live match — see the design
+# doc). Poll HOT right when events are likely (a window just opened so we're catching the
+# real kickoff; or an event fired in the last HOT_WINDOW so follow-up goals cluster), and
+# COOL otherwise. The API refreshes a score ~once/min, so COOL still samples each update
+# 2–3×; HOT catches kickoffs/goals within ~2s. One shared fetch keeps cost flat regardless
+# of how many games are live, and the average stays under the 10 req/min/key free-tier cap.
+HOT_INTERVAL = 2
+COOL_INTERVAL = 25
+HOT_WINDOW = datetime.timedelta(seconds=60)           # stay hot this long after an event
 MATCH_MAX = datetime.timedelta(hours=2, minutes=30)   # safety stop after kickoff
 KICKOFF_GRACE = datetime.timedelta(minutes=30)        # if the first live read is caught this
                                                       # soon after the scheduled kickoff it's
@@ -92,6 +102,9 @@ class MatchWatcher:
         self.channel = channel
         self.state_file = Path(state_file) if state_file else DEFAULT_STATE_FILE
         self._states: dict[int, dict] = {}   # match_id -> ledger of what we've ANNOUNCED
+        self._active: dict[int, dict] = {}   # match_id -> {et_day, kickoff_utc} for OPEN windows
+        self._hot_until: dict[int, datetime.datetime] = {}  # match_id -> stay-hot deadline
+        self._key_idx = 0                     # round-robin cursor over self.keys
         self._conn = None
         self.org_id = None
         self._task = None
@@ -173,13 +186,36 @@ class MatchWatcher:
             logger.warning("MatchWatcher API error: %s", exc)
         return None
 
-    async def _fetch_match(self, key: str, match_id: int, et_day: str) -> dict | None:
-        nxt = (datetime.date.fromisoformat(et_day) + datetime.timedelta(days=1)).isoformat()
-        url = f"{BASE_URL}/competitions/WC/matches?dateFrom={et_day}&dateTo={nxt}"
-        data = await self._get(key, url)
-        m = next((x for x in data.get("matches", []) if x.get("id") == match_id), None) if data else None
-        self._debug(key, m)
-        return m
+    def _next_key(self) -> str:
+        """Round-robin the configured keys so successive fetches spread load across both
+        (the free tier caps 10 req/min PER KEY)."""
+        if not self.keys:
+            return ""
+        key = self.keys[self._key_idx % len(self.keys)]
+        self._key_idx += 1
+        return key
+
+    async def _fetch_all(self, key: str) -> list[dict]:
+        """The whole WC fixture list (schedule + live status/score for every match) in ONE
+        call — used to find the next window when idle. [] on any failure."""
+        data = await self._get(key, f"{BASE_URL}/competitions/WC/matches")
+        return (data or {}).get("matches", [])
+
+    async def _fetch_days(self, et_days, key: str) -> dict[int, dict]:
+        """Every match on the given ET-day(s), merged into {match_id: row}. One call per
+        distinct day (normally 1; 2 only when a late game spills to the next ET day). This is
+        the single shared fetch that feeds EVERY active match's state machine — the reason
+        concurrency costs no extra API calls."""
+        rows: dict[int, dict] = {}
+        for et_day in sorted(et_days):
+            nxt = (datetime.date.fromisoformat(et_day) + datetime.timedelta(days=1)).isoformat()
+            url = f"{BASE_URL}/competitions/WC/matches?dateFrom={et_day}&dateTo={nxt}"
+            data = await self._get(key, url)
+            for m in (data or {}).get("matches", []):
+                if m.get("id") is not None:
+                    rows[m["id"]] = m
+                    self._debug(key, m)
+        return rows
 
     async def _fetch_standings(self, key: str) -> dict[str, list[dict]]:
         """{group_token: [table_rows]} for the WC group stage, keyed in the MATCHES
@@ -193,19 +229,19 @@ class MatchWatcher:
                 out[g.upper().replace(" ", "_")] = block.get("table", [])
         return out
 
-    async def _post_preview(self, match_id: int, et_day: str) -> bool:
-        """Post the one-time pre-match preview (matchup + kickoff/group context + the
-        live group table) ~5 min before kickoff. Gated by ``FOOTBALL_PREVIEW_ENABLED``
-        (default on). Best-effort: returns False (no post) if disabled or the schedule
-        read is unavailable. The persisted ``{id}:preview`` dedup row is the durable
-        once-per-match guard on top of the ledger flag."""
+    def _post_preview(self, match_id: int, match: dict | None, group_rows: list) -> bool:
+        """Post the one-time pre-match preview (matchup + kickoff/group context + the live
+        group table) ~5 min before kickoff. The match row and its group's standings
+        ``group_rows`` are INJECTED by the caller — fetched once per tick and shared across
+        all simultaneous previews, so N previews never cost N fetches. Gated by
+        ``FOOTBALL_PREVIEW_ENABLED`` (default on). Best-effort: returns False (no post) if
+        disabled or the match row is unavailable this tick. The persisted ``{id}:preview``
+        dedup row is the durable once-per-match guard on top of the ledger flag."""
         if os.getenv("FOOTBALL_PREVIEW_ENABLED", "true").lower() == "false":
             return False
-        match = await self._fetch_match(self.keys[0], match_id, et_day)
         if not match:
             return False
-        rows = (await self._fetch_standings(self.keys[0])).get(match.get("group") or "", [])
-        content = build_match_preview(match, rows, _kickoff_et(match.get("utcDate", "")))
+        content = build_match_preview(match, group_rows, _kickoff_et(match.get("utcDate", "")))
         try:
             enqueue_post(self._conn, PostDraft(
                 org_id=self.org_id, content=content, type="worldcup",
@@ -396,69 +432,56 @@ class MatchWatcher:
         except EnqueueError as exc:
             logger.warning("MatchWatcher: dropped %s: %s", ev.get("type"), exc)
 
-    # ── catch one live/finished read ──────────────────────────────────────────
-    async def _catch(self, match_id: int, et_day: str) -> dict | None:
-        """Primary key every 10s (~1 min); if none, burst across all keys.
-
-        Budget: a full catch+burst spreads ~12 reads on the primary key over ~84s
-        (~8.6/min) — under the 10/min/key cap. A stray 429 just yields a stale read
-        and the loop continues, so brief overage is harmless."""
-        for _ in range(PRIMARY_TRIES):
-            if not self._running:
-                return None
-            m = await self._fetch_match(self.keys[0], match_id, et_day)
-            if m and _canon(m.get("status")) in _CATCHABLE_CANON:
-                return m
-            await asyncio.sleep(PRIMARY_INTERVAL)
-        for i in range(BURST_TRIES):                  # backup key used only here
-            if not self._running:
-                return None
-            m = await self._fetch_match(self.keys[i % len(self.keys)], match_id, et_day)
-            if m and _canon(m.get("status")) in _CATCHABLE_CANON:
-                return m
-            await asyncio.sleep(BURST_INTERVAL)
-        return None
-
-    # ── per-match loop ─────────────────────────────────────────────────────────
-    async def _watch(self, match_id: int, et_day: str, kickoff_utc: datetime.datetime) -> None:
-        wait = (kickoff_utc - PRE_KICKOFF_LEAD - _utcnow()).total_seconds()
-        if wait > 0:
-            logger.info("MatchWatcher: sleeping %.0fs until match %s window", wait, match_id)
-            await asyncio.sleep(wait)
-        state = self._match_state(match_id)   # resume the ledger if we were mid-match
-        # Pre-match preview (matchup + group table), once, ~5 min before kickoff.
-        if not state.get("preview_posted"):
+    # ── tick fan-out (one shared payload → every active match) ──────────────────
+    def _collect_tick_events(self, rows_by_id: dict[int, dict],
+                             now: datetime.datetime) -> list[tuple[int, dict]]:
+        """Run every active match's state machine against the shared payload and return
+        the (match_id, event) pairs to post. Each match is processed in ISOLATION — a
+        malformed row or a raising ``_process`` for one match logs and is skipped, never
+        aborting the tick for the others. A match absent from this tick's payload is
+        skipped (transient — a later tick catches up). Producing any event marks the match
+        HOT so the cadence tightens to catch the follow-up."""
+        out: list[tuple[int, dict]] = []
+        for match_id, info in list(self._active.items()):
+            row = rows_by_id.get(match_id)
+            if row is None:
+                continue
+            near = now < info["kickoff_utc"] + KICKOFF_GRACE
             try:
-                if await self._post_preview(match_id, et_day):
-                    state["preview_posted"] = True
-                    self.save_states()
-            except Exception:  # noqa: BLE001 - a bad preview must never block the watch
-                logger.exception("MatchWatcher: preview failed for %s", match_id)
-        deadline = kickoff_utc + MATCH_MAX
-        logger.info("MatchWatcher: watching match %s (resume score=%s half=%s)",
-                    match_id, state["score"], state["half"])
-        while self._running and not state["finished"] and _utcnow() < deadline:
-            m = await self._catch(match_id, et_day)
-            if m:
-                near = _utcnow() < kickoff_utc + KICKOFF_GRACE
-                for ev in self._process(m, state, near):
-                    self._post(match_id, ev)
-                self.save_states()                     # persist the ledger every catch
-                if state["finished"]:
-                    break
-                await asyncio.sleep(REST_SECONDS)      # caught one → rest, then re-read
-        logger.info("MatchWatcher: match %s done (finished=%s score=%s)",
-                    match_id, state["finished"], state["score"])
+                events = self._process(row, self._states[match_id], near)
+            except Exception:  # noqa: BLE001 - one bad match must not sink the whole tick
+                logger.exception("MatchWatcher: _process failed for match %s", match_id)
+                continue
+            if events:
+                self._hot_until[match_id] = now + HOT_WINDOW
+            for ev in events:
+                out.append((match_id, ev))
+        return out
+
+    def _poll_interval(self, now: datetime.datetime) -> int:
+        """HOT cadence when any active match is awaiting kickoff (not yet started) or had an
+        event within HOT_WINDOW; COOL otherwise (incl. no active matches)."""
+        for match_id, info in self._active.items():
+            if not self._states.get(match_id, {}).get("started"):
+                return HOT_INTERVAL                     # still catching the real kickoff
+            hot_until = self._hot_until.get(match_id)
+            if hot_until is not None and now < hot_until:
+                return HOT_INTERVAL                     # recent event → follow-ups likely
+        return COOL_INTERVAL
 
     # ── schedule + main loop ───────────────────────────────────────────────────
     @staticmethod
-    def _next_kickoff(matches: list, now: datetime.datetime, finished_ids=frozenset()):
-        """Pick the soonest not-yet-finished match. Returns (id, et_day, kickoff_utc).
+    def _select_active(matches: list, now: datetime.datetime, finished_ids=frozenset()):
+        """ALL matches whose watch window is currently open, sorted by kickoff.
 
-        ``finished_ids`` are matches we've ALREADY wrapped up in our ledger — skip them even
-        if the (stale) API still reports them live, or _watch would instant-return and spin."""
+        Returns a list of (id, et_day, kickoff_utc). A window is OPEN from
+        ``kickoff - PRE_KICKOFF_LEAD`` (so the preview + kickoff-catch fire) until
+        ``kickoff + MATCH_MAX`` (the same safety deadline a watch gives up at). This is
+        the concurrent replacement for ``_next_kickoff`` — every simultaneous game is
+        returned, not just the soonest. ``finished_ids`` (matches our ledger has wrapped
+        up) are skipped even if the stale API still reports them live."""
         from v2.integration.wc_schedule import et_date
-        cand = []
+        out = []
         for m in matches:
             ud = m.get("utcDate")
             if not ud or _canon(m.get("status")) == "done" or m.get("id") in finished_ids:
@@ -467,26 +490,81 @@ class MatchWatcher:
                 ko = datetime.datetime.fromisoformat(ud.replace("Z", "+00:00")).replace(tzinfo=None)
             except (ValueError, AttributeError):
                 continue
-            # same MATCH_MAX as _watch's deadline, so a dead match drops out of the
-            # candidate window exactly when _watch gives up — never re-watched.
-            if ko + MATCH_MAX > now:                    # window not past
-                cand.append((m.get("id"), et_date(ud), ko))
-        cand.sort(key=lambda x: x[2])
-        return cand[0] if cand else None
+            if ko - PRE_KICKOFF_LEAD <= now < ko + MATCH_MAX:   # window open
+                out.append((m.get("id"), et_date(ud), ko))
+        out.sort(key=lambda x: x[2])
+        return out
+
+    def _finished_ids(self) -> set:
+        return {mid for mid, st in self._states.items() if st.get("finished")}
+
+    def _register_active(self, selected) -> None:
+        """Add any newly-open match to the active set (resuming/creating its ledger). Never
+        removes — a match that has just finished must stay active for THIS tick so its
+        full-time event posts; ``_retire_active`` drops it afterwards."""
+        for match_id, et_day, kickoff_utc in selected:
+            if match_id not in self._active:
+                self._active[match_id] = {"et_day": et_day, "kickoff_utc": kickoff_utc}
+                self._match_state(match_id)            # resume persisted ledger or start fresh
+
+    def _retire_active(self, now: datetime.datetime) -> None:
+        """Drop matches whose ledger is finished or whose window has passed (restart-safe: an
+        unfinished-but-expired ledger is retired, never re-watched)."""
+        for match_id in list(self._active):
+            kickoff_utc = self._active[match_id]["kickoff_utc"]
+            if self._states.get(match_id, {}).get("finished") or now >= kickoff_utc + MATCH_MAX:
+                del self._active[match_id]
+                self._hot_until.pop(match_id, None)
+
+    async def _post_due_previews(self, rows_by_id: dict[int, dict]) -> None:
+        """Post the one-time preview for every active match that needs one, fetching the
+        standings table ONCE and sharing it across all of them (so N simultaneous previews
+        cost ~1 standings call, not N)."""
+        due = [mid for mid in self._active
+               if not self._states[mid].get("preview_posted") and rows_by_id.get(mid)]
+        if not due:
+            return
+        standings = await self._fetch_standings(self._next_key())
+        for match_id in due:
+            match = rows_by_id[match_id]
+            group_rows = standings.get(match.get("group") or "", [])
+            try:
+                if self._post_preview(match_id, match, group_rows):
+                    self._states[match_id]["preview_posted"] = True
+            except Exception:  # noqa: BLE001 - a bad preview must never sink the tick
+                logger.exception("MatchWatcher: preview failed for %s", match_id)
+        self.save_states()
+
+    async def _tick_once(self) -> float:
+        """One iteration of the watch loop. Returns the seconds to sleep before the next tick
+        (kept separate from the sleep so it's directly testable). When idle, one cheap full-list
+        read finds the next window; when matches are active, ONE shared day fetch feeds every
+        one of them. Returns IDLE_SLEEP when nothing is open, else the adaptive poll interval."""
+        now = _utcnow()
+        if not self._active:                            # idle → find the next window cheaply
+            self._register_active(self._select_active(await self._fetch_all(self._next_key()),
+                                                      now, self._finished_ids()))
+            if not self._active:
+                return IDLE_SLEEP
+        et_days = {info["et_day"] for info in self._active.values()}
+        rows = await self._fetch_days(et_days, self._next_key())   # the one shared fetch
+        # Same-day matches entering their window are picked up from this very payload.
+        self._register_active(self._select_active(list(rows.values()), now, self._finished_ids()))
+        await self._post_due_previews(rows)
+        for match_id, ev in self._collect_tick_events(rows, now):
+            self._post(match_id, ev)
+        self.save_states()
+        self._retire_active(now)                        # drop finished / expired AFTER posting
+        return self._poll_interval(now)
 
     async def _loop(self) -> None:
         while self._running:
             try:
-                data = await self._get(self.keys[0], f"{BASE_URL}/competitions/WC/matches")
-                fin = {mid for mid, st in self._states.items() if st["finished"]}
-                nxt = self._next_kickoff(data.get("matches", []), _utcnow(), fin) if data else None
-                if not nxt:
-                    await asyncio.sleep(600)            # nothing upcoming; recheck in 10 min
-                    continue
-                await self._watch(*nxt)
+                delay = await self._tick_once()
             except Exception:  # noqa: BLE001 - the scheduling loop must never die
                 logger.exception("MatchWatcher loop error")
-                await asyncio.sleep(60)
+                delay = 60
+            await asyncio.sleep(delay)
 
     async def start(self) -> None:
         self.load_states()        # resume any match that was in progress at shutdown
