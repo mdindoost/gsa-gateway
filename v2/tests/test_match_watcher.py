@@ -235,18 +235,6 @@ def test_load_prunes_finished_entries(tmp_path):
     assert 1 not in w._states and 2 in w._states
 
 
-def test_next_kickoff_skips_ledger_finished_match():
-    # The API can still report a just-finished match as IN_PLAY (stale cache). If our ledger
-    # says it's done, the scheduler must NOT re-pick it (else _watch instant-returns and spins).
-    now = datetime.datetime(2026, 6, 18, 23, 0, 0)
-    matches = [
-        {"id": 537336, "utcDate": "2026-06-18T22:05:00Z", "status": "IN_PLAY"},  # stale-live
-        {"id": 99,     "utcDate": "2026-06-18T23:30:00Z", "status": "TIMED"},
-    ]
-    assert MatchWatcher._next_kickoff(matches, now)[0] == 537336              # soonest, no ledger
-    assert MatchWatcher._next_kickoff(matches, now, finished_ids={537336})[0] == 99  # skipped
-
-
 def test_load_normalizes_missing_half_keys(tmp_path):
     # A ledger written before half-tracking existed must default cleanly, not KeyError.
     path = tmp_path / "mw_state.json"
@@ -256,16 +244,232 @@ def test_load_normalizes_missing_half_keys(tmp_path):
     assert st["score"] == (2, 0) and st["half"] == 1 and st["pending_half"] is False
 
 
-# ── schedule ─────────────────────────────────────────────────────────────────
-def test_next_kickoff_picks_soonest_unfinished():
-    now = datetime.datetime(2026, 6, 11, 18, 0, 0)
+# ── active-set selection (concurrent matches: ALL open windows, not just one) ───
+def test_select_active_includes_all_open_windows():
+    # Two matches kick off at the SAME time (group-finale pattern). Both windows are
+    # open → BOTH selected (the old _next_kickoff returned only one → the bug).
+    now = datetime.datetime(2026, 6, 24, 19, 0, 0)            # exactly at the shared kickoff
     matches = [
-        {"id": 1, "utcDate": "2026-06-11T19:00:00Z", "status": "TIMED"},
-        {"id": 2, "utcDate": "2026-06-12T02:00:00Z", "status": "TIMED"},
-        {"id": 3, "utcDate": "2026-06-10T19:00:00Z", "status": "FINISHED"},  # past + done
+        {"id": 1, "utcDate": "2026-06-24T19:00:00Z", "status": "IN_PLAY"},
+        {"id": 2, "utcDate": "2026-06-24T19:00:00Z", "status": "IN_PLAY"},
+        {"id": 3, "utcDate": "2026-06-24T23:00:00Z", "status": "TIMED"},   # window not open yet
     ]
-    r = MatchWatcher._next_kickoff(matches, now)
-    assert r[0] == 1
+    sel = MatchWatcher._select_active(matches, now)
+    assert {s[0] for s in sel} == {1, 2}
+
+
+def test_select_active_window_opens_five_min_before_kickoff():
+    matches = [{"id": 1, "utcDate": "2026-06-24T19:00:00Z", "status": "TIMED"}]
+    early = datetime.datetime(2026, 6, 24, 18, 54, 0)        # 6 min before → not yet
+    ontime = datetime.datetime(2026, 6, 24, 18, 55, 0)       # exactly 5 min before → open
+    assert MatchWatcher._select_active(matches, early) == []
+    assert {s[0] for s in MatchWatcher._select_active(matches, ontime)} == {1}
+
+
+def test_select_active_drops_past_deadline_and_finished():
+    now = datetime.datetime(2026, 6, 24, 22, 0, 0)
+    matches = [
+        {"id": 1, "utcDate": "2026-06-24T18:00:00Z", "status": "IN_PLAY"},   # kickoff+4h → expired
+        {"id": 2, "utcDate": "2026-06-24T21:30:00Z", "status": "FINISHED"},  # done
+        {"id": 3, "utcDate": "2026-06-24T21:00:00Z", "status": "IN_PLAY"},   # live, in window
+    ]
+    assert {s[0] for s in MatchWatcher._select_active(matches, now)} == {3}
+
+
+def test_select_active_skips_ledger_finished_ids():
+    # The API can report a just-wrapped match as still IN_PLAY (stale). Our ledger is authority.
+    now = datetime.datetime(2026, 6, 24, 21, 0, 0)
+    matches = [{"id": 537336, "utcDate": "2026-06-24T20:05:00Z", "status": "IN_PLAY"}]
+    assert {s[0] for s in MatchWatcher._select_active(matches, now)} == {537336}
+    assert MatchWatcher._select_active(matches, now, finished_ids={537336}) == []
+
+
+# ── tick fan-out (one shared payload → many matches, isolated per match) ────────
+def _row(mid, status="IN_PLAY", h=0, a=0, home="A", away="B"):
+    return {"id": mid, "status": status, "group": "GROUP_A", "matchday": 2,
+            "utcDate": "2026-06-24T19:00:00Z",
+            "homeTeam": {"id": mid * 10, "name": home},
+            "awayTeam": {"id": mid * 10 + 1, "name": away},
+            "score": {"fullTime": {"home": h, "away": a}}}
+
+
+def _active(wt, mid, ko, et_day="2026-06-24", ledger=None):
+    wt._active[mid] = {"et_day": et_day, "kickoff_utc": ko}
+    wt._states[mid] = ledger if ledger is not None else wt._fresh_ledger()
+
+
+def test_tick_fans_payload_out_to_all_active_matches():
+    # The core fix: ONE payload covering two simultaneous games produces BOTH games' events.
+    wt = w()
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    _active(wt, 1, ko)
+    _active(wt, 2, ko)
+    rows = {1: _row(1, "IN_PLAY", 0, 0, "A", "B"),          # fresh start → kickoff
+            2: _row(2, "IN_PLAY", 1, 0, "C", "D")}          # started near kickoff → kickoff (silent score)
+    now = ko + datetime.timedelta(seconds=10)
+    events = wt._collect_tick_events(rows, now)
+    by_match = {}
+    for mid, ev in events:
+        by_match.setdefault(mid, []).append(ev["type"])
+    assert by_match == {1: ["kickoff"], 2: ["kickoff"]}
+    assert wt._states[2]["score"] == (1, 0)                  # adopted silently, near kickoff
+
+
+def test_tick_isolates_a_failing_match_from_the_others():
+    # A malformed row for one match must NOT abort the tick — the others still post.
+    wt = w()
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    started = {"started": True, "score": (0, 0), "finished": False,
+               "half": 1, "pending_half": False, "score_updated": None,
+               "correction_gen": 0, "preview_posted": False}
+    _active(wt, 1, ko, ledger=dict(started))
+    _active(wt, 2, ko, ledger=dict(started))
+    bad = {"id": 1, "status": "IN_PLAY", "awayTeam": {"name": "B"},   # missing homeTeam → raises in goal walk
+           "score": {"fullTime": {"home": 1, "away": 0}}}
+    rows = {1: bad, 2: _row(2, "IN_PLAY", 0, 1, "C", "D")}
+    events = wt._collect_tick_events(rows, ko + datetime.timedelta(minutes=10))
+    assert [(mid, ev["type"]) for mid, ev in events] == [(2, "goal")]  # match 2 survived match 1's failure
+
+
+def test_tick_skips_match_absent_from_payload():
+    # A match with no row this tick (API hiccup / not in the day yet) is skipped, not crashed.
+    wt = w()
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    _active(wt, 1, ko)
+    _active(wt, 2, ko)
+    rows = {1: _row(1, "IN_PLAY", 0, 0)}                     # match 2 missing
+    events = wt._collect_tick_events(rows, ko + datetime.timedelta(seconds=10))
+    assert [mid for mid, _ in events] == [1]
+
+
+# ── adaptive cadence (hot ~2s near events, cool ~25s when quiescent) ─────────────
+def test_poll_interval_hot_while_awaiting_kickoff():
+    import v2.integration.match_watcher as mw
+    wt = w()
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    _active(wt, 1, ko)                                       # fresh ledger: not started → catching kickoff
+    assert wt._poll_interval(ko) == mw.HOT_INTERVAL
+
+
+def test_poll_interval_cool_when_quiescent():
+    import v2.integration.match_watcher as mw
+    wt = w()
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    st = wt._fresh_ledger(); st["started"] = True
+    _active(wt, 1, ko, ledger=st)
+    assert wt._poll_interval(ko + datetime.timedelta(minutes=10)) == mw.COOL_INTERVAL
+
+
+def test_poll_interval_hot_right_after_an_event():
+    import v2.integration.match_watcher as mw
+    wt = w()
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    st = wt._fresh_ledger(); st["started"] = True
+    _active(wt, 1, ko, ledger=st)
+    now = ko + datetime.timedelta(minutes=10)
+    wt._hot_until[1] = now + datetime.timedelta(seconds=30)  # a goal 30s ago keeps it hot
+    assert wt._poll_interval(now) == mw.HOT_INTERVAL
+
+
+def test_tick_goes_hot_after_producing_an_event():
+    wt = w()
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    st = wt._fresh_ledger(); st["started"] = True
+    _active(wt, 1, ko, ledger=st)
+    now = ko + datetime.timedelta(minutes=10)
+    wt._collect_tick_events({1: _row(1, "IN_PLAY", 1, 0)}, now)   # a goal
+    assert wt._hot_until.get(1) is not None and wt._hot_until[1] > now
+
+
+def test_poll_interval_cool_when_no_active_matches():
+    import v2.integration.match_watcher as mw
+    assert w()._poll_interval(datetime.datetime(2026, 6, 24, 19, 0, 0)) == mw.COOL_INTERVAL
+
+
+# ── _tick_once orchestration (one shared fetch → fan-out, mocked I/O) ────────────
+def _at(monkeypatch, when):
+    monkeypatch.setattr("v2.integration.match_watcher._utcnow", lambda: when)
+
+
+def test_tick_once_posts_both_concurrent_games(monkeypatch):
+    import v2.integration.match_watcher as mw
+    wt = w(); wt._conn = _conn_org(); wt.org_id = 2; wt._running = True
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    _at(monkeypatch, ko + datetime.timedelta(seconds=10))
+    for mid in (1, 2):
+        _active(wt, mid, ko)
+        wt._states[mid]["preview_posted"] = True            # past the preview, focus on live
+    async def fake_days(et_days, key):
+        return {1: _row(1, "IN_PLAY", 0, 0), 2: _row(2, "IN_PLAY", 0, 0)}
+    monkeypatch.setattr(wt, "_fetch_days", fake_days)
+    delay = asyncio.run(wt._tick_once())
+    cnt = wt._conn.execute("SELECT COUNT(*) FROM posts WHERE type='worldcup'").fetchone()[0]
+    assert cnt == 2                                         # BOTH games' kickoffs posted (the fix)
+    assert delay == mw.HOT_INTERVAL                         # just kicked off → stay hot
+
+
+def test_tick_once_idle_returns_idle_sleep(monkeypatch):
+    import v2.integration.match_watcher as mw
+    wt = w(); wt._running = True
+    _at(monkeypatch, datetime.datetime(2026, 6, 24, 6, 0, 0))
+    async def fake_all(key):
+        return [{"id": 1, "utcDate": "2026-06-24T19:00:00Z", "status": "TIMED"}]  # window not open at 6am
+    monkeypatch.setattr(wt, "_fetch_all", fake_all)
+    delay = asyncio.run(wt._tick_once())
+    assert delay == mw.IDLE_SLEEP and wt._active == {}
+
+
+def test_tick_once_retires_match_after_fulltime(monkeypatch):
+    wt = w(); wt._conn = _conn_org(); wt.org_id = 2; wt._running = True
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    _at(monkeypatch, ko + datetime.timedelta(hours=2))
+    st = wt._fresh_ledger(); st.update(started=True, score=(1, 0), preview_posted=True)
+    _active(wt, 1, ko, ledger=st)
+    async def fake_days(et_days, key):
+        return {1: _row(1, "FINISHED", 1, 0)}
+    monkeypatch.setattr(wt, "_fetch_days", fake_days)
+    asyncio.run(wt._tick_once())
+    assert wt._states[1]["finished"] is True               # full-time processed
+    assert 1 not in wt._active                              # then retired
+    ft = wt._conn.execute(
+        "SELECT COUNT(*) FROM posts WHERE json_extract(metadata,'$.event_type')='fulltime'").fetchone()[0]
+    assert ft == 1
+
+
+def test_tick_once_does_not_readd_expired_unfinished_ledger(monkeypatch):
+    # Restart hours later: a stale-live ledger whose window has long passed must NOT be re-watched.
+    import v2.integration.match_watcher as mw
+    wt = w(); wt._conn = _conn_org(); wt.org_id = 2; wt._running = True
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    _at(monkeypatch, ko + datetime.timedelta(hours=3))     # past kickoff + MATCH_MAX
+    wt._states[1] = {"started": True, "score": (1, 0), "finished": False, "half": 1,
+                     "pending_half": False, "score_updated": None, "correction_gen": 0,
+                     "preview_posted": True}
+    async def fake_all(key):
+        return [{"id": 1, "utcDate": "2026-06-24T19:00:00Z", "status": "IN_PLAY"}]  # stale-live
+    monkeypatch.setattr(wt, "_fetch_all", fake_all)
+    delay = asyncio.run(wt._tick_once())
+    assert 1 not in wt._active and delay == mw.IDLE_SLEEP
+
+
+def test_tick_once_shares_one_standings_fetch_across_simultaneous_previews(monkeypatch):
+    wt = w(); wt._conn = _conn_org(); wt.org_id = 2; wt._running = True
+    ko = datetime.datetime(2026, 6, 24, 19, 0, 0)
+    _at(monkeypatch, ko - datetime.timedelta(minutes=4))   # in the preview window, pre-kickoff
+    _active(wt, 1, ko); _active(wt, 2, ko)                 # both need a preview
+    async def fake_days(et_days, key):
+        return {1: _row(1, "TIMED"), 2: _row(2, "TIMED")}
+    calls = []
+    async def fake_standings(key):
+        calls.append(key); return {}
+    monkeypatch.setattr(wt, "_fetch_days", fake_days)
+    monkeypatch.setattr(wt, "_fetch_standings", fake_standings)
+    asyncio.run(wt._tick_once())
+    assert len(calls) == 1                                  # ONE standings fetch, shared
+    previews = wt._conn.execute(
+        "SELECT COUNT(*) FROM posts WHERE json_extract(metadata,'$.event_type')='preview'").fetchone()[0]
+    assert previews == 2
+    assert wt._states[1]["preview_posted"] and wt._states[2]["preview_posted"]
 
 
 def test_debug_log_writes_when_enabled(tmp_path, monkeypatch):
@@ -276,12 +480,6 @@ def test_debug_log_writes_when_enabled(tmp_path, monkeypatch):
     watcher._debug("k1234", mk("IN_PLAY", 1, 0))
     text = (tmp_path / "dbg.log").read_text()
     assert "status=IN_PLAY" in text and "score=1-0" in text and "1234" in text
-
-
-def test_next_kickoff_none_when_all_done():
-    now = datetime.datetime(2026, 7, 20, 0, 0, 0)
-    matches = [{"id": 1, "utcDate": "2026-06-11T19:00:00Z", "status": "FINISHED"}]
-    assert MatchWatcher._next_kickoff(matches, now) is None
 
 
 # ── score correction (VAR / disallowed goal) ────────────────────────────────────
@@ -406,37 +604,16 @@ def test_correction_persists_across_save_load(tmp_path):
     assert w2._states[42]["score_updated"] == "2026-06-21T19:59:25Z"
 
 
-# ── catch (async, mocked fetch + no real sleeps) ─────────────────────────────
-def _no_wait(monkeypatch):
-    # zero the inter-read waits so _catch runs instantly (real asyncio.sleep(0))
-    monkeypatch.setattr("v2.integration.match_watcher.PRIMARY_INTERVAL", 0)
-    monkeypatch.setattr("v2.integration.match_watcher.BURST_INTERVAL", 0)
-
-
-def test_catch_returns_first_live_read(monkeypatch):
-    _no_wait(monkeypatch)
-    watcher = w(); watcher._running = True
-    calls = []
-    async def fake_fetch(key, mid, day):
-        calls.append(key)
-        return mk("IN_PLAY", 1, 0) if len(calls) >= 2 else mk("TIMED")
-    monkeypatch.setattr(watcher, "_fetch_match", fake_fetch)
-    m = asyncio.run(watcher._catch(42, "2026-06-11"))
-    assert m["status"] == "IN_PLAY"
-    assert calls == ["k1", "k1"]   # caught on the 2nd primary read; never bursted
-
-
-def test_catch_none_when_all_stale(monkeypatch):
-    _no_wait(monkeypatch)
-    watcher = w(); watcher._running = True
-    n = []
-    async def fake_fetch(key, mid, day):
-        n.append(1)
-        return mk("TIMED")
-    monkeypatch.setattr(watcher, "_fetch_match", fake_fetch)
-    m = asyncio.run(watcher._catch(42, "2026-06-11"))
-    assert m is None
-    assert len(n) == 6 + 12        # 6 primary + 12 burst, all stale
+# ── shared day fetch (whole-day payload → {id: row}, merged across distinct days) ─
+def test_fetch_days_returns_rows_keyed_by_id_across_days(monkeypatch):
+    wt = w()
+    async def fake_get(key, url):
+        if "2026-06-24" in url:
+            return {"matches": [{"id": 1, "status": "IN_PLAY"}, {"id": 2, "status": "TIMED"}]}
+        return {"matches": [{"id": 3, "status": "TIMED"}]}
+    monkeypatch.setattr(wt, "_get", fake_get)
+    rows = asyncio.run(wt._fetch_days({"2026-06-24", "2026-06-25"}, "k1"))
+    assert set(rows) == {1, 2, 3} and rows[1]["status"] == "IN_PLAY"
 
 
 # ── pre-match preview (matchup + group table at T-5) ─────────────────────────
@@ -479,17 +656,13 @@ def test_fetch_standings_normalizes_group_key(monkeypatch):
     assert list(out) == ["GROUP_H"]                 # "Group H" -> matches-format "GROUP_H"
 
 
-def test_post_preview_enqueues_table_once(monkeypatch):
+def test_post_preview_enqueues_table_once():
+    # _post_preview now takes the match row + group standings INJECTED (fetched once per tick
+    # by the caller and shared across all simultaneous previews) — it does no fetching itself.
     mw = w(); mw._conn = _conn_org(); mw.org_id = 2
-    async def fake_match(key, mid, day):
-        return _preview_match()
-    async def fake_standings(key):
-        return {"GROUP_H": PREVIEW_ROWS}
-    monkeypatch.setattr(mw, "_fetch_match", fake_match)
-    monkeypatch.setattr(mw, "_fetch_standings", fake_standings)
-
-    assert asyncio.run(mw._post_preview(7, "2026-06-11")) is True
-    assert asyncio.run(mw._post_preview(7, "2026-06-11")) is True   # dedup at posts layer
+    match = _preview_match()
+    assert mw._post_preview(7, match, PREVIEW_ROWS) is True
+    assert mw._post_preview(7, match, PREVIEW_ROWS) is True   # dedup at posts layer
 
     rows = mw._conn.execute(
         "SELECT content, json_extract(metadata,'$._dedup_key') AS k, "
@@ -506,19 +679,13 @@ def test_post_preview_enqueues_table_once(monkeypatch):
 def test_post_preview_toggle_off(monkeypatch):
     monkeypatch.setenv("FOOTBALL_PREVIEW_ENABLED", "false")
     mw = w(); mw._conn = _conn_org(); mw.org_id = 2
-    async def boom(*a, **k):
-        raise AssertionError("must not fetch when disabled")
-    monkeypatch.setattr(mw, "_fetch_match", boom)
-    assert asyncio.run(mw._post_preview(7, "2026-06-11")) is False
+    assert mw._post_preview(7, _preview_match(), PREVIEW_ROWS) is False
     assert mw._conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0] == 0
 
 
-def test_post_preview_skipped_when_match_unavailable(monkeypatch):
+def test_post_preview_skipped_when_match_unavailable():
     mw = w(); mw._conn = _conn_org(); mw.org_id = 2
-    async def no_match(key, mid, day):
-        return None
-    monkeypatch.setattr(mw, "_fetch_match", no_match)
-    assert asyncio.run(mw._post_preview(7, "2026-06-11")) is False
+    assert mw._post_preview(7, None, PREVIEW_ROWS) is False    # no row this tick → no post
     assert mw._conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0] == 0
 
 
