@@ -23,7 +23,7 @@ import sys
 import tempfile
 import threading
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -65,6 +65,21 @@ logger = logging.getLogger("local_server")
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+_FMT = "%Y-%m-%d %H:%M:%S"
+
+
+def _clamp_delete_at(delete_at: str, baseline: str) -> str:
+    """Clamp a post's delete_at to at most baseline+48h (Telegram's bot-delete ceiling). The
+    baseline is the post's send time (scheduled_for, or now for asap). Unparseable input is
+    returned unchanged (defensive)."""
+    try:
+        d = datetime.strptime(delete_at, _FMT)
+        cap = datetime.strptime(baseline, _FMT) + timedelta(hours=48)
+    except (ValueError, TypeError):
+        return delete_at
+    return min(d, cap).strftime(_FMT)
 
 
 def _ollama_up() -> bool:
@@ -899,6 +914,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
             raise ValueError("org_id is required")
         scheduled = b.get("scheduled_for") or None  # null = send asap
         delete_at = b.get("delete_at") or None       # null = keep forever (auto-delete off)
+        if delete_at:                                 # cap at send-time+48h (Telegram ceiling)
+            delete_at = _clamp_delete_at(delete_at, scheduled or utc_now())
         cur = conn.execute(
             "INSERT INTO posts(org_id,type,title,content,channels,discord_channel,scheduled_for,"
             "delete_at,status,source_type,signature,created_by,created_at) "
@@ -1005,9 +1022,28 @@ class GatewayHandler(BaseHTTPRequestHandler):
     def _post_setting(self, conn, b):
         if not b.get("key") or b.get("org_id") is None:
             raise ValueError("org_id and key are required")
-        conn.execute(
-            "UPDATE settings SET value=?, updated_at=?, updated_by='dashboard' WHERE org_id=? AND key=?",
-            (b.get("value"), utc_now(), b["org_id"], b["key"]))
+        key, org_id, value = b["key"], b["org_id"], b.get("value")
+        stype = b.get("type", "string")
+        if key == "default.auto_delete_hours":
+            stype = "int"
+            try:
+                n = int(value)
+            except (TypeError, ValueError):
+                raise ValueError("default.auto_delete_hours must be an integer")
+            if not (1 <= n <= 48):
+                raise ValueError("default.auto_delete_hours must be between 1 and 48")
+        # Upsert: the live DB may have no row for a never-seeded key (settings has no UNIQUE(org_id,key),
+        # so a plain UPDATE would silently no-op). Create it if absent, else update in place.
+        exists = conn.execute(
+            "SELECT 1 FROM settings WHERE org_id=? AND key=? LIMIT 1", (org_id, key)).fetchone()
+        if exists:
+            conn.execute(
+                "UPDATE settings SET value=?, updated_at=?, updated_by='dashboard' WHERE org_id=? AND key=?",
+                (value, utc_now(), org_id, key))
+        else:
+            conn.execute(
+                "INSERT INTO settings(org_id,key,value,type,updated_by) VALUES (?,?,?,?,'dashboard')",
+                (org_id, key, value, stype))
         conn.commit()
         return {"success": True}
 
