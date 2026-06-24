@@ -30,13 +30,15 @@ logger = logging.getLogger(__name__)
 GRAD_SLUG = "graduate-studies"
 GRAD_NAME = "Graduate Studies"
 
-_EMAIL = re.compile(r"^[A-Za-z0-9._%+-]+@njit\.edu$", re.I)
-_PHONE = re.compile(r"Phone#\s*([0-9][0-9\-]+)", re.I)
-# Headings that introduce a staff roster (sites title the block differently).
-_ROSTER_ANCHORS = ("department staff", "staff directory", "our staff", "our team",
-                   "department contacts", "office staff")
+_EMAIL = re.compile(r"^[A-Za-z0-9._%+'-]+@njit\.edu$", re.I)
+_PHONE = re.compile(r"\b(\d{3}-\d{3}-\d{4})\b")
+_ROSTER_ANCHOR = "personnel"            # the GSO contact.php Personnel block header
 # Site-chrome markers that can follow the staff block in clean_text output.
-_BLOCK_END = ("popular searches", "in this section")
+_BLOCK_END = ("popular searches", "in this section", "appointments")
+# Role words that mark a line as a TITLE (vs a name or a section header).
+_TITLE_CUES = ("provost", "dean", "director", "coordinator", "manager", "assistant",
+               "associate", "professor", "officer", "specialist", "administrator",
+               "advisor", "vice president", "office", "chair", "analyst", "secretary")
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,7 @@ class StaffRecord:
     title: str
     phone: str
     email: str
+    unit: str = ""        # functional sub-section header on contact.php (e.g. "Graduate Student Awards")
 
 
 _ASSET_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".gif")
@@ -240,53 +243,72 @@ def extract_prose(url: str, html: str) -> ProsePage | None:
     )
 
 
-def parse_roster(text: str) -> list[StaffRecord]:
-    """Parse a department contacts page (clean_text output) into staff records.
+def _is_title(line: str) -> bool:
+    low = line.lower()
+    return "(" in line or any(c in low for c in _TITLE_CUES)
 
-    Structure per person (as clean_text renders it):
-        Name / Title / Phone# … / Fax# … / mail to: / email
-    An email line terminates each record. Emails that the source splits across a
-    line break (``local\\n@njit.edu``) are rejoined first.
-    """
+
+def parse_roster(text: str) -> tuple[list[StaffRecord], list[str]]:
+    """Parse the GSO contact.php 'Personnel' block. Each person renders as
+        [section header?] / Name / Title(+more titles) / bare-phone / email
+    Phone-anchored: a (bare-phone, email) adjacent pair marks a record tail; the lines
+    above the phone are name + title(s), optionally preceded by a section header. Titles
+    are detected by role cues so the name (no cue) and a leading section header (no cue,
+    not a title) are told apart — the header becomes ``unit``, never the name. Anti-fab:
+    a chunk that can't yield (name, >=1 title, email) is a WARNING, never dropped/invented.
+    Returns ([], []) for any non-Personnel page (anchor absent) so it falls through to prose."""
     low = text.lower()
-    start = -1
-    for anchor in _ROSTER_ANCHORS:
-        i = low.find(anchor)
-        if i != -1:
-            start = i + len(anchor)
-            break
-    if start == -1:
-        return []
-    block = text[start:]
+    i = low.find(_ROSTER_ANCHOR)
+    if i == -1:
+        return [], []
+    block = text[i + len(_ROSTER_ANCHOR):]
     for marker in _BLOCK_END:
-        i = block.lower().find(marker)
-        if i != -1:
-            block = block[:i]
-    # Rejoin an address split right before the @ (Erixson on the live page).
-    block = re.sub(r"\n+\s*@", "@", block)
+        j = block.lower().find(marker)
+        if j != -1:
+            block = block[:j]
+    block = re.sub(r"\n+\s*@", "@", block)               # rejoin emails split before @
+    lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
 
     records: list[StaffRecord] = []
-    buf: list[str] = []
-    for raw in block.splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-        if _EMAIL.match(line):
-            fields = [b for b in buf if b.lower() != "mail to:"]
-            if len(fields) >= 2:
-                phone = ""
-                for f in fields:
-                    m = _PHONE.search(f)
-                    if m:
-                        phone = m.group(1)
-                        break
-                records.append(
-                    StaffRecord(name=fields[0], title=fields[1], phone=phone, email=line)
-                )
-            buf = []
+    warnings: list[str] = []
+    seen: set[str] = set()
+    chunk: list[str] = []          # lines accumulated since the previous record's email
+    current_unit = ""              # section header persists across its members (header shown once)
+    for ln in lines:
+        if _EMAIL.match(ln):
+            email = ln
+            # phone = the last chunk line matching a bare phone
+            phone, head = "", []
+            for k in range(len(chunk) - 1, -1, -1):
+                m = _PHONE.search(chunk[k])
+                if m:
+                    phone = m.group(1)
+                    head = chunk[:k]                     # everything above the phone
+                    break
+            if not head:
+                warnings.append(f"no phone/name above email {email!r}")
+                chunk = []
+                continue
+            # trailing title lines; the line just above them is the name; rest above = unit header
+            t = len(head)
+            while t > 0 and _is_title(head[t - 1]):
+                t -= 1
+            if t == 0 or t >= len(head):                 # no name, or no title
+                warnings.append(f"unparseable record near {email!r}: {head!r}")
+                chunk = []
+                continue
+            name = head[t - 1]
+            if t - 2 >= 0:                               # a section header leads this chunk
+                current_unit = head[t - 2]               # update; persists to later members
+            title = head[t]                              # first title line
+            if name not in seen:
+                seen.add(name)
+                records.append(StaffRecord(name=name, title=title, phone=phone,
+                                           email=email, unit=current_unit))
+            chunk = []
         else:
-            buf.append(line)
-    return records
+            chunk.append(ln)
+    return records, warnings
 
 
 def _merge_person_attrs(conn, pid: int, updates: dict) -> None:
