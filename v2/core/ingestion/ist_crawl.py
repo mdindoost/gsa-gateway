@@ -15,7 +15,7 @@ import json
 import logging
 import re
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -30,21 +30,18 @@ logger = logging.getLogger(__name__)
 IST_SLUG = "ist"
 IST_NAME = "IST / Technology Support"
 
-_EMAIL = re.compile(r"^[A-Za-z0-9._%+-]+@njit\.edu$", re.I)
-_PHONE = re.compile(r"Phone#\s*([0-9][0-9\-]+)", re.I)
-# Headings that introduce a staff roster (sites title the block differently).
-_ROSTER_ANCHORS = ("department staff", "staff directory", "our staff", "our team",
-                   "department contacts", "office staff")
-# Site-chrome markers that can follow the staff block in clean_text output.
-_BLOCK_END = ("popular searches", "in this section")
+_PROFILE_DELIM = "view profile"
+# Lines that are page chrome — never a unit header or a person.
+_CHROME = {"about", "view profile", "home", "skip to main content", "search",
+           "popular searches", "in this section", "menu", "breadcrumb",
+           "ist key contacts"}
 
 
 @dataclass(frozen=True)
 class StaffRecord:
-    name: str
+    name: str       # "First Last"
     title: str
-    phone: str
-    email: str
+    unit: str       # functional unit header on /ist-key-contacts
 
 
 _ASSET_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".gif")
@@ -78,6 +75,7 @@ class EntryResult:
     prose: list[ProsePage]
     skipped: list[str]   # pages with no readable content (flag, never stored)
     truncated: bool = False   # hit the page budget with links still queued
+    warnings: list[str] = field(default_factory=list)   # unparseable roster rows (flag, never drop silently)
 
 
 def _canon(url: str) -> str:
@@ -137,17 +135,18 @@ def extract_entry(seed: str, fetch, max_depth: int = 4, budget: int = 300) -> En
     KB, empty shells -> skipped (flagged). Prose is deduped by content hash (collapsing
     .php / clean-URL aliases), keeping the cleanest URL. Brings data only; no DB writes."""
     res = EntryResult(seed=_canon(normalize_url(seed, seed)), staff=[], prose=[], skipped=[])
-    seen_emails: set[str] = set()
     by_hash: dict[str, ProsePage] = {}
     order: list[str] = []
     stats: dict = {}
     for url, html in crawl_entry(seed, fetch, max_depth=max_depth, budget=budget, stats=stats):
-        # Parse ONCE per page, then branch (roster takes precedence over prose).
-        staff = parse_roster(clean_text(html))
+        # Roster (main-region only) takes precedence over prose; IST has no inline contact.
+        staff, warns = parse_roster(_clean_main(html))
+        res.warnings.extend(warns)
         if staff:
+            seen_names = {s.name for s in res.staff}
             for s in staff:
-                if s.email not in seen_emails:
-                    seen_emails.add(s.email)
+                if s.name not in seen_names:
+                    seen_names.add(s.name)
                     res.staff.append(s)
             continue
         page = extract_prose(url, html)
@@ -195,7 +194,7 @@ def classify_page(html: str) -> str:
     ``prose`` (content → KB), or ``skip-empty`` (no readable main content → flag, never
     store). Roster takes precedence — the contacts page also carries address prose, but
     it is the people source."""
-    if parse_roster(clean_text(html)):
+    if parse_roster(_clean_main(html))[0]:
         return "staff-roster"
     if extract_prose("", html) is not None:
         return "prose"
@@ -240,53 +239,66 @@ def extract_prose(url: str, html: str) -> ProsePage | None:
     )
 
 
-def parse_roster(text: str) -> list[StaffRecord]:
-    """Parse a department contacts page (clean_text output) into staff records.
+def _clean_main(html: str) -> str:
+    """Clean text of the MAIN region only (F2) — strips site header/nav/footer + sidebar
+    chrome so the roster parser never reads 'Popular Searches' etc. as a unit/person."""
+    soup = BeautifulSoup(html, "html.parser")
+    return clean_text(str(_main_region(soup)))
 
-    Structure per person (as clean_text renders it):
-        Name / Title / Phone# … / Fax# … / mail to: / email
-    An email line terminates each record. Emails that the source splits across a
-    line break (``local\\n@njit.edu``) are rejoined first.
-    """
-    low = text.lower()
-    start = -1
-    for anchor in _ROSTER_ANCHORS:
-        i = low.find(anchor)
-        if i != -1:
-            start = i + len(anchor)
-            break
-    if start == -1:
-        return []
-    block = text[start:]
-    for marker in _BLOCK_END:
-        i = block.lower().find(marker)
-        if i != -1:
-            block = block[:i]
-    # Rejoin an address split right before the @ (Erixson on the live page).
-    block = re.sub(r"\n+\s*@", "@", block)
+
+def _reformat_name(s: str) -> str:
+    """'Last, First Middle' -> 'First Middle Last'. Comma-less names pass through."""
+    if "," not in s:
+        return s.strip()
+    last, first = s.split(",", 1)
+    return f"{first.strip()} {last.strip()}"
+
+
+def parse_roster(text: str) -> tuple[list[StaffRecord], list[str]]:
+    """Parse /ist-key-contacts. ANCHOR ON THE 'View Profile' DELIMITER (the reliable
+    structure) — the two non-empty lines immediately above each delimiter are (name, title),
+    regardless of name shape (so particle surnames like 'van der Berg' are NOT dropped). Each
+    person's unit = the nearest preceding non-chrome, non-person line (the section header). A
+    delimiter whose two preceding lines don't yield a usable (name, title) is recorded as a
+    WARNING, never silently dropped and never invented. Returns ([], []) for any non-contacts
+    page (>= 2 delimiters required) so it falls through to prose."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    delims = [i for i, ln in enumerate(lines) if ln.lower() == _PROFILE_DELIM]
+    if len(delims) < 2:
+        return [], []                      # not the key-contacts page
+    # The name+title lines of every valid record — excluded when scanning for headers.
+    person_lines: set[int] = set()
+    for d in delims:
+        if d >= 2:
+            person_lines.update((d - 2, d - 1))
+
+    def _is_header(i: int) -> bool:
+        return (i not in person_lines
+                and lines[i].lower() not in _CHROME
+                and lines[i].lower() != _PROFILE_DELIM)
 
     records: list[StaffRecord] = []
-    buf: list[str] = []
-    for raw in block.splitlines():
-        line = raw.strip()
-        if not line:
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for d in delims:
+        if d < 2:
+            warnings.append(f"'View Profile' with <2 preceding lines @line {d}")
             continue
-        if _EMAIL.match(line):
-            fields = [b for b in buf if b.lower() != "mail to:"]
-            if len(fields) >= 2:
-                phone = ""
-                for f in fields:
-                    m = _PHONE.search(f)
-                    if m:
-                        phone = m.group(1)
-                        break
-                records.append(
-                    StaffRecord(name=fields[0], title=fields[1], phone=phone, email=line)
-                )
-            buf = []
-        else:
-            buf.append(line)
-    return records
+        raw_name, title = lines[d - 2], lines[d - 1].rstrip(",")
+        if raw_name.lower() in _CHROME or not title or title.lower() in _CHROME:
+            warnings.append(f"unparseable contact near 'View Profile' @line {d}: {lines[d-2:d]!r}")
+            continue
+        name = _reformat_name(raw_name)
+        if name in seen:
+            continue
+        seen.add(name)
+        unit = ""
+        for i in range(d - 3, -1, -1):     # nearest preceding section header
+            if _is_header(i):
+                unit = lines[i]
+                break
+        records.append(StaffRecord(name=name, title=title, unit=unit))
+    return records, warnings
 
 
 def _merge_person_attrs(conn, pid: int, updates: dict) -> None:
