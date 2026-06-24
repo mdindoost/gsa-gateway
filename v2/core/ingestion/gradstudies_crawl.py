@@ -326,12 +326,13 @@ def _merge_person_attrs(conn, pid: int, updates: dict) -> None:
 
 
 def ingest_gradstudies(conn, result: EntryResult, source: str = "crawler") -> dict:
-    """Write an EntryResult into the DB under ONE 'eos' org (under njit):
-      - staff -> Person + has_role(category='staff') + contact attrs (KG)
+    """Write an EntryResult under the EXISTING 'graduate-studies' org (id 9, under njit):
+      - staff -> Person + has_role(category='staff') + published contact attrs (KG)
       - prose -> knowledge_items type='policy' (IN the served corpus, NOT office_page),
         keyed by source_url, content-hash for recrawl change detection, figures in metadata.
     Idempotent: unchanged pages are skipped; changed pages version-bump (old deactivated).
-    Does NOT commit (caller owns the transaction)."""
+    Recrawl is change-detection ONLY — removed pages/departed staff are NOT retired (ND6;
+    departure reconciliation deferred). Does NOT commit (caller owns the transaction)."""
     org_id = ensure_org(conn, GRAD_SLUG, GRAD_NAME, parent_slug="njit", type="office")
     sync_org_nodes(conn)
 
@@ -339,7 +340,7 @@ def ingest_gradstudies(conn, result: EntryResult, source: str = "crawler") -> di
         key = f"{source}/{GRAD_SLUG}/{_slug(s.name)}"
         pid = project_appointment(
             conn, person_key=key, name=s.name, org_id=org_id, category="staff",
-            titles=[s.title], source_section="contacts", source=source)
+            titles=[s.title], source_section=(s.unit or "contacts"), source=source)
         _merge_person_attrs(conn, pid, {"email": s.email, "phone": s.phone})
 
     inserted = updated = unchanged = 0
