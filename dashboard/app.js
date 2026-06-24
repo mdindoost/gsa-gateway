@@ -115,9 +115,12 @@ let SERVER_URL = null;
 function isServerMode() { return !!SERVER_URL; }
 
 function serverFetch(path, opts = {}) {
+  // Writes (those with a body) MUST carry the X-GSA-Dashboard CSRF header — the server's
+  // _csrf_ok() rejects non-/api/* writes without it (403 "forbidden"). jobsApi + judging already
+  // send it; serverFetch (posts/people/orgs/settings) was missed when the gate was added.
   return fetch(SERVER_URL + path, {
     method: opts.method || "GET",
-    headers: opts.body ? { "Content-Type": "application/json" } : {},
+    headers: opts.body ? { "Content-Type": "application/json", "X-GSA-Dashboard": "1" } : {},
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   }).then((r) => r.json());
 }
