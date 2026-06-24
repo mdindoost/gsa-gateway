@@ -1013,11 +1013,13 @@ function openPost(id) {
   if (closeBtn) closeBtn.onclick = closeModal;
   const cancel = document.getElementById("cancel-post");
   if (cancel) cancel.onclick = () => {
-    db.run("UPDATE posts SET status='cancelled' WHERE id=?", [id]);
+    // In server mode this MUST go through the server (DELETE /posts/{id} → status='cancelled'),
+    // matching the right-pane d-cancel handler. Previously it only ran db.run() on the in-browser
+    // sql.js copy, so a server-mode cancel silently never reached the live DB.
+    applyAndExport(`UPDATE posts SET status='cancelled' WHERE id=${id};`, "Cancel post",
+      { type: "post", server: { path: `/posts/${id}`, method: "DELETE" } });
     closeModal();
     renderOverview();
-    // Note: changes live in the in-memory db. Persisting back to the .db file
-    // (download/export) is wired up in a later checkpoint.
   };
 }
 function closeModal() { document.getElementById("modal").hidden = true; }
