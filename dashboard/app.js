@@ -1222,7 +1222,8 @@ function renderNewPostForm() {
         </div>
         <div class="muted utc-hint" id="onetime-utc"></div>
         <label class="checkrow"><input type="checkbox" id="f-now"> Send immediately</label>
-        <div class="field" style="margin-top:10px"><label>Auto-delete at (optional — unsends from the channel; the record is kept forever)</label><input type="datetime-local" id="f-delete-at"></div>
+        <label class="checkrow" style="margin-top:10px"><input type="checkbox" id="f-autodel"> Auto-delete this post (unsends from the channel; the record is kept forever)</label>
+        <div class="field" id="f-autodel-wrap" style="display:none;margin-top:6px"><label>Delete after (hours, 1–48)</label><input type="number" id="f-autodel-hours" min="1" max="48" value="${esc(String(scalar("SELECT value FROM settings WHERE key='default.auto_delete_hours' ORDER BY org_id LIMIT 1") || 24))}"></div>
       </div>
 
       <div id="grp-recurring" class="mode-grp" hidden style="margin-top:14px">
@@ -1336,6 +1337,10 @@ function wireForm() {
   ["f-date", "f-time", "f-now"].forEach((id) => document.getElementById(id).addEventListener("input", updateUtcHint));
   document.getElementById("f-now").addEventListener("change", updateUtcHint);
   updateUtcHint();
+  const autodel = document.getElementById("f-autodel");
+  if (autodel) autodel.addEventListener("change", () => {
+    document.getElementById("f-autodel-wrap").style.display = autodel.checked ? "" : "none";
+  });
   document.querySelectorAll("#mode-seg button").forEach((b) =>
     b.addEventListener("click", () => setMode(b.dataset.m)));
   // recurring inputs
@@ -1513,8 +1518,16 @@ function submitForm() {
     const date = val("f-date"), time = val("f-time");
     if (!now && !date) { toast("Pick a date or check Send immediately", false); return; }
     const scheduledForUTC = now ? null : PL.localToUTC(`${date} ${time}`, tz);
-    const da = val("f-delete-at");
-    const deleteAtUTC = da ? PL.localToUTC(da.replace("T", " "), tz) : null;  // null = keep forever
+    // Opt-in auto-delete: checkbox on → delete N hours (1–48) after the (UTC) send time; off → forever.
+    let deleteAtUTC = null;
+    const autodelOn = document.getElementById("f-autodel") && document.getElementById("f-autodel").checked;
+    if (autodelOn) {
+      const h = Math.max(1, Math.min(48, Number(val("f-autodel-hours")) || 24));
+      const baseUTC = scheduledForUTC || PL.nowUTC();                 // "YYYY-MM-DD HH:MM:SS" UTC
+      const d = new Date(baseUTC.replace(" ", "T") + "Z");
+      d.setUTCHours(d.getUTCHours() + h);
+      deleteAtUTC = d.toISOString().slice(0, 19).replace("T", " ");   // back to UTC string
+    }
     patch = PL.buildPostPatch({ orgId, content, platforms, discordChannel, signature,
       scheduledForUTC: scheduledForUTC || PL.nowUTC(), type: "one_time", sourceType: "manual", addToKb }, tz);
     server = { path: "/posts", body: { org_id: orgId, type: "one_time", content,
