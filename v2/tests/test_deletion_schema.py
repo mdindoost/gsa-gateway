@@ -20,6 +20,21 @@ def test_deletion_columns_exist():
     conn.close()
 
 
+def test_create_all_seeds_auto_delete_default_on_root(tmp_path):
+    db = str(tmp_path / "t.db")
+    c = create_all(db)
+    c.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'N','njit','university')")
+    c.commit(); c.close()
+    c2 = create_all(db)                       # root now exists → seed fires (idempotent)
+    v = c2.execute("SELECT value,type FROM settings WHERE org_id=1 AND key='default.auto_delete_hours'").fetchone()
+    assert v is not None and v[0] == "24" and v[1] == "int"
+    c2.close()
+    c3 = create_all(db)                       # third run must NOT duplicate
+    n = c3.execute("SELECT COUNT(*) FROM settings WHERE key='default.auto_delete_hours'").fetchone()[0]
+    assert n == 1
+    c3.close()
+
+
 def test_delete_due_partial_index_exists():
     # the 30s poll selects WHERE delete_at<=now AND deleted_at IS NULL — a partial index keeps
     # that O(due-rows), not a full scan.
