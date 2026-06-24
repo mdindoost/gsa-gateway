@@ -212,6 +212,13 @@ who is the parking director
 how do I contact the bursar
 where is the registrar office
 what does the office of global initiatives do
+# bursar (Crawling 2.1 office crawler — verbatim policy KB, prose-only office)
+how do I set up eRefund direct deposit
+how do I access my 1098-T tax form
+how do I get a tuition refund
+what are the bursar billing and refund deadlines
+how do I schedule a bursar appointment
+what is the financial responsibility agreement
 # (NOTE: conversation follow-ups like "what is his position" are NOT eval lines — they need history to
 #  be meaningful and are covered by multi-turn unit fixtures in v2/tests/test_context_rewrite.py [RA4].)
 
