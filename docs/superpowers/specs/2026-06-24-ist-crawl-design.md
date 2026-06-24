@@ -93,17 +93,31 @@ risk to the shipped EOS crawler. Components:
 1. **Discovery (DFS, host-scoped)** — seed `https://ist.njit.edu/`; DFS following same-host links only
    (stays on `ist.njit.edu`; drops off-host `www`/`myucid`/`servicedesk`/external + CSS/JS/PDF/asset
    links). Depth + page-budget bound, with a **truncation flag** on the result + manifest (the EOS
-   review fix #5). **Adaptation vs EOS:** EOS's `_in_scope` was a per-seed path-prefix bound (5 separate
-   sites under `www.njit.edu`); IST's is a **host-match** bound (one seed = the whole subdomain). If the
-   homepage DFS orphans a known section, add it as an extra seed (dry-run reveals this).
+   review fix #5). **Adaptation vs EOS (PILOT-CONFIRMED):** EOS's `_in_scope` is a per-seed path-prefix
+   bound (5 separate sites under `www.njit.edu`) — the pilot showed it rejects IST's sibling links (a
+   `/software-available-download` seed followed 0 links). Replace it with a **host-match** bound: seed the
+   homepage, follow any `ist.njit.edu` link. The pilot confirmed `select_links` already host-bounds (18
+   on-host / **0 off-host** from the homepage), and the homepage exposes every key section at depth 1
+   (`/software-available-download`, `/password-resets`, `/student-computers`, `/ist-services`,
+   `/ist-key-contacts`, `/popular-services`, `/new-student-computing-guide`, …) — so a single homepage
+   seed reaches the site; no per-section seeds needed.
 2. **Page-type classifier** — per URL a proposed type: `staff-roster` (Key Contacts), `prose-page`
    (extractable text), `skip:js-shell` (empty after clean), `skip:pdf`/`skip:asset`, `unknown`.
    Deterministic; `unknown` never guessed. (Single-parse, per the EOS fix — no classify double-parse.)
 3. **Manifest (dry run)** — candidate URL set + types + extraction previews to stdout. No DB writes. The
    supervised gate.
-4. **Key-Contacts parser** — parses `/about-ist` contact block into `(name, title, phone, email)` →
-   `project_appointment` (Person + `has_role` `category='staff'`, contact attrs) under `ist`. Anchors
-   adapted to IST's contact markup; ambiguous/contacts-shaped-but-0-records pages warned, not invented.
+4. **Key-Contacts parser (PILOT-CONFIRMED structure)** — parses **`/ist-key-contacts`** (NOT `/about-ist`,
+   which is the division overview). Real structure per the pilot: people grouped under **unit headers**
+   (Office of the VP / Digital Learning & Campus Support / Enterprise Applications / Research IT / …), each
+   record = `Lastname, Firstname` → `Title` → `View Profile` (the **record delimiter** — replaces EOS's
+   email-line delimiter). **No inline phone/email** on this page (contact lives behind the `View Profile`
+   link to `people.njit.edu`). So the parser: split on `View Profile`, take name (reformat
+   `Last, First`→`First Last`) + title, capture the unit header as `attrs.titles`/source_section context;
+   emit `project_appointment` (Person + `has_role` `category='staff'`) under `ist` with **no fabricated
+   contact** (anti-fab — omit phone/email rather than invent). ~18 contacts (Haggerty=Interim VP,
+   Farber=Asst Director Service Desk, unit directors). Optional enrichment (open question): follow
+   `View Profile` to the `people.njit.edu/profile/<slug>` page (the standard template `njit_adapter`
+   already parses) to pull email — deferred unless the owner wants it.
 5. **Prose ingester** — mechanically cleans each prose page to verbatim text → `knowledge_items`
    (`type='policy'`, `org_id=ist`), idempotent on a full-path natural key (avoids doc_id collisions),
    figures/files in `metadata`.
@@ -172,10 +186,24 @@ New `v2/tests/test_ist_*.py` with **real saved `ist.njit.edu` HTML fixtures**:
    "what software can I download", "who runs IST".
 5. Merge `feat/ist-crawl` → main after it's proven.
 
+## Pilot findings (2026-06-24, read-only — no DB writes)
+
+Ran the EOS extractor (`eos_crawl.extract_entry`) against `ist.njit.edu`, validating feasibility:
+- **Prose extraction transfers as-is** — clean verbatim text, correct titles, no off-host leak, no
+  rewriting (Software Availability 3050ch, IST Services for Students 2372ch, Acceptable Use Policy
+  11595ch, Service Desk 881ch, etc.). The verbatim hard line holds.
+- **Scope fix identified + validated** — per-section seed followed 0 links (path-prefix `_in_scope` too
+  narrow); homepage seed + host-bound walked 12 pages in a shallow depth-2/budget-35 pass (`truncated`,
+  more with budget); `select_links` host-bounds already (0 off-host). → host-scope, homepage seed.
+- **Key-Contacts structure captured** (see component 4) — `/ist-key-contacts`, `Last, First / Title /
+  View Profile`, no inline contact. Roster parser is a real rewrite, not an anchor tweak.
+
 ## Open questions / to confirm during the supervised crawl
 
-- Exact IST staff set from `/about-ist` Key Contacts (count + which are student-facing).
-- Whether homepage DFS reaches every section or any hub (e.g. `/i-am/student`) must be an extra seed.
+- Final page budget/depth for full coverage (shallow pilot already hit `truncated=True`; the real crawl
+  needs a budget sized to the whole subdomain — set it, then confirm no truncation in the manifest).
+- **Enrich staff email by following `View Profile` → `people.njit.edu`?** (Optional; deferred unless owner
+  wants it — otherwise staff are name+title+unit only, no fabricated contact.)
 - Whether any high-value step-by-step (wifi/password) exists ONLY as a Service-Desk KB article (off-host,
   ND2) → accept the link-out + live-fallback, or flag for a manual anchor doc.
 
