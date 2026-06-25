@@ -12,6 +12,12 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse
 
+from v2.core.ingestion import entry_points as _ep
+
+# People-page segments = the LAST path segment of each SUPPLEMENTARY_PATH (the in-host people
+# listings explore.py owns). Single source of truth — can't drift from the people crawler.
+_PEOPLE_SEGMENTS = frozenset(p.strip("/").split("/")[-1].lower() for p in _ep.SUPPLEMENTARY_PATHS)
+
 # URL-path segments that mark a page kind (segment match, not substring).
 _NEWS_SEGMENTS = ("news", "announcement", "announcements")
 _EVENT_SEGMENTS = ("event", "events")
@@ -19,6 +25,13 @@ _EVENT_SEGMENTS = ("event", "events")
 
 def _segments(url: str) -> list[str]:
     return [s for s in urlparse(url).path.lower().split("/") if s]
+
+
+def is_people_path(url: str) -> bool:
+    """True when the URL is a dedicated people/roster page (skip — explore.py owns people).
+    Segment match against entry_points.SUPPLEMENTARY_PATHS, so /faculty and /faculty/x match
+    but /faculty-handbook (real prose) does not."""
+    return any(s in _PEOPLE_SEGMENTS for s in _segments(url))
 
 
 def classify_type(url: str) -> str:
