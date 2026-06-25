@@ -279,4 +279,12 @@ PROSE_ENTRY_POINTS: list[ProseEntry] = [
     # ── Hillier College of Architecture & Design (HCAD) ─────────────────────────────────────
     # One subdomain (design.njit.edu) serves the college + NJSOA + Art+Design — one prose seed on hcad.
     ProseEntry("https://design.njit.edu/", "hcad", "Hillier College of Architecture & Design", "njit", "college"),
+
+    # ── Albert Dorman Honors College ────────────────────────────────────────────────────────
+    # An honors PROGRAM (cross-cutting), not a faculty-home college: honors.njit.edu exposes NO
+    # people.njit.edu profile roster, so this is PROSE-ONLY (like the prose-only offices). Its
+    # leadership is captured in the prose (dean/contact pages); honors-affiliated faculty already
+    # live in the KG under their home colleges (home-appointment-only). The prose ingest CREATES
+    # the `honors` college org (it doesn't exist yet) via ensure_org.
+    ProseEntry("https://honors.njit.edu/", "honors", "Albert Dorman Honors College", "njit", "college"),
 ]

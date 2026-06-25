@@ -233,7 +233,7 @@ def test_prose_entry_points_cover_all_colleges():
     """Regression for the college rollout: every NJIT college root has a prose entry."""
     from v2.core.ingestion.college_crawl import PROSE_ENTRY_POINTS
     college_slugs = {e.org_slug for e in PROSE_ENTRY_POINTS if e.org_type == "college"}
-    assert {"ywcc", "mtsm", "nce", "csla", "hcad"} <= college_slugs
+    assert {"ywcc", "mtsm", "nce", "csla", "hcad", "honors"} <= college_slugs
 
 
 def test_prose_entry_org_type():

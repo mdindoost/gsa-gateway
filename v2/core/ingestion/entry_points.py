@@ -182,6 +182,8 @@ ORG_ALIASES: dict[str, list[str]] = {
     "njit-administration": ["njit administration", "senior administration", "senior administrators",
                             "university administration", "njit leadership", "senior leadership",
                             "njit cabinet", "njit senior administration"],
+    "honors": ["albert dorman honors college", "honors college", "dorman honors",
+               "albert dorman", "adhc", "honors"],
 }
 
 
