@@ -99,9 +99,9 @@ def test_decay_called_with_row_dict_at_both_boost_sites(monkeypatch):
 
     original_decay_for = R_mod.decay_for
 
-    def spy_decay_for(row, now):
-        calls.append((row, now))
-        return original_decay_for(row, now)
+    def spy_decay_for(row, now, event_boost=R_mod.EVENT_BOOST):
+        calls.append((row, now, event_boost))
+        return original_decay_for(row, now, event_boost=event_boost)
 
     monkeypatch.setattr(R_mod, "decay_for", spy_decay_for)
 
@@ -146,7 +146,7 @@ def test_decay_called_with_row_dict_at_both_boost_sites(monkeypatch):
     # dicts), so we check "not a string" rather than "is dict" — that's the C2 invariant:
     # we stopped passing bare type strings to the boost function.
     assert calls, "decay_for was never called — boost sites not wired"
-    for row_arg, now_arg in calls:
+    for row_arg, now_arg, _boost_arg in calls:
         assert not isinstance(row_arg, str), (
             f"decay_for got a bare type string (pre-C2 pattern): {row_arg!r}"
         )
@@ -167,3 +167,45 @@ def test_default_exclude_types():
     assert "publication" in DEFAULT_EXCLUDE_TYPES
     assert "office_page" not in DEFAULT_EXCLUDE_TYPES
     assert "webpage" not in DEFAULT_EXCLUDE_TYPES
+
+
+# ── Fix wave 1: admin-tunable event_boost forwarded through decay_for ─────────
+
+def test_decay_for_event_boost_param_event_info():
+    """decay_for respects a non-default event_boost for event_info rows."""
+    result = decay_for({"type": "event_info", "metadata": {}}, NOW, event_boost=1.5)
+    assert result == 1.5
+
+
+def test_decay_for_event_boost_param_upcoming_event():
+    """decay_for respects a non-default event_boost for upcoming event rows."""
+    result = decay_for({"type": "event", "metadata": {"event_end": "2026-12-01"}},
+                       NOW, event_boost=1.5)
+    assert result == 1.5
+
+
+def test_decay_for_default_unchanged():
+    """Calling decay_for without event_boost still uses the module constant (1.2)."""
+    assert decay_for({"type": "event_info", "metadata": {}}, NOW) == 1.2
+    assert decay_for({"type": "event", "metadata": {"event_end": "2026-12-01"}}, NOW) == 1.2
+
+
+def test_boost_for_forwards_instance_event_boost():
+    """V2Retriever._boost_for passes self.event_boost to decay_for (not the constant).
+
+    Uses a minimal stub object bound to the unbound method to avoid a full DB setup.
+    """
+    import types
+    from v2.core.retrieval.retriever import V2Retriever
+
+    # Build a minimal stub that satisfies _boost_for's attribute access
+    stub = types.SimpleNamespace(event_boost=1.5)
+    # Bind the real _boost_for method to the stub
+    bound = V2Retriever._boost_for.__get__(stub, type(stub))
+
+    row = {"type": "event_info", "metadata": {}}
+    result = bound(row, NOW)
+    assert result == 1.5, (
+        f"_boost_for returned {result!r} instead of 1.5 — "
+        "self.event_boost is not being forwarded to decay_for"
+    )

@@ -61,7 +61,7 @@ def _aware(dt: _dt, now: _dt) -> _dt:
     return dt if dt.tzinfo else dt.replace(tzinfo=now.tzinfo)
 
 
-def decay_for(row, now: _dt) -> float:
+def decay_for(row, now: _dt, event_boost: float = EVENT_BOOST) -> float:
     """Return the recency/type multiplier for a knowledge_items row.
 
     Pure function — no side effects, no DB access.  Applied post-RRF as a
@@ -69,13 +69,17 @@ def decay_for(row, now: _dt) -> float:
 
     ``row`` may be a plain dict (tests) or a sqlite3.Row (production).
 
+    ``event_boost`` defaults to the module constant EVENT_BOOST so direct
+    unit-test calls stay unchanged; callers that load an admin-tunable value
+    (e.g. ``V2Retriever._boost_for``) pass ``self.event_boost`` here.
+
     - news:       half-life decay from published_at; undated → NEWS_PRIOR (no
                   decay); future-dated → age 0; floor = NEWS_FLOOR (never 0).
-    - event:      EVENT_BOOST iff upcoming (event_end else event_start ≥
+    - event:      event_boost iff upcoming (event_end else event_start ≥
                   start-of-day UTC); else news-style decay if published_at
                   present, else 1.0.  Missing/unparseable dates → not upcoming
                   (fail-closed).
-    - event_info: EVENT_BOOST unconditionally (unchanged from original).
+    - event_info: event_boost unconditionally (unchanged from original).
     - webpage:    WEBPAGE_PRIOR (downweighted, not excluded).
     - else:       1.0.
     """
@@ -100,7 +104,7 @@ def decay_for(row, now: _dt) -> float:
         sod = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_dt = _parse_iso(meta.get("event_end")) or _parse_iso(meta.get("event_start"))
         if end_dt is not None and _aware(end_dt, now) >= sod:
-            return EVENT_BOOST                          # upcoming
+            return event_boost                          # upcoming
         # past event: news-style decay on published_at, else neutral
         if meta.get("published_at"):
             return decay_for({"type": "news",
@@ -108,7 +112,7 @@ def decay_for(row, now: _dt) -> float:
         return 1.0                                      # fail-closed
 
     if t == "event_info":
-        return EVENT_BOOST
+        return event_boost
 
     if t == "webpage":
         return WEBPAGE_PRIOR
@@ -253,7 +257,7 @@ class V2Retriever:
             return default
 
     def _boost_for(self, row: dict, now: _dt) -> float:
-        return decay_for(row, now)
+        return decay_for(row, now, event_boost=self.event_boost)
 
     def _rerank(self, query, ranked, rows, now: _dt):
         """Re-fuse the fused pool with the cross-encoder. We RRF-fuse the CE ranking with

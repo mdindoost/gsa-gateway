@@ -215,11 +215,16 @@ def test_contact_type_is_not_boosted(retriever):
 
 def test_event_boost_loaded_from_settings(retriever):
     # Default code value when no settings row exists (in-memory db has none).
-    # event_boost on the retriever instance still reflects the setting-loaded value;
-    # _boost_for now delegates to decay_for (uses the EVENT_BOOST constant).
     from datetime import datetime, timezone
-    from v2.core.retrieval.retriever import decay_for
     now = datetime.now(timezone.utc)
     assert retriever.event_boost == 1.2
-    assert decay_for({"type": "event_info", "metadata": {}}, now) == 1.2
     assert not hasattr(retriever, "contact_boost")
+    # _boost_for must actually USE self.event_boost — not just load it.
+    # Mutate the instance value and verify the boost site reflects it.
+    retriever.event_boost = 1.5
+    result = retriever._boost_for({"type": "event_info", "metadata": {}}, now)
+    assert result == 1.5, (
+        f"_boost_for returned {result!r} — self.event_boost is loaded but not forwarded"
+    )
+    # Restore
+    retriever.event_boost = 1.2
