@@ -61,11 +61,13 @@ def _aware(dt: _dt, now: _dt) -> _dt:
     return dt if dt.tzinfo else dt.replace(tzinfo=now.tzinfo)
 
 
-def decay_for(row: dict, now: _dt) -> float:
+def decay_for(row, now: _dt) -> float:
     """Return the recency/type multiplier for a knowledge_items row.
 
     Pure function — no side effects, no DB access.  Applied post-RRF as a
     multiplicative prior.  See spec §6.1 and global-constraints.md.
+
+    ``row`` may be a plain dict (tests) or a sqlite3.Row (production).
 
     - news:       half-life decay from published_at; undated → NEWS_PRIOR (no
                   decay); future-dated → age 0; floor = NEWS_FLOOR (never 0).
@@ -77,6 +79,8 @@ def decay_for(row: dict, now: _dt) -> float:
     - webpage:    WEBPAGE_PRIOR (downweighted, not excluded).
     - else:       1.0.
     """
+    if not isinstance(row, dict):
+        row = dict(row)
     t = row.get("type")
     meta = row.get("metadata") or {}
     if isinstance(meta, str):
@@ -248,12 +252,10 @@ class V2Retriever:
         except (TypeError, ValueError):
             return default
 
-    def _boost_for(self, item_type: str) -> float:
-        if item_type == "event_info":
-            return self.event_boost
-        return 1.0
+    def _boost_for(self, row: dict, now: _dt) -> float:
+        return decay_for(row, now)
 
-    def _rerank(self, query, ranked, rows):
+    def _rerank(self, query, ranked, rows, now: _dt):
         """Re-fuse the fused pool with the cross-encoder. We RRF-fuse the CE ranking with
         the existing fused ranking (same RRF the retriever already uses) rather than letting
         CE override — pure CE reorder *demotes* exact-keyword facts that bm25 nailed
@@ -276,7 +278,7 @@ class V2Retriever:
         # exact-keyword facts bm25 nailed aren't demoted (avoids regressions).
         def _score(iid):
             rrf = 1.0 / (RRF_K + fused_rank[iid]) + 1.0 / (RERANK_CE_K + ce_rank[iid])
-            return rrf * self._boost_for(rows[iid]["type"])
+            return rrf * self._boost_for(rows[iid], now)
 
         rescored = sorted(((iid, _score(iid)) for iid, _ in window), key=lambda kv: -kv[1])
         return rescored + ranked[self.rerank_pool:]
@@ -411,6 +413,8 @@ class V2Retriever:
 
         # Hydrate every candidate (small set) so we can apply the type boost
         # using each item's type, then re-sort by the boosted score.
+        # Compute now once per query and thread to both boost sites.
+        now = _dt.now(timezone.utc)
         cand_ids = list(scores.keys())
         rows = {
             r["id"]: r
@@ -421,10 +425,10 @@ class V2Retriever:
             )
         }
         for iid in cand_ids:
-            scores[iid] *= self._boost_for(rows[iid]["type"])
+            scores[iid] *= self._boost_for(rows[iid], now)
 
         ranked = sorted(scores.items(), key=lambda kv: -kv[1])
-        ranked = self._rerank(query, ranked, rows)
+        ranked = self._rerank(query, ranked, rows, now)
         if group_by_entity:
             final = self._diversify_and_expand(ranked, rows, limit, item_types)
         else:

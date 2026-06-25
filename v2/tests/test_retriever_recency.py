@@ -141,14 +141,20 @@ def test_decay_called_with_row_dict_at_both_boost_sites(monkeypatch):
     retriever.retrieve("hello", limit=1)
     conn.close()
 
-    # Every call to decay_for should have a dict (not a bare string) as first arg
-    # and a datetime as second arg.
+    # Every call to decay_for should have a row object (not a bare type string) as first
+    # arg and a datetime as second arg.  Production rows are sqlite3.Row objects (not plain
+    # dicts), so we check "not a string" rather than "is dict" — that's the C2 invariant:
+    # we stopped passing bare type strings to the boost function.
     assert calls, "decay_for was never called — boost sites not wired"
     for row_arg, now_arg in calls:
-        assert isinstance(row_arg, dict), (
-            f"decay_for got a non-dict first arg: {type(row_arg).__name__!r} = {row_arg!r}"
+        assert not isinstance(row_arg, str), (
+            f"decay_for got a bare type string (pre-C2 pattern): {row_arg!r}"
         )
-        assert "type" in row_arg, "row dict missing 'type' key"
+        # sqlite3.Row supports index access but not 'in' for key names; access directly
+        try:
+            _ = row_arg["type"]
+        except (KeyError, IndexError, TypeError):
+            pytest.fail("row object missing 'type' key")
         assert isinstance(now_arg, datetime), (
             f"decay_for got a non-datetime now: {type(now_arg).__name__!r}"
         )

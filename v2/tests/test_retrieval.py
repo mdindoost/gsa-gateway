@@ -205,12 +205,21 @@ def test_all_stopword_query_falls_back():
 def test_contact_type_is_not_boosted(retriever):
     # The contact boost was removed: a contact record gets the neutral 1.0 factor,
     # same as any non-event type (officers are answered by the structured router now).
-    assert retriever._boost_for("contact") == 1.0
-    assert retriever._boost_for("faq") == 1.0
+    # _boost_for now takes (row_dict, now) — use decay_for directly for unit checks.
+    from datetime import datetime, timezone
+    from v2.core.retrieval.retriever import decay_for
+    now = datetime.now(timezone.utc)
+    assert decay_for({"type": "contact", "metadata": {}}, now) == 1.0
+    assert decay_for({"type": "faq", "metadata": {}}, now) == 1.0
 
 
 def test_event_boost_loaded_from_settings(retriever):
     # Default code value when no settings row exists (in-memory db has none).
+    # event_boost on the retriever instance still reflects the setting-loaded value;
+    # _boost_for now delegates to decay_for (uses the EVENT_BOOST constant).
+    from datetime import datetime, timezone
+    from v2.core.retrieval.retriever import decay_for
+    now = datetime.now(timezone.utc)
     assert retriever.event_boost == 1.2
-    assert retriever._boost_for("event_info") == 1.2
+    assert decay_for({"type": "event_info", "metadata": {}}, now) == 1.2
     assert not hasattr(retriever, "contact_boost")
