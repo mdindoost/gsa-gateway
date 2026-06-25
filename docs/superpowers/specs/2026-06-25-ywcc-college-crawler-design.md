@@ -67,7 +67,7 @@ prose — `cs.njit.edu` (~12), `informatics.njit.edu` (~7), `catalog.njit.edu` (
    PEOPLE engine = explore.py (UNCHANGED)            PROSE engine = NEW ywcc prose crawler
    people.njit.edu profiles → KG + per-person KB     computing/cs/informatics.njit.edu subtrees
    (people/roles/research, M3 reconcile)             → knowledge_items (policy/news/event)
-   created_by='crawler'                              created_by='ywcc_crawl'
+   created_by='crawler'                              created_by='college_crawl'
 ```
 
 Two well-bounded engines, one runner = the single "entry-point" operation. Rationale for NOT unifying:
@@ -101,7 +101,7 @@ Entry points are **first-class, host-anchored, and independently recrawlable**. 
 
 ---
 
-## 4. The prose engine (new) — `ywcc_crawl.py`
+## 4. The prose engine (new) — `college_crawl.py`
 
 Modeled on `eos_crawl.py` (reuse the proven DFS spine: fetch → mechanical `clean_text` → content-hash
 idempotency → version-bump). **Changes vs the office template:**
@@ -154,14 +154,14 @@ Rationale: news/event pages get deleted/rewritten by NJIT and we are heading for
 captured on first sight is **unrecoverable**.
 
 ### 4.5 Source tagging (the reconcile-safety fix)
-Prose rows are written `created_by='ywcc_crawl'`, `source='crawler'`. **Isolation is two-fold:** (1) prose
+Prose rows are written `created_by='college_crawl'`, `source='crawler'`. **Isolation is two-fold:** (1) prose
 rows have **no `metadata.entity_id`**, and `reconcile_entity` matches `created_by` AND `entity_id`
 (`reconcile.py:100-101`) — so prose is invisible to it even within `'crawler'`; (2) the distinct `created_by`
 is belt-and-suspenders. The **load-bearing** reason for the distinct tag is the **idempotency upsert**
 (`eos_crawl.py:329-332`: `WHERE org_id=? AND natural_key=? AND created_by=?`) — the prose crawler **shares
 org_ids** with `explore.py` people rows (orgs 5/6/7), so the `created_by` filter is what stops that SELECT
 matching a people row. `explore.py`'s `reconcile_departures` (`created_by='crawler'`) also can't see
-`ywcc_crawl`; vectors are item-id-keyed → no collision. `source='crawler'` keeps the dashboard `--reset` /
+`college_crawl`; vectors are item-id-keyed → no collision. `source='crawler'` keeps the dashboard `--reset` /
 "crawler-owned" semantics over both producers. (Offices shared `'crawler'` safely only because they don't
 share an org subtree with `explore.py`; YWCC does.)
 
@@ -262,10 +262,10 @@ loudly so they're not silently dropped (review-against-plan).
 
 Mostly **additive** — there is almost no existing crawler prose to replace.
 - **Preserve** the 27 `source='dashboard'` policy rows (manual; hard invariant) and ALL `explore.py`
-  people-side rows (`created_by='crawler'`). The prose crawler's distinct `created_by='ywcc_crawl'` means it
+  people-side rows (`created_by='crawler'`). The prose crawler's distinct `created_by='college_crawl'` means it
   cannot touch either.
 - The only "replace" is the prose crawler's own idempotent re-runs (content-hash version-bump) and an
-  optional `--reset` scoped to `created_by='ywcc_crawl'`.
+  optional `--reset` scoped to `created_by='college_crawl'`.
 - Supersession of a dashboard row is **not** detected in-crawler (the crawler makes no cross-`created_by`
   usage decisions). Instead a **manual post-hoc review query** lists dashboard rows whose topic overlaps new
   crawl rows, for the owner to retire by hand. (No automatic detection — that would be a usage decision.)
@@ -289,10 +289,10 @@ Parser/engine (prose crawler):
 - URL partition: people-listing paths skipped; an inline name on a program page is kept.
 - Mechanical typing: `/news/…`→news, `/events/…`→event, else policy; safe degrade on ambiguous paths.
 - Date extraction: `<time>`, `article:published_time`, JSON-LD `Event` → correct ISO values; missing → absent.
-- Idempotency: unchanged page skipped; changed page version-bumps; `--reset` scoped to `ywcc_crawl`.
+- Idempotency: unchanged page skipped; changed page version-bumps; `--reset` scoped to `college_crawl`.
 - Anti-fab: no Person created from prose; figures captured literally, never described.
-- Source safety: prose writes `created_by='ywcc_crawl'`; a people-reconcile pass leaves prose untouched
-  (regression test that explore's sweep can't see `ywcc_crawl` rows).
+- Source safety: prose writes `created_by='college_crawl'`; a people-reconcile pass leaves prose untouched
+  (regression test that explore's sweep can't see `college_crawl` rows).
 
 Retrieval:
 - News recency (TOPICAL query): fresh news rankable; stale news demoted below policy but still retrievable on
