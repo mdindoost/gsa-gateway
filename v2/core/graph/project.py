@@ -68,14 +68,16 @@ def project_entity(conn: sqlite3.Connection, rec: EntityRecord, org_id: int,
         "email": rec.contact.get("email"),
         "phone": rec.contact.get("phone"),
         "office": rec.contact.get("office"),
-        "website": rec.links.get("website"),
     }.items():
         if v:
             attrs[k] = v
-    # Auto-capture profile links the crawler found on the page (scholar/linkedin/orcid)
-    # into attrs.profiles — per-field merge KEEPS any existing metrics on that field.
+    # Auto-capture profile links the crawler found on the page (website/scholar/linkedin/orcid/
+    # github) into attrs.profiles — ONE consistent place for every external link. Per-field merge
+    # KEEPS any existing metrics on that field. (website was historically stored flat at
+    # attrs.website; it now lives under profiles like the rest. profile_fields keeps a fallback
+    # read of the old flat path for any un-migrated node.)
     profiles = dict(attrs.get("profiles") or {})
-    for fkey in ("scholar", "linkedin", "orcid", "github"):
+    for fkey in ("website", "scholar", "linkedin", "orcid", "github"):
         url = rec.links.get(fkey)
         if url:
             entry = dict(profiles.get(fkey) or {})

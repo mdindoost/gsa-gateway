@@ -49,10 +49,22 @@ def test_project_captures_profile_links_into_profiles_bag(conn):
         "website": "https://k.io", "scholar": "https://scholar.google.com/x",
         "linkedin": "https://linkedin.com/in/k", "orcid": "https://orcid.org/0000"}), 5)
     attrs = json.loads(conn.execute("SELECT attrs FROM nodes WHERE key='p/ikoutis'").fetchone()[0])
-    assert attrs["website"] == "https://k.io"                       # flat, unchanged
+    # website lives under profiles alongside the others (schema-consistent), not top-level.
+    assert attrs["profiles"]["website"]["url"] == "https://k.io"
+    assert "website" not in attrs                                    # no stray top-level key
     assert attrs["profiles"]["scholar"]["url"] == "https://scholar.google.com/x"
     assert attrs["profiles"]["linkedin"]["url"] == "https://linkedin.com/in/k"
     assert attrs["profiles"]["orcid"]["url"] == "https://orcid.org/0000"
+
+
+def test_project_website_surfaced_by_render_links(conn):
+    """The normalized website must still render in 'who is X' links output."""
+    import json
+    from v2.core.people.profile_fields import render_links
+    project_entity(conn, _rec_links({"website": "https://k.io"}), 5)
+    attrs = json.loads(conn.execute("SELECT attrs FROM nodes WHERE key='p/ikoutis'").fetchone()[0])
+    out = render_links(attrs)
+    assert out and "https://k.io" in out
 
 
 def test_recrawl_preserves_manually_set_metrics(conn):
