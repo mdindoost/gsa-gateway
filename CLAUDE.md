@@ -49,9 +49,14 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
    appends external-profile **links** (on `entity_card`) / Scholar **metrics** (on `research_of_person`)
    to the FINAL answer VERBATIM, AFTER LLM compose — never handed to the LLM (no hallucinated URLs/numbers).
 4. `retriever.py` (`V2Retriever`) — hybrid semantic (sqlite-vec KNN) + keyword (FTS bm25),
-   fused with RRF. **Default answer corpus excludes `publication` + `webpage`** types
-   (admin-tunable via `retriever.exclude_types`). `event_info` gets a small boost. (The old
-   `contact` boost was removed.)
+   fused with RRF. **Default answer corpus excludes ONLY `publication`** (volume: ~77% of rows,
+   one-paper-title chunks from profile decompose — admin-tunable via `retriever.exclude_types`).
+   **Recency slice** (`decay_for(row, now, event_boost)` applied at BOTH boost sites — rerank ~:200
+   and fusion ~:345, sharing one `now`): `type='news'` decays by age, `max(0.5, 0.85·0.5^(age/180))`
+   with a HARD 0.5 floor (demoted, never erased — undated news doesn't decay); crawled `type='event'`
+   boosts UPCOMING only (`event_end>=now`), past events decay unboosted; `type='webpage'` served at a
+   0.8 prior (downweighted, not excluded); GSA-curated `type='event_info'` keeps its unconditional 1.2×
+   boost. (The old `contact` boost was removed; the high-stakes heads-up — see #6 — was removed 2026-06-25.)
 5. Generation: Ollama `llama3.1:8b`, grounded in the retrieved rows/chunks. `compose_from_rows`
    (`bot/services/ollama_client.py`) rephrases the structured Facts at temp 0.0 — it MUST NOT add,
    drop, invent, attach an unlisted attribute to a name, or elaborate a listed one (anti-fabrication
@@ -98,6 +103,22 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
   crawlable (see `docs/superpowers/findings/2026-06-15-gsa-wix-extraction.md`). Officers/
   clubs are authored via the dashboard People editor (or a small backend create); prose
   comes from primary docs as `knowledge_items`.
+- **College/department PROSE (Crawling 2.1)** — the `college_crawl` engine
+  (`v2/core/ingestion/college_crawl.py`) DFS-walks a college/dept subdomain and brings
+  ALL prose (program/student/advising/news/event pages) → `knowledge_items`. **Second engine,
+  separate from `explore.py`:** explore.py owns PEOPLE (`source='crawler'`); college_crawl owns
+  PROSE (`created_by='college_crawl'`, distinct so reconcile — which is created_by-scoped — never
+  cross-wipes). It crawls bare-host subdomain seeds, **skips people-listing paths** (segment-match
+  on `entry_points.SUPPLEMENTARY_PATHS`, so `/faculty` is skipped but `/faculty-handbook` kept) so a
+  name-dump never competes with structured KG answers, **mechanically types** each page by URL
+  segment (`type='news'` for /news,/announcement(s); `type='event'` for /event(s); else `policy`),
+  and captures dates from STRUCTURED markup only (`<meta article:published_time>` / JSON-LD / `<time>`).
+  **Add a college/dept = append a `ProseEntry(seed, org_slug, org_name, parent_slug, org_type)` to
+  `PROSE_ENTRY_POINTS`** (college root `org_type='college'`, depts `'department'`) — no new code.
+  Runner: `scripts/crawl_college.py [--entry <slug>] [--commit] [--embed]` (gated; dev-copy + hardened_backup;
+  each entry independently recrawlable). Pilot = YWCC (shipped 2026-06-25, 181 prose rows). Serving
+  recency (news decay w/ floor, upcoming-event boost, webpage downweight) lives in the retriever (see #4 below).
+  Spec: `docs/superpowers/specs/2026-06-25-ywcc-college-crawler-design.md`.
 - **External profiles (links + Scholar metrics)** — per-person `attrs.profiles` bag on the Person
   node: `{scholar/linkedin/orcid/github/website: {url, …}}` + Scholar metrics `scholar.{citations,
   h_index, i10_index, updated_at}`. Registry `v2/core/people/profile_fields.py` is the SINGLE source
