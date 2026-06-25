@@ -23,7 +23,6 @@ from bot.services.intent_detector import (
     INTENT_THANKS,
 )
 from bot.services.retriever import SOURCE_FRIENDLY_NAMES
-from bot.core.headsup import apply_headsup
 from bot.core.context_rewrite import resolve_query
 from bot.core.deflection import looks_like_deflection
 from bot.core.live_query import parse_explicit_live_search, LIVE_NOT_FOUND_MSG
@@ -510,7 +509,7 @@ class MessageHandler:
         live = await self.live_search(topic)
         if live is None:
             return MessageResponse(text=LIVE_NOT_FOUND_MSG)
-        text = apply_headsup(live.text, topic)
+        text = live.text
         question_id: Optional[int] = None
         if self.db:
             question_id = self.db.log_question(
@@ -725,10 +724,9 @@ class MessageHandler:
 
             # Deflection offer (offer-only — NEVER auto-fire). Detect a confident deflection:
             # tag-at-source (the canned no-info branch above) OR a narrow phrase-match on the
-            # composed-from-chunks answer. Match on the PRE-heads-up text so the heads-up
-            # "confirm with <office>" line can't self-trigger. Suppressed when the feature is
-            # off, when we already answered live, or when this turn already tried live and got
-            # nothing (don't offer to redo a search that just failed).
+            # composed-from-chunks answer. Suppressed when the feature is off, when we already
+            # answered live, or when this turn already tried live and got nothing (don't offer
+            # to redo a search that just failed).
             is_deflection = is_canned_deflection or (
                 bool(chunks) and used_ai and not used_live
                 and looks_like_deflection(response_text)
@@ -737,13 +735,6 @@ class MessageHandler:
                 botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
                 and is_deflection and not used_live and not attempted_live
             )
-
-            # High-stakes heads-up: we still answer, but for immigration/billing/funding
-            # questions, tell the student to confirm with the authoritative office. Only when
-            # we actually answered from chunks (not the "no info" deflection above) or from the
-            # live njit.edu fallback.
-            if chunks or used_live:
-                response_text = apply_headsup(response_text, clean_text)
 
             # Update conversation memory
             if self.conversation_manager:
