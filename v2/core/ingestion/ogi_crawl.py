@@ -4,7 +4,7 @@ A copy of the Admissions / Registrar office crawler adapted for www.njit.edu/glo
 path-prefix DFS + verbatim prose ingest reusing the web_crawler spine. Brings data ONLY — fetch ->
 mechanically clean -> emit records for the caller to store in KB/KG; NO serving/gating/staging
 decisions (2026-06-23 hard line). OGI content is immigration-heavy (F-1/J-1/OPT/STEM/H-1B); the
-serve-time high-stakes heads-up (bot/core/headsup.py) covers that — the crawler just brings it verbatim.
+serve-time heads-up handling covers that — the crawler just brings it verbatim.
 
 DELTA vs Admissions (the only new code):
   * The roster parser is "VIEW PROFILE"-ANCHORED. On the staff page each person renders as a detail

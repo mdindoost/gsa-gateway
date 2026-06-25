@@ -5,8 +5,7 @@
   2. FUSED POOL    — hybrid RRF (semantic KNN + bm25) order, BEFORE reranking
   3. RERANKED      — cross-encoder order, with each chunk's raw CE relevance score
   4. FINAL TOP-5   — what the bot actually answers from (entity-diversified)
-  5. HEADS-UP      — immigration/billing/funding match (appended to the answer)
-  6. LLM ANSWER    — optional (--answer), the full real pipeline
+  5. LLM ANSWER    — optional (--answer), the full real pipeline
 
 Usage:
   python scripts/trace_query.py "who do I contact about a billing hold"
@@ -26,7 +25,6 @@ from v2.core.retrieval import structured_answer
 from v2.core.retrieval.retriever import V2Retriever
 from v2.core.retrieval.embedder import Embedder
 from v2.core.retrieval.reranker import CrossEncoderReranker
-from bot.core.headsup import match_topic, headsup_line
 
 DB = str(Path(__file__).resolve().parents[1] / "gsa_gateway.db")
 B, X, DIM = "\033[1m", "\033[0m", "\033[2m"
@@ -106,18 +104,9 @@ def main() -> None:
         hdr("4c. EXACT PROMPT SENT TO THE LLM  (system + user; heads-up is appended AFTER)")
         print(f"{B}--- SYSTEM PROMPT ---{X}\n{sysp}\n\n{B}--- USER PROMPT ---{X}\n{usrp}")
 
-    # 5. Heads-up
-    hdr("5. HIGH-STAKES HEADS-UP")
-    t = match_topic(q)
-    if t:
-        print(f"  → matched {B}{t.name}{X} → {t.office}")
-        print(f"  appends: {DIM}{headsup_line(t)}{X}")
-    else:
-        print("  → none (no immigration/billing/funding match)")
-
-    # 6. Optional LLM answer
+    # 5. Optional LLM answer
     if args.answer:
-        hdr("6. FINAL LLM ANSWER  (full real pipeline)")
+        hdr("5. FINAL LLM ANSWER  (full real pipeline)")
         import asyncio
         from bot.config import config
         from bot.services.database import Database
