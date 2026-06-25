@@ -1,0 +1,84 @@
+{
+  "760473": {
+    "started": true,
+    "finished": true,
+    "announced_goals": [
+      [
+        760473,
+        210397,
+        "7'"
+      ],
+      [
+        760473,
+        210397,
+        "64'"
+      ]
+    ],
+    "score": [
+      0,
+      2
+    ],
+    "half": 1,
+    "preview_posted": true
+  },
+  "760468": {
+    "started": true,
+    "finished": true,
+    "announced_goals": [
+      [
+        760468,
+        202641,
+        "2'"
+      ],
+      [
+        760468,
+        277352,
+        "77'"
+      ],
+      [
+        760468,
+        318090,
+        "9'"
+      ]
+    ],
+    "score": [
+      2,
+      1
+    ],
+    "half": 1,
+    "preview_posted": true
+  },
+  "760471": {
+    "started": true,
+    "finished": false,
+    "announced_goals": [],
+    "score": [
+      0,
+      0
+    ],
+    "half": 1,
+    "preview_posted": true
+  },
+  "760472": {
+    "started": true,
+    "finished": false,
+    "announced_goals": [
+      [
+        760472,
+        209595,
+        "3'"
+      ],
+      [
+        760472,
+        282229,
+        "7'"
+      ]
+    ],
+    "score": [
+      0,
+      2
+    ],
+    "half": 1,
+    "preview_posted": true
+  }
+}

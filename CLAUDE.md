@@ -384,9 +384,9 @@ Tests: `python3 -m pytest v2/tests/test_judging_db.py v2/tests/test_judging_calc
 Tables: `judging_events`, `judging_judges`, `judging_presenters`, `judging_scores`, `judging_audience_votes`.
 Schema migrations are idempotent — `create_all()` on startup applies new columns safely.
 
-### Crawl NJIT pages → KB (grounded, pipeline built; mass-crawl deferred)
-`scripts/_crawl_stage.py --bucket <url-substr> --prefix <p>` (sitemap discovery + fetch + clean to
-`/tmp/njit_crawl/`) → a Haiku subagent extracts VERBATIM facts to `bot/data/sources/njit-web/*.md`
-→ `scripts/_crawl_ground_filter.py --apply` (keeps only lines literally on the page) →
-`scripts/_crawl_ingest.py --commit` (gated, `source='crawler'`) → `embed_all.py`. Use selectively;
-the live fallback covers the long tail on demand.
+### Crawl NJIT pages → KB
+NJIT prose is gathered by the **Crawling 2.1** crawlers: per-office `*_crawl.py` (offices) and the
+`college_crawl` engine (colleges/departments). The old generic njit-web pipeline
+(`_crawl_stage.py`/`_crawl_ingest.py`/`_crawl_ground_filter.py` + `crawl_njit_section.py` +
+`ingest_offices.py`) and the dashboard "NJIT office refresh" job were RETIRED 2026-06-25 (superseded;
+they used the staging/review model the hard line rejected). The live-fallback covers the long tail on demand.

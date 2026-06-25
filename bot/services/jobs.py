@@ -137,14 +137,6 @@ def build_explore_command(*, python_bin, repo_root, db_path, depth, frontier, re
     return cmd
 
 
-def build_crawl_section_command(*, python_bin, repo_root, db_path, section) -> list[str]:
-    """Build the NJIT office-refresh command (crawl_njit_section.py --refresh): fetch the
-    office's grad-relevant pages, ingest them live (gated backup), capture staff, embed.
-    ``section`` is a SECTIONS key (e.g. 'registrar') or 'all'."""
-    script = str(Path(repo_root) / "scripts" / "crawl_njit_section.py")
-    return [python_bin, script, str(section), "--refresh"]
-
-
 # Curated manual rosters (non-template / JS-rendered pages the crawler can't reach) — each is a
 # small gated seed script. roster key → script filename.
 ROSTER_SCRIPTS = {
@@ -209,10 +201,6 @@ class JobManager:
                 python_bin=self.python_bin, repo_root=self.repo_root,
                 db_path=self.db_path, scope=args.get("scope"),
                 limit=args.get("limit", 50), embed=args.get("embed", True))
-        if job_type == "crawl_section":
-            return build_crawl_section_command(
-                python_bin=self.python_bin, repo_root=self.repo_root,
-                db_path=self.db_path, section=args.get("section", "all"))
         if job_type == "seed_roster":
             return build_seed_roster_command(
                 python_bin=self.python_bin, repo_root=self.repo_root,
@@ -294,10 +282,6 @@ class JobManager:
         """Discover + strict-write Scholar URLs for faculty-without-Scholar in scope (search +
         verified-njit gate); queues uncertain. ``limit`` caps the Brave spend per run."""
         return self._start("discover_scholar", {"scope": scope, "limit": limit, "embed": embed})
-
-    def start_crawl_section(self, section="all") -> dict:
-        """Refresh one NJIT office (or 'all') from njit.edu: fetch + ingest live + embed."""
-        return self._start("crawl_section", {"section": section})
 
     def start_seed_roster(self, roster="theatre") -> dict:
         """Re-seed a curated manual roster (Theatre / Senior Administration) — gated, source='dashboard'."""

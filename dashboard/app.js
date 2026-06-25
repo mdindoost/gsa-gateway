@@ -592,7 +592,6 @@ function renderJobs() {
         <label class="muted" style="margin-right:6px">Refresh:</label>
         <select id="refresh-what" class="btn btn-ghost" style="padding:6px 10px">
           <option value="explore">NJIT people &amp; colleges (faculty, roles, research)</option>
-          <option value="office">A specific NJIT office</option>
           <option value="roster">A manual roster</option>
           <option value="frontier">Personal / lab websites</option>
           <option value="scholar">Google Scholar (metrics &amp; research areas)</option>
@@ -614,11 +613,6 @@ function renderJobs() {
       <div id="jobs-backups">Loading…</div>
     </div>`;
 
-  const OFFICE_OPTS = [
-    ["all", "All offices"], ["registrar", "Registrar"], ["financialaid", "Financial Aid"],
-    ["graduatestudies", "Graduate Studies"], ["counseling", "Counseling (C-CAPS)"],
-    ["careerservices", "Career Development"], ["dos", "Dean of Students"],
-    ["global", "Global Initiatives (OGI)"], ["bursar", "Bursar"]];
   const ROSTER_OPTS = [
     ["theatre", "Theatre Arts & Technology"], ["senior-administration", "NJIT Senior Administration"]];
 
@@ -641,8 +635,7 @@ function renderJobs() {
       });
       return;
     }
-    const opts = what.value === "office" ? OFFICE_OPTS
-      : what.value === "roster" ? ROSTER_OPTS : null;
+    const opts = what.value === "roster" ? ROSTER_OPTS : null;
     if (!opts) { target.style.display = "none"; target.innerHTML = ""; return; }
     target.innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
     target.style.display = "";
@@ -658,9 +651,6 @@ function renderJobs() {
           + "then new bios/publications are embedded. This can take ~20–30 minutes.";
     else if (what.value === "frontier")
       msg = "Process pending personal / lab websites into the knowledge base?";
-    else if (what.value === "office")
-      msg = `Re-crawl the "${label(target)}" office pages from njit.edu?\n\nA backup is taken first, `
-          + "then the content is ingested and embedded (~a few minutes).";
     else if (what.value === "roster")
       msg = `Re-seed the "${label(target)}" roster from the curated list?\n\nA backup is taken first. `
           + "This restores the curated people/titles (overwrites any drift).";
@@ -675,7 +665,6 @@ function renderJobs() {
     if (!window.confirm(msg)) return;
     if (what.value === "explore") startExplore({});
     else if (what.value === "frontier") startExplore({ frontier: true });
-    else if (what.value === "office") startCrawlSection(target.value);
     else if (what.value === "roster") startSeedRoster(target.value);
     else if (what.value === "scholar") startRefreshScholar(target.value, older.value);
     else if (what.value === "discover-scholar") startDiscoverScholar(target.value, older.value);
@@ -736,19 +725,6 @@ function startDiscoverScholar(scope, limit) {
       if (status === 409) { toast("A job is already running", false); return; }
       if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
       toast("Discovering Scholar URLs ✅");
-      pollJob(body.job_id);
-      refreshJobsList();
-      refreshJobsHealth();
-    })
-    .catch((e) => toast("Server error: " + e.message, false));
-}
-
-function startCrawlSection(section) {
-  jobsApi("/api/jobs/crawl-section", { method: "POST", body: { section } })
-    .then(({ status, body }) => {
-      if (status === 409) { toast("A job is already running", false); return; }
-      if (status !== 201) { toast((body && body.error) || "Could not start job", false); return; }
-      toast(`Refreshing ${section} from njit.edu ✅`);
       pollJob(body.job_id);
       refreshJobsList();
       refreshJobsHealth();

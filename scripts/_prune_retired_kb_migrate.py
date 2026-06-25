@@ -3,7 +3,7 @@
 orphaned vectors.
 
 Retired rows accumulate because every re-run of an idempotent doc ingester
-(ingest_office_docs.py / gsa_ingest_docs.py) retires the prior chunks for a slug and
+(gsa_ingest_docs.py, the college/office crawlers) retires the prior chunks for a slug and
 re-inserts fresh ones. They never appear in answers (retrieval filters is_active=1) but
 they carry dead vectors and FTS entries. This prunes them.
 
