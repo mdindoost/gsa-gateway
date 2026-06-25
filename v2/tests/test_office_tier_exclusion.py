@@ -22,15 +22,22 @@ def _seed(conn):
     return curated_id, office_id
 
 
-def test_office_page_in_default_exclude_types():
-    assert "office_page" in DEFAULT_EXCLUDE_TYPES
+def test_office_page_not_in_default_exclude_types():
+    # C3: office_page is now served (downweighted via decay_for if needed),
+    # not silently excluded. Only 'publication' stays in the exclusion set.
+    assert "office_page" not in DEFAULT_EXCLUDE_TYPES
+    assert "publication" in DEFAULT_EXCLUDE_TYPES
 
 
-def test_default_retrieve_excludes_office_page_but_whitelist_includes_it(tmp_path):
+def test_default_retrieve_includes_office_page(tmp_path):
+    # C3: office_page is included in the default answer corpus (was excluded pre-C3).
+    # Explicit item_types whitelist still works.
     conn = create_all(str(tmp_path / "t.db"))
     curated_id, office_id = _seed(conn)
     r = V2Retriever(conn, embedder=None)            # light ctor; _allowed_ids is pure SQL
     default_allowed = r._allowed_ids(None, None, None, exclude_types=r.exclude_types)
-    assert office_id not in default_allowed and curated_id in default_allowed
+    # Both curated (policy) and office_page are now included
+    assert curated_id in default_allowed
+    assert office_id in default_allowed
     office_only = r._allowed_ids(None, None, ["office_page"], None)
     assert office_only == {office_id}

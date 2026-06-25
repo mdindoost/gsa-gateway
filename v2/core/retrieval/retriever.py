@@ -27,11 +27,98 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime as _dt, timezone, timedelta
 from pathlib import Path
 
 import sqlite_vec
 
 logger = logging.getLogger(__name__)
+
+# ── Recency / type-score constants ──────────────────────────────────────────
+# NEWS_FLOOR is a HARD invariant: news is downweighted, never withheld.
+NEWS_PRIOR = 0.85
+NEWS_HALFLIFE_DAYS = 180
+NEWS_FLOOR = 0.5
+WEBPAGE_PRIOR = 0.8
+EVENT_BOOST = 1.2
+
+
+def _parse_iso(s) -> _dt | None:
+    """Parse an ISO-8601-ish date/datetime string into a datetime. Returns None on failure."""
+    if not s:
+        return None
+    try:
+        return _dt.fromisoformat(str(s).replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            return _dt.fromisoformat(str(s)[:10])
+        except ValueError:
+            return None
+
+
+def _aware(dt: _dt, now: _dt) -> _dt:
+    """Ensure dt is timezone-aware (borrows now's tzinfo if naive)."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=now.tzinfo)
+
+
+def decay_for(row, now: _dt, event_boost: float = EVENT_BOOST) -> float:
+    """Return the recency/type multiplier for a knowledge_items row.
+
+    Pure function — no side effects, no DB access.  Applied post-RRF as a
+    multiplicative prior.  See spec §6.1 and global-constraints.md.
+
+    ``row`` may be a plain dict (tests) or a sqlite3.Row (production).
+
+    ``event_boost`` defaults to the module constant EVENT_BOOST so direct
+    unit-test calls stay unchanged; callers that load an admin-tunable value
+    (e.g. ``V2Retriever._boost_for``) pass ``self.event_boost`` here.
+
+    - news:       half-life decay from published_at; undated → NEWS_PRIOR (no
+                  decay); future-dated → age 0; floor = NEWS_FLOOR (never 0).
+    - event:      event_boost iff upcoming (event_end else event_start ≥
+                  start-of-day UTC); else news-style decay if published_at
+                  present, else 1.0.  Missing/unparseable dates → not upcoming
+                  (fail-closed).
+    - event_info: event_boost unconditionally (unchanged from original).
+    - webpage:    WEBPAGE_PRIOR (downweighted, not excluded).
+    - else:       1.0.
+    """
+    if not isinstance(row, dict):
+        row = dict(row)
+    t = row.get("type")
+    meta = row.get("metadata") or {}
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except (ValueError, TypeError):
+            meta = {}
+
+    if t == "news":
+        pub = _parse_iso(meta.get("published_at"))
+        if pub is None:
+            return NEWS_PRIOR                           # undated: no decay
+        age = max(0.0, (now - _aware(pub, now)).total_seconds() / 86400.0)
+        return max(NEWS_FLOOR, NEWS_PRIOR * (0.5 ** (age / NEWS_HALFLIFE_DAYS)))
+
+    if t == "event":
+        sod = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_dt = _parse_iso(meta.get("event_end")) or _parse_iso(meta.get("event_start"))
+        if end_dt is not None and _aware(end_dt, now) >= sod:
+            return event_boost                          # upcoming
+        # past event: news-style decay on published_at, else neutral
+        if meta.get("published_at"):
+            return decay_for({"type": "news",
+                               "metadata": {"published_at": meta["published_at"]}}, now)
+        return 1.0                                      # fail-closed
+
+    if t == "event_info":
+        return event_boost
+
+    if t == "webpage":
+        return WEBPAGE_PRIOR
+
+    return 1.0
+
 
 # Optional per-query retrieval trace (set RETRIEVAL_DEBUG_LOG=true): what was
 # fetched, the fused top-N, and their scores/legs/ids — to debug LLM answers.
@@ -53,7 +140,7 @@ DEFAULT_EVENT_BOOST = 1.2
 # low-signal. They stay embedded and are still reachable via an explicit item_types
 # whitelist or a publications-intent route — just not in general answers. Admin-tunable
 # via the `retriever.exclude_types` setting (comma-separated; empty string = exclude none).
-DEFAULT_EXCLUDE_TYPES = frozenset({"publication", "webpage", "office_page"})
+DEFAULT_EXCLUDE_TYPES = frozenset({"publication"})
 # Candidate pool per leg for fusion — deliberately decoupled from `limit`.
 # "pool" = how wide we search; "limit" = how many we return. A boosted item that
 # is strong in only one leg must still enter the pool to be liftable. Never drops
@@ -169,12 +256,10 @@ class V2Retriever:
         except (TypeError, ValueError):
             return default
 
-    def _boost_for(self, item_type: str) -> float:
-        if item_type == "event_info":
-            return self.event_boost
-        return 1.0
+    def _boost_for(self, row: dict, now: _dt) -> float:
+        return decay_for(row, now, event_boost=self.event_boost)
 
-    def _rerank(self, query, ranked, rows):
+    def _rerank(self, query, ranked, rows, now: _dt):
         """Re-fuse the fused pool with the cross-encoder. We RRF-fuse the CE ranking with
         the existing fused ranking (same RRF the retriever already uses) rather than letting
         CE override — pure CE reorder *demotes* exact-keyword facts that bm25 nailed
@@ -197,7 +282,7 @@ class V2Retriever:
         # exact-keyword facts bm25 nailed aren't demoted (avoids regressions).
         def _score(iid):
             rrf = 1.0 / (RRF_K + fused_rank[iid]) + 1.0 / (RERANK_CE_K + ce_rank[iid])
-            return rrf * self._boost_for(rows[iid]["type"])
+            return rrf * self._boost_for(rows[iid], now)
 
         rescored = sorted(((iid, _score(iid)) for iid, _ in window), key=lambda kv: -kv[1])
         return rescored + ranked[self.rerank_pool:]
@@ -332,6 +417,8 @@ class V2Retriever:
 
         # Hydrate every candidate (small set) so we can apply the type boost
         # using each item's type, then re-sort by the boosted score.
+        # Compute now once per query and thread to both boost sites.
+        now = _dt.now(timezone.utc)
         cand_ids = list(scores.keys())
         rows = {
             r["id"]: r
@@ -342,10 +429,10 @@ class V2Retriever:
             )
         }
         for iid in cand_ids:
-            scores[iid] *= self._boost_for(rows[iid]["type"])
+            scores[iid] *= self._boost_for(rows[iid], now)
 
         ranked = sorted(scores.items(), key=lambda kv: -kv[1])
-        ranked = self._rerank(query, ranked, rows)
+        ranked = self._rerank(query, ranked, rows, now)
         if group_by_entity:
             final = self._diversify_and_expand(ranked, rows, limit, item_types)
         else:
