@@ -1,0 +1,1562 @@
+{
+  "meta": {
+    "lastUpdatedAt": "2026-06-24T20:58:44Z"
+  },
+  "header": {
+    "competitions": [
+      {
+        "id": "760462",
+        "status": {
+          "type": {
+            "id": "28",
+            "name": "STATUS_FULL_TIME",
+            "state": "post",
+            "completed": true,
+            "description": "Full Time",
+            "detail": "FT",
+            "shortDetail": "FT"
+          }
+        },
+        "competitors": [
+          {
+            "homeAway": "home",
+            "score": "3",
+            "team": {
+              "id": "452",
+              "displayName": "Bosnia-Herzegovina",
+              "abbreviation": "BIH"
+            }
+          },
+          {
+            "homeAway": "away",
+            "score": "1",
+            "team": {
+              "id": "4398",
+              "displayName": "Qatar",
+              "abbreviation": "QAT"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "keyEvents": [
+    {
+      "id": "49597861",
+      "type": {
+        "id": "80",
+        "text": "Kickoff",
+        "type": "kickoff"
+      },
+      "text": "First Half begins.",
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 0.0,
+        "displayValue": ""
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:00:25Z",
+      "team": null,
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598520",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": "Delay in match because of an injury Boualem Khoukhi (Qatar).",
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1334.0,
+        "displayValue": "23'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:22:40Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598519",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1334.0,
+        "displayValue": "23'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:22:41Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598523",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": "Delay over. They are ready to continue.",
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1355.0,
+        "displayValue": "23'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:23:01Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598522",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1355.0,
+        "displayValue": "23'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:23:01Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598524",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": "Delay in match for a drinks break.",
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1356.0,
+        "displayValue": "23'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:23:02Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598525",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1356.0,
+        "displayValue": "23'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:23:02Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598539",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": "Delay over. They are ready to continue.",
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1530.0,
+        "displayValue": "26'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:25:56Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598547",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1530.0,
+        "displayValue": "26'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:25:56Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598594",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1643.0,
+        "displayValue": "28'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:27:49Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598600",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1644.0,
+        "displayValue": "28'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:27:50Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598649",
+      "type": {
+        "id": "70",
+        "text": "Goal",
+        "type": "goal"
+      },
+      "text": "Goal! Bosnia and Herzegovina 1, Qatar 0. Kerim Alajbegovic (Bosnia and Herzegovina) right footed shot from outside the box to the top right corner. Assisted by Ivan Basic.",
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 1707.0,
+        "displayValue": "29'"
+      },
+      "scoringPlay": true,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:28:54Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49598792",
+      "type": {
+        "id": "97",
+        "text": "Own Goal",
+        "type": "own-goal"
+      },
+      "text": "Own Goal by Mahmoud Abunada, Qatar. Bosnia and Herzegovina 2, Qatar 0.",
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 2014.0,
+        "displayValue": "34'"
+      },
+      "scoringPlay": true,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:34:00Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599029",
+      "type": {
+        "id": "70",
+        "text": "Goal",
+        "type": "goal"
+      },
+      "text": "Goal! Bosnia and Herzegovina 2, Qatar 1. Hassan Al Haydos (Qatar) right footed shot from very close range to the centre of the goal. Assisted by Edm\u00edlson Junior.",
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 2510.0,
+        "displayValue": "42'"
+      },
+      "scoringPlay": true,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:42:17Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599267",
+      "type": {
+        "id": "81",
+        "text": "Halftime",
+        "type": "halftime"
+      },
+      "text": "First Half ends, Bosnia and Herzegovina 2, Qatar 1.",
+      "period": {
+        "number": 1
+      },
+      "clock": {
+        "value": 2700.0,
+        "displayValue": "45'+6'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T19:50:52Z",
+      "team": null,
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599292",
+      "type": {
+        "id": "76",
+        "text": "Substitution",
+        "type": "substitution"
+      },
+      "text": "Substitution, Bosnia and Herzegovina. Benjamin Tahirovic replaces Ivan Sunjic.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 2700.0,
+        "displayValue": "45'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:06:27Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599296",
+      "type": {
+        "id": "76",
+        "text": "Substitution",
+        "type": "substitution"
+      },
+      "text": "Substitution, Bosnia and Herzegovina. Amar Memic replaces Arjan Malic.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 2700.0,
+        "displayValue": "45'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:06:27Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599301",
+      "type": {
+        "id": "76",
+        "text": "Substitution",
+        "type": "substitution"
+      },
+      "text": "Substitution, Qatar. Abdulaziz Hatem replaces Jassem Gaber.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 2700.0,
+        "displayValue": "45'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:06:27Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599317",
+      "type": {
+        "id": "82",
+        "text": "Start 2nd Half",
+        "type": "start-2nd-half"
+      },
+      "text": "Second Half begins Bosnia and Herzegovina 2, Qatar 1.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 2700.0,
+        "displayValue": "45'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:07:29Z",
+      "team": null,
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599755",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": "Delay in match because of an injury Hassan Al Haydos (Qatar).",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3255.0,
+        "displayValue": "55'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:16:45Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599602",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3255.0,
+        "displayValue": "55'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:16:45Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599756",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": "Delay over. They are ready to continue.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3300.0,
+        "displayValue": "55'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:17:29Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599611",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3300.0,
+        "displayValue": "55'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:17:30Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599619",
+      "type": {
+        "id": "76",
+        "text": "Substitution",
+        "type": "substitution"
+      },
+      "text": "Substitution, Qatar. Ahmed Al Ganehi replaces Hassan Al Haydos because of an injury.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3301.0,
+        "displayValue": "56'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:17:31Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599842",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": "Delay in match because of an injury Nikola Vasilj (Bosnia and Herzegovina).",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3687.0,
+        "displayValue": "62'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:23:57Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599841",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3687.0,
+        "displayValue": "62'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:23:57Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599857",
+      "type": {
+        "id": "76",
+        "text": "Substitution",
+        "type": "substitution"
+      },
+      "text": "Substitution, Bosnia and Herzegovina. Dennis Hadzikadunic replaces Nikola Katic.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3780.0,
+        "displayValue": "63'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:25:30Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599873",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": "Delay over. They are ready to continue.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3782.0,
+        "displayValue": "64'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:25:32Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599875",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3782.0,
+        "displayValue": "64'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:25:33Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599870",
+      "type": {
+        "id": "76",
+        "text": "Substitution",
+        "type": "substitution"
+      },
+      "text": "Substitution, Bosnia and Herzegovina. Ermin Mahmic replaces Edin Dzeko.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 3810.0,
+        "displayValue": "64'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:26:00Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599997",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": "Delay in match for a drinks break.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4089.0,
+        "displayValue": "69'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:30:39Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49599998",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4089.0,
+        "displayValue": "69'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:30:39Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600024",
+      "type": {
+        "id": "76",
+        "text": "Substitution",
+        "type": "substitution"
+      },
+      "text": "Substitution, Qatar. Almoez Ali replaces Karim Boudiaf.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4274.0,
+        "displayValue": "72'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:33:44Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600020",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": "Delay over. They are ready to continue.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4279.0,
+        "displayValue": "72'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:33:49Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600014",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4279.0,
+        "displayValue": "72'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:33:49Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600203",
+      "type": {
+        "id": "94",
+        "text": "Yellow Card",
+        "type": "yellow-card"
+      },
+      "text": "Ahmed Fathy (Qatar) is shown the yellow card for a bad foul.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4658.0,
+        "displayValue": "78'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:40:08Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600209",
+      "type": {
+        "id": "76",
+        "text": "Substitution",
+        "type": "substitution"
+      },
+      "text": "Substitution, Qatar. Ahmed Alaa replaces Edm\u00edlson Junior.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4690.0,
+        "displayValue": "79'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:40:40Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600211",
+      "type": {
+        "id": "76",
+        "text": "Substitution",
+        "type": "substitution"
+      },
+      "text": "Substitution, Qatar. Mohammad Al Manai replaces Ahmed Fathy.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4697.0,
+        "displayValue": "79'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:40:47Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600259",
+      "type": {
+        "id": "70",
+        "text": "Goal",
+        "type": "goal"
+      },
+      "text": "Goal! Bosnia and Herzegovina 3, Qatar 1. Ermin Mahmic (Bosnia and Herzegovina) right footed shot from the centre of the box to the centre of the goal. Assisted by Dennis Hadzikadunic following a corner.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4788.0,
+        "displayValue": "80'"
+      },
+      "scoringPlay": true,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:42:19Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600268",
+      "type": {
+        "id": "76",
+        "text": "Substitution",
+        "type": "substitution"
+      },
+      "text": "Substitution, Bosnia and Herzegovina. Dzenis Burnic replaces Kerim Alajbegovic.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4863.0,
+        "displayValue": "82'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:43:33Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600279",
+      "type": {
+        "id": "94",
+        "text": "Yellow Card",
+        "type": "yellow-card"
+      },
+      "text": "Ermin Mahmic (Bosnia and Herzegovina) is shown the yellow card for excessive celebration.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 4895.0,
+        "displayValue": "82'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:44:04Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600459",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": "Delay in match because of an injury Stjepan Radeljic (Bosnia and Herzegovina).",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 5245.0,
+        "displayValue": "88'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:49:55Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600467",
+      "type": {
+        "id": "129",
+        "text": "Start Delay",
+        "type": "start-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 5245.0,
+        "displayValue": "88'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:49:55Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600466",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": "Delay over. They are ready to continue.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 5268.0,
+        "displayValue": "88'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:50:18Z",
+      "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600469",
+      "type": {
+        "id": "130",
+        "text": "End Delay",
+        "type": "end-delay"
+      },
+      "text": null,
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 5268.0,
+        "displayValue": "88'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:50:19Z",
+      "team": {
+        "id": "4398",
+        "displayName": "Qatar"
+      },
+      "athletesInvolved": null
+    },
+    {
+      "id": "49600672",
+      "type": {
+        "id": "83",
+        "text": "End Regular Time",
+        "type": "end-regular-time"
+      },
+      "text": "Second Half ends, Bosnia and Herzegovina 3, Qatar 1.",
+      "period": {
+        "number": 2
+      },
+      "clock": {
+        "value": 5400.0,
+        "displayValue": "90'+7'"
+      },
+      "scoringPlay": false,
+      "shootout": false,
+      "wallclock": "2026-06-24T20:58:44Z",
+      "team": null,
+      "athletesInvolved": null
+    }
+  ],
+  "standings": {
+    "fullViewLink": {
+      "text": "Full Table",
+      "href": "https://www.espn.com/soccer/table/_/league/fifa.world"
+    },
+    "header": "FIFA World Cup Standings",
+    "groups": [
+      {
+        "standings": {
+          "entries": [
+            {
+              "team": "Switzerland",
+              "link": "https://www.espn.com/soccer/team/_/id/475/switzerland",
+              "id": "475",
+              "uid": "s:600~t:475",
+              "stats": [
+                {
+                  "name": "gamesPlayed",
+                  "displayName": "Games Played",
+                  "shortDisplayName": "GP",
+                  "description": "Number of Games Played",
+                  "abbreviation": "GP",
+                  "type": "gamesplayed",
+                  "value": 3.0,
+                  "displayValue": "3"
+                },
+                {
+                  "name": "losses",
+                  "displayName": "Losses",
+                  "shortDisplayName": "L",
+                  "description": "Losses",
+                  "abbreviation": "L",
+                  "type": "losses",
+                  "value": 0.0,
+                  "displayValue": "0"
+                },
+                {
+                  "name": "pointDifferential",
+                  "displayName": "Goal Difference",
+                  "shortDisplayName": "GD",
+                  "description": "Goal Difference",
+                  "abbreviation": "GD",
+                  "type": "pointdifferential",
+                  "value": 4.0,
+                  "displayValue": "+4"
+                },
+                {
+                  "name": "points",
+                  "displayName": "Points",
+                  "shortDisplayName": "P",
+                  "description": "Points",
+                  "abbreviation": "P",
+                  "type": "points",
+                  "value": 7.0,
+                  "displayValue": "7"
+                },
+                {
+                  "name": "ties",
+                  "displayName": "Draws",
+                  "shortDisplayName": "D",
+                  "description": "Draws",
+                  "abbreviation": "D",
+                  "type": "ties",
+                  "value": 1.0,
+                  "displayValue": "1"
+                },
+                {
+                  "name": "wins",
+                  "displayName": "Wins",
+                  "shortDisplayName": "W",
+                  "description": "Wins",
+                  "abbreviation": "W",
+                  "type": "wins",
+                  "value": 2.0,
+                  "displayValue": "2"
+                },
+                {
+                  "name": "rank",
+                  "displayName": "Rank",
+                  "shortDisplayName": "Rank",
+                  "description": "Rank",
+                  "abbreviation": "R",
+                  "type": "rank",
+                  "value": 1.0,
+                  "displayValue": "1"
+                },
+                {
+                  "id": "0",
+                  "name": "overall",
+                  "abbreviation": "Total",
+                  "displayName": "Overall",
+                  "shortDisplayName": "OVER",
+                  "description": "Overall Record",
+                  "type": "total",
+                  "summary": "2-1-0",
+                  "displayValue": "2-1-0"
+                }
+              ],
+              "logo": [
+                {
+                  "href": "https://a.espncdn.com/i/teamlogos/countries/500/sui.png",
+                  "width": 500,
+                  "height": 500,
+                  "alt": "",
+                  "rel": [
+                    "full",
+                    "default"
+                  ],
+                  "lastUpdated": "2023-10-25T16:21Z"
+                }
+              ]
+            },
+            {
+              "team": "Canada",
+              "link": "https://www.espn.com/soccer/team/_/id/206/canada",
+              "id": "206",
+              "uid": "s:600~t:206",
+              "stats": [
+                {
+                  "name": "gamesPlayed",
+                  "displayName": "Games Played",
+                  "shortDisplayName": "GP",
+                  "description": "Number of Games Played",
+                  "abbreviation": "GP",
+                  "type": "gamesplayed",
+                  "value": 3.0,
+                  "displayValue": "3"
+                },
+                {
+                  "name": "losses",
+                  "displayName": "Losses",
+                  "shortDisplayName": "L",
+                  "description": "Losses",
+                  "abbreviation": "L",
+                  "type": "losses",
+                  "value": 1.0,
+                  "displayValue": "1"
+                },
+                {
+                  "name": "pointDifferential",
+                  "displayName": "Goal Difference",
+                  "shortDisplayName": "GD",
+                  "description": "Goal Difference",
+                  "abbreviation": "GD",
+                  "type": "pointdifferential",
+                  "value": 5.0,
+                  "displayValue": "+5"
+                },
+                {
+                  "name": "points",
+                  "displayName": "Points",
+                  "shortDisplayName": "P",
+                  "description": "Points",
+                  "abbreviation": "P",
+                  "type": "points",
+                  "value": 4.0,
+                  "displayValue": "4"
+                },
+                {
+                  "name": "ties",
+                  "displayName": "Draws",
+                  "shortDisplayName": "D",
+                  "description": "Draws",
+                  "abbreviation": "D",
+                  "type": "ties",
+                  "value": 1.0,
+                  "displayValue": "1"
+                },
+                {
+                  "name": "wins",
+                  "displayName": "Wins",
+                  "shortDisplayName": "W",
+                  "description": "Wins",
+                  "abbreviation": "W",
+                  "type": "wins",
+                  "value": 1.0,
+                  "displayValue": "1"
+                },
+                {
+                  "name": "rank",
+                  "displayName": "Rank",
+                  "shortDisplayName": "Rank",
+                  "description": "Rank",
+                  "abbreviation": "R",
+                  "type": "rank",
+                  "value": 2.0,
+                  "displayValue": "2"
+                },
+                {
+                  "id": "0",
+                  "name": "overall",
+                  "abbreviation": "Total",
+                  "displayName": "Overall",
+                  "shortDisplayName": "OVER",
+                  "description": "Overall Record",
+                  "type": "total",
+                  "summary": "1-1-1",
+                  "displayValue": "1-1-1"
+                }
+              ],
+              "logo": [
+                {
+                  "href": "https://a.espncdn.com/i/teamlogos/countries/500/can.png",
+                  "width": 500,
+                  "height": 500,
+                  "alt": "",
+                  "rel": [
+                    "full",
+                    "default"
+                  ],
+                  "lastUpdated": "2023-10-25T16:19Z"
+                }
+              ]
+            },
+            {
+              "team": "Bosnia-Herzegovina",
+              "link": "https://www.espn.com/soccer/team/_/id/452/bosnia-herzegovina",
+              "id": "452",
+              "uid": "s:600~t:452",
+              "stats": [
+                {
+                  "name": "gamesPlayed",
+                  "displayName": "Games Played",
+                  "shortDisplayName": "GP",
+                  "description": "Number of Games Played",
+                  "abbreviation": "GP",
+                  "type": "gamesplayed",
+                  "value": 3.0,
+                  "displayValue": "3"
+                },
+                {
+                  "name": "losses",
+                  "displayName": "Losses",
+                  "shortDisplayName": "L",
+                  "description": "Losses",
+                  "abbreviation": "L",
+                  "type": "losses",
+                  "value": 1.0,
+                  "displayValue": "1"
+                },
+                {
+                  "name": "pointDifferential",
+                  "displayName": "Goal Difference",
+                  "shortDisplayName": "GD",
+                  "description": "Goal Difference",
+                  "abbreviation": "GD",
+                  "type": "pointdifferential",
+                  "value": -1.0,
+                  "displayValue": "-1"
+                },
+                {
+                  "name": "points",
+                  "displayName": "Points",
+                  "shortDisplayName": "P",
+                  "description": "Points",
+                  "abbreviation": "P",
+                  "type": "points",
+                  "value": 4.0,
+                  "displayValue": "4"
+                },
+                {
+                  "name": "ties",
+                  "displayName": "Draws",
+                  "shortDisplayName": "D",
+                  "description": "Draws",
+                  "abbreviation": "D",
+                  "type": "ties",
+                  "value": 1.0,
+                  "displayValue": "1"
+                },
+                {
+                  "name": "wins",
+                  "displayName": "Wins",
+                  "shortDisplayName": "W",
+                  "description": "Wins",
+                  "abbreviation": "W",
+                  "type": "wins",
+                  "value": 1.0,
+                  "displayValue": "1"
+                },
+                {
+                  "name": "rank",
+                  "displayName": "Rank",
+                  "shortDisplayName": "Rank",
+                  "description": "Rank",
+                  "abbreviation": "R",
+                  "type": "rank",
+                  "value": 3.0,
+                  "displayValue": "3"
+                },
+                {
+                  "id": "0",
+                  "name": "overall",
+                  "abbreviation": "Total",
+                  "displayName": "Overall",
+                  "shortDisplayName": "OVER",
+                  "description": "Overall Record",
+                  "type": "total",
+                  "summary": "1-1-1",
+                  "displayValue": "1-1-1"
+                }
+              ],
+              "logo": [
+                {
+                  "href": "https://a.espncdn.com/i/teamlogos/countries/500/bih.png",
+                  "width": 500,
+                  "height": 500,
+                  "alt": "",
+                  "rel": [
+                    "full",
+                    "default"
+                  ],
+                  "lastUpdated": "2018-06-05T12:06Z"
+                }
+              ]
+            },
+            {
+              "team": "Qatar",
+              "link": "https://www.espn.com/soccer/team/_/id/4398/qatar",
+              "id": "4398",
+              "uid": "s:600~t:4398",
+              "stats": [
+                {
+                  "name": "gamesPlayed",
+                  "displayName": "Games Played",
+                  "shortDisplayName": "GP",
+                  "description": "Number of Games Played",
+                  "abbreviation": "GP",
+                  "type": "gamesplayed",
+                  "value": 3.0,
+                  "displayValue": "3"
+                },
+                {
+                  "name": "losses",
+                  "displayName": "Losses",
+                  "shortDisplayName": "L",
+                  "description": "Losses",
+                  "abbreviation": "L",
+                  "type": "losses",
+                  "value": 2.0,
+                  "displayValue": "2"
+                },
+                {
+                  "name": "pointDifferential",
+                  "displayName": "Goal Difference",
+                  "shortDisplayName": "GD",
+                  "description": "Goal Difference",
+                  "abbreviation": "GD",
+                  "type": "pointdifferential",
+                  "value": -8.0,
+                  "displayValue": "-8"
+                },
+                {
+                  "name": "points",
+                  "displayName": "Points",
+                  "shortDisplayName": "P",
+                  "description": "Points",
+                  "abbreviation": "P",
+                  "type": "points",
+                  "value": 1.0,
+                  "displayValue": "1"
+                },
+                {
+                  "name": "ties",
+                  "displayName": "Draws",
+                  "shortDisplayName": "D",
+                  "description": "Draws",
+                  "abbreviation": "D",
+                  "type": "ties",
+                  "value": 1.0,
+                  "displayValue": "1"
+                },
+                {
+                  "name": "wins",
+                  "displayName": "Wins",
+                  "shortDisplayName": "W",
+                  "description": "Wins",
+                  "abbreviation": "W",
+                  "type": "wins",
+                  "value": 0.0,
+                  "displayValue": "0"
+                },
+                {
+                  "name": "rank",
+                  "displayName": "Rank",
+                  "shortDisplayName": "Rank",
+                  "description": "Rank",
+                  "abbreviation": "R",
+                  "type": "rank",
+                  "value": 4.0,
+                  "displayValue": "4"
+                },
+                {
+                  "id": "0",
+                  "name": "overall",
+                  "abbreviation": "Total",
+                  "displayName": "Overall",
+                  "shortDisplayName": "OVER",
+                  "description": "Overall Record",
+                  "type": "total",
+                  "summary": "0-1-2",
+                  "displayValue": "0-1-2"
+                }
+              ],
+              "logo": [
+                {
+                  "href": "https://a.espncdn.com/i/teamlogos/countries/500/qat.png",
+                  "width": 500,
+                  "height": 500,
+                  "alt": "",
+                  "rel": [
+                    "full",
+                    "default"
+                  ],
+                  "lastUpdated": "2018-06-05T12:07Z"
+                }
+              ]
+            }
+          ]
+        },
+        "header": "FIFA World Cup Standings",
+        "href": "https://www.espn.com/soccer/table/_/league/fifa.world"
+      }
+    ]
+  }
+}

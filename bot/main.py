@@ -218,20 +218,24 @@ class GSABot(commands.Bot):
 
             if v2_wc and self.v2_worldcup_runner is None:
                 key = os.getenv("FOOTBALL_API_KEY", "")
-                if key:
-                    # MatchWatcher: schedule-driven active-set poller (replaces the
-                    # constant WorldCupRunner). Watches every simultaneously-live match
-                    # at once; enqueues start/score/full-time posts the v2 scheduler
-                    # delivers. Idle between game windows.
-                    from v2.integration.match_watcher import MatchWatcher
+                provider = os.getenv("WC_PROVIDER", "espn").strip().lower()
+                # The live watcher is provider-selected (WC_PROVIDER, default espn). ESPN needs
+                # no API key; only the football-data kill-switch requires FOOTBALL_API_KEY.
+                if provider == "football_data" and not key:
+                    logger.warning("V2_WORLDCUP_ENABLED + WC_PROVIDER=football_data but "
+                                   "FOOTBALL_API_KEY missing — skipping")
+                else:
+                    # make_watcher: schedule-driven active-set poller. Watches every
+                    # simultaneously-live match at once; enqueues start/score/full-time posts
+                    # the v2 scheduler delivers. Idle between game windows.
+                    from v2.integration.wc_providers.watcher import make_watcher
                     chan = os.getenv("FOOTBALL_CHANNEL", "world-cup-2026")
                     org_slug = os.getenv("FOOTBALL_ORG_SLUG", "gsa")
-                    self.v2_worldcup_runner = MatchWatcher(
+                    self.v2_worldcup_runner = make_watcher(
                         key, "gsa_gateway.db", org_slug, chan)
                     await self.v2_worldcup_runner.start()
-                    logger.info("V2 World Cup MatchWatcher active (channel #%s)", chan)
-                else:
-                    logger.warning("V2_WORLDCUP_ENABLED set but FOOTBALL_API_KEY missing — skipping")
+                    logger.info("V2 World Cup watcher active (provider=%s, channel #%s)",
+                                provider, chan)
 
             # Daily World Cup fixtures digest (a buffered-lane generator). It
             # enqueues posts that the v2 scheduler delivers, so it needs v2_sched.

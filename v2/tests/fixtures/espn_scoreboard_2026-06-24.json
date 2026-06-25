@@ -1,0 +1,787 @@
+{
+ "day": {
+  "date": "2026-06-24"
+ },
+ "events": [
+  {
+   "id": "760462",
+   "date": "2026-06-24T19:00Z",
+   "shortName": "QAT @ BIH",
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+6'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "competitions": [
+    {
+     "id": "760462",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+6'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "3",
+       "team": {
+        "id": "452",
+        "displayName": "Bosnia-Herzegovina",
+        "abbreviation": "BIH",
+        "name": "Bosnia-Herzegovina"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "id": "4398",
+        "displayName": "Qatar",
+        "abbreviation": "QAT",
+        "name": "Qatar"
+       }
+      }
+     ],
+     "details": [
+      {
+       "type": {
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 1707.0,
+        "displayValue": "29'"
+       },
+       "team": {
+        "id": "452"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "391034",
+         "displayName": "Kerim Alajbegovic"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Own Goal"
+       },
+       "clock": {
+        "value": 2014.0,
+        "displayValue": "34'"
+       },
+       "team": {
+        "id": "452"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": true,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "310372",
+         "displayName": "Mahmoud Abunada"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 2510.0,
+        "displayValue": "42'"
+       },
+       "team": {
+        "id": "4398"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "236586",
+         "displayName": "Hassan Al-Haydos"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 4658.0,
+        "displayValue": "78'"
+       },
+       "team": {
+        "id": "4398"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "268018",
+         "displayName": "Ahmed Fathy"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 4788.0,
+        "displayValue": "80'"
+       },
+       "team": {
+        "id": "452"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "414676",
+         "displayName": "Ermin Mahmic"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 4895.0,
+        "displayValue": "82'"
+       },
+       "team": {
+        "id": "452"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "414676",
+         "displayName": "Ermin Mahmic"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760463",
+   "date": "2026-06-24T19:00Z",
+   "shortName": "CAN @ SUI",
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+7'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "competitions": [
+    {
+     "id": "760463",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+7'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "2",
+       "team": {
+        "id": "475",
+        "displayName": "Switzerland",
+        "abbreviation": "SUI",
+        "name": "Switzerland"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "id": "206",
+        "displayName": "Canada",
+        "abbreviation": "CAN",
+        "name": "Canada"
+       }
+      }
+     ],
+     "details": [
+      {
+       "type": {
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 1863.0,
+        "displayValue": "32'"
+       },
+       "team": {
+        "id": "206"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "205024",
+         "displayName": "Cyle Larin"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 1865.0,
+        "displayValue": "32'"
+       },
+       "team": {
+        "id": "475"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "149981",
+         "displayName": "Granit Xhaka"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 2739.0,
+        "displayValue": "46'"
+       },
+       "team": {
+        "id": "475"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "259513",
+         "displayName": "Rub\u00e9n Vargas"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 3384.0,
+        "displayValue": "57'"
+       },
+       "team": {
+        "id": "475"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "386992",
+         "displayName": "Johan Manzambi"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Goal - Volley"
+       },
+       "clock": {
+        "value": 4511.0,
+        "displayValue": "76'"
+       },
+       "team": {
+        "id": "206"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "318522",
+         "displayName": "Promise David"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 5208.0,
+        "displayValue": "87'"
+       },
+       "team": {
+        "id": "206"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "271879",
+         "displayName": "Liam Millar"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760464",
+   "date": "2026-06-24T22:00Z",
+   "shortName": "HAI @ MAR",
+   "status": {
+    "clock": 2700.0,
+    "displayClock": "45'+5'",
+    "period": 1,
+    "type": {
+     "id": "23",
+     "name": "STATUS_HALFTIME",
+     "state": "in",
+     "completed": false,
+     "description": "Halftime",
+     "detail": "HT",
+     "shortDetail": "HT"
+    }
+   },
+   "competitions": [
+    {
+     "id": "760464",
+     "status": {
+      "clock": 2700.0,
+      "displayClock": "45'+5'",
+      "period": 1,
+      "type": {
+       "id": "23",
+       "name": "STATUS_HALFTIME",
+       "state": "in",
+       "completed": false,
+       "description": "Halftime",
+       "detail": "HT",
+       "shortDetail": "HT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "2",
+       "team": {
+        "id": "2869",
+        "displayName": "Morocco",
+        "abbreviation": "MAR",
+        "name": "Morocco"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "2",
+       "team": {
+        "id": "2654",
+        "displayName": "Haiti",
+        "abbreviation": "HAI",
+        "name": "Haiti"
+       }
+      }
+     ],
+     "details": [
+      {
+       "type": {
+        "text": "Own Goal"
+       },
+       "clock": {
+        "value": 576.0,
+        "displayValue": "10'"
+       },
+       "team": {
+        "id": "2654"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": true,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "175149",
+         "displayName": "Yassine Bounou"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 2302.0,
+        "displayValue": "39'"
+       },
+       "team": {
+        "id": "2869"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "240233",
+         "displayName": "Achraf Hakimi"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 2532.0,
+        "displayValue": "43'"
+       },
+       "team": {
+        "id": "2654"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "265915",
+         "displayName": "Wilson Isidor"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 2700.0,
+        "displayValue": "45'+1'"
+       },
+       "team": {
+        "id": "2869"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "304572",
+         "displayName": "Ismael Saibari"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760465",
+   "date": "2026-06-24T22:00Z",
+   "shortName": "BRA @ SCO",
+   "status": {
+    "clock": 2700.0,
+    "displayClock": "45'+7'",
+    "period": 1,
+    "type": {
+     "id": "23",
+     "name": "STATUS_HALFTIME",
+     "state": "in",
+     "completed": false,
+     "description": "Halftime",
+     "detail": "HT",
+     "shortDetail": "HT"
+    }
+   },
+   "competitions": [
+    {
+     "id": "760465",
+     "status": {
+      "clock": 2700.0,
+      "displayClock": "45'+7'",
+      "period": 1,
+      "type": {
+       "id": "23",
+       "name": "STATUS_HALFTIME",
+       "state": "in",
+       "completed": false,
+       "description": "Halftime",
+       "detail": "HT",
+       "shortDetail": "HT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "580",
+        "displayName": "Scotland",
+        "abbreviation": "SCO",
+        "name": "Scotland"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "2",
+       "team": {
+        "id": "205",
+        "displayName": "Brazil",
+        "abbreviation": "BRA",
+        "name": "Brazil"
+       }
+      }
+     ],
+     "details": [
+      {
+       "type": {
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 405.0,
+        "displayValue": "7'"
+       },
+       "team": {
+        "id": "205"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "252107",
+         "displayName": "Vin\u00edcius J\u00fanior"
+        }
+       ]
+      },
+      {
+       "type": {
+        "text": "Goal - Header"
+       },
+       "clock": {
+        "value": 2700.0,
+        "displayValue": "45'+3'"
+       },
+       "team": {
+        "id": "205"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "252107",
+         "displayName": "Vin\u00edcius J\u00fanior"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760467",
+   "date": "2026-06-25T01:00Z",
+   "shortName": "MEX @ CZE",
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0'",
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Wed, June 24th at 9:00 PM EDT",
+     "shortDetail": "Scheduled"
+    }
+   },
+   "competitions": [
+    {
+     "id": "760467",
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0'",
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Wed, June 24th at 9:00 PM EDT",
+       "shortDetail": "Scheduled"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "450",
+        "displayName": "Czechia",
+        "abbreviation": "CZE",
+        "name": "Czechia"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "203",
+        "displayName": "Mexico",
+        "abbreviation": "MEX",
+        "name": "Mexico"
+       }
+      }
+     ],
+     "details": []
+    }
+   ]
+  },
+  {
+   "id": "760466",
+   "date": "2026-06-25T01:00Z",
+   "shortName": "KOR @ RSA",
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0'",
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Wed, June 24th at 9:00 PM EDT",
+     "shortDetail": "Scheduled"
+    }
+   },
+   "competitions": [
+    {
+     "id": "760466",
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0'",
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Wed, June 24th at 9:00 PM EDT",
+       "shortDetail": "Scheduled"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "467",
+        "displayName": "South Africa",
+        "abbreviation": "RSA",
+        "name": "South Africa"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "451",
+        "displayName": "South Korea",
+        "abbreviation": "KOR",
+        "name": "South Korea"
+       }
+      }
+     ],
+     "details": []
+    }
+   ]
+  }
+ ]
+}

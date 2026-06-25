@@ -368,8 +368,16 @@ def format_event(ev: dict) -> str:
     if etype == "goal":
         tail = f"\n_{ev['half_label']}_" if ev.get("half_label") else ""
         if ev.get("scorer"):
-            minute = f" {ev['minute']}'" if ev.get("minute") else ""
-            return f"🥅 **GOAL!** {flag(ev.get('team',''))} {ev['scorer']}{minute}\n\n{_score_line(match)}{tail}"
+            # Normalize the minute to exactly one apostrophe: ESPN sends it already-quoted
+            # ("29'", "45'+2'"), a bare number (23) gets one appended — never doubled.
+            mraw = ev.get("minute")
+            if mraw in (None, ""):
+                minute = ""
+            else:
+                s = str(mraw)
+                minute = f" {s}" if s.endswith("'") else f" {s}'"
+            tag = {"own_goal": " (OG)", "penalty": " (pen)"}.get(ev.get("kind"), "")
+            return f"🥅 **GOAL!** {flag(ev.get('team',''))} {ev['scorer']}{tag}{minute}\n\n{_score_line(match)}{tail}"
         scorer_team = ev.get("scoring_team", {})
         return f"🥅 **GOAL!** {team_label(scorer_team)}\n\n{_score_line(match)}{tail}"
     if etype == "correction":

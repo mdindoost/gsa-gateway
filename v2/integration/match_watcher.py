@@ -397,6 +397,12 @@ class MatchWatcher:
 
     @staticmethod
     def _dedup_key(match_id: int, ev: dict) -> str:
+        # ESPN events carry a goal-identity `uid` (athlete+minute) — unique per goal, so a
+        # re-scored goal after a disallowance never collides on score alone (posts are
+        # immortal; a collision drops the 2nd forever). football-data events have no uid and
+        # fall through to the score+gen scheme below.
+        if ev.get("uid"):
+            return f"{match_id}:{ev['type']}:{ev['uid']}"
         if ev["type"] == "goal":
             s = ev["match"]["score"]["fullTime"]
             gen = ev.get("gen", 0)
