@@ -219,6 +219,14 @@ how do I get a tuition refund
 what are the bursar billing and refund deadlines
 how do I schedule a bursar appointment
 what is the financial responsibility agreement
+# registrar (Crawling 2.1 office crawler — verbatim policy KB + 13-person staff directory)
+who is the university registrar at NJIT
+who are the staff in the registrar's office
+how do I request a transcript from NJIT
+how do I withdraw from a class
+how is residency determined for tuition
+how do I request enrollment certification
+what is the FERPA policy at NJIT
 # (NOTE: conversation follow-ups like "what is his position" are NOT eval lines — they need history to
 #  be meaningful and are covered by multi-turn unit fixtures in v2/tests/test_context_rewrite.py [RA4].)
 
