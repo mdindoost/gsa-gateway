@@ -124,3 +124,42 @@ def test_extract_entry_scopes_skips_people_dedups():
     assert "https://cs.njit.edu/academics/phd" in urls       # prose kept
     assert "https://cs.njit.edu/faculty" not in urls          # people page skipped
     assert all("people.njit.edu" not in u for u in seen)      # off-host never fetched
+
+
+def test_crawl_entry_never_fetches_people_pages():
+    """Regression: people-page links discovered during crawl must never be enqueued or fetched.
+    If /people is fetched, its sub-links (/people/jane) would also be discovered and fetched,
+    wasting budget on 200+ faculty profiles. Neither must hit the fetch function."""
+    from v2.core.ingestion.college_crawl import crawl_entry
+    pages = {
+        "https://cs.njit.edu/": (
+            '<a href="/about">about</a>'
+            '<a href="/people">people</a>'
+            '<h1>Home</h1><div role="main">Welcome to CS.</div>'
+        ),
+        "https://cs.njit.edu/about": (
+            '<h1>About CS</h1><div role="main">The department was founded in 1966.</div>'
+        ),
+        # If /people were fetched it would enqueue /people/jane too — both must stay unfetched.
+        "https://cs.njit.edu/people": (
+            '<a href="/people/jane">jane</a>'
+            '<h1>People</h1><div role="main">Prof A. Prof B.</div>'
+        ),
+        "https://cs.njit.edu/people/jane": (
+            '<h1>Jane Doe</h1><div role="main">Professor of Computer Science.</div>'
+        ),
+    }
+    fetched: list[str] = []
+
+    def fetch(u: str) -> str:
+        fetched.append(u)
+        return pages.get(u, "")
+
+    list(crawl_entry("https://cs.njit.edu/", fetch, max_depth=3, budget=50))
+
+    assert "https://cs.njit.edu/people" not in fetched, \
+        f"/people was fetched — people-page link not suppressed in crawl_entry enqueue; fetched={fetched}"
+    assert "https://cs.njit.edu/people/jane" not in fetched, \
+        f"/people/jane was fetched — cascade from unfetched /people; fetched={fetched}"
+    assert "https://cs.njit.edu/about" in fetched, \
+        f"/about (prose page) must be fetched but was not; fetched={fetched}"

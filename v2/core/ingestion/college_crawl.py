@@ -12,9 +12,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import re
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
@@ -24,7 +23,7 @@ from v2.core.ingestion import entry_points as _ep
 from v2.core.ingestion.eos_crawl import (
     ProsePage, extract_prose, _url_rank, _strip_recurring_assets, _canon, _in_scope,
 )
-from v2.core.ingestion.web_crawler import clean_text, normalize_url, select_links
+from v2.core.ingestion.web_crawler import normalize_url, select_links
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +120,8 @@ def crawl_entry(seed, fetch, max_depth=4, budget=400, delay=0.0, stats=None):
         if depth < max_depth:
             follow, _ = select_links(html, url, seed, relevance_gated=False)
             for u in sorted((_canon(u) for u in follow), reverse=True):
-                if u not in seen and _in_scope(seed_path, urlparse(u).path):
+                if u not in seen and _in_scope(seed_path, urlparse(u).path) \
+                        and not is_people_path(u):  # never enqueue people pages — explore.py owns them
                     seen.add(u)
                     stack.append((u, depth + 1))
     if stats is not None:
