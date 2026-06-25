@@ -112,10 +112,18 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
 (`bot/commands/chat.py` `on_message` → `bot/core/message_handler.py`, which calls the
 structured router then the v2 retriever via `v2/integration/retriever_shim.py`).
 
-**WorldCup** is a separate live-scores integration. **The live engine is `v2/integration/match_watcher.py`
-(`MatchWatcher`)** — a schedule-driven burst-and-rest poller started in `bot/main.py` under
-`V2_WORLDCUP_ENABLED`; it posts kick-off / goal / full-time (gated by `FOOTBALL_*` env). It enqueues posts
-the v2 scheduler delivers. Supporting (live): `match_preview.py` (T-5 preview), `wc_schedule.py`,
+**WorldCup** is a separate live-scores integration. **The live engine is provider-selected via
+`WC_PROVIDER` (default `espn`).** `bot/main.py` calls `wc_providers.watcher.make_watcher` under
+`V2_WORLDCUP_ENABLED`: `espn` → **`EspnMatchWatcher`** (ESPN `site.api.espn.com` scoreboard — scorer+minute+
+OG/pen posts, no API key, scoreboard-primary, goal-identity dedup); `football_data` → the legacy
+**`MatchWatcher`** (the one-flag KILL-SWITCH: `WC_PROVIDER=football_data` + restart). `EspnMatchWatcher`
+SUBCLASSES `MatchWatcher`, reusing its proven schedule/active-set/tick/posting and overriding only the data
+source (`v2/integration/wc_providers/`: `normalize.py`→NormMatch, `espn_process.py`→event-driven state machine,
+`espn.py`→fetch+circuit-breaker, `watcher.py`→subclass+factory, `shadow.py`→read-only A/B). Separate state
+files per provider. ESPN scorer/half-label come from the scoreboard `details[]` + minute (no `period` in feed);
+preview group-table deferred (G7); goal-identity-includes-minute is a monitor-first-matchday known-risk.
+Shipped+live+merged 2026-06-24 (`scripts/wc_shadow_compare.py` = the latency A/B). It posts kick-off / goal /
+full-time (gated by `FOOTBALL_*` env). It enqueues posts the v2 scheduler delivers. Supporting (live): `match_preview.py` (T-5 preview), `wc_schedule.py`,
 `daily_fixtures.py` (9am fixtures digest, `WC_FIXTURES_ENABLED`), and `worldcup_tracker.py` **for its helper
 functions only** (`BASE_URL`, `DEBUG_FILE`, `format_event`, `team_label`, `format_standings`). Match status
 note: football-data reports in-play as **either `IN_PLAY` or `LIVE`** (varies per match) — `match_watcher.LIVE`
