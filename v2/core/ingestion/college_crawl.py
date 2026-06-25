@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
@@ -31,9 +32,17 @@ logger = logging.getLogger(__name__)
 # listings explore.py owns). Single source of truth — can't drift from the people crawler.
 _PEOPLE_SEGMENTS = frozenset(p.strip("/").split("/")[-1].lower() for p in _ep.SUPPLEMENTARY_PATHS)
 
-# URL-path segments that mark a page kind (segment match, not substring).
-_NEWS_SEGMENTS = ("news", "announcement", "announcements")
+# URL-path segments that mark a page kind (segment match, not substring). 'newsroll' is NJIT's
+# dept news-article section (e.g. biology.njit.edu/newsroll/<slug>) — type it news so the recency
+# decay applies (F2).
+_NEWS_SEGMENTS = ("news", "newsroll", "announcement", "announcements")
 _EVENT_SEGMENTS = ("event", "events")
+
+# A Drupal pager/duplicate-title alias appends `-<digits>` to the base path (e.g. a people roster's
+# second alias is /administration-0). Strip that suffix before the people-segment check so a paged
+# roster doesn't escape the skip (F1). The base must still be an EXACT people segment to match, so a
+# real prose page like /faculty-research-talks-fall-2025 (base 'faculty-research-talks-fall') is kept.
+_PAGER_SUFFIX = re.compile(r"-\d+$")
 
 
 def _segments(url: str) -> list[str]:
@@ -78,8 +87,10 @@ def extract_dates(html: str) -> dict:
 def is_people_path(url: str) -> bool:
     """True when the URL is a dedicated people/roster page (skip — explore.py owns people).
     Segment match against entry_points.SUPPLEMENTARY_PATHS, so /faculty and /faculty/x match
-    but /faculty-handbook (real prose) does not."""
-    return any(s in _PEOPLE_SEGMENTS for s in _segments(url))
+    but /faculty-handbook (real prose) does not. Also matches Drupal pager aliases of a roster
+    (/administration-0) by stripping a trailing `-<digits>` before the exact-segment check (F1)."""
+    return any(s in _PEOPLE_SEGMENTS or _PAGER_SUFFIX.sub("", s) in _PEOPLE_SEGMENTS
+               for s in _segments(url))
 
 
 def classify_type(url: str) -> str:
@@ -217,12 +228,55 @@ class ProseEntry:
     org_type: str = "department"   # org tier for ensure_org if the org is new (college/department)
 
 
-# YWCC pilot. Add a college/dept = add a ProseEntry here (the data registry — no new code).
-# Give the college root org_type="college" and each department "department" (the default) so a
-# brand-new org is created at the right tier. Data Science host confirmed at dry-run (Task E2).
+# Add a college/dept = add a ProseEntry here (the data registry — no new code). Give the college
+# root org_type="college" and each department "department" so a brand-new org is created at the
+# right tier; every org below ALSO pre-exists from the people layer (explore.py / ALL_ENTRY_POINTS),
+# so ensure_org early-returns and the prose just attaches to the existing org. One seed per host:
+# departments that have their own *.njit.edu subdomain crawl independently; colleges whose schools
+# have NO subdomain (HCAD's njsoa/art-design, MTSM administration) carry ALL their prose on the one
+# college org (the people layer still splits them — prose is host-scoped, not section-scoped).
+# ORDER: college root before its departments (readability only — every org already exists).
 PROSE_ENTRY_POINTS: list[ProseEntry] = [
+    # ── Ying Wu College of Computing (YWCC) — pilot, shipped 2026-06-25 ──────────────────────
     ProseEntry("https://computing.njit.edu/", "ywcc", "YWCC", "njit", "college"),
     ProseEntry("https://cs.njit.edu/", "computer-science", "Computer Science", "ywcc", "department"),
     ProseEntry("https://informatics.njit.edu/", "informatics", "Informatics", "ywcc", "department"),
     ProseEntry("https://datascience.njit.edu/", "data-science", "Data Science", "ywcc", "department"),
+
+    # ── Martin Tuchman School of Management (MTSM) ──────────────────────────────────────────
+    # One subdomain (management.njit.edu) serves the college + its administration — one prose seed.
+    ProseEntry("https://management.njit.edu/", "mtsm",
+               "Martin Tuchman School of Management (MTSM)", "njit", "college"),
+
+    # ── Newark College of Engineering (NCE) — college root + 6 department subdomains ─────────
+    ProseEntry("https://engineering.njit.edu/", "nce", "Newark College of Engineering", "njit", "college"),
+    ProseEntry("https://biomedical.njit.edu/", "biomedical-engineering",
+               "Biomedical Engineering", "nce", "department"),
+    ProseEntry("https://cme.njit.edu/", "chemical-materials-engineering",
+               "Chemical & Materials Engineering", "nce", "department"),
+    ProseEntry("https://civil.njit.edu/", "civil-environmental-engineering",
+               "Civil & Environmental Engineering", "nce", "department"),
+    ProseEntry("https://ece.njit.edu/", "electrical-computer-engineering",
+               "Electrical & Computer Engineering", "nce", "department"),
+    ProseEntry("https://mie.njit.edu/", "mechanical-industrial-engineering",
+               "Mechanical & Industrial Engineering", "nce", "department"),
+    ProseEntry("https://appliedengineering.njit.edu/", "applied-engineering-technology",
+               "School of Applied Engineering & Technology", "nce", "department"),
+
+    # ── College of Science and Liberal Arts (CSLA) — college root + 6 dept subdomains + theater
+    ProseEntry("https://csla.njit.edu/", "csla", "College of Science and Liberal Arts", "njit", "college"),
+    ProseEntry("https://biology.njit.edu/", "biological-sciences", "Biological Sciences", "csla", "department"),
+    ProseEntry("https://chemistry.njit.edu/", "chemistry-environmental-science",
+               "Chemistry & Environmental Science", "csla", "department"),
+    ProseEntry("https://history.njit.edu/", "history", "History", "csla", "department"),
+    ProseEntry("https://hss.njit.edu/", "humanities-social-sciences",
+               "Humanities & Social Sciences", "csla", "department"),
+    ProseEntry("https://math.njit.edu/", "mathematical-sciences", "Mathematical Sciences", "csla", "department"),
+    ProseEntry("https://physics.njit.edu/", "physics", "Physics", "csla", "department"),
+    ProseEntry("https://theatre.njit.edu/", "theater-arts-technology",
+               "Theater Arts & Technology", "csla", "department"),
+
+    # ── Hillier College of Architecture & Design (HCAD) ─────────────────────────────────────
+    # One subdomain (design.njit.edu) serves the college + NJSOA + Art+Design — one prose seed on hcad.
+    ProseEntry("https://design.njit.edu/", "hcad", "Hillier College of Architecture & Design", "njit", "college"),
 ]

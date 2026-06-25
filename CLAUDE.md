@@ -111,13 +111,18 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
   cross-wipes). It crawls bare-host subdomain seeds, **skips people-listing paths** (segment-match
   on `entry_points.SUPPLEMENTARY_PATHS`, so `/faculty` is skipped but `/faculty-handbook` kept) so a
   name-dump never competes with structured KG answers, **mechanically types** each page by URL
-  segment (`type='news'` for /news,/announcement(s); `type='event'` for /event(s); else `policy`),
-  and captures dates from STRUCTURED markup only (`<meta article:published_time>` / JSON-LD / `<time>`).
+  segment (`type='news'`/`newsroll` for /news,/newsroll,/announcement(s); `type='event'` for /event(s);
+  else `policy`), and captures dates from STRUCTURED markup only (`<meta article:published_time>` /
+  JSON-LD / `<time>`). People-skip is segment-match AND strips a Drupal pager suffix `-<digits>` so a
+  paged roster alias (`/administration-0`) is skipped too (a `/faculty-handbook` is still kept).
   **Add a college/dept = append a `ProseEntry(seed, org_slug, org_name, parent_slug, org_type)` to
   `PROSE_ENTRY_POINTS`** (college root `org_type='college'`, depts `'department'`) — no new code.
   Runner: `scripts/crawl_college.py [--entry <slug>] [--commit] [--embed]` (gated; dev-copy + hardened_backup;
-  each entry independently recrawlable). Pilot = YWCC (shipped 2026-06-25, 181 prose rows). Serving
-  recency (news decay w/ floor, upcoming-event boost, webpage downweight) lives in the retriever (see #4 below).
+  each entry independently recrawlable). **ALL NJIT colleges LIVE (2026-06-25): YWCC (pilot) + MTSM +
+  NCE + 6 eng depts + CSLA + 6 sci/liberal-arts depts + theater + HCAD = 21 entries, ~1,274 prose rows
+  embedded.** Schools without their own subdomain (HCAD's NJSOA/Art+Design, MTSM administration) carry
+  their prose on the parent college org (prose is host-scoped; the PEOPLE layer still splits them).
+  Serving recency (news decay w/ floor, upcoming-event boost, webpage downweight) lives in the retriever (see #4 below).
   Spec: `docs/superpowers/specs/2026-06-25-ywcc-college-crawler-design.md`.
 - **External profiles (links + Scholar metrics)** — per-person `attrs.profiles` bag on the Person
   node: `{scholar/linkedin/orcid/github/website: {url, …}}` + Scholar metrics `scholar.{citations,

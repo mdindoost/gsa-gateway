@@ -18,6 +18,14 @@ def test_classify_type_by_url_path():
     assert classify_type("https://cs.njit.edu/about/newsletter-signup") == "policy"
 
 
+def test_classify_type_newsroll_is_news():
+    """F2: NJIT dept news articles live under /newsroll/<slug> (e.g. biology). It's unambiguously
+    a news section — type it 'news' so the recency decay applies."""
+    assert classify_type("https://biology.njit.edu/newsroll/phd-candidate-award") == "news"
+    # still a segment match, not substring:
+    assert classify_type("https://x.njit.edu/about/newsrolling-stones") == "policy"
+
+
 def test_is_people_path_segment_match():
     from v2.core.ingestion.college_crawl import is_people_path
     assert is_people_path("https://cs.njit.edu/faculty") is True
@@ -27,6 +35,20 @@ def test_is_people_path_segment_match():
     # real prose that merely starts with the same letters must be KEPT:
     assert is_people_path("https://cs.njit.edu/faculty-handbook") is False
     assert is_people_path("https://cs.njit.edu/academics/phd") is False
+
+
+def test_is_people_path_drupal_pager_alias():
+    """F1: Drupal pager aliases of a people roster (a numeric `-N` suffix on a people segment)
+    are still people pages and must be skipped. The leak: management.njit.edu/administration-0
+    is a 'View Profile' roster that bypassed the bare-segment match."""
+    from v2.core.ingestion.college_crawl import is_people_path
+    assert is_people_path("https://management.njit.edu/administration-0") is True
+    assert is_people_path("https://design.njit.edu/people-1") is True
+    assert is_people_path("https://x.njit.edu/faculty-12") is True
+    # but a real prose page that merely ends in `<word>-<digits>` is KEPT (base isn't a people seg)
+    assert is_people_path("https://math.njit.edu/faculty-research-talks-fall-2025") is False
+    assert is_people_path("https://eng.njit.edu/faculty-awards") is False
+    assert is_people_path("https://cs.njit.edu/cap-101") is False
 
 
 def test_extract_dates_structured_only():
@@ -184,6 +206,34 @@ def test_crawl_entry_never_fetches_people_pages():
         f"/people/jane was fetched — cascade from unfetched /people; fetched={fetched}"
     assert "https://cs.njit.edu/about" in fetched, \
         f"/about (prose page) must be fetched but was not; fetched={fetched}"
+
+
+def test_prose_entry_points_one_seed_per_host():
+    """No two prose seeds share a host — each crawl owns its subdomain end-to-end, so a single
+    host can't feed two orgs (the people layer's discoverable_host concern; here enforced by
+    construction). MTSM/HCAD deliberately carry their schools' prose on the one college host."""
+    from urllib.parse import urlsplit
+    from v2.core.ingestion.college_crawl import PROSE_ENTRY_POINTS
+    hosts = [urlsplit(e.seed).netloc.lower() for e in PROSE_ENTRY_POINTS]
+    dupes = {h for h in hosts if hosts.count(h) > 1}
+    assert not dupes, f"prose seeds share a host (one host must map to one org): {dupes}"
+
+
+def test_prose_entry_points_parents_resolvable():
+    """Every entry's parent_slug is either the root (njit) or another entry's org_slug — so the
+    org tree never orphans. (Department parents are colleges that also appear as entries.)"""
+    from v2.core.ingestion.college_crawl import PROSE_ENTRY_POINTS
+    slugs = {e.org_slug for e in PROSE_ENTRY_POINTS}
+    for e in PROSE_ENTRY_POINTS:
+        assert e.parent_slug == "njit" or e.parent_slug in slugs, \
+            f"{e.org_slug} parent {e.parent_slug!r} is neither njit nor a college entry"
+
+
+def test_prose_entry_points_cover_all_colleges():
+    """Regression for the college rollout: every NJIT college root has a prose entry."""
+    from v2.core.ingestion.college_crawl import PROSE_ENTRY_POINTS
+    college_slugs = {e.org_slug for e in PROSE_ENTRY_POINTS if e.org_type == "college"}
+    assert {"ywcc", "mtsm", "nce", "csla", "hcad"} <= college_slugs
 
 
 def test_prose_entry_org_type():

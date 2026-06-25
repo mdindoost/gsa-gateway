@@ -247,3 +247,20 @@ what is the PhD in Computer Science at NJIT
 tell me about the Informatics department
 what are the admission requirements for YWCC graduate programs
 who teaches in the Data Science department
+
+# colleges (Crawling 2.1 prose rollout — MTSM/NCE/CSLA/HCAD + departments)
+what graduate programs does the Martin Tuchman School of Management offer
+tell me about Newark College of Engineering
+what does the Mechanical and Industrial Engineering department research
+what is the PhD program in Biomedical Engineering at NJIT
+what does the Civil and Environmental Engineering department offer
+what are the research areas in Electrical and Computer Engineering
+tell me about the Mathematical Sciences department at NJIT
+what graduate degrees does the Physics department offer
+what programs are in the Department of Chemistry and Environmental Science
+tell me about the Biological Sciences department
+what does the Humanities and Social Sciences department offer
+what is the History department at NJIT known for
+tell me about the Hillier College of Architecture and Design
+what does the School of Architecture offer at NJIT
+what programs does the Theater Arts and Technology department have
