@@ -422,6 +422,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ki_retrieval ON knowledge_items(org_id, type, is_active);",
     "CREATE INDEX IF NOT EXISTS idx_ki_root      ON knowledge_items(root_id, version);",
     "CREATE INDEX IF NOT EXISTS idx_ki_parent    ON knowledge_items(parent_id);",
+    "CREATE INDEX IF NOT EXISTS idx_ki_natural_key ON knowledge_items(json_extract(metadata,'$.natural_key'));",
     "CREATE INDEX IF NOT EXISTS idx_posts_due    ON posts(status, scheduled_for);",
     "CREATE INDEX IF NOT EXISTS idx_posts_org    ON posts(org_id);",
     "CREATE INDEX IF NOT EXISTS idx_posts_type   ON posts(type);",

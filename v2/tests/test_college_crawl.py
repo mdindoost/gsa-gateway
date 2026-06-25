@@ -126,6 +126,13 @@ def test_extract_entry_scopes_skips_people_dedups():
     assert all("people.njit.edu" not in u for u in seen)      # off-host never fetched
 
 
+def test_natural_key_index_exists():
+    c = _conn()
+    idx = c.execute("SELECT name FROM sqlite_master WHERE type='index' "
+                    "AND name='idx_ki_natural_key'").fetchone()
+    assert idx is not None
+
+
 def test_crawl_entry_never_fetches_people_pages():
     """Regression: people-page links discovered during crawl must never be enqueued or fetched.
     If /people is fetched, its sub-links (/people/jane) would also be discovered and fetched,
