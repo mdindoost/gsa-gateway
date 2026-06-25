@@ -90,3 +90,6 @@ eval/results_judged.jsonl
 # NJIT crawl build artifacts (regenerated each fetch)
 bot/data/sources/njit/**/_people.json
 docs/review/*-high-stakes.md
+
+# WorldCup live runtime state (per-deployment, not source)
+v2/data/match_watcher_*_state.json
