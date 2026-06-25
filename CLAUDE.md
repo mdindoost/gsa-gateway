@@ -62,8 +62,12 @@ Association (GSA), plus an NJIT/YWCC knowledge-graph gathering pipeline.
    missing. e.g. "research areas of the professors in X" → `faculty_areas_in_department` (lists ONLY
    people who list areas, "N of the {org} faculty list research areas: …"; degrades to a names roster +
    "I don't have research areas listed" line when nobody does) — was fabricating a topic per name.
-6. **High-stakes heads-up** (`bot/core/headsup.py`): immigration/billing/funding answers get a
-   "confirm with <office>" line appended.
+6. **High-stakes heads-up — REMOVED (Mohammad, 2026-06-25).** Formerly immigration/billing/funding
+   answers got a "⚠️ confirm with <office>" line appended (`bot/core/headsup.py`). **Barrier removed:**
+   NJIT web content is public + authoritative and users understand the bot can err — the caution
+   conflicted with the verbatim / never-withheld hard lines. No money / I-20 / student-info gate or
+   heads-up is appended; answers stand on the source link. (Removal = drop the two `apply_headsup`
+   call sites in `message_handler.py` + retire `headsup.py` and its tests.) See [[feedback_remove_headsup_barrier]].
 7. **Live njit.edu fallback** (`bot/core/live_fallback.py` + `v2/integration/njit_search.py` +
    `v2/core/ingestion/grounded_extract.py`): on a KB miss (top rerank relevance < `LIVE_THRESHOLD`
    or no chunk), search njit.edu (Brave Search API), fetch the top page, and answer from **verbatim,
@@ -237,7 +241,7 @@ gsa-gateway/
   untouched during the office-tier rollback; a checksum vs the pre-office backup proved I HAD written it.)
 - **HARD LINE — NJIT web content is served VERBATIM, never withheld** (Mohammad, 2026-06-23): NJIT-sourced
   content is authoritative — serve the real text VERBATIM. NEVER stage/withhold/decline/redact, and NEVER drop
-  or alter a figure that literally appears on the page. The source link + heads-up cover staleness. (Strengthens
+  or alter a figure that literally appears on the page. The source link covers staleness. (Strengthens
   [[feedback_njit_source_keep_live]] into a hard line; the decline-for-volatile branch that violated this is why
   the whole office-shadowing build was rolled back 2026-06-23.)
 - **HARD LINE — crawl/recrawl is data-bringing ONLY, separated from usage** (Mohammad, 2026-06-23): the crawl/
