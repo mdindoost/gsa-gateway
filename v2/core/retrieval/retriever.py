@@ -27,11 +27,90 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime as _dt, timezone, timedelta
 from pathlib import Path
 
 import sqlite_vec
 
 logger = logging.getLogger(__name__)
+
+# ── Recency / type-score constants ──────────────────────────────────────────
+# NEWS_FLOOR is a HARD invariant: news is downweighted, never withheld.
+NEWS_PRIOR = 0.85
+NEWS_HALFLIFE_DAYS = 180
+NEWS_FLOOR = 0.5
+WEBPAGE_PRIOR = 0.8
+EVENT_BOOST = 1.2
+
+
+def _parse_iso(s) -> _dt | None:
+    """Parse an ISO-8601-ish date/datetime string into a datetime. Returns None on failure."""
+    if not s:
+        return None
+    try:
+        return _dt.fromisoformat(str(s).replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            return _dt.fromisoformat(str(s)[:10])
+        except ValueError:
+            return None
+
+
+def _aware(dt: _dt, now: _dt) -> _dt:
+    """Ensure dt is timezone-aware (borrows now's tzinfo if naive)."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=now.tzinfo)
+
+
+def decay_for(row: dict, now: _dt) -> float:
+    """Return the recency/type multiplier for a knowledge_items row.
+
+    Pure function — no side effects, no DB access.  Applied post-RRF as a
+    multiplicative prior.  See spec §6.1 and global-constraints.md.
+
+    - news:       half-life decay from published_at; undated → NEWS_PRIOR (no
+                  decay); future-dated → age 0; floor = NEWS_FLOOR (never 0).
+    - event:      EVENT_BOOST iff upcoming (event_end else event_start ≥
+                  start-of-day UTC); else news-style decay if published_at
+                  present, else 1.0.  Missing/unparseable dates → not upcoming
+                  (fail-closed).
+    - event_info: EVENT_BOOST unconditionally (unchanged from original).
+    - webpage:    WEBPAGE_PRIOR (downweighted, not excluded).
+    - else:       1.0.
+    """
+    t = row.get("type")
+    meta = row.get("metadata") or {}
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except (ValueError, TypeError):
+            meta = {}
+
+    if t == "news":
+        pub = _parse_iso(meta.get("published_at"))
+        if pub is None:
+            return NEWS_PRIOR                           # undated: no decay
+        age = max(0.0, (now - _aware(pub, now)).total_seconds() / 86400.0)
+        return max(NEWS_FLOOR, NEWS_PRIOR * (0.5 ** (age / NEWS_HALFLIFE_DAYS)))
+
+    if t == "event":
+        sod = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_dt = _parse_iso(meta.get("event_end")) or _parse_iso(meta.get("event_start"))
+        if end_dt is not None and _aware(end_dt, now) >= sod:
+            return EVENT_BOOST                          # upcoming
+        # past event: news-style decay on published_at, else neutral
+        if meta.get("published_at"):
+            return decay_for({"type": "news",
+                               "metadata": {"published_at": meta["published_at"]}}, now)
+        return 1.0                                      # fail-closed
+
+    if t == "event_info":
+        return EVENT_BOOST
+
+    if t == "webpage":
+        return WEBPAGE_PRIOR
+
+    return 1.0
+
 
 # Optional per-query retrieval trace (set RETRIEVAL_DEBUG_LOG=true): what was
 # fetched, the fused top-N, and their scores/legs/ids — to debug LLM answers.
