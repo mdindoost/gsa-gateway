@@ -51,3 +51,23 @@ def test_extract_dates_absent_when_no_markup():
     from v2.core.ingestion.college_crawl import extract_dates
     # free text only — must NOT be parsed (mechanical-only hard line)
     assert extract_dates("<html><body><p>Event on Sept 1st</p></body></html>") == {}
+
+
+def test_extract_entry_scopes_skips_people_dedups():
+    from v2.core.ingestion.college_crawl import extract_entry
+    pages = {
+        "https://cs.njit.edu/": '<a href="/academics/phd">phd</a> <a href="/faculty">fac</a> '
+                                '<a href="https://people.njit.edu/profile/x">x</a>'
+                                '<h1>CS Home</h1><div role="main">Welcome to CS.</div>',
+        "https://cs.njit.edu/academics/phd": '<h1>PhD</h1><div role="main">PhD in Computer Science requirements.</div>',
+        "https://cs.njit.edu/faculty": '<h1>Faculty</h1><div role="main">Prof A. Prof B.</div>',
+    }
+    seen = []
+    def fetch(u):
+        seen.append(u)
+        return pages.get(u)
+    res = extract_entry("https://cs.njit.edu/", fetch, max_depth=3, budget=50)
+    urls = {p.source_url for p in res.prose}
+    assert "https://cs.njit.edu/academics/phd" in urls       # prose kept
+    assert "https://cs.njit.edu/faculty" not in urls          # people page skipped
+    assert all("people.njit.edu" not in u for u in seen)      # off-host never fetched

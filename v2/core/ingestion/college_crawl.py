@@ -9,13 +9,23 @@ Spec: docs/superpowers/specs/2026-06-25-ywcc-college-crawler-design.md
 """
 from __future__ import annotations
 
+import hashlib
 import json as _json
+import logging
 import re
+import time
+from dataclasses import dataclass, field, replace
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
 from v2.core.ingestion import entry_points as _ep
+from v2.core.ingestion.eos_crawl import (
+    ProsePage, extract_prose, _url_rank, _strip_recurring_assets, _canon, _in_scope,
+)
+from v2.core.ingestion.web_crawler import clean_text, normalize_url, select_links
+
+logger = logging.getLogger(__name__)
 
 # People-page segments = the LAST path segment of each SUPPLEMENTARY_PATH (the in-host people
 # listings explore.py owns). Single source of truth — can't drift from the people crawler.
@@ -81,3 +91,71 @@ def classify_type(url: str) -> str:
     if any(s in _EVENT_SEGMENTS for s in segs):
         return "event"
     return "policy"
+
+
+@dataclass
+class EntryResult:
+    seed: str
+    prose: list[ProsePage]
+    skipped: list[str]   # pages with no readable content (flag, never stored)
+    truncated: bool = False   # hit the page budget with links still queued
+    html_by_url: dict = field(default_factory=dict)  # raw HTML per kept page (for date extraction)
+
+
+def crawl_entry(seed, fetch, max_depth=4, budget=400, delay=0.0, stats=None):
+    """DFS the seed's subdomain (bare-host seed → whole host). Reuses select_links/same_scope
+    (already host-scoped) + the eos seed-path guard. Yields (url, html). Politeness delay added."""
+    seed = _canon(normalize_url(seed, seed))
+    seed_path = urlparse(seed).path or "/"
+    seen = {seed}
+    stack = [(seed, 0)]
+    while stack and len(seen) <= budget:
+        url, depth = stack.pop()
+        html = fetch(url)
+        if delay:
+            time.sleep(delay)
+        if not html:
+            continue
+        yield url, html
+        if depth < max_depth:
+            follow, _ = select_links(html, url, seed, relevance_gated=False)
+            for u in sorted((_canon(u) for u in follow), reverse=True):
+                if u not in seen and _in_scope(seed_path, urlparse(u).path):
+                    seen.add(u)
+                    stack.append((u, depth + 1))
+    if stats is not None:
+        stats["truncated"] = bool(stack)
+        if stack:
+            logger.warning("crawl_entry: hit budget %d at %s; %d links unfollowed",
+                           budget, seed, len(stack))
+
+
+def extract_entry(seed, fetch, max_depth=4, budget=400, delay=0.0) -> EntryResult:
+    """Crawl one prose entry point. Skip people pages (explore.py owns people). Dedup prose by
+    content hash (collapse .php/clean-URL aliases). Brings data only; no DB writes."""
+    res = EntryResult(seed=_canon(normalize_url(seed, seed)), prose=[], skipped=[])
+    by_hash: dict[str, ProsePage] = {}
+    order: list[str] = []
+    stats: dict = {}
+    for url, html in crawl_entry(seed, fetch, max_depth=max_depth, budget=budget,
+                                 delay=delay, stats=stats):
+        if is_people_path(url):
+            continue                                  # people page — explore.py owns it
+        page = extract_prose(url, html)
+        if page is None:
+            res.skipped.append(url)
+            continue
+        h = hashlib.sha1(page.content.encode("utf-8")).hexdigest()
+        if h not in by_hash:
+            by_hash[h] = page
+            order.append(h)
+            res.html_by_url[url] = html              # stash raw HTML for date extraction
+        elif _url_rank(page.source_url) < _url_rank(by_hash[h].source_url):
+            old_url = by_hash[h].source_url
+            res.html_by_url.pop(old_url, None)
+            by_hash[h] = page
+            res.html_by_url[url] = html
+    res.prose = [by_hash[h] for h in order]
+    _strip_recurring_assets(res.prose)
+    res.truncated = stats.get("truncated", False)
+    return res
