@@ -165,12 +165,15 @@ def extract_entry(seed, fetch, max_depth=4, budget=400, delay=0.0) -> EntryResul
 PROSE_SOURCE = "college_crawl"
 
 
-def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url) -> dict:
+def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
+                   org_type="college") -> dict:
     """Write an EntryResult's prose into knowledge_items under one org:
       type = classify_type(url); dates from extract_dates(raw html); created_by=PROSE_SOURCE.
     Content-hash idempotent (unchanged skipped; changed version-bumps old). NO Person creation.
-    Does NOT commit (caller owns the transaction)."""
-    org_id = ensure_org(conn, org_slug, org_name, parent_slug=parent_slug, type="college")
+    Does NOT commit (caller owns the transaction).
+    ``org_type`` is the ORG tier for ensure_org when the org does not yet exist (college vs
+    department); existing orgs keep their type (ensure_org early-returns)."""
+    org_id = ensure_org(conn, org_slug, org_name, parent_slug=parent_slug, type=org_type)
     sync_org_nodes(conn)
     inserted = updated = unchanged = 0
     for p in result.prose:
@@ -211,13 +214,15 @@ class ProseEntry:
     org_slug: str
     org_name: str
     parent_slug: str
+    org_type: str = "department"   # org tier for ensure_org if the org is new (college/department)
 
 
 # YWCC pilot. Add a college/dept = add a ProseEntry here (the data registry — no new code).
-# Data Science host confirmed at dry-run (Task E2); update the seed if it differs.
+# Give the college root org_type="college" and each department "department" (the default) so a
+# brand-new org is created at the right tier. Data Science host confirmed at dry-run (Task E2).
 PROSE_ENTRY_POINTS: list[ProseEntry] = [
-    ProseEntry("https://computing.njit.edu/", "ywcc", "YWCC", "njit"),
-    ProseEntry("https://cs.njit.edu/", "computer-science", "Computer Science", "ywcc"),
-    ProseEntry("https://informatics.njit.edu/", "informatics", "Informatics", "ywcc"),
-    ProseEntry("https://datascience.njit.edu/", "data-science", "Data Science", "ywcc"),
+    ProseEntry("https://computing.njit.edu/", "ywcc", "YWCC", "njit", "college"),
+    ProseEntry("https://cs.njit.edu/", "computer-science", "Computer Science", "ywcc", "department"),
+    ProseEntry("https://informatics.njit.edu/", "informatics", "Informatics", "ywcc", "department"),
+    ProseEntry("https://datascience.njit.edu/", "data-science", "Data Science", "ywcc", "department"),
 ]
