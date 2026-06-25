@@ -32,7 +32,7 @@ def run_entry(conn, entry: ProseEntry, fetch, max_depth=4, budget=400, delay=0.3
     the transaction). Returns a summary dict with prose_inserted/updated/unchanged/skipped."""
     res = extract_entry(entry.seed, fetch, max_depth=max_depth, budget=budget, delay=delay)
     out = ingest_college(conn, entry.org_slug, entry.org_name, entry.parent_slug,
-                         res, res.html_by_url)
+                         res, res.html_by_url, org_type=entry.org_type)
     out.update(entry=entry.org_slug, truncated=res.truncated)
     return out
 

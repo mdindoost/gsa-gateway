@@ -184,3 +184,24 @@ def test_crawl_entry_never_fetches_people_pages():
         f"/people/jane was fetched — cascade from unfetched /people; fetched={fetched}"
     assert "https://cs.njit.edu/about" in fetched, \
         f"/about (prose page) must be fetched but was not; fetched={fetched}"
+
+
+def test_prose_entry_org_type():
+    """Each entry declares its org tier: the college root is 'college', depts are 'department'."""
+    from v2.core.ingestion.college_crawl import PROSE_ENTRY_POINTS
+    by_type = {e.org_slug: e.org_type for e in PROSE_ENTRY_POINTS}
+    assert by_type["ywcc"] == "college"
+    assert by_type["computer-science"] == "department"
+    assert by_type["informatics"] == "department"
+    assert by_type["data-science"] == "department"
+
+
+def test_ingest_college_creates_org_with_declared_type():
+    """A brand-new dept entry must be CREATED as type='department', not 'college'."""
+    from v2.core.ingestion.college_crawl import ingest_college, EntryResult
+    c = _conn()  # seeds njit -> ywcc
+    empty = EntryResult(seed="https://newdept.njit.edu/", prose=[], skipped=[])
+    ingest_college(c, "newdept", "New Dept", "ywcc", empty, {}, org_type="department")
+    assert c.execute("SELECT type FROM organizations WHERE slug='newdept'").fetchone()[0] == "department"
+    ingest_college(c, "newcollege", "New College", "njit", empty, {}, org_type="college")
+    assert c.execute("SELECT type FROM organizations WHERE slug='newcollege'").fetchone()[0] == "college"
