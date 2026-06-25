@@ -9,8 +9,11 @@ Spec: docs/superpowers/specs/2026-06-25-ywcc-college-crawler-design.md
 """
 from __future__ import annotations
 
+import json as _json
 import re
 from urllib.parse import urlparse
+
+from bs4 import BeautifulSoup
 
 from v2.core.ingestion import entry_points as _ep
 
@@ -25,6 +28,41 @@ _EVENT_SEGMENTS = ("event", "events")
 
 def _segments(url: str) -> list[str]:
     return [s for s in urlparse(url).path.lower().split("/") if s]
+
+
+def extract_dates(html: str) -> dict:
+    """Extract literal dates from STRUCTURED markup only (article:published_time, JSON-LD Event
+    start/end, <time datetime>, dateModified). NO free-text parsing. Returns only present keys."""
+    out: dict = {}
+    soup = BeautifulSoup(html, "html.parser")
+
+    m = soup.find("meta", attrs={"property": "article:published_time"})
+    if m and m.get("content"):
+        out["published_at"] = m["content"].strip()
+
+    for tag in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        try:
+            data = _json.loads(tag.string or "")
+        except (ValueError, TypeError):
+            continue
+        for node in (data if isinstance(data, list) else [data]):
+            if not isinstance(node, dict):
+                continue
+            if str(node.get("@type", "")).lower() == "event":
+                if node.get("startDate"):
+                    out.setdefault("event_start", str(node["startDate"]).strip())
+                if node.get("endDate"):
+                    out.setdefault("event_end", str(node["endDate"]).strip())
+            if node.get("datePublished"):
+                out.setdefault("published_at", str(node["datePublished"]).strip())
+            if node.get("dateModified"):
+                out.setdefault("source_updated_at", str(node["dateModified"]).strip())
+
+    if "published_at" not in out:
+        t = soup.find("time", attrs={"datetime": True})
+        if t and t.get("datetime"):
+            out["published_at"] = t["datetime"].strip()
+    return out
 
 
 def is_people_path(url: str) -> bool:

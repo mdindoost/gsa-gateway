@@ -27,3 +27,27 @@ def test_is_people_path_segment_match():
     # real prose that merely starts with the same letters must be KEPT:
     assert is_people_path("https://cs.njit.edu/faculty-handbook") is False
     assert is_people_path("https://cs.njit.edu/academics/phd") is False
+
+
+def test_extract_dates_structured_only():
+    from v2.core.ingestion.college_crawl import extract_dates
+    html = '''
+      <html><head>
+        <meta property="article:published_time" content="2024-03-05T10:00:00Z">
+        <script type="application/ld+json">
+          {"@type":"Event","startDate":"2026-09-01","endDate":"2026-09-02"}
+        </script>
+      </head><body>
+        <time datetime="2024-03-05">March 5, 2024</time>
+        <p>Save the date next Friday</p>
+      </body></html>'''
+    d = extract_dates(html)
+    assert d["published_at"] == "2024-03-05T10:00:00Z"
+    assert d["event_start"] == "2026-09-01"
+    assert d["event_end"] == "2026-09-02"
+
+
+def test_extract_dates_absent_when_no_markup():
+    from v2.core.ingestion.college_crawl import extract_dates
+    # free text only — must NOT be parsed (mechanical-only hard line)
+    assert extract_dates("<html><body><p>Event on Sept 1st</p></body></html>") == {}
