@@ -126,6 +126,20 @@ def test_extract_entry_scopes_skips_people_dedups():
     assert all("people.njit.edu" not in u for u in seen)      # off-host never fetched
 
 
+def test_run_entry_extracts_and_ingests():
+    from v2.core.ingestion.college_crawl import ProseEntry
+    from scripts.crawl_college import run_entry
+    c = _conn()
+    pages = {"https://cs.njit.edu/": '<h1>CS</h1><div role="main">Computer Science at NJIT.</div>'}
+    out = run_entry(c, ProseEntry("https://cs.njit.edu/", "computer-science",
+                                  "Computer Science", "ywcc"),
+                    lambda u: pages.get(u), budget=10, delay=0.0)
+    c.commit()
+    assert out["prose_inserted"] >= 1
+    assert c.execute("SELECT COUNT(*) FROM knowledge_items WHERE created_by='college_crawl'"
+                     ).fetchone()[0] >= 1
+
+
 def test_natural_key_index_exists():
     c = _conn()
     idx = c.execute("SELECT name FROM sqlite_master WHERE type='index' "
