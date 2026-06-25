@@ -93,6 +93,19 @@ def test_ingest_college_types_dates_idempotent():
     assert c.execute("SELECT COUNT(*) FROM nodes WHERE type='Person'").fetchone()[0] == 0
 
 
+def test_prose_entry_points_registry():
+    from v2.core.ingestion.college_crawl import PROSE_ENTRY_POINTS, ProseEntry
+    slugs = {e.org_slug for e in PROSE_ENTRY_POINTS}
+    assert {"ywcc", "computer-science", "informatics", "data-science"} <= slugs
+    for e in PROSE_ENTRY_POINTS:
+        assert isinstance(e, ProseEntry)
+        assert e.seed.startswith("https://") and e.seed.endswith("/")   # bare-host roots
+    # NOT registered in the people registry
+    from v2.core.ingestion import entry_points as ep
+    people_urls = {p.url for p in ep.ALL_ENTRY_POINTS}
+    assert all(e.seed not in people_urls for e in PROSE_ENTRY_POINTS)
+
+
 def test_extract_entry_scopes_skips_people_dedups():
     from v2.core.ingestion.college_crawl import extract_entry
     pages = {

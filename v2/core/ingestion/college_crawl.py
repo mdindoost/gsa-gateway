@@ -205,3 +205,21 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url) -
             (org_id, ptype, p.title, p.content, json.dumps(meta), p.source_url, PROSE_SOURCE))
     return {"org_id": org_id, "prose_inserted": inserted, "prose_updated": updated,
             "prose_unchanged": unchanged, "skipped": len(result.skipped)}
+
+
+@dataclass(frozen=True)
+class ProseEntry:
+    seed: str           # bare-host root, e.g. https://cs.njit.edu/
+    org_slug: str
+    org_name: str
+    parent_slug: str
+
+
+# YWCC pilot. Add a college/dept = add a ProseEntry here (the data registry — no new code).
+# Data Science host confirmed at dry-run (Task E2); update the seed if it differs.
+PROSE_ENTRY_POINTS: list[ProseEntry] = [
+    ProseEntry("https://computing.njit.edu/", "ywcc", "YWCC", "njit"),
+    ProseEntry("https://cs.njit.edu/", "computer-science", "Computer Science", "ywcc"),
+    ProseEntry("https://informatics.njit.edu/", "informatics", "Informatics", "ywcc"),
+    ProseEntry("https://datascience.njit.edu/", "data-science", "Data Science", "ywcc"),
+]
