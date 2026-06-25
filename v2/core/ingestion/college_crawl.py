@@ -10,7 +10,7 @@ Spec: docs/superpowers/specs/2026-06-25-ywcc-college-crawler-design.md
 from __future__ import annotations
 
 import hashlib
-import json as _json
+import json
 import logging
 import re
 import time
@@ -18,8 +18,6 @@ from dataclasses import dataclass, field, replace
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
-
-import json
 
 from v2.core.graph.orgs import ensure_org, sync_org_nodes
 from v2.core.ingestion import entry_points as _ep
@@ -55,7 +53,7 @@ def extract_dates(html: str) -> dict:
 
     for tag in soup.find_all("script", attrs={"type": "application/ld+json"}):
         try:
-            data = _json.loads(tag.string or "")
+            data = json.loads(tag.string or "")
         except (ValueError, TypeError):
             continue
         for node in (data if isinstance(data, list) else [data]):
