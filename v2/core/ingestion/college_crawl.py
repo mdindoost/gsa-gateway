@@ -19,6 +19,9 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
+import json
+
+from v2.core.graph.orgs import ensure_org, sync_org_nodes
 from v2.core.ingestion import entry_points as _ep
 from v2.core.ingestion.eos_crawl import (
     ProsePage, extract_prose, _url_rank, _strip_recurring_assets, _canon, _in_scope,
@@ -159,3 +162,46 @@ def extract_entry(seed, fetch, max_depth=4, budget=400, delay=0.0) -> EntryResul
     _strip_recurring_assets(res.prose)
     res.truncated = stats.get("truncated", False)
     return res
+
+
+PROSE_SOURCE = "college_crawl"
+
+
+def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url) -> dict:
+    """Write an EntryResult's prose into knowledge_items under one org:
+      type = classify_type(url); dates from extract_dates(raw html); created_by=PROSE_SOURCE.
+    Content-hash idempotent (unchanged skipped; changed version-bumps old). NO Person creation.
+    Does NOT commit (caller owns the transaction)."""
+    org_id = ensure_org(conn, org_slug, org_name, parent_slug=parent_slug, type="college")
+    sync_org_nodes(conn)
+    inserted = updated = unchanged = 0
+    for p in result.prose:
+        ch = hashlib.sha1(p.content.encode("utf-8")).hexdigest()
+        meta = {
+            "natural_key": p.source_url,
+            "content_hash": ch,
+            "images": [list(i) for i in p.images],
+            "files": [list(f) for f in p.files],
+            "source": PROSE_SOURCE,
+        }
+        meta.update(extract_dates(html_by_url.get(p.source_url, "")))
+        ptype = classify_type(p.source_url)
+        row = conn.execute(
+            "SELECT id, json_extract(metadata,'$.content_hash') FROM knowledge_items "
+            "WHERE is_active=1 AND org_id=? AND json_extract(metadata,'$.natural_key')=? "
+            "AND created_by=?", (org_id, p.source_url, PROSE_SOURCE)).fetchone()
+        if row and row[1] == ch:
+            unchanged += 1
+            continue
+        if row:
+            conn.execute("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
+                         "WHERE id=?", (row[0],))
+            updated += 1
+        else:
+            inserted += 1
+        conn.execute(
+            "INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
+            "version,is_active,created_by) VALUES(?,?,?,?,?,?,1,1,?)",
+            (org_id, ptype, p.title, p.content, json.dumps(meta), p.source_url, PROSE_SOURCE))
+    return {"org_id": org_id, "prose_inserted": inserted, "prose_updated": updated,
+            "prose_unchanged": unchanged, "skipped": len(result.skipped)}

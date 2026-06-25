@@ -53,6 +53,46 @@ def test_extract_dates_absent_when_no_markup():
     assert extract_dates("<html><body><p>Event on Sept 1st</p></body></html>") == {}
 
 
+import sqlite3
+import json
+
+
+def _conn():
+    from v2.core.database.schema import create_all
+    c = create_all(":memory:")
+    # minimal org tree: njit -> ywcc
+    from v2.core.graph.orgs import ensure_org
+    ensure_org(c, "njit", "NJIT", None, type="university")
+    ensure_org(c, "ywcc", "YWCC", "njit", type="college")
+    return c
+
+
+def test_ingest_college_types_dates_idempotent():
+    from v2.core.ingestion.college_crawl import (
+        ingest_college, EntryResult, PROSE_SOURCE)
+    from v2.core.ingestion.eos_crawl import ProsePage
+    c = _conn()
+    page = ProsePage(title="CS News", content="Prof wins award.",
+                     source_url="https://cs.njit.edu/news/award")
+    res = EntryResult(seed="https://cs.njit.edu/", prose=[page], skipped=[])
+    html_by_url = {"https://cs.njit.edu/news/award":
+                   '<meta property="article:published_time" content="2024-03-05T00:00:00Z">'}
+    out = ingest_college(c, "computer-science", "Computer Science", "ywcc", res, html_by_url)
+    c.commit()
+    row = c.execute("SELECT type, created_by, json_extract(metadata,'$.published_at') "
+                    "FROM knowledge_items WHERE source_url=?",
+                    ("https://cs.njit.edu/news/award",)).fetchone()
+    assert tuple(row) == ("news", PROSE_SOURCE, "2024-03-05T00:00:00Z")
+    # idempotent: re-ingest unchanged → no new active row
+    ingest_college(c, "computer-science", "Computer Science", "ywcc", res, html_by_url)
+    c.commit()
+    n = c.execute("SELECT COUNT(*) FROM knowledge_items WHERE is_active=1 AND source_url=?",
+                  ("https://cs.njit.edu/news/award",)).fetchone()[0]
+    assert n == 1
+    # no Person created from prose
+    assert c.execute("SELECT COUNT(*) FROM nodes WHERE type='Person'").fetchone()[0] == 0
+
+
 def test_extract_entry_scopes_skips_people_dedups():
     from v2.core.ingestion.college_crawl import extract_entry
     pages = {
