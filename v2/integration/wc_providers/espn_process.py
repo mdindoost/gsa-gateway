@@ -22,17 +22,30 @@ def fresh_ledger() -> dict:
             "announced_goals": set(), "score": (0, 0), "half": 1}
 
 
-_HALF_LABEL = {1: "First Half", 2: "Second Half"}
-
-
 def _uid(parts) -> str:
     """A compact, stable dedup token from a goal identity (or a set of them) — drives the
     enqueue dedup_key so a re-scored goal after a disallowance is never collapsed by score."""
     return "|".join(str(p) for p in parts)
 
 
-def _half_label(period: int) -> str:
-    return _HALF_LABEL.get(period, "Extra Time")
+def _half_label(minute: str | None) -> str:
+    """Derive the half from the goal's MINUTE — the scoreboard feed carries no `period`, but
+    the minute is an exact period indicator (stoppage "45'+5'" parses to 45 → First Half).
+    ≤45 First, ≤90 Second, beyond regulation → Extra Time. Unparseable → Second Half (safe)."""
+    n = ""
+    for ch in (minute or ""):
+        if ch.isdigit():
+            n += ch
+        else:
+            break
+    if not n:
+        return "Second Half"
+    m = int(n)
+    if m <= 45:
+        return "First Half"
+    if m <= 90:
+        return "Second Half"
+    return "Extra Time"
 
 
 def _adapter(norm: NormMatch, score: tuple[int, int]) -> dict:
@@ -103,7 +116,6 @@ def process_match(norm: NormMatch, ledger: dict, near_kickoff: bool = False) -> 
     if state == "shootout":
         return events                                  # never walk shootout kicks as goals
 
-    half = _half_label(1)
     for g, score in running:
         if g.identity in ledger["announced_goals"]:
             continue
@@ -112,7 +124,7 @@ def process_match(norm: NormMatch, ledger: dict, near_kickoff: bool = False) -> 
         team_name = norm.home.name if g.team_id != norm.away.id else norm.away.name
         events.append({
             "type": "goal", "scorer": g.scorer, "minute": g.minute, "kind": g.kind,
-            "team": team_name, "half_label": half, "uid": _uid(g.identity),
+            "team": team_name, "half_label": _half_label(g.minute), "uid": _uid(g.identity),
             "scoring_team": {"name": team_name},
             "match": _adapter(norm, score)})
     return events

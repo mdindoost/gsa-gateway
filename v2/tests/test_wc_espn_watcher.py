@@ -64,6 +64,25 @@ def test_process_dispatches_to_espn_state_machine():
     assert [e["type"] for e in evs] == ["kickoff"]
 
 
+class _RecordingProvider:
+    def __init__(self):
+        self.days = []
+    async def fetch_matches(self, et_day=None):
+        self.days.append(et_day)
+        return []
+
+
+def test_idle_fetch_all_queries_today_and_tomorrow_et():
+    # Review #2: idle discovery must span the ET-midnight boundary so a match that kicks off
+    # just after UTC midnight (prior ET day) isn't missed. Expect two distinct ET days queried.
+    import asyncio
+    prov = _RecordingProvider()
+    w = EspnMatchWatcher([], ":memory:", provider=prov)
+    asyncio.new_event_loop().run_until_complete(w._fetch_all())
+    assert len(set(prov.days)) == 2          # today + tomorrow ET
+    assert all(d is not None for d in prov.days)
+
+
 def test_factory_selects_provider_by_flag(monkeypatch):
     monkeypatch.setenv("WC_PROVIDER", "espn")
     assert isinstance(make_watcher("k", "db", "gsa", "chan"), EspnMatchWatcher)

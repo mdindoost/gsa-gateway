@@ -78,12 +78,22 @@ class EspnMatchWatcher(MatchWatcher):
 
     # ── data-source seam ─────────────────────────────────────────────────────────
     async def _fetch_all(self, key=None):
-        """Idle-path discovery: one shared scoreboard call → all matches (NormMatch list).
-        Blocked/empty → [] (idle loop just rechecks later)."""
-        try:
-            return await self._espn.fetch_matches()
-        except BlockedError:
-            return []
+        """Idle-path discovery: fetch TODAY and TOMORROW's ET day and merge, so a match that
+        kicks off just after UTC midnight (on the prior ET day) is never missed at first
+        discovery (review #2). Blocked/empty → whatever we got (idle loop rechecks later)."""
+        from v2.integration.wc_schedule import et_date
+        now = datetime.datetime.now(datetime.timezone.utc)
+        days = {et_date(now.isoformat()),
+                et_date((now + datetime.timedelta(days=1)).isoformat())}
+        seen: dict[int, object] = {}
+        for day in sorted(days):
+            try:
+                for m in await self._espn.fetch_matches(et_day=day):
+                    if m.id is not None:
+                        seen[m.id] = m
+            except BlockedError:
+                continue
+        return list(seen.values())
 
     async def _fetch_days(self, et_days, key=None) -> dict[int, object]:
         """Active-path shared fetch: {match_id: NormMatch} for the active ET day(s). ESPN

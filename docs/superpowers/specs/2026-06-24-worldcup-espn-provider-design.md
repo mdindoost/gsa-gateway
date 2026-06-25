@@ -232,13 +232,29 @@ One item (S4) is a deliberate build-time decision, not a design hole — flagged
 
 ## Goals checklist (shipped/deferred — per review-against-plan rule)
 
-- [ ] G1 ESPN provider (scoreboard discovery + summary live) + NormMatch + status map
-- [ ] G2 event-driven `_process` (keyEvent-id diff, shootout state, period half-label)
-- [ ] G3 goal enrichment (scorer/minute/kind, OG/pen) + `format_event` activation
-- [ ] G4 provider seam + `WC_PROVIDER` flag + reliability backoff
-- [ ] G5 shadow mode + latency logging (freshness via `meta.lastUpdatedAt`/`wallclock`)
-- [ ] G6 ported/rewritten test suite green (resolve S4 formatter-boundary first)
-- [ ] G7 preview group table from summary `standings.groups[]` (was the open question)
-- [ ] DEFERRED: retire football-data — AFTER a clean field-proven matchday
-- [ ] DEFERRED (shadow candidates): compare CDN / core-`plays` feed freshness vs summary
+- [x] G1 ESPN provider (scoreboard-primary discovery+live) + NormMatch + status map
+- [x] G2 event-driven `_process` (goal-identity diff, shootout state). **Half-label derived
+      from the goal MINUTE** (scoreboard feed has no `period`; minute is an exact period
+      indicator — ≤45 First, ≤90 Second, beyond → Extra Time). ET unverified, safe-fallback.
+- [x] G3 goal enrichment (scorer/minute/kind, OG/pen) + `format_event` activation
+- [x] G4 provider seam (`EspnMatchWatcher` + `make_watcher`) + `WC_PROVIDER` flag + backoff
+- [x] G5 shadow comparison tool (`scripts/wc_shadow_compare.py`, read-only A/B + latency)
+- [x] G6 test suite green (49 ESPN tests; S4 resolved via `_adapter` dict shim)
+- [ ] **G7 DEFERRED + FLAGGED:** preview shows matchup + kickoff context but NO group table.
+      Scoreboard-primary carries no group letter; the table needs the standings endpoint —
+      the flagged follow-up. (Previews still post; only the table is absent.)
+- [ ] DEFERRED: retire football-data — AFTER a clean field-proven matchday (kept as the
+      `WC_PROVIDER=football_data` kill-switch until then).
+- [ ] KNOWN-RISK (monitor first matchday): goal identity includes `minute`; if ESPN revises a
+      goal's displayed minute it could spurious-correct + re-post. Accepted ("keep it simple").
+      If observed live → switch identity to `(match, athlete, seq)`.
+
+## Two senior-eng reviews + final wiring review — all folded (2026-06-24)
+
+Design review → scoreboard-primary decision + B1/B2/S1/S2/S3 resolved. Final LIVE-WIRING
+review: verified the subclass/base seam, ledger set/JSON round-trip, mid-match-deploy silent
+baseline, blocked-tick (no retire/no missed full-time), kill-switch — all SAFE. Two
+should-fixes folded before merge: **#1** half-label (was hardcoded "First Half" → now
+minute-derived, G2), **#2** idle discovery now spans today+tomorrow ET (no ET-midnight miss).
+Verdict: SAFE TO DEPLOY.
 ```

@@ -49,6 +49,21 @@ def test_first_read_with_goals_far_from_kickoff_is_silent_baseline():
     assert (760462, 391034, "29'") in led["announced_goals"]
 
 
+def test_half_label_derived_from_minute_not_hardcoded():
+    # Review #1: the scoreboard feed has no `period`, so derive the half from the minute.
+    # An 80' goal must read "Second Half", not the old hardcoded "First Half".
+    def label(minute):
+        led = fresh_ledger(); led["started"] = True
+        ev = process_match(match("in_play", (1, 0),
+                                 [goal(1, minute, scorer="X")]), led)[0]
+        return ev["half_label"]
+    assert label("29'") == "First Half"
+    assert label("45'+5'") == "First Half"      # first-half stoppage
+    assert label("80'") == "Second Half"
+    assert label("90'+2'") == "Second Half"     # second-half stoppage
+    assert label("105'") == "Extra Time"
+
+
 def test_new_goal_emits_with_scorer_minute_and_running_score():
     led = fresh_ledger()
     led["started"] = True
