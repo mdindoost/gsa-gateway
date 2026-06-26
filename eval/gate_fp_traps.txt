@@ -1,0 +1,30 @@
+# GATE FALSE-POSITIVE TRAPS — answerable questions that SUPERFICIALLY trip a gate cue but MUST be
+# answered, never deflected. A deflect here is a Gate-1 false-fire = withholding real content = hard-line
+# breach (spec §13.6 fold #5). FROZEN regression set. Correct behavior = ANSWER (class kb or live).
+# Scored like the real set: any 'deflect' here is a FALSE-DEFLECT to count against the gate.
+
+# possessive + personal-NOUN trap — has "my" but asks a general, answerable policy fact (NOT a private record)
+what are my responsibilities as a graduate club officer
+how many credits do I need to complete my degree
+what GPA do I need to keep my assistantship in good standing
+what are my options if I want to take a medical leave
+how do I request my official transcript
+
+# time-cue trap — "today/this week" but events/hours ARE in the corpus (INTENT_FOOD/events carve-out)
+what events are happening on campus this week
+what are the registrar's hours of operation
+when is the deadline to add or drop a class this semester
+
+# other-institution trap — names another school but is in-scope ("transfer FROM X" is exempt)
+how do I transfer credits from Rutgers to NJIT
+can I transfer to NJIT from another university
+
+# do-a-task-looking trap — phrased like a task but is an answerable process/guidance question
+how do I write a strong statement of purpose for the NJIT PhD application
+what should I include in a teaching assistant application at NJIT
+help me understand the thesis submission process
+
+# ambiguous-looking but answerable as asked (NJIT default context resolves it)
+how do I apply to an NJIT graduate program
+what is the application deadline for fall graduate admission
+how much is graduate tuition at NJIT

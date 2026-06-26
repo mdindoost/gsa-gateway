@@ -1,20 +1,88 @@
 # ABSTAIN SET — questions the corpus genuinely CANNOT answer. Correct behavior = DEFLECT, not confabulate.
 # Scored by scripts/eval_abstain.py: abstain-correctness = fraction classified 'deflect'.
 # Measures the confidence-gate / forced-hallucination protection (review R10 / spec reject #3).
+#
+# FROZEN INSTRUMENT (do NOT tune cues/prompts against these). Stratified by the 8 spec failure
+# classes (a-h, spec §13.6 fold #1). ≥50-100 target. Each class-(f)/(h) item was VERIFIED against
+# the live corpus to confirm the SPECIFIC answer is absent (topic may be present — that is the point).
+# Answerable near-miss FP traps live in eval/gate_fp_traps.txt (must NOT deflect — Gate-1 false-fire set).
+#
 # NOTE: live-search fallback (LIVE_ENABLED) may answer some of these from njit.edu — run with
 # LIVE_ENABLED=0 to measure the GATE itself; any non-deflect here is a forced-answer to score.
 
-# other institution (out of scope)
-what is the GPA cutoff for the Rutgers MBA program
-
-# not in corpus
-who won NJIT's homecoming game this year
-what is on the campus dining hall menu today
-what did the YWCC faculty discuss in last week's meeting
-
-# personal / live data the assistant cannot know
+# (a) personal / account state — the user's own private record the assistant cannot know
 what is my current financial aid balance
 has my I-20 been approved yet
+how much do I owe on my bursar account right now
+what is my current GPA
+when will my tuition refund be deposited
+did my graduate assistantship application get accepted
+what holds are on my student account right now
+how many credits have I completed toward my degree
+did my official transcript request get processed yet
+what grade did I get in my thesis course
 
-# out of scope task
+# (b) live / time-specific — changes by the day/hour, not in a static corpus
+what is on the campus dining hall menu today
+is the library open right now
+how long is the line at the registrar's office right now
+is parking available in lot 5 right now
+what time does the next campus shuttle arrive
+are classes cancelled today because of the weather
+what is the current wait time for a counseling appointment
+which study rooms in the library are free right now
+what is tonight's GSA event
+
+# (c) other-institution — out of NJIT scope
+what is the GPA cutoff for the Rutgers MBA program
+how do I apply to Columbia's computer science PhD program
+what is the tuition at Stevens Institute of Technology
+who is the dean of engineering at Princeton
+does Montclair State University accept my NJIT credits
+what is the application deadline for NYU graduate school
+how much does a parking permit cost at Rutgers Newark
+
+# (d) do-a-task — asks the assistant to perform a task, not answer a question
 can you write my PhD statement of purpose for me
+write a cover letter for my teaching assistant application
+fill out my I-20 extension form for me
+draft an email to my advisor asking for a deadline extension
+write the introduction section of my thesis
+do my CS 610 homework assignment for me
+write my resume for the career fair
+
+# (e) out-of-scope topic — general knowledge unrelated to NJIT/GSA
+what is the capital of France
+how do I cook pasta
+what is the weather forecast for tomorrow
+who won the 2022 World Cup
+how do I change a flat tire
+what is the current stock price of Apple
+recommend a good Italian restaurant in Newark
+
+# (f) in-domain but NOT in corpus (HARDEST) — sounds answerable, NJIT-related, fact absent (verified)
+who won NJIT's homecoming game this year
+what did the YWCC faculty discuss in last week's meeting
+exactly how many graduate students are enrolled at NJIT this semester
+what is the pass rate for the computer science PhD qualifying exam
+what was the GSA's total annual budget last year
+how many parking tickets were issued on campus last month
+what is the average wait time for a financial aid appointment
+how many students were on the dean's list last semester
+which dorm has the most available rooms right now
+
+# (g) ambiguous — under-specified; correct response is to ask what they mean, not to guess
+how do I apply
+when is the deadline
+who do I contact
+what are the requirements
+how much does it cost
+where is the office
+what is the form for that
+
+# (h) multi-hop / insufficient — chains on a fact the corpus does not hold
+which YWCC machine-learning professor also sits on the GSA advisory board
+how does NJIT's graduate enrollment count compare to last year's
+which department spent the largest share of the GSA budget last year
+among professors who research cybersecurity which one has the most current PhD students
+which graduate program had the lowest qualifying-exam pass rate this year
