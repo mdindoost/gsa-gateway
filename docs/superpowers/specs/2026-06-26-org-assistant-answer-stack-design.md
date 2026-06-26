@@ -262,3 +262,57 @@ Insert **step 0: build + calibrate the CE confidence gate (G8) and expand `eval.
 FIRST — the gate is the most load-bearing, least-evidenced piece, so it leads. Step 4 precondition:
 durable Plan 1+2 + live chunk re-embed (R7). `catalog.njit.edu` is its own gated sub-plan (R2/§5.1), after
 the routing gate, re-running it (R14).
+
+---
+
+## 13. Calibration findings + revised gating design (2026-06-26, evidence-backed)
+
+Step 0 built the signal (0a CE `ce_score`) and the measurement harness (0b). We then MEASURED the
+baselines and CALIBRATED the gate empirically (LIVE off, chunks/prior off = current prod). The results
+**reshape the tier-5 / confidence-gating design** — recorded here as the source of truth for the build.
+
+### 13.1 Measured baselines
+- **Visible eval: 84% correct** (189/36 partial/1 wrong of 226) — confirms the reference exactly.
+- **Judge variance: σ = 0.88 → 2σ ≈ 1.8 pts.** A real A/B win must exceed ~1.8 pts. (The old 84→77 chunk
+  regression = 7 pts = unambiguously real.)
+- **Held-out slice: 57% correct** (4/3/0 of 7) — deep/high-stakes-heavy, dragged down by deep partials.
+- **Abstain: 0/7 deflected = 0%** — the bot confabulated an answer to EVERY unanswerable question, incl.
+  "what is my financial aid balance" and "has my I-20 been approved." Forced-hallucination = measured, 0% gate.
+
+### 13.2 CE-relevance threshold FAILS for abstain (RELEVANCE ≠ ANSWERABILITY)
+Top `ce_score` (sigmoid 0..1) does NOT separate abstain from answerable — overlaps both ways:
+abstain "has my I-20 approved" = **0.993**, "YWCC last week" = 0.708, "my balance" = 0.282 (HIGH — CE finds the
+TOPIC relevant though the ANSWER is in no document); meanwhile 16 real answerable Qs score < 0.15. Sweep:
+catching half the abstain set costs 7%+ real answers; I-20=0.993 uncatchable at any usable T. **A CE floor is
+the WRONG tool for abstain.** (0a `ce_score` REMAINS valid for its real jobs: live-fallback ranking + the
+deep-fallback decision. Not wasted — boundary learned.) **This supersedes the §10.1 framing that tier-gating =
+a CE-relevance floor.**
+
+### 13.3 LLM gate measured (answers "use the LLM for both?")
+Single 8B call (intent+answerability) vs 7 abstain + 25 real RAG-answerable, 2 runs:
+- **0 false-deflects on real answers, BOTH runs (25/25).** Far safer than CE (which false-deflected 6-7%).
+- Caught 4–5/7 abstain — the not-in-corpus / out-of-scope ones (Rutgers, homecoming, "write my SOP", "menu today").
+- **LEAKED the personal/live ones (my balance, my I-20, last-week meeting)** — same blind spot as CE: the topic
+  is in context, so "is the answer here?" says yes; the model can't see "this is the USER'S OWN private/live state."
+- Mild run-to-run noise (4 vs 5 = small-model σ).
+
+### 13.4 REVISED tier-5 design — HYBRID two-gate (replaces "CE threshold")
+The two gates have **complementary blind spots**, so neither alone suffices; together they catch all 7 abstain
+with **0 real-answer damage**:
+- **Gate 1 — deterministic INTENT cues, PRE-retrieval.** First-person-possessive about a personal/account record
+  ("my balance", "has my I-20"), live/time-specific ("today/tonight/this week/current"), other-institution
+  ("Rutgers/Princeton/…"), do-a-task ("write my…"). Cheap, deterministic, zero LLM noise. Catches the cases the
+  LLM is blind to. (Plays to the deterministic router's strength — [[feedback_build_correct_not_router_constrained]].)
+- **Gate 2 — LLM ANSWERABILITY check, POST-retrieval.** "Does the retrieved context actually contain the answer?"
+  8B is GOOD here (25/25 real, 0 false-deflect). Provider-isolated (LLM-agnostic). Cost = +1 8B call on the RAG
+  path, justified by 0 false-deflect. A/B-gated on the abstain set before trusting; a stronger judge model is the
+  escalation if 8B noise hurts.
+- Net target: abstain-correctness 0% → ~100% on our set, common-case 84% unharmed (Gate 2 proved 0 false-deflect).
+
+### 13.5 Build implication
+- **G8 REVISED:** the gate is NOT a CE threshold. It is (Gate 1) a deterministic abstain-cue set + (Gate 2) an
+  LLM answerability check, each measured on the abstain set + held-out. The 0a `ce_score` is retained for
+  live-fallback ranking and the deep-fallback trigger, NOT for abstain.
+- This is a retrieval/answer-path design change → **HARD GATE: senior-eng + RAG review of the revised gating
+  design + owner approval BEFORE building it into the live message path.** The probes above are read-only;
+  nothing is wired into production yet.
