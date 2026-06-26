@@ -10,7 +10,7 @@ class _CycleOC:
         return v
 
 
-def _run(coro): return asyncio.get_event_loop().run_until_complete(coro)
+def _run(coro): return asyncio.run(coro)
 
 
 def test_summarize_reports_stats():
@@ -33,3 +33,12 @@ def test_variance_runs_excludes_deflect_from_denominator():
     # one run: one CORRECT one WRONG -> 1/2 = 0.5
     fr2 = _run(variance_runs(recs, _CycleOC(["CORRECT", "WRONG"]), 1))
     assert fr2 == [0.5]
+
+
+def test_variance_runs_multiple_runs_differ_when_judge_flips():
+    recs = [{"class": "kb", "q": "a", "answer": "x"}]
+    # judge says CORRECT on run 1, WRONG on run 2 (one answered record per run)
+    fr = _run(variance_runs(recs, _CycleOC(["CORRECT", "WRONG"]), 2))
+    assert fr == [1.0, 0.0]
+    s = summarize(fr)
+    assert s["runs"] == 2 and s["min"] == 0.0 and s["max"] == 1.0 and s["stdev"] > 0

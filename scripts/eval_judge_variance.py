@@ -46,7 +46,11 @@ async def _main() -> None:
     src = REPO / "eval" / "results.jsonl"
     recs = [json.loads(l) for l in open(src, encoding="utf-8")]
     from bot.services.ollama_client import OllamaClient
-    fr = await variance_runs(recs, OllamaClient(), n)
+    oc = OllamaClient()
+    try:
+        fr = await variance_runs(recs, oc, n)
+    finally:
+        await oc.close()
     s = summarize(fr)
     print(f"judge variance over {s['runs']} runs: "
           f"correct% mean={100*s['mean']:.1f} stdev={100*s['stdev']:.2f} "

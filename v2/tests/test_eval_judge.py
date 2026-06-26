@@ -7,7 +7,7 @@ class _StubOC:
     async def generate(self, prompt, system): return self._reply
 
 
-def _run(coro): return asyncio.get_event_loop().run_until_complete(coro)
+def _run(coro): return asyncio.run(coro)
 
 
 def test_judge_record_passes_through_deflect_and_error():
