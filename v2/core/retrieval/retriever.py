@@ -285,10 +285,11 @@ class V2Retriever:
         the existing fused ranking (same RRF the retriever already uses) rather than letting
         CE override — pure CE reorder *demotes* exact-keyword facts that bm25 nailed
         (regressions), while RRF-fusion keeps those wins AND lifts the semantically-correct
-        chunk. type_boost stays a multiplicative prior (senior review C2). Returns `ranked`
-        unchanged on any miss — reranking is strictly additive."""
+        chunk. type_boost stays a multiplicative prior (senior review C2). Returns `(ranked, ce_by_iid)`
+        where ce_by_iid maps item_id to raw CE score for reranked items (empty dict on any miss)
+        — reranking is strictly additive."""
         if not self.rerank_enabled or self.reranker is None or len(ranked) < 2:
-            return ranked
+            return ranked, {}
         window = ranked[: self.rerank_pool]
         passages = []
         for iid, _ in window:
@@ -298,7 +299,8 @@ class V2Retriever:
             passages.append(passage if passage else (rows[iid]["content"] or ""))
         ce = self.reranker.score(query, passages)
         if ce is None:
-            return ranked
+            return ranked, {}
+        ce_by_iid = {window[i][0]: float(ce[i]) for i in range(len(window))}
         fused_rank = {iid: r for r, (iid, _) in enumerate(window, start=1)}
         ce_order = sorted(range(len(window)), key=lambda i: -ce[i])
         ce_rank = {window[i][0]: r for r, i in enumerate(ce_order, start=1)}
@@ -311,7 +313,7 @@ class V2Retriever:
             return rrf * self._boost_for(rows[iid], now)
 
         rescored = sorted(((iid, _score(iid)) for iid, _ in window), key=lambda kv: -kv[1])
-        return rescored + ranked[self.rerank_pool:]
+        return rescored + ranked[self.rerank_pool:], ce_by_iid
 
     # ── organization tree helpers ───────────────────────────────────────────
     def _subtree_ids(self, org_id: int) -> list[int]:
@@ -564,7 +566,7 @@ class V2Retriever:
             scores[iid] *= self._boost_for(rows[iid], now)
 
         ranked = sorted(scores.items(), key=lambda kv: -kv[1])
-        ranked = self._rerank(query, ranked, rows, now, best_chunk or None)
+        ranked, ce_by_iid = self._rerank(query, ranked, rows, now, best_chunk or None)
         # Office-intent prior (G2) — OFF BY DEFAULT, KNOWN-WEAK, pending redesign.
         # As written this is an UNCAPPED post-CE multiplier: it CAN override a strong
         # cross-encoder ranking (a rank-5 office item × office_boost can pass the rank-1 CE
@@ -601,6 +603,7 @@ class V2Retriever:
                 similarity=None if expanded else sim.get(iid),
                 source=source, rrf_score=boosted,
                 source_url=r["source_url"], verified=_meta_verified(r["metadata"]),
+                ce_score=ce_by_iid.get(iid),
             ))
 
         logger.debug(
