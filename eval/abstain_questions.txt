@@ -1,0 +1,20 @@
+# ABSTAIN SET — questions the corpus genuinely CANNOT answer. Correct behavior = DEFLECT, not confabulate.
+# Scored by scripts/eval_abstain.py: abstain-correctness = fraction classified 'deflect'.
+# Measures the confidence-gate / forced-hallucination protection (review R10 / spec reject #3).
+# NOTE: live-search fallback (LIVE_ENABLED) may answer some of these from njit.edu — run with
+# LIVE_ENABLED=0 to measure the GATE itself; any non-deflect here is a forced-answer to score.
+
+# other institution (out of scope)
+what is the GPA cutoff for the Rutgers MBA program
+
+# not in corpus
+who won NJIT's homecoming game this year
+what is on the campus dining hall menu today
+what did the YWCC faculty discuss in last week's meeting
+
+# personal / live data the assistant cannot know
+what is my current financial aid balance
+has my I-20 been approved yet
+
+# out of scope task
+can you write my PhD statement of purpose for me

@@ -1,0 +1,15 @@
+# FROZEN HELD-OUT SLICE — never used to author C or tune A. Scored ONLY at the gate.
+# Purpose: prevents the >=84% eval number from being self-fulfilling (review R8 / spec reject #1).
+# Run: scripts/eval.sh --questions eval/heldout_questions.txt --out eval/heldout_results.jsonl
+# Do NOT move these into questions.txt and do NOT look at them while authoring golden answers.
+
+# deep / high-stakes (held-out)
+if I make a partial payment on my bursar account will I still be charged a late fee
+during a medical leave from NJIT do I keep my NJIT email access
+do students taking only online courses qualify for NJIT student health insurance
+why is there an AR hold on my student account
+
+# office routing (held-out — unseen, not in office_gold.py)
+who do I see about a medical withdrawal
+where do I file a FERPA or student records privacy request
+who handles my graduate assistant stipend questions

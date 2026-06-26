@@ -265,3 +265,9 @@ what is the History department at NJIT known for
 tell me about the Hillier College of Architecture and Design
 what does the School of Architecture offer at NJIT
 what programs does the Theater Arts and Technology department have
+
+# deep / high-stakes (answer lives deep in a long doc — probes recall past the old 2000-char cutoff)
+what is the penalty for paying my NJIT tuition bill late
+while on a medical leave of absence from NJIT can I keep my campus job
+does NJIT cover health insurance for graduate student employees
+how does NJIT determine the food allowance in the cost of attendance
