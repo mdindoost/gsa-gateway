@@ -175,6 +175,7 @@ class RetrievedChunk:
     rrf_score: float
     source_url: str | None = None  # provenance carried to the prompt (R4)
     verified: bool = True          # False = first-layer LLM draft, not authoritative
+    ce_score: float | None = None  # cross-encoder relevance of the MATCHED CHUNK; None = not reranked / cannot judge
 
 
 def _meta(metadata) -> dict:
