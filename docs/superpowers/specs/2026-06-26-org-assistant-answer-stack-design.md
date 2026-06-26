@@ -31,7 +31,14 @@ Five tiers. Each owns a query segment. Ordered so the small local generator is o
 
 | # | Tier | State | Owns | LLM role |
 |---|---|---|---|---|
-| 1 | **Structured / skills** | exists | KG facts: faculty, people, metrics, officers, office-routing | none (deterministic) |
+| 1 | **Structured / skills** | exists | KG facts: faculty, people, metrics, officers, office-routing | none — route-or-None (no confidence score; first-wins by design) |
+
+> **Live-dispatch reality (SE review):** production runs `ROUTER_V21=1, ROUTER_V21_SHADOW=0` — the live
+> dispatcher is the **UnifiedRouter** + `MessageHandler._answer_decision` (families COMMAND/KG/RAG/LIVE/
+> CLARIFY), **not** the legacy `router.py`/`_try_structured`. Tier 1 = the KG family; **C (tier 2) = a new
+> `CURATED` family resolved in `decide()` / a pre-RAG check**. G1 is therefore a **refactor of the branchy
+> `handle()`/`_rag_pipeline`** (INTENT_FOOD/SOCIAL, free-mode skip, deflection-offer, live-fallback) into the
+> ladder — NOT mere "wiring." The vestigial local `office_page` tier (0 live rows) is DELETED, not extended.
 | 2 | **C — Curated golden answers** | **new** | bounded high-stakes *procedural* head (I-20/visa, billing, registration holds, funding deadlines, full-time rule, test/English rules) | rephrase only; facts authored |
 | 3 | **A — Structured-clean RAG** | improved | the prose tail + program/advising/policy + the floor under C | compose from clean sections |
 | 4 | **Deep-fallback / live njit.edu** | exists, repositioned | low-confidence KB-miss rescue | extractive / grounded |
@@ -113,7 +120,7 @@ Both pieces are crawlable HTML (no portal/PDF), confirmed 2026-06-26:
 - Deferral rule → `catalog.njit.edu/graduate/admissions-financial-support/admissions/` (*"Applications may be deferred for one semester … without incurring another fee"*).
 → **Crawler, 2 seeds.** Manual not needed.
 
-**Bonus seed family:** `catalog.njit.edu` (the graduate catalog) is fully crawlable, authoritative, and currently un-crawled — it reinforces J / K / N / O at once. Recommend adding it as a `ProseEntry` family in the rebuild.
+**`catalog.njit.edu` — a SCOPED addition, NOT a free bonus (SE review, biggest landmine).** The grad catalog reinforces J/K/N/O, but it does NOT fit the `college_crawl` engine's single-org bare-host assumption: it is **cross-org** (spans all programs → filing under one `org_id` would WORSEN the M routing dilution §7/G7 is fixing), **thousands of pages** (default `crawl_entry budget=400` would silently truncate), and **grid-heavy** (program/course tables = the dense-retrieval-weak case). Required before adding: scope by path into per-program sub-entries OR a dedicated `catalog` org that makes **no org-scoped routing claim**; raise/parametrize the budget; run through the grid detector; and **re-pass the held-out routing gate** (it is a corpus addition, not free). Deferred to its own gated sub-plan.
 
 ---
 
@@ -122,7 +129,7 @@ Both pieces are crawlable HTML (no portal/PDF), confirmed 2026-06-26:
 **Stays (proven):** the hybrid BM25 + vector + RRF + cross-encoder rerank pipeline (research-confirmed correct); the structured/skills tier; the live-fallback; the gated/dev-copy/backup workflow; LLM-agnostic + use-max-capacity hard lines.
 
 **Changes / new:**
-- **A:** section-structure + junk-carve the crawled corpus at ingest (mechanical). Fold in the durable-foundation cleaning. Chunks repositioned as **deep-fallback only** (tier 4) — structurally cannot regress the common case, since it never touches questions the normal pipeline already answers.
+- **A:** section-structure + junk-carve the crawled corpus at ingest (**mechanical only** — nav/boilerplate/asset strip + structural header-split; NEVER meaning-based section dropping, per the crawl hard line). Sections are for FINDING; they **collapse-to-parent-by-best-child BEFORE fusion** (reuse `_semantic_chunks` min-rank collapse) so the count of competing units is bounded back to parents — this is what prevents reintroducing the 84→77 cross-doc dilution. Chunks repositioned as **deep-fallback only** (tier 4). **NOTE (both reviews): "sections recover the points" and "chunks-as-fallback can't regress" are GATE-CONDITIONAL HYPOTHESES, eval-gated (reject #1) before flip — NOT structural guarantees.** They hold only if the A→tier-4 fire decision is calibrated (see §10.1).
 - **C:** new curated golden-answer tier + intent match + confidence-graded placement above A.
 - **Cycle:** instrument + clustering/gap view + triage workflow (close the 3 gaps).
 - **Routing:** fix the M office-dilution regression via the structured/office-prior mechanism (from the durable-foundation spec; held-out gate, not spot-checks).
@@ -181,3 +188,77 @@ Gated, flag-behind, eval-before-cutover. Migration/serving de-risked first.
 6. **E crawler seeds + `catalog.njit.edu`** seed family.
 
 Each step: senior-eng + RAG review where it touches retrieval/answers (HARD GATE), owner approval, TDD.
+
+---
+
+## 12. Review folds — both HARD-GATE reviews (2026-06-26)
+
+Senior-eng: **GO-WITH-CHANGES.** RAG/LLM-researcher: **GO-WITH-CHANGES.** Both factual claims verified
+against the live system before folding (ROUTER_V21=1, office_page=0 rows, was_answered never written,
+log_question 15 call sites). All required changes accepted; nothing rejected. Resolutions:
+
+**Architecture / integration**
+- **R1 (SE) Live-router reality** — tier framing rewritten around the UnifiedRouter; C = new `CURATED`
+  family; G1 = explicit `_rag_pipeline` refactor; dead `office_page` tier deleted. (Folded §2.)
+- **R2 (RAG) "First-confident-wins" conflates two decision types** — tiers 1–2 are **precision GATES**
+  (route/intent match, abstain-to-next), tier 3→4→5 is the **CE-relevance-graded** boundary. Reframed:
+  not a homogeneous confidence ladder. Tier 1 has no score (route-or-None). (Folded §2 note.)
+
+**Confidence signal (R3 — reconciled SE+RAG)**
+- A gating signal already exists (`top_relevance` = a 2nd CE call) — so it's perf/accuracy, not pure
+  plumbing (SE corrects RAG). Fold: thread the per-item CE score computed in `_rerank` onto a new
+  `RetrievedChunk.ce_score` (free; avoid the double CE pass); when chunks on, score the **matched-chunk
+  passage** (`_chunk_passage`), not the CE-truncated full doc; **gate on CE, NEVER on llama self-report**;
+  **calibrate per-tier thresholds on a labeled set** (do NOT inherit `LIVE_THRESHOLD=0.15`). New goal G8.
+
+**Curated tier C**
+- **R4 (RAG+SE) C = SEPARATE store + deterministic high-precision intent gate, abstain-to-A** (pre-empt
+  semantics; resolves the §2-vs-§10.4 contradiction — NOT `knowledge_items`). Intent match = **deterministic
+  cues primary** (versioned data, auditable), embedding-NN only as a confirm-router, **reject the small-model
+  grounded-JSON classifier** for this safety gate.
+- **R5 (SE+RAG) C verbatim + staleness — highest-risk gap, both flagged.** Load-bearing figures (credits/
+  fees/deadlines) appended VERBATIM + source link via the `deterministic_suffix` pattern; llama "rephrase"
+  step suppressed on them (mirror `_compose_structured` deterministic). Add a **C-re-verify-against-source**
+  step to the cycle (content-hash the source span, flag drift) — C is manual and will NOT auto-refresh like A. New goal G9.
+
+**Section-structuring / chunks**
+- **R6 (RAG) Section-structuring is the riskiest unproven claim** — downgraded to eval-gated hypothesis;
+  **collapse-to-parent-before-fusion mandated**; A/B section-on vs whole-doc in isolation. (Folded §2/§6.)
+- **R7 (SE) Chunk-table precondition** — tier 4 requires durable-foundation **Plan 1+2 built + chunk
+  re-embed done on the LIVE DB**; added as a hard precondition to build step 4 (§11).
+
+**Measurement integrity (RAG — make the gate honest)**
+- **R8 Frozen held-out eval slice** never used to author C / tune A; reject #1 measured on it. Extend the
+  §7 held-out discipline to the WHOLE cycle (stop self-fulfilling ≥84).
+- **R9 Quantify auto-judge variance** (baseline ×2–3, measure σ); a claimed win must exceed σ.
+- **R10 Define the abstain/hallucination instrument** (unanswerable/adversarial set scored on
+  abstain-correctness) — else reject #3 is unfalsifiable.
+- **R11 Expand `eval.sh`** to include deep + high-stakes + office-intent questions BEFORE build, so the
+  design's real (off-common-eval) gains are visible. EV stated honestly: **"≥84 safely + better on
+  deep/high-stakes/routing + a durable curation engine,"** not "beats 84 on the common eval."
+
+**Cycle / instrumentation**
+- **R12 (SE) Instrumentation enumerated** — add `answering_tier` + `sources` columns, fix `was_answered`,
+  change `log_question` signature + ALL call sites, unify the 4 inconsistent `confidence` scales; gap-view
+  runs on a SEPARATE READ connection, never inline in the hot path.
+- **R13 (SE+RAG) Tag dev-vs-real-user traffic**; mine only non-maintainer post-launch questions for the
+  demand signal; A–O catalog stays the primary scope driver until real traffic is significant.
+
+**Corpus re-gating**
+- **R14 (SE) Re-run the held-out routing gate after ANY corpus change** (build steps 2 AND 6), not once at
+  step 5. catalog/E seeds + the A re-chunk all add dilution after the gate.
+
+### Goals added (extend §8)
+- [ ] **G8** — Calibrated CE-based per-tier confidence gate (free `ce_score`, matched-chunk passage, labeled-set thresholds); no tier wiring until it exists.
+- [ ] **G9** — C verbatim-figure append + C-staleness re-verify loop.
+- [ ] **G10** — Honest measurement: frozen held-out slice, judge-σ, abstain instrument, expanded `eval.sh`.
+
+### Reject criteria revised (§9)
+- #1 ≥84% measured on the **frozen held-out slice**, and any win must **exceed judge σ**.
+- #3 measured via the **defined abstain/hallucination instrument** (else unfalsifiable).
+
+### Build order revised (§11)
+Insert **step 0: build + calibrate the CE confidence gate (G8) and expand `eval.sh` + held-out slice (G10)**
+FIRST — the gate is the most load-bearing, least-evidenced piece, so it leads. Step 4 precondition:
+durable Plan 1+2 + live chunk re-embed (R7). `catalog.njit.edu` is its own gated sub-plan (R2/§5.1), after
+the routing gate, re-running it (R14).
