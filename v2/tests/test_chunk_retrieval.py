@@ -30,7 +30,7 @@ def test_collapse_to_best_child_and_order(tmp_path):
     r = V2Retriever(conn, embedder=object())
     q = struct.unpack("768f", _v(0, 1.0))
     out = r._semantic_chunks(list(q), fetch=10, allowed=None, org_ids=None)
-    parents = [p for p, _d in out]
+    parents = [t[0] for t in out]
     assert parents == [100, 200, 300]            # by best-child distance
     assert parents.count(100) == 1               # collapsed (had 2 chunks)
 
@@ -40,7 +40,7 @@ def test_org_partition_pushdown(tmp_path):
     r = V2Retriever(conn, embedder=object())
     q = list(struct.unpack("768f", _v(0, 1.0)))
     out = r._semantic_chunks(q, fetch=10, allowed=None, org_ids=[1])
-    assert {p for p, _ in out} == {100, 300}      # org 2 (parent 200) excluded in-engine
+    assert {t[0] for t in out} == {100, 300}      # org 2 (parent 200) excluded in-engine
 
 
 def test_allowed_post_filter(tmp_path):
@@ -48,7 +48,7 @@ def test_allowed_post_filter(tmp_path):
     r = V2Retriever(conn, embedder=object())
     q = list(struct.unpack("768f", _v(0, 1.0)))
     out = r._semantic_chunks(q, fetch=10, allowed={200}, org_ids=None)
-    assert [p for p, _ in out] == [200]
+    assert [t[0] for t in out] == [200]
 
 
 def test_flag_default_off_and_env_on(tmp_path, monkeypatch):

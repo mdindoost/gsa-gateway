@@ -279,7 +279,7 @@ class V2Retriever:
     def _boost_for(self, row: dict, now: _dt) -> float:
         return decay_for(row, now, event_boost=self.event_boost)
 
-    def _rerank(self, query, ranked, rows, now: _dt):
+    def _rerank(self, query, ranked, rows, now: _dt, chunk_ids: dict | None = None):
         """Re-fuse the fused pool with the cross-encoder. We RRF-fuse the CE ranking with
         the existing fused ranking (same RRF the retriever already uses) rather than letting
         CE override — pure CE reorder *demotes* exact-keyword facts that bm25 nailed
@@ -289,7 +289,12 @@ class V2Retriever:
         if not self.rerank_enabled or self.reranker is None or len(ranked) < 2:
             return ranked
         window = ranked[: self.rerank_pool]
-        passages = [rows[iid]["content"] or "" for iid, _ in window]
+        passages = []
+        for iid, _ in window:
+            passage = None
+            if chunk_ids and iid in chunk_ids:
+                passage = self._chunk_passage(chunk_ids[iid])   # CE sees the matched deep content
+            passages.append(passage if passage else (rows[iid]["content"] or ""))
         ce = self.reranker.score(query, passages)
         if ce is None:
             return ranked
@@ -407,18 +412,33 @@ class V2Retriever:
             params += list(org_ids)
         clauses.append("embedding MATCH ?")
         params.append(sqlite_vec.serialize_float32(qvec))
+        clauses.append("k = ?")          # vec0's canonical KNN constraint (robuster than LIMIT)
         params.append(fetch)
-        sql = ("SELECT parent_id, distance FROM knowledge_chunk_vectors "
-               f"WHERE {' AND '.join(clauses)} ORDER BY distance LIMIT ?")
-        best: dict[int, float] = {}
+        sql = ("SELECT parent_id, chunk_id, distance FROM knowledge_chunk_vectors "
+               f"WHERE {' AND '.join(clauses)} ORDER BY distance")
+        best: dict[int, tuple[float, int]] = {}
         for r in self.conn.execute(sql, params):
             pid = r["parent_id"]
             if pid in best:                       # rows are distance-ascending → first = min
                 continue
             if allowed is not None and pid not in allowed:
                 continue
-            best[pid] = r["distance"]
-        return sorted(best.items(), key=lambda kv: kv[1])
+            best[pid] = (r["distance"], r["chunk_id"])   # best (min-distance) child + its id
+        return sorted(((pid, d, cid) for pid, (d, cid) in best.items()), key=lambda x: x[1])
+
+    def _chunk_passage(self, chunk_id: int) -> str | None:
+        """The matched chunk's text plus its immediate neighbors (ordinal-1..+1) — the CE
+        rerank passage when chunks are on, so the CE sees the deep content (not a page's
+        truncated opening). Returns None if the chunk is gone."""
+        row = self.conn.execute(
+            "SELECT parent_id, ordinal FROM knowledge_chunks WHERE id=?", (chunk_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        texts = [r[0] for r in self.conn.execute(
+            "SELECT text FROM knowledge_chunks WHERE parent_id=? AND ordinal BETWEEN ? AND ? "
+            "ORDER BY ordinal", (row["parent_id"], row["ordinal"] - 1, row["ordinal"] + 1))]
+        return " ".join(texts) if texts else None
 
     def _keyword(self, query: str, fetch: int, allowed: set[int] | None):
         expr = _fts_match_expr(query)
@@ -477,10 +497,15 @@ class V2Retriever:
             sem = self._semantic(qvec, sem_fetch, allowed)
         kw = self._keyword(query, (total_active if allowed is not None else pool), allowed)
 
+        # When chunks are on, sem rows are (item_id, distance, best_chunk_id); else (item_id, distance).
+        best_chunk: dict[int, int] = {}
         scores: dict[int, float] = {}
         sources: dict[int, set[str]] = {}
         sim: dict[int, float] = {}
-        for rank, (iid, dist) in enumerate(sem, start=1):
+        for rank, srow in enumerate(sem, start=1):
+            iid, dist = srow[0], srow[1]
+            if len(srow) > 2:
+                best_chunk[iid] = srow[2]
             scores[iid] = scores.get(iid, 0.0) + 1.0 / (RRF_K + rank)
             sources.setdefault(iid, set()).add("semantic")
             sim[iid] = max(0.0, 1.0 - (dist * dist) / 2.0)  # normalized-L2 -> cosine
@@ -512,7 +537,7 @@ class V2Retriever:
             scores[iid] *= self._boost_for(rows[iid], now)
 
         ranked = sorted(scores.items(), key=lambda kv: -kv[1])
-        ranked = self._rerank(query, ranked, rows, now)
+        ranked = self._rerank(query, ranked, rows, now, best_chunk or None)
         # Office-intent prior (G2): applied AFTER the cross-encoder so it can lift the office a
         # procedural query is about above same-topic dilution (other orgs' pages). Bounded +
         # pool-only (boosts only resolved-office items already in the pool); a miss is a no-op.
