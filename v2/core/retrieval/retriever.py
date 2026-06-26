@@ -397,48 +397,66 @@ class V2Retriever:
             org_id = resolve_office_org_id(query, self.conn)   # keyword fallback (high precision)
         return set(self._subtree_ids(org_id)) if org_id is not None else None
 
-    def _semantic_chunks(self, qvec, fetch: int, allowed: set[int] | None, org_ids):
+    def _semantic_chunks(self, qvec, fetch: int, allowed: set[int] | None, org_ids,
+                         min_parents: int = 0):
         """Chunk-KNN collapsed to parent by BEST (min-distance) child.
 
         org filtering is pushed INTO the vec0 query via the partition key (so an org-scoped
         LIMIT is exact within scope — no fetch-then-filter miss). type/is_active exclusion is
         applied via `allowed` post-filter (publications are never chunked, so the default
-        exclusion is already absent from the chunk table). Returns [(parent_id, distance)]
-        sorted ascending — same shape as `_semantic`, so fusion is unchanged.
+        exclusion is already absent from the chunk table). Returns [(parent_id, distance,
+        best_chunk_id)] sorted ascending — same shape as `_semantic` (+chunk id), so fusion
+        is unchanged.
+
+        DYNAMIC over-fetch [ARCH R1]: chunk hits concentrate in big multi-chunk pages, so a
+        FIXED k can starve parent diversity (k chunks collapse to ≪ k parents). When
+        `min_parents` is set, k is doubled (up to `_VEC_KNN_MAX`) until ≥ min_parents DISTINCT
+        parents are recovered or the cap is hit — guaranteeing the fusion pool isn't starved.
         """
-        clauses, params = [], []
-        if org_ids is not None:
-            clauses.append(f"org_id IN ({','.join('?' * len(org_ids))})")
-            params += list(org_ids)
-        clauses.append("embedding MATCH ?")
-        params.append(sqlite_vec.serialize_float32(qvec))
-        clauses.append("k = ?")          # vec0's canonical KNN constraint (robuster than LIMIT)
-        params.append(fetch)
-        sql = ("SELECT parent_id, chunk_id, distance FROM knowledge_chunk_vectors "
-               f"WHERE {' AND '.join(clauses)} ORDER BY distance")
-        best: dict[int, tuple[float, int]] = {}
-        for r in self.conn.execute(sql, params):
-            pid = r["parent_id"]
-            if pid in best:                       # rows are distance-ascending → first = min
-                continue
-            if allowed is not None and pid not in allowed:
-                continue
-            best[pid] = (r["distance"], r["chunk_id"])   # best (min-distance) child + its id
+        k = min(fetch, _VEC_KNN_MAX)
+        while True:
+            clauses, params = [], []
+            if org_ids is not None:
+                clauses.append(f"org_id IN ({','.join('?' * len(org_ids))})")
+                params += list(org_ids)
+            clauses.append("embedding MATCH ?")
+            params.append(sqlite_vec.serialize_float32(qvec))
+            clauses.append("k = ?")          # vec0's canonical KNN constraint (robuster than LIMIT)
+            params.append(k)
+            sql = ("SELECT parent_id, chunk_id, distance FROM knowledge_chunk_vectors "
+                   f"WHERE {' AND '.join(clauses)} ORDER BY distance")
+            best: dict[int, tuple[float, int]] = {}
+            nrows = 0
+            for r in self.conn.execute(sql, params):
+                nrows += 1
+                pid = r["parent_id"]
+                if pid in best:                   # rows are distance-ascending → first = min
+                    continue
+                if allowed is not None and pid not in allowed:
+                    continue
+                best[pid] = (r["distance"], r["chunk_id"])   # best (min-distance) child + its id
+            exhausted = nrows < k                 # engine returned < k → no more chunks to get
+            if len(best) >= min_parents or exhausted or k >= _VEC_KNN_MAX:
+                break
+            k = min(k * 2, _VEC_KNN_MAX)
         return sorted(((pid, d, cid) for pid, (d, cid) in best.items()), key=lambda x: x[1])
 
     def _chunk_passage(self, chunk_id: int) -> str | None:
-        """The matched chunk's text plus its immediate neighbors (ordinal-1..+1) — the CE
-        rerank passage when chunks are on, so the CE sees the deep content (not a page's
-        truncated opening). Returns None if the chunk is gone."""
+        """The CE rerank passage when chunks are on: the MATCHED chunk's own text FIRST,
+        then its immediate neighbors (ordinal-1, +1) for context. Matched-first matters —
+        the cross-encoder truncates the passage from the END (`longest_first`, 512 tok), so
+        leading with the matched span guarantees the CE actually scores the deep content the
+        semantic leg hit (a neighbors-in-ordinal-order concat would let truncation evict it).
+        Returns None if the chunk is gone."""
         row = self.conn.execute(
-            "SELECT parent_id, ordinal FROM knowledge_chunks WHERE id=?", (chunk_id,)
+            "SELECT parent_id, ordinal, text FROM knowledge_chunks WHERE id=?", (chunk_id,)
         ).fetchone()
         if row is None:
             return None
-        texts = [r[0] for r in self.conn.execute(
-            "SELECT text FROM knowledge_chunks WHERE parent_id=? AND ordinal BETWEEN ? AND ? "
-            "ORDER BY ordinal", (row["parent_id"], row["ordinal"] - 1, row["ordinal"] + 1))]
-        return " ".join(texts) if texts else None
+        neighbors = [r[0] for r in self.conn.execute(
+            "SELECT text FROM knowledge_chunks WHERE parent_id=? AND ordinal IN (?,?) ORDER BY ordinal",
+            (row["parent_id"], row["ordinal"] - 1, row["ordinal"] + 1))]
+        return " ".join([row["text"], *neighbors])
 
     def _keyword(self, query: str, fetch: int, allowed: set[int] | None):
         expr = _fts_match_expr(query)
@@ -479,9 +497,10 @@ class V2Retriever:
         ).fetchone()[0]
         # Fusion pool is a FIXED width (not tied to `limit`). When filtering, fetch
         # the whole corpus from each leg so filtering is exact — BUT sqlite-vec's vec0
-        # KNN caps k at 4096 (_VEC_KNN_MAX). Past that we fetch the 4096 nearest and
-        # filter; that's the top ~83% of the corpus by distance, far more than enough to
-        # contain the handful of allowed hits the fusion needs. (FTS bm25 has no such cap.)
+        # KNN caps k at 4096 (_VEC_KNN_MAX). The LEGACY `_semantic` leg fetches the 4096
+        # nearest and post-filters by `allowed` (fetch-then-filter, acceptable only because
+        # the chunk path supersedes it: `_semantic_chunks` pushes the org filter INTO the
+        # vec0 partition key, so its k is exact within scope). (FTS bm25 has no such cap.)
         pool = self.pool_size
         sem_fetch = min(total_active, _VEC_KNN_MAX) if allowed is not None else min(pool, _VEC_KNN_MAX)
 
@@ -492,7 +511,8 @@ class V2Retriever:
             org_ids = (self._subtree_ids(org_id) if org_subtree else [org_id]) \
                 if org_id is not None else None
             chunk_fetch = min(self.pool_size * self.chunk_overfetch, _VEC_KNN_MAX)
-            sem = self._semantic_chunks(qvec, chunk_fetch, allowed, org_ids)
+            # dynamic over-fetch: grow k until ≥ pool distinct parents [ARCH R1]
+            sem = self._semantic_chunks(qvec, chunk_fetch, allowed, org_ids, min_parents=pool)
         else:
             sem = self._semantic(qvec, sem_fetch, allowed)
         kw = self._keyword(query, (total_active if allowed is not None else pool), allowed)
@@ -529,19 +549,32 @@ class V2Retriever:
             r["id"]: r
             for r in self.conn.execute(
                 f"SELECT id,title,type,content,org_id,metadata,source_url "
-                f"FROM knowledge_items WHERE id IN ({','.join('?' * len(cand_ids))})",
+                f"FROM knowledge_items WHERE is_active=1 AND id IN ({','.join('?' * len(cand_ids))})",
                 cand_ids,
             )
         }
+        # Drop any candidate whose parent is inactive (un-GC'd orphan chunk/vector): the
+        # hydrate filtered on is_active=1, so such ids are absent from `rows` — never serve them.
+        cand_ids = [iid for iid in cand_ids if iid in rows]
+        scores = {iid: scores[iid] for iid in cand_ids}
+        if not scores:
+            return []
         for iid in cand_ids:
             scores[iid] *= self._boost_for(rows[iid], now)
 
         ranked = sorted(scores.items(), key=lambda kv: -kv[1])
         ranked = self._rerank(query, ranked, rows, now, best_chunk or None)
-        # Office-intent prior (G2): applied AFTER the cross-encoder so it can lift the office a
-        # procedural query is about above same-topic dilution (other orgs' pages). Bounded +
-        # pool-only (boosts only resolved-office items already in the pool); a miss is a no-op.
-        office_ids = self._office_org_ids(query)
+        # Office-intent prior (G2) — OFF BY DEFAULT, KNOWN-WEAK, pending redesign.
+        # As written this is an UNCAPPED post-CE multiplier: it CAN override a strong
+        # cross-encoder ranking (a rank-5 office item × office_boost can pass the rank-1 CE
+        # winner). That is the bare-multiplier the spec's reject-criterion #3 prohibits — it
+        # passed the in-sample gold by score-gap luck, not by design. The correct G2 fix is
+        # deterministic candidate-set SCOPING (spec §7 mechanism-1: resolve a confident office
+        # intent → restrict the candidate set to that subtree, like org_id scoping), not a
+        # score multiplier, and must be proven on a HELD-OUT office-intent set (reject #6).
+        # Left in place behind RETRIEVAL_OFFICE_PRIOR (default off) until that redesign ships;
+        # the chunking win (G1) does not depend on it.
+        office_ids = self._office_org_ids(query) if self.use_office_prior else None
         if office_ids:
             ranked = sorted(
                 ((iid, s * (self.office_boost if rows[iid]["org_id"] in office_ids else 1.0))

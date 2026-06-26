@@ -51,6 +51,26 @@ def test_allowed_post_filter(tmp_path):
     assert [t[0] for t in out] == [200]
 
 
+def test_dynamic_overfetch_grows_to_min_parents(tmp_path):
+    # ARCH R1: a small initial k must GROW until >= min_parents distinct parents are
+    # recovered (hits concentrate in big multi-chunk pages, so a fixed k can starve the pool).
+    conn = _setup(tmp_path)
+    r = V2Retriever(conn, embedder=object())
+    q = list(struct.unpack("768f", _v(0, 1.0)))
+    # initial fetch=1 would yield 1 parent; min_parents=3 forces k to double until all 3 appear
+    out = r._semantic_chunks(q, fetch=1, allowed=None, org_ids=None, min_parents=3)
+    assert {t[0] for t in out} == {100, 200, 300}     # dynamic loop recovered all distinct parents
+
+
+def test_overfetch_terminates_when_index_exhausted(tmp_path):
+    # min_parents larger than the whole corpus must still terminate (exhaustion break, no hang)
+    conn = _setup(tmp_path)
+    r = V2Retriever(conn, embedder=object())
+    q = list(struct.unpack("768f", _v(0, 1.0)))
+    out = r._semantic_chunks(q, fetch=1, allowed=None, org_ids=None, min_parents=999)
+    assert {t[0] for t in out} == {100, 200, 300}     # returns all it can, doesn't loop forever
+
+
 def test_flag_default_off_and_env_on(tmp_path, monkeypatch):
     conn = _setup(tmp_path)
     monkeypatch.delenv("RETRIEVAL_CHUNKS", raising=False)
