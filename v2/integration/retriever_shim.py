@@ -68,10 +68,16 @@ class V2RetrieverShim:
         return []
 
     def top_relevance(self, query, chunks):
-        """Cross-encoder relevance (0..1) of the best returned chunk — the KB-miss signal
-        for the live njit.edu fallback. None if no reranker or no chunks (caller treats
-        None as 'cannot judge'). reranker.score(query, [text]) -> list[float] | None."""
-        if not self.reranker or not chunks:
+        """Cross-encoder relevance of the best chunk (0..1), the gate signal for the live
+        njit.edu fallback. Prefers the ce_score already computed on the matched chunk during
+        rerank (no second CE pass, and not the CE-truncated full doc); falls back to a direct
+        score. None if it cannot judge."""
+        if not chunks:
+            return None
+        pre = (getattr(chunks[0], "metadata", None) or {}).get("ce_score")
+        if pre is not None:
+            return pre
+        if not self.reranker:
             return None
         try:
             scores = self.reranker.score(query, [chunks[0].text])
@@ -108,7 +114,8 @@ class V2RetrieverShim:
             section_title=c.title or "",
             similarity=c.similarity or 0.0,
             relevance_score=rel,
-            metadata={"org_path": c.org_path, "source": c.source},
+            metadata={"org_path": c.org_path, "source": c.source,
+                      "ce_score": getattr(c, "ce_score", None)},
             item_id=c.item_id,        # v2 RetrievedChunk always has it
             source_url=getattr(c, "source_url", None),
             verified=getattr(c, "verified", True),

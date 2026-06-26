@@ -36,3 +36,31 @@ def test_retrieve_ce_score_none_when_no_reranker():
     rr = V2Retriever(conn, Embedder(), reranker=None)
     chunks = rr.retrieve("What is the maximum GSA travel award per fiscal year?", limit=5)
     assert all(c.ce_score is None for c in chunks)
+
+
+from v2.integration.retriever_shim import V2RetrieverShim
+
+
+class _ExplodingReranker:
+    available = True
+    def score(self, query, passages):
+        raise AssertionError("top_relevance must NOT re-run the cross-encoder when ce_score is present")
+
+
+class _FakeV1:
+    def __init__(self, ce):
+        self.text = "some body text"
+        self.metadata = {"ce_score": ce}
+
+
+def test_top_relevance_reuses_ce_score_without_second_pass():
+    shim = object.__new__(V2RetrieverShim)
+    shim.reranker = _ExplodingReranker()
+    assert shim.top_relevance("q", [_FakeV1(0.91)]) == 0.91
+
+
+def test_top_relevance_falls_back_when_no_ce_score():
+    shim = object.__new__(V2RetrieverShim)
+    shim.reranker = type("R", (), {"available": True,
+                                   "score": staticmethod(lambda q, p: [0.42])})()
+    assert shim.top_relevance("q", [_FakeV1(None)]) == 0.42
