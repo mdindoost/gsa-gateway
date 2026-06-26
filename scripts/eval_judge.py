@@ -25,18 +25,23 @@ _SYS = (
 )
 
 
+async def judge_record(oc, r: dict) -> str:
+    """Grade ONE result record. deflect/error pass through; otherwise ask the local model
+    and map its one-word reply to correct/partial/wrong (default wrong)."""
+    if r.get("class") in ("deflect", "error"):
+        return r["class"]
+    raw = await oc.generate(f"QUESTION: {r['q']}\n\nANSWER: {r.get('answer','')[:1200]}", _SYS)
+    u = (raw or "").upper()
+    return "correct" if "CORRECT" in u else "partial" if "PARTIAL" in u else "wrong"
+
+
 async def main() -> None:
     src = REPO / "eval" / "results.jsonl"
     recs = [json.loads(l) for l in open(src, encoding="utf-8")]
     oc = OllamaClient()
     out = open(REPO / "eval" / "results_judged.jsonl", "w", encoding="utf-8")
     for r in recs:
-        if r.get("class") in ("deflect", "error"):
-            r["judge"] = r["class"]
-        else:
-            raw = await oc.generate(f"QUESTION: {r['q']}\n\nANSWER: {r.get('answer','')[:1200]}", _SYS)
-            u = (raw or "").upper()
-            r["judge"] = "correct" if "CORRECT" in u else "partial" if "PARTIAL" in u else "wrong"
+        r["judge"] = await judge_record(oc, r)
         out.write(json.dumps(r) + "\n")
         out.flush()
         print(f"  {r.get('judge'):8} {r['q'][:55]}", flush=True)
