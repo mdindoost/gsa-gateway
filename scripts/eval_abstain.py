@@ -28,7 +28,8 @@ def score_abstain(recs: list[dict]) -> dict:
 
 def _main() -> None:
     src = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "eval" / "abstain_results.jsonl"
-    recs = [json.loads(l) for l in open(src, encoding="utf-8")]
+    with open(src, encoding="utf-8") as f:
+        recs = [json.loads(l) for l in f]
     s = score_abstain(recs)
     print(f"abstain-correctness: {s['deflected']}/{s['total']} deflected = {100*s['rate']:.1f}%")
     if s["leaks"]:
