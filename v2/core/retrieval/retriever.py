@@ -240,6 +240,15 @@ class V2Retriever:
         # Fetch chunk_overfetch * pool_size chunks, then collapse to distinct parents
         # (chunk hits concentrate in long pages — a fixed factor under-recovers parents).
         self.chunk_overfetch = max(2, int(self._load_boost("retriever.chunk_overfetch", 5)))
+        # Office-intent prior (G2): a BOUNDED, pool-only boost to the office a procedural query
+        # is about (meaning-based classifier + keyword fallback). OFF by default. Capped so it
+        # nudges, never overrides — the CE rerank still has the final say.
+        self.use_office_prior = (
+            os.getenv("RETRIEVAL_OFFICE_PRIOR", "").strip().lower() in ("1", "true", "yes", "on")
+            or self._load_bool("retriever.use_office_prior", False)
+        )
+        self.office_boost = self._load_boost("retriever.office_boost", 1.5)
+        self._office_clf = None      # lazy (embeds office descriptions on first use)
 
     def _load_bool(self, key: str, default: bool) -> bool:
         row = self.conn.execute(
@@ -358,6 +367,30 @@ class V2Retriever:
             for r in rows
             if allowed is None or r["item_id"] in allowed
         ]
+
+    def _office_org_ids(self, query: str) -> set[int] | None:
+        """Office(s) a procedural query is about — bounded prior target, or None.
+
+        Meaning-based classifier first (generalizes); high-precision keyword map as fallback.
+        Returns the office org subtree id-set (offices are usually leaves → just the office).
+        """
+        if not self.use_office_prior:
+            return None
+        from v2.core.retrieval.office_intent import (
+            SemanticOfficeClassifier, resolve_office_org_id,
+        )
+        if self._office_clf is None:
+            self._office_clf = SemanticOfficeClassifier(self.embedder)
+        slug, _sim = self._office_clf.classify(query)
+        org_id = None
+        if slug:
+            row = self.conn.execute(
+                "SELECT id FROM organizations WHERE slug=? AND is_active=1", (slug,)
+            ).fetchone()
+            org_id = row[0] if row else None
+        if org_id is None:
+            org_id = resolve_office_org_id(query, self.conn)   # keyword fallback (high precision)
+        return set(self._subtree_ids(org_id)) if org_id is not None else None
 
     def _semantic_chunks(self, qvec, fetch: int, allowed: set[int] | None, org_ids):
         """Chunk-KNN collapsed to parent by BEST (min-distance) child.
@@ -480,6 +513,16 @@ class V2Retriever:
 
         ranked = sorted(scores.items(), key=lambda kv: -kv[1])
         ranked = self._rerank(query, ranked, rows, now)
+        # Office-intent prior (G2): applied AFTER the cross-encoder so it can lift the office a
+        # procedural query is about above same-topic dilution (other orgs' pages). Bounded +
+        # pool-only (boosts only resolved-office items already in the pool); a miss is a no-op.
+        office_ids = self._office_org_ids(query)
+        if office_ids:
+            ranked = sorted(
+                ((iid, s * (self.office_boost if rows[iid]["org_id"] in office_ids else 1.0))
+                 for iid, s in ranked),
+                key=lambda kv: -kv[1],
+            )
         if group_by_entity:
             final = self._diversify_and_expand(ranked, rows, limit, item_types)
         else:
