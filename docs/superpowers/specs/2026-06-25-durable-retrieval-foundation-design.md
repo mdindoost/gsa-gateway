@@ -182,17 +182,19 @@ Per-chunk context blurb via **local llama3.1:8b** before embed+FTS (Anthropic te
 
 ---
 
-## 11. Goals checklist (shipped / deferred — to be filled at build)
+## 11. Goals checklist (shipped / deferred — updated at Plan 3 review, 2026-06-26)
 
 | Goal | Mechanism | Status |
 |---|---|---|
-| G1 truncation killed | §6 chunking, all 4 `[:2000]` removed | planned |
-| G2 office dilution (structural) | §7 versioned intent→unit resolver (data, not code) + held-out eval gate; prior only as capped tiebreaker | planned — mechanism pinned |
-| G3 LLM-agnostic | §6 model descriptor, provider-isolated embed | planned |
-| G3 max-capacity (index+query) | §6 working_size + §7 `_VEC_KNN_MAX` filter-pushdown | planned |
-| G4 one ingestion engine | §5 (with all `explore.py` invariants ported) | planned |
-| G5 rebuild w/o data loss | §8 reconcile-in-place (NO node/edge wipe) + fail-closed manifest-diff gate | planned — mechanism corrected |
-| Contextual Retrieval | §9 | OPTIONAL / fenced — deferred-until-proven |
+| G1 truncation killed | §6 chunking + chunk-KNN retrieval; CE on the matched chunk | ✅ **BUILT + PROVEN** behind `RETRIEVAL_CHUNKS` (off). Paraphrased deep-content hit@5 **3/30 → 11/30** (3.7×); verbatim 10→11/25; distinct-parent gate + dynamic over-fetch shipped. The 4 legacy `[:2000]` removals happen at Plan-4 cutover (chunk path supersedes; flagged, not silent). |
+| G2 office dilution (structural) | §7 mechanism-1 candidate-set scoping + held-out eval gate; prior only as capped tiebreaker | 🟡 **DEFERRED — NOT shipped as designed.** Built only mechanism-3 (a multiplier), and it is UNCAPPED (can override a strong CE rank — reject #3) and proven only in-sample (reject #6 unmet). A capped tiebreaker mathematically can't fix routing when the right page has a weak CE score, so the correct fix is the spec's mechanism-1 (deterministic candidate-set SCOPING) + a genuinely held-out set. Prior kept OFF by default; G2 redesign is its own focused follow-up. **Owner scope decision at Plan 4: ship G1 now, do G2 separately.** |
+| G3 LLM-agnostic | §6 model descriptor, provider-isolated embed | ✅ BUILT (model_descriptor.py; embed_fn injected). |
+| G3 max-capacity (index+query) | §6 working_size + §7 in-engine `k=?` + org partition pushdown | ✅ BUILT on chunk path (reject #2 met: in-engine partition KNN). Legacy `_semantic` fetch-then-filter retired at cutover. |
+| G4 one ingestion engine | §5 (with all `explore.py` invariants ported) | ⏳ Plan 5 (last, separate — not on the retrieval critical path). |
+| G5 rebuild w/o data loss | §8 reconcile-in-place (NO node/edge wipe) + fail-closed manifest-diff gate | ⏳ Plan 4 (owner cutover gate). GC sweep proven (891 orphans on a copy). |
+| Contextual Retrieval | §9 | OPTIONAL / fenced — not built, off by default (correct). |
+
+**Plan 3 reject-criteria status (2026-06-26):** #1 eval.sh A/B — running (baseline vs chunks-on, prior off). #2 in-engine KNN — ✅ met on chunk path. #3 bare multiplier — addressed by DEFERRING the prior (not shipped on). #4 Contextual fenced — ✅. #6 held-out office set — folded into the G2 redesign (prior off until then). Both hard-gate reviews (senior-eng + RAG) folded; chunk path passed.
 
 ## 12. Reject criteria (from the pressure-tests)
 1. No A/B proving chunk-collapse + CE-on-chunk ≥ current ranking on `eval.sh`.
