@@ -107,7 +107,10 @@ async def build_assistant(config, db, kb, rate_limiter) -> Assistant:
             reranker.warm()  # one-time load/download; non-fatal (falls back to RRF order)
         except Exception:  # noqa: BLE001
             logger.warning("reranker warm failed; retrieval uses RRF order")
-        retriever = V2RetrieverShim(db_path="gsa_gateway.db", embedder=V2Embedder(),
+        # Honor config.database_path (DATABASE_PATH env) — was hardcoded "gsa_gateway.db",
+        # which silently ignored the override (so e.g. an eval against a copy with chunk tables
+        # hit the live chunkless DB and every chunk-KNN query threw → empty → deflect).
+        retriever = V2RetrieverShim(db_path=config.database_path, embedder=V2Embedder(),
                                     reranker=reranker)
         logger.info("V2 Retriever active (reranker available=%s)", reranker.available)
     elif embedder and not vector_store.is_empty():
