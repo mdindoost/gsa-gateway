@@ -90,6 +90,20 @@ CREATE TABLE IF NOT EXISTS knowledge_items (
 ) STRICT;
 """
 
+KNOWLEDGE_CHUNKS = """
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+    id           INTEGER PRIMARY KEY,
+    parent_id    INTEGER NOT NULL REFERENCES knowledge_items(id) ON DELETE CASCADE,
+    source_key   TEXT    NOT NULL,              -- stable per-parent key for invalidation
+    ordinal      INTEGER NOT NULL,              -- chunk position within the parent (0-based)
+    text         TEXT    NOT NULL,              -- verbatim slice of the parent content
+    content_hash TEXT    NOT NULL,              -- hash of (chunk text + model_id) for change-detect
+    model_id     TEXT    NOT NULL,              -- embedding-model descriptor id that chunked this
+    created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(parent_id, ordinal)
+) STRICT;
+"""
+
 # ─── OPS: Publishing cluster DDL constants ───────────────────────────────────
 # These carry org_slug TEXT NOT NULL (durable cross-DB join key) and retain
 # org_id as a plain informational INTEGER (NO FK to organizations — different DB).
@@ -228,6 +242,16 @@ KNOWLEDGE_VECTORS = """
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_vectors USING vec0(
     item_id   INTEGER PRIMARY KEY,            -- = knowledge_items.id
     embedding FLOAT[768]                      -- nomic-embed-text
+);
+"""
+
+KNOWLEDGE_CHUNK_VECTORS = """
+CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunk_vectors USING vec0(
+    chunk_id  INTEGER PRIMARY KEY,             -- = knowledge_chunks.id
+    embedding FLOAT[768],                       -- nomic-embed-text (dim owned by descriptor in Plan 2)
+    org_id    INTEGER partition key,            -- in-engine filter for org-scoped queries (ARCH R3)
+    type      TEXT,                             -- metadata column (filterable)
+    +parent_id INTEGER                          -- auxiliary: collapse chunk -> parent item
 );
 """
 
@@ -511,7 +535,9 @@ _KNOWLEDGE_TABLE_DDL = [
     SCHEMA_MIGRATIONS,
     ORGANIZATIONS,
     KNOWLEDGE_ITEMS,
+    KNOWLEDGE_CHUNKS,
     KNOWLEDGE_VECTORS,
+    KNOWLEDGE_CHUNK_VECTORS,
     KNOWLEDGE_FTS,
     SETTINGS,
     RAW_PAGES,
