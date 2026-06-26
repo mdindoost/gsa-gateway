@@ -6,6 +6,7 @@ def _retriever_with_spy_embedder():
     r = V2Retriever.__new__(V2Retriever)          # bypass __init__/DB
     r.embedder = MagicMock()
     r.embedder.embed_query.return_value = [0.0] * 768
+    r.use_chunks = False                           # exercise the item-vector path
     return r
 
 

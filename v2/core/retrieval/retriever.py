@@ -229,6 +229,17 @@ class V2Retriever:
         # Rerank the FULL fused pool by default (senior review S2), never below pool_size.
         self.rerank_pool = max(self.pool_size,
                                int(self._load_boost("retriever.rerank_pool", self.pool_size)))
+        # Plan 3 A/B flag: parent-document chunk retrieval. OFF by default — env or settings
+        # flips it. When on, the semantic leg is chunk-KNN (org/type pushed into vec0)
+        # collapsed to parent by best (min-distance) child; the rest of the pipeline is
+        # unchanged because the leg still yields (item_id, distance) pairs.
+        self.use_chunks = (
+            os.getenv("RETRIEVAL_CHUNKS", "").strip().lower() in ("1", "true", "yes", "on")
+            or self._load_bool("retriever.use_chunks", False)
+        )
+        # Fetch chunk_overfetch * pool_size chunks, then collapse to distinct parents
+        # (chunk hits concentrate in long pages — a fixed factor under-recovers parents).
+        self.chunk_overfetch = max(2, int(self._load_boost("retriever.chunk_overfetch", 5)))
 
     def _load_bool(self, key: str, default: bool) -> bool:
         row = self.conn.execute(
@@ -348,6 +359,34 @@ class V2Retriever:
             if allowed is None or r["item_id"] in allowed
         ]
 
+    def _semantic_chunks(self, qvec, fetch: int, allowed: set[int] | None, org_ids):
+        """Chunk-KNN collapsed to parent by BEST (min-distance) child.
+
+        org filtering is pushed INTO the vec0 query via the partition key (so an org-scoped
+        LIMIT is exact within scope — no fetch-then-filter miss). type/is_active exclusion is
+        applied via `allowed` post-filter (publications are never chunked, so the default
+        exclusion is already absent from the chunk table). Returns [(parent_id, distance)]
+        sorted ascending — same shape as `_semantic`, so fusion is unchanged.
+        """
+        clauses, params = [], []
+        if org_ids is not None:
+            clauses.append(f"org_id IN ({','.join('?' * len(org_ids))})")
+            params += list(org_ids)
+        clauses.append("embedding MATCH ?")
+        params.append(sqlite_vec.serialize_float32(qvec))
+        params.append(fetch)
+        sql = ("SELECT parent_id, distance FROM knowledge_chunk_vectors "
+               f"WHERE {' AND '.join(clauses)} ORDER BY distance LIMIT ?")
+        best: dict[int, float] = {}
+        for r in self.conn.execute(sql, params):
+            pid = r["parent_id"]
+            if pid in best:                       # rows are distance-ascending → first = min
+                continue
+            if allowed is not None and pid not in allowed:
+                continue
+            best[pid] = r["distance"]
+        return sorted(best.items(), key=lambda kv: kv[1])
+
     def _keyword(self, query: str, fetch: int, allowed: set[int] | None):
         expr = _fts_match_expr(query)
         if not expr:
@@ -394,7 +433,15 @@ class V2Retriever:
         sem_fetch = min(total_active, _VEC_KNN_MAX) if allowed is not None else min(pool, _VEC_KNN_MAX)
 
         qvec = query_vec if query_vec is not None else self.embedder.embed_query(query)
-        sem = self._semantic(qvec, sem_fetch, allowed) if qvec else []
+        if not qvec:
+            sem = []
+        elif self.use_chunks:
+            org_ids = (self._subtree_ids(org_id) if org_subtree else [org_id]) \
+                if org_id is not None else None
+            chunk_fetch = min(self.pool_size * self.chunk_overfetch, _VEC_KNN_MAX)
+            sem = self._semantic_chunks(qvec, chunk_fetch, allowed, org_ids)
+        else:
+            sem = self._semantic(qvec, sem_fetch, allowed)
         kw = self._keyword(query, (total_active if allowed is not None else pool), allowed)
 
         scores: dict[int, float] = {}
