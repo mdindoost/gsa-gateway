@@ -307,7 +307,9 @@ with **0 real-answer damage**:
   8B is GOOD here (25/25 real, 0 false-deflect). Provider-isolated (LLM-agnostic). Cost = +1 8B call on the RAG
   path, justified by 0 false-deflect. A/B-gated on the abstain set before trusting; a stronger judge model is the
   escalation if 8B noise hurts.
-- Net target: abstain-correctness 0% → ~100% on our set, common-case 84% unharmed (Gate 2 proved 0 false-deflect).
+- Net target: see §13.6 — the "~100% abstain / 0 false-deflect / 84% unharmed" framing here is from an
+  UNDERPOWERED pilot (n=7 abstain / n=25 real); both HARD-GATE reviews corrected it to a CONSTRAINED JOINT
+  metric measured on a frozen held-out instrument. §13.6 is authoritative.
 
 ### 13.5 Build implication
 - **G8 REVISED:** the gate is NOT a CE threshold. It is (Gate 1) a deterministic abstain-cue set + (Gate 2) an
@@ -316,3 +318,76 @@ with **0 real-answer damage**:
 - This is a retrieval/answer-path design change → **HARD GATE: senior-eng + RAG review of the revised gating
   design + owner approval BEFORE building it into the live message path.** The probes above are read-only;
   nothing is wired into production yet.
+
+---
+
+## 13.6 Both HARD-GATE reviews folded — revised two-gate build contract (2026-06-26)
+
+Senior-eng: **GO-WITH-CHANGES.** RAG/LLM-researcher: **GO-WITH-CHANGES.** Strong CONVERGENCE; nothing rejected.
+Both endorse the hybrid two-gate DIRECTION and the relevance≠answerability lesson (RAG ties it to the published
+sufficient-context / Self-RAG ISSUP / CRAG / RAGAS line). Both block on the SAME thing: **the evidence is an
+underpowered pilot and the gate must be SHADOW-measured at scale before it touches the 84% path.** This §13.6 is
+the authoritative contract; it supersedes the optimistic numbers in §13.3–13.4.
+
+**Self-correction (owned):** "0 false-deflect on 25/25 → safe" is wrong. Rule of three: 0/25 ⇒ true false-deflect
+rate up to ~11–12% (95% CI) → up to ~22 wrongly-deflected real answers → would blow reject-#1 AND the
+never-withhold hard line. n=7 abstain = in-sample curve-fit.
+
+### Consolidated required changes (fold BEFORE building into the live message path)
+1. **Frozen held-out instrument, much larger (both).** Abstain/adversarial **≥50–100**, stratified by failure
+   class: (a) personal/account state, (b) live/time-specific, (c) other-institution, (d) do-a-task, (e)
+   out-of-scope topic, (f) **in-domain-but-not-in-corpus** (hardest/most important), (g) ambiguous, (h)
+   multi-hop-insufficient — PLUS answerable near-miss FP traps per class. Real-answerable **≥150 clean**
+   (for false-deflect <2% at 95% CI by rule-of-three), **stratified to include the 36 partials + deep Qs**
+   (where a strict gate actually bites). Frozen — never used to tune cues/prompt. Reject-#1/#3 measured here.
+2. **SHADOW-measure Gate 2 first (read-only) over the full 226 eval + held-out (both).** Log the verdict,
+   DON'T act; for every currently-correct/partial answer, record what Gate 2 WOULD do = the false-deflect cost.
+   Build-gate = correct/partial false-deflect ≤ ~1–2 pt (inside σ). This is the load-bearing, free measurement.
+3. **Gate-2 prompt = closed-book, evidence-first, GRADED (RAG — biggest leakage fix).** Require a VERBATIM
+   supporting span (plural spans / entailment allowed — do NOT demand exact-substring, or partials/multi-hop
+   false-deflect) BEFORE a label `{FULLY_SUPPORTED, PARTIALLY_SUPPORTED, NOT_IN_CONTEXT}`; JSON
+   `{supporting_quote, label, missing_piece}`. Cite-or-abstain converts "topic present→answerable" vibes into
+   grounded verification. Gate 2 carries answerability ONLY — never intent (that's Gate 1's job).
+4. **Gate ordering = never-withhold (both, hard line).** Gate-2 `NOT_IN_CONTEXT` is the **deep-fallback (tier4)
+   → live njit.edu → deflect-ONLY-if-all-miss** trigger — NEVER a terminal deflect (a grounding miss ≠ NJIT
+   lacks it). `ce_score` (retained per §13.5) plugs in as the deep-fallback decision. Gate-1 hits (personal/
+   account/live/other-institution/task) deflect IMMEDIATELY and SKIP fallback (no public page states a per-user
+   balance; fallback would risk confident-wrong).
+5. **Gate-1 precision (both).** HARD cues only: possessive **+ personal-record-noun** (`my {balance, hold, I-20,
+   application status, refund, transcript, GPA, award}`), NEVER bare `my`; do-a-task verbs (`write/draft/fill out
+   my…`); other-institution names (exempt "transfer FROM X"). Time-cues (`today/tonight/current`) must co-occur
+   with a personal/live referent — never fire alone (carve out events/food: INTENT_FOOD legitimately uses
+   "today"). Verify **≈0 Gate-1 false-fire on the real-answerable set** (a false-fire withholds real content =
+   hard-line breach). FP traps ("what are MY responsibilities as a club officer", "what events are TODAY",
+   "transfer from Rutgers") → held-out regression lines.
+6. **Constrained JOINT metric, not abstain-correctness alone (both).** Deflect-everything scores 100% abstain /
+   0% coverage. Objective = **maximize abstain-correctness SUBJECT TO common-case ≥ 84 − 2σ (≈82.2, ideally ≥84)
+   AND false-deflect ≤ ~1–2 pt.** Report the full 2×2 (true/false × deflect/answer); weight false-deflect as a
+   near-veto (hard-line breach). Accept a documented residual on the hardest personal/live homonyms rather than
+   chase 100% into the false-deflect zone.
+7. **Exact integration seams + exemptions (SE).** Gate 1 = new `DEFLECT` family in `UnifiedRouter.decide()` AFTER
+   `command_layer` / before `fast_path`, **mode-aware** (gsa-only; suppress office wording in free mode); add the
+   `fam=="DEFLECT"` branch in `_answer_decision`. Gate 2 = in `_rag_pipeline` AFTER office/live-fallback
+   resolution / BEFORE `generate_answer`, set `is_canned_deflection=True` on deflect (reuse the offer/log path).
+   **EXEMPT from Gate 2 entirely:** KG/structured, `used_live`, INTENT_FOOD/SOCIAL, and **C golden / any
+   `is_deterministic` answer** (an 8B grounding check must never second-guess authored/deterministic facts).
+   Delete the vestigial `office_page` tier (0 rows).
+8. **Gate-the-gate + noise + LLM-agnostic (both).** Run the LLM Gate 2 ONLY in a calibrated AMBIGUOUS `ce_score`
+   band (skip the confident-high end — the free 0a signal), to avoid a 4th serial 8B call on every RAG query;
+   budget cumulative RAG-path LLM calls + p50/p95 latency. Gate 2 at **temp 0 + constrained output + answer-
+   biased default** (act only on confident NOT_IN_CONTEXT). Single-call first; escalate to k=3 majority OR a
+   stronger judge ONLY if measured flip/false-deflect exceeds tolerance — escalation model stays **local /
+   provider-isolated** (LLM-agnostic hard line).
+
+### Goals added
+- [ ] **G11** — Gates measured on full 226 eval + ≥50–100 frozen held-out abstain + ≥150 real (stratified incl.
+  partials/deep); Gate-2 shadow-measured; **build-gate = common-case ≥ 84 − 2σ AND false-deflect ≤ ~1–2 pt**;
+  reject-#1 RE-MEASURED gate-ON (not assumed). Gate-1 false-fire ≈0 on the real set.
+- [ ] **G12** — Gate-2 evidence-first graded prompt (quote→label JSON, plural-span/entailment), temp 0,
+  answer-biased, gate-the-gate on `ce_score`, NOT_IN_CONTEXT→fallback→deflect ordering, deterministic/C exempt.
+
+### Status
+Direction CONFIRMED by both reviews. **Build = the gate + the measurement harness, SHADOW first; DO NOT cut over
+to the live message path until G11's bars (changes 1, 2, 4, 6) are met on the frozen slice.** Probes so far are
+read-only; nothing wired. Next: owner sign-off on this revised contract → plan the gate + harness build (TDD,
+shadow-mode) → measure → owner cutover gate.
