@@ -157,6 +157,12 @@ LIVE_THRESHOLD = float(os.getenv("LIVE_THRESHOLD", "0.15"))
 # (type='office_page') is consulted only on a primary KB miss, and only adopted when its best
 # chunk clears this floor — else fall through to the live njit.edu fallback. Default = LIVE_THRESHOLD.
 OFFICE_THRESHOLD = float(os.getenv("OFFICE_THRESHOLD", str(LIVE_THRESHOLD)))
+# Phase-2 deep-fallback chunk-rescue (M2). OFF by default. On a primary miss, consult the
+# chunk index and ADOPT the rescued parent pages ONLY if they score strictly better than the
+# existing chunks (no-regression contract). Distinct floor from LIVE_THRESHOLD (chunk-CE is
+# not calibrated against whole-doc CE) — calibrated on a copy (Task 6).
+RETRIEVAL_DEEP_FALLBACK = os.getenv("RETRIEVAL_DEEP_FALLBACK", "").strip().lower() in ("1","true","yes","on")
+DEEP_FALLBACK_THRESHOLD = float(os.getenv("DEEP_FALLBACK_THRESHOLD", str(LIVE_THRESHOLD)))
 
 
 # --- Kavosh v2.1 unified router (Phase 1b) ---

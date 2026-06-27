@@ -82,6 +82,14 @@ def _source_note_for(answer_text: str, chunks) -> str:
     return " & ".join(names)
 
 
+def _deep_adopt(current_rel, rescue_rel, threshold) -> bool:
+    """Adopt deep-rescue chunks iff they clear the floor AND beat what's already there.
+    current_rel None => no usable primary chunk, so any rescue >= threshold is an improvement."""
+    if rescue_rel is None or rescue_rel < threshold:
+        return False
+    return current_rel is None or rescue_rel > current_rel
+
+
 @dataclass
 class MessageRequest:
     user_id: str
@@ -660,6 +668,15 @@ class MessageHandler:
                 if office_chunks and office_rel is not None and office_rel >= botcfg.OFFICE_THRESHOLD:
                     chunks = office_chunks            # generate from local office prose (KB)
                     used_office = True
+            used_deep = False
+            if (primary_miss and not used_office and botcfg.RETRIEVAL_DEEP_FALLBACK
+                    and self.retriever):
+                rescue = await self.retriever.retrieve_deep(base_q)   # query_vec reuse: see note
+                rescue_rel = self.retriever.top_relevance(base_q, rescue) if rescue else None
+                if rescue and _deep_adopt(relevance, rescue_rel, botcfg.DEEP_FALLBACK_THRESHOLD):
+                    chunks = rescue
+                    used_deep = True
+                    primary_miss = False        # rescued -> do not fall through to live
             if (primary_miss and not used_office and botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
                     and self.ollama and self.retriever):
                 attempted_live = True
