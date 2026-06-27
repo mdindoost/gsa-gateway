@@ -32,3 +32,171 @@ how do I reset my UCID password
 what dining plans are available on campus
 how do I register for a directed study course
 what is the policy on transferring graduate credits into a degree
+
+# ===== expanded held-out slice (review I3-RAG: grow to >=150 for a load-bearing false-deflect denominator) =====
+# offices / operations
+how much is the NJIT payment penalty fee for paying late
+what is the setup fee and down payment for the NJIT tuition payment plan
+how do I make an international tuition payment to NJIT
+can I pay my NJIT tuition with a credit card
+what is the Federal Title IV financial aid authorization at NJIT
+how do I apply an outside scholarship to my NJIT bill
+what payment methods does the NJIT Bursar accept
+how do I view my NJIT billing statement
+how do I get my NJIT eStatement
+what is the deadline to pay my NJIT tuition bill
+what does NJIT release as FERPA directory information
+what does a W grade mean on my NJIT transcript
+how do I get my NJIT diploma mailed to me
+how do I get an unofficial transcript at NJIT
+is there a fee for ordering an NJIT transcript
+what are the walk-in hours at Career Development Services
+what is Handshake at NJIT
+does NJIT offer mock interviews to students
+how do I get my resume reviewed at NJIT
+what is the co-op program at NJIT
+what internship resources does NJIT offer students
+what is the NJIT career fair
+does C-CAPS offer group counseling
+what is the C-CAPS counseling center at NJIT
+what workshops does C-CAPS offer students
+what does the Dean of Students office handle at NJIT
+how do I report a student conduct violation at NJIT
+how do I register my vehicle for parking at NJIT
+what does the Office of Accessibility Resources and Services do
+how do I request a disability accommodation at NJIT
+how do I get IT support from the NJIT Service Desk
+how much is graduate tuition per credit at NJIT
+what is the university fee at NJIT
+what is the NJIT tuition and fee schedule
+how do I change my graduate major or concentration
+what English proficiency requirements does NJIT have for graduate admission
+what TOEFL score does NJIT require for graduate admission
+what documents do I need to apply to an NJIT graduate program
+can I defer my NJIT graduate admission
+
+# financial aid
+what is NJIT's federal school code for the FAFSA
+when is the FAFSA priority deadline at NJIT
+when is the SAP appeal deadline for financial aid
+what is satisfactory academic progress for financial aid at NJIT
+what types of federal student loans are offered at NJIT
+what is Federal Work-Study at NJIT
+what is included in NJIT's cost of attendance
+how do I file a financial hardship appeal at NJIT
+what is a financial aid disbursement and when does it happen
+how do I accept my NJIT financial aid award
+what is the difference between subsidized and unsubsidized loans
+what is a Federal Direct PLUS loan
+what is loan entrance counseling
+what is a Master Promissory Note
+how does dropping below half-time affect my financial aid
+what is financial aid verification at NJIT
+what scholarships are available to NJIT graduate students
+
+# international (OGI)
+what is curricular practical training at NJIT
+what is the STEM OPT extension for international students
+what is a reduced course load for international students at NJIT
+what is a travel signature on my I-20
+what is SEVIS for international students
+can F-1 international students work on campus at NJIT
+what services does the Office of Global Initiatives provide international students
+what is optional practical training (OPT)
+what is a Form I-20
+what is the cap gap extension for F-1 students
+how do I maintain my F-1 status at NJIT
+what is J-1 status for exchange visitors at NJIT
+what is the OPT unemployment limit
+what is the I-901 SEVIS fee
+
+# academic policy
+can I be dismissed from a graduate program for a low GPA
+what cumulative GPA must a graduate student maintain for good standing
+how do I get readmitted to NJIT after leaving
+what is a non-matriculated graduate student at NJIT
+how many credits is full-time enrollment for a graduate student
+what is the penalty for plagiarism at NJIT
+what is continuous enrollment for PhD students
+what is the thesis option for a master's degree at NJIT
+what is the doctoral qualifying examination
+what is a dissertation proposal defense
+who serves on a PhD dissertation committee
+what is the time limit to complete a graduate degree at NJIT
+what happens to my grade if I drop a course after the add/drop deadline
+what is the policy for repeating a graduate course at NJIT
+how do I take a credit overload as a graduate student
+what is an independent study course at NJIT
+what is an incomplete grade and how long do I have to resolve it
+what does matriculation mean for a graduate student
+how many credits is a PhD dissertation at NJIT
+how is my graduate grade point average calculated
+where do I find the NJIT academic calendar
+what is the difference between dropping and withdrawing from a course
+what is the difference between the thesis and project options for a master's degree
+
+# programs
+what are the admission requirements for the MS in Computer Science
+what is the MS in Cybersecurity program at NJIT
+what is the Bioinformatics graduate program at NJIT
+what is the MBA program at the Martin Tuchman School of Management
+what graduate certificates does NJIT offer
+what is the PhD in Civil Engineering at NJIT
+what is the PhD program in Mechanical Engineering at NJIT
+what is the MS in Electrical Engineering at NJIT
+what is the MS in Chemical Engineering at NJIT
+what is the Applied Mathematics graduate program at NJIT
+what is the Materials Science and Engineering program at NJIT
+what architecture graduate degrees does NJIT offer
+what is the Interior Design graduate program at NJIT
+what is the MS in Information Systems at NJIT
+what is the PhD in Information Systems at NJIT
+what is the MS in Engineering Management at NJIT
+what concentrations are available in NJIT graduate programs
+what graduate programs does the College of Science and Liberal Arts offer
+what is the Mathematical Sciences PhD at NJIT
+what is the Biostatistics program at NJIT
+what is the MS in Applied Physics at NJIT
+what is the MS in Industrial Engineering at NJIT
+what is the Healthcare Systems Management program at NJIT
+what is the Business Data Science program at NJIT
+
+# people / role lookups (KG)
+who is the dean of the Martin Tuchman School of Management
+who is the dean of the Ying Wu College of Computing
+who is the chair of the Biomedical Engineering department
+who is the chair of Chemical and Materials Engineering at NJIT
+who is the chair of Civil and Environmental Engineering
+who is the chair of Electrical and Computer Engineering
+who is the chair of Biological Sciences at NJIT
+who is the vice provost for graduate studies at NJIT
+who is the associate dean for academic affairs at the Ying Wu College of Computing
+
+# GSA / clubs / funding
+what is the Bangladeshi Graduate Student Association
+what is the Iranian Cultural Association at NJIT
+what is Sanskar at NJIT
+what is the Graduate Biomedical Engineering Society
+what is the Graduate Women in Computing Society at NJIT
+what is the alcohol policy for GSA-funded club events
+what is the honorarium limit for a GSA-funded club event
+
+# deep / high-stakes
+how long must I live in New Jersey to qualify for in-state tuition
+what charges does an NJIT tuition remission benefit not cover
+what happens to my OPT if it is denied after my grace period expires
+what program end date does OGI use when a PhD student applies for OPT before defending
+what options do I have if I cannot make my student loan payment
+how do I avoid a late fee when registering for an extended thesis or project
+what happens if I reach my graduate degree time limit at NJIT
+how does a W grade factor into my cumulative graduate GPA
+when can an F-1 student take a reduced course load in their final semester
+what does the 60-day grace period mean for F-1 students after OPT
+how do I appeal the mandatory student health insurance charge
+how does NJIT count enrollment level in the cost of attendance
+how does the Title IV authorization affect how my financial aid pays charges
+what documents are required if my FAFSA is selected for verification
+how do I get academic accommodations approved through OARS
+what is the H-1B cap gap period for F-1 students
+do I accrue unlawful presence if my OPT application is denied
+what happens if my student loan becomes delinquent
