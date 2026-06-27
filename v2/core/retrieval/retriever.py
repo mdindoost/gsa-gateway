@@ -488,6 +488,7 @@ class V2Retriever:
         group_by_entity: bool = True,
         exclude_types: list[str] | None = None,
         query_vec: list[float] | None = None,
+        semantic_mode: str | None = None,
     ) -> list[RetrievedChunk]:
         # Default answer corpus drops noise-heavy types (publications, raw webpages).
         # An explicit item_types whitelist already constrains, so exclusion is skipped
@@ -507,10 +508,11 @@ class V2Retriever:
         pool = self.pool_size
         sem_fetch = min(total_active, _VEC_KNN_MAX) if allowed is not None else min(pool, _VEC_KNN_MAX)
 
+        mode = semantic_mode or ("chunk" if self.use_chunks else "whole_doc")
         qvec = query_vec if query_vec is not None else self.embedder.embed_query(query)
         if not qvec:
             sem = []
-        elif self.use_chunks:
+        elif mode == "chunk":
             org_ids = (self._subtree_ids(org_id) if org_subtree else [org_id]) \
                 if org_id is not None else None
             chunk_fetch = min(self.pool_size * self.chunk_overfetch, _VEC_KNN_MAX)
@@ -613,6 +615,14 @@ class V2Retriever:
         if self.debug_log:
             self._write_trace(query, org_id, len(sem), len(kw), chunks)
         return chunks
+
+    def retrieve_deep(self, query, query_vec=None, org_id=None, org_subtree=True,
+                      item_types=None, limit=5):
+        """Deep-fallback rescue: force the chunk semantic leg regardless of self.use_chunks.
+        Returns full PARENT pages (chunks find, parents serve). Reuses query_vec if given."""
+        return self.retrieve(query, org_id=org_id, org_subtree=org_subtree,
+                             item_types=item_types, limit=limit, query_vec=query_vec,
+                             semantic_mode="chunk")
 
     # ── entity grouping + parent expansion (R3) ───────────────────────────────
     @staticmethod

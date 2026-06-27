@@ -67,6 +67,23 @@ class V2RetrieverShim:
         # Food handling uses get_food_events(kb, db) directly, not retriever chunks.
         return []
 
+    async def retrieve_deep(self, query, query_vec=None, item_types=None):
+        async with self._sem:
+            return await asyncio.to_thread(self._retrieve_deep_sync, query, item_types, query_vec)
+
+    def _retrieve_deep_sync(self, query, item_types, query_vec):
+        conn = get_connection(self.db_path)
+        try:
+            r = V2Retriever(conn, self.embedder, self.reranker)
+            return [self._to_v1(c) for c in r.retrieve_deep(query, query_vec=query_vec,
+                                                             org_id=self.org_id, item_types=item_types,
+                                                             limit=5)]
+        except Exception:
+            logger.exception("V2 deep retrieval failed: %s", query[:80])
+            return []
+        finally:
+            conn.close()
+
     def top_relevance(self, query, chunks):
         """Cross-encoder relevance of the best chunk (0..1), the gate signal for the live
         njit.edu fallback. Prefers the ce_score already computed on the matched chunk during
@@ -75,6 +92,8 @@ class V2RetrieverShim:
         if not chunks:
             return None
         pre = (getattr(chunks[0], "metadata", None) or {}).get("ce_score")
+        if pre is None:
+            pre = getattr(chunks[0], "ce_score", None)     # finding #14: v2 RetrievedChunk field
         if pre is not None:
             return pre
         if not self.reranker:
