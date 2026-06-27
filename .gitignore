@@ -93,3 +93,8 @@ docs/review/*-high-stakes.md
 
 # WorldCup live runtime state (per-deployment, not source)
 v2/data/match_watcher_*_state.json
+
+# gate shadow measurement output (regenerable)
+eval/gate_shadow.jsonl
+eval/gate_shadow_smoke.jsonl
+eval/heldout_results.jsonl
