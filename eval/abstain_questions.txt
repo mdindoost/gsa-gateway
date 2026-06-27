@@ -71,14 +71,10 @@ what is the average wait time for a financial aid appointment
 how many students were on the dean's list last semester
 which dorm has the most available rooms right now
 
-# (g) ambiguous — under-specified; correct response is to ask what they mean, not to guess
-how do I apply
-when is the deadline
-who do I contact
-what are the requirements
-how much does it cost
-where is the office
-what is the form for that
+# (g) ambiguous — REMOVED from the abstain set (review I7): these are not genuinely unanswerable.
+# "how do I apply" is near-identical to the FP-trap "how do I apply to an NJIT graduate program"
+# which MUST be answered with the NJIT default. A clarify-question tier is separate future work, not
+# an abstain failure. (Kept here as a comment so the decision is traceable.)
 
 # (h) multi-hop / insufficient — chains on a fact the corpus does not hold
 which YWCC machine-learning professor also sits on the GSA advisory board
