@@ -23,17 +23,36 @@ if str(REPO) not in sys.path:
 
 from v2.core.database.schema import get_connection
 from v2.core.ingestion.college_crawl import (
-    PROSE_ENTRY_POINTS, extract_entry, ingest_college, ProseEntry)
-from v2.core.ingestion.web_crawler import make_fetcher
+    PROSE_ENTRY_POINTS, extract_entry, ingest_college, ingest_pdf_pages, ProseEntry)
+from v2.core.ingestion.web_crawler import make_fetcher, make_bytes_fetcher
 
 
-def run_entry(conn, entry: ProseEntry, fetch, max_depth=4, budget=400, delay=0.3) -> dict:
+def run_entry(conn, entry: ProseEntry, fetch, max_depth=4, budget=400, delay=0.3,
+              fetch_bytes=None) -> dict:
     """Extract prose from one entry point and ingest into knowledge_items. No commit (caller owns
-    the transaction). Returns a summary dict with prose_inserted/updated/unchanged/skipped."""
+    the transaction). Returns a summary dict with prose_inserted/updated/unchanged/skipped,
+    plus pdf_inserted/updated/unchanged/pdf_skipped if any PDF links were discovered."""
     res = extract_entry(entry.seed, fetch, max_depth=max_depth, budget=budget, delay=delay)
     out = ingest_college(conn, entry.org_slug, entry.org_name, entry.parent_slug,
                          res, res.html_by_url, org_type=entry.org_type)
     out.update(entry=entry.org_slug, truncated=res.truncated)
+
+    # Collect unique PDF URLs discovered during the HTML crawl (from each prose page's files list).
+    pdf_items = [
+        (url, label)
+        for p in res.prose
+        for url, label in p.files
+        if url.lower().endswith(".pdf")
+    ]
+    if pdf_items:
+        _fetch_bytes = fetch_bytes if fetch_bytes is not None else make_bytes_fetcher()
+        pdf_out = ingest_pdf_pages(conn, entry.org_slug, entry.org_name, entry.parent_slug,
+                                   pdf_items=pdf_items, fetch_bytes=_fetch_bytes,
+                                   org_type=entry.org_type)
+        out.update(pdf_inserted=pdf_out["pdf_inserted"],
+                   pdf_updated=pdf_out["pdf_updated"],
+                   pdf_unchanged=pdf_out["pdf_unchanged"],
+                   pdf_skipped=len(pdf_out["skipped"]))
     return out
 
 
@@ -58,10 +77,12 @@ def main(argv=None):
 
     conn = get_connection(args.db)
     fetch = make_fetcher()
+    fetch_bytes = make_bytes_fetcher()
     totals = []
     for e in entries:
         print(f"crawling: {e.org_slug} ({e.seed})")
-        out = run_entry(conn, e, fetch, budget=args.budget, delay=args.delay)
+        out = run_entry(conn, e, fetch, budget=args.budget, delay=args.delay,
+                        fetch_bytes=fetch_bytes)
         totals.append(out)
         print(out)
 

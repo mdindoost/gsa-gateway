@@ -248,10 +248,10 @@ def crawl_site(seed_url: str, fetch, max_depth: int = DEFAULT_DEPTH,
     return res
 
 
-def fetch_with_status(timeout: int = TIMEOUT):
-    """Like make_fetcher but returns (html|None, status|None). status is the HTTP code
-    (200/404/410/…) or None on a transport error (timeout/DNS/SSRF-block), so a transient
-    failure is distinguishable from a real 404 — the [SE3] retire guard (Plan C)."""
+def _make_opener_and_allowed():
+    """Shared factory: build a redirect-safe opener and a robots-cache-backed _allowed(url)
+    callable. Both fetch_with_status and make_bytes_fetcher use this to avoid duplicating
+    the opener + robots logic."""
     opener = urllib.request.build_opener(_SafeRedirect())
     robots_cache: dict[str, urllib.robotparser.RobotFileParser | None] = {}
 
@@ -266,6 +266,15 @@ def fetch_with_status(timeout: int = TIMEOUT):
                 rp = None
             robots_cache[host] = rp
         return rp is None or rp.can_fetch(UA, url)
+
+    return opener, _allowed
+
+
+def fetch_with_status(timeout: int = TIMEOUT):
+    """Like make_fetcher but returns (html|None, status|None). status is the HTTP code
+    (200/404/410/…) or None on a transport error (timeout/DNS/SSRF-block), so a transient
+    failure is distinguishable from a real 404 — the [SE3] retire guard (Plan C)."""
+    opener, _allowed = _make_opener_and_allowed()
 
     def fetch(url: str):
         if not is_safe_url(url):
@@ -286,6 +295,27 @@ def fetch_with_status(timeout: int = TIMEOUT):
             return None, None
 
     return fetch
+
+
+def make_bytes_fetcher(timeout: int = TIMEOUT):
+    """Returns fetch_bytes(url) -> bytes | None. Applies the same SSRF/robots/UA guards and
+    reads up to MAX_FETCH_BYTES as fetch_with_status, but does NOT reject by Content-Type
+    (PDFs are application/pdf, not text/html)."""
+    opener, _allowed = _make_opener_and_allowed()
+
+    def fetch_bytes(url: str) -> bytes | None:
+        if not is_safe_url(url):
+            return None
+        if not _allowed(url):
+            return None
+        try:
+            req = Request(url, headers={"User-Agent": UA})
+            with opener.open(req, timeout=timeout) as r:
+                return r.read(MAX_FETCH_BYTES)
+        except Exception:  # noqa: BLE001
+            return None
+
+    return fetch_bytes
 
 
 def make_fetcher(timeout: int = TIMEOUT):

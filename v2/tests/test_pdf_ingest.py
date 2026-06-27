@@ -242,15 +242,57 @@ def _make_chunk(pdf_table_degraded=False, source_url=None):
     )
 
 
+def test_content_changed_rerun():
+    """Re-running ingest_pdf_pages with DIFFERENT bytes for the same URL must:
+    - report pdf_updated=1, pdf_unchanged=0
+    - leave exactly ONE is_active=1 row for that URL
+    - mark the prior row is_active=0
+    """
+    from v2.core.ingestion.college_crawl import ingest_pdf_pages
+    c = _conn()
+
+    # First run: tuition bytes
+    tuition_bytes = TUITION_PDF.read_bytes()
+    url = "https://bursar.njit.edu/changing.pdf"
+
+    result1 = ingest_pdf_pages(c, "ywcc", "YWCC", "njit",
+                               [(url, "Changing PDF")],
+                               lambda _: tuition_bytes)
+    c.commit()
+    assert result1["pdf_inserted"] == 1
+
+    # Second run: different bytes (calendar)
+    calendar_bytes = CALENDAR_PDF.read_bytes()
+    result2 = ingest_pdf_pages(c, "ywcc", "YWCC", "njit",
+                               [(url, "Changing PDF")],
+                               lambda _: calendar_bytes)
+    c.commit()
+
+    assert result2["pdf_updated"] == 1, f"Expected pdf_updated=1 on changed content: {result2}"
+    assert result2["pdf_unchanged"] == 0, f"Expected pdf_unchanged=0: {result2}"
+
+    active = c.execute(
+        "SELECT COUNT(*) FROM knowledge_items WHERE source_url=? AND is_active=1",
+        (url,)
+    ).fetchone()[0]
+    assert active == 1, f"Must be exactly 1 active row after update, found {active}"
+
+    inactive = c.execute(
+        "SELECT COUNT(*) FROM knowledge_items WHERE source_url=? AND is_active=0",
+        (url,)
+    ).fetchone()[0]
+    assert inactive == 1, f"Must be exactly 1 retired (is_active=0) row, found {inactive}"
+
+
 def test_context_block_has_safeguard_for_degraded():
-    """When a chunk has pdf_table_degraded=True in metadata, the context block must contain
-    the deterministic 'PDF table' safeguard line."""
+    """When a chunk has pdf_table_degraded=True in metadata and a source_url, the context block
+    must contain the specific 'row/column figures' safeguard wording."""
     from bot.services.ollama_client import OllamaClient
     client = OllamaClient.__new__(OllamaClient)  # skip __init__
     chunk = _make_chunk(pdf_table_degraded=True)
     block = client._build_context_block([chunk])
-    assert "pdf table" in block.lower() or "source link" in block.lower(), (
-        f"Safeguard line not found in context block:\n{block}"
+    assert "row/column figures" in block.lower(), (
+        f"Safeguard wording 'row/column figures' not found in context block:\n{block}"
     )
 
 
