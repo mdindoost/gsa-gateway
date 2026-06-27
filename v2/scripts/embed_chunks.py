@@ -25,6 +25,7 @@ from v2.core.retrieval.chunker import chunk_text             # noqa: E402
 from v2.core.retrieval.chunk_populate import drop_item_chunks, content_hash  # noqa: E402
 from v2.core.retrieval.model_descriptor import active_descriptor             # noqa: E402
 from v2.core.retrieval.embedder import Embedder              # noqa: E402
+from v2.core.retrieval.retriever import DEFAULT_EXCLUDE_TYPES               # noqa: E402
 
 BATCH = 64
 
@@ -40,11 +41,14 @@ def main() -> None:
     emb = Embedder(model=d.ollama_name)
     conn = get_connection(args.db)
 
-    base = ("SELECT id, org_id, type, content FROM knowledge_items "
-            "WHERE is_active = 1 AND type != 'publication'")
+    exclude = tuple(DEFAULT_EXCLUDE_TYPES)
+    placeholders = ",".join("?" * len(exclude))
+    base = (f"SELECT id, org_id, type, content FROM knowledge_items "
+            f"WHERE is_active = 1 AND type NOT IN ({placeholders})")
+    params: list = list(exclude)
     if not args.force:
         base += " AND id NOT IN (SELECT DISTINCT parent_id FROM knowledge_chunks)"
-    rows = conn.execute(base + " ORDER BY id").fetchall()
+    rows = conn.execute(base + " ORDER BY id", params).fetchall()
     if args.limit:
         rows = rows[:args.limit]
 

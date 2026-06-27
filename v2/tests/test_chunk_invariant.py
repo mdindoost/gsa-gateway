@@ -3,10 +3,13 @@
 Tests are written BEFORE the implementation. They exercise:
 - well-formed corpus passes
 - active served item without chunks raises
-- stale model_id raises
+- stale model_id raises (both full-stale and partial-reembed scenarios)
+- chunk with no vector (active parent) raises (condition 2)
+- descriptor dim mismatch raises (condition 5)
 - item of excluded type (publication) without chunks does NOT raise
 - corpus_build_ready returns True/False accordingly
 """
+import dataclasses
 import struct
 
 import pytest
@@ -90,6 +93,65 @@ def test_invariant_passes_excluded_type_without_chunks(tmp_path):
     )
     # No chunks inserted — should NOT raise because 'publication' is excluded.
     assert_chunk_invariant(conn, D)
+
+
+# ── Condition 4 (stale model_id) — INDEPENDENT partial-reembed failure ───────
+
+def test_invariant_fails_partial_reembed_stale_chunk(tmp_path):
+    """Condition 4 fires even when condition 1 passes (partial re-embed scenario).
+
+    An item has BOTH a current-model chunk+vector (condition 1 satisfied) AND a
+    residual stale-model chunk+vector left over from a previous embed pass.
+    Condition 4 must fire; the AssertionError message must mention 'stale'.
+    """
+    conn = create_all(str(tmp_path / "t.db"))
+    # Current-model chunk + vector → condition 1 satisfied.
+    _served_item(conn, 100)
+    # Residual stale-model chunk + vector → condition 4 fires.
+    cur = conn.execute(
+        "INSERT INTO knowledge_chunks(parent_id, source_key, ordinal, text, content_hash, model_id) "
+        "VALUES (100, 'item:100', 1, 'y', 'h2', 'old-model@v0')"
+    )
+    conn.execute(
+        "INSERT INTO knowledge_chunk_vectors(chunk_id,embedding,org_id,type,parent_id) "
+        "VALUES (?,?,1,'policy',100)",
+        (cur.lastrowid, _v()),
+    )
+    with pytest.raises(AssertionError, match="stale"):
+        assert_chunk_invariant(conn, D)
+
+
+# ── Condition 2 — chunk with no vector (active parent) raises ─────────────────
+
+def test_invariant_fails_chunk_without_vector(tmp_path):
+    """Condition 2: an active-parent chunk with no knowledge_chunk_vectors row raises."""
+    conn = create_all(str(tmp_path / "t.db"))
+    _seed_org(conn)
+    conn.execute(
+        "INSERT INTO knowledge_items(id,org_id,type,content,is_active) "
+        "VALUES (100,1,'policy','x',1)"
+    )
+    # Insert chunk with current model_id (condition 1 would pass if we had a vector).
+    conn.execute(
+        "INSERT INTO knowledge_chunks(parent_id, source_key, ordinal, text, content_hash, model_id) "
+        "VALUES (100, 'item:100', 0, 'x', 'h', ?)",
+        (D.id,),
+    )
+    # No knowledge_chunk_vectors row → condition 2 fires.
+    with pytest.raises(AssertionError):
+        assert_chunk_invariant(conn, D)
+
+
+# ── Condition 5 — descriptor dim mismatch raises ──────────────────────────────
+
+def test_invariant_fails_dim_mismatch(tmp_path):
+    """Condition 5: descriptor.dim != schema dim raises AssertionError."""
+    conn = create_all(str(tmp_path / "t.db"))
+    _served_item(conn, 100)
+    # Schema is built for D.dim (768); pass a descriptor with a different dim.
+    wrong_dim = dataclasses.replace(D, dim=512)
+    with pytest.raises(AssertionError):
+        assert_chunk_invariant(conn, wrong_dim)
 
 
 # ── corpus_build_ready wraps assert_chunk_invariant ──────────────────────────
