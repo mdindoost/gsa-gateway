@@ -495,14 +495,21 @@ class OllamaClient:
         except Exception:
             return message
 
-    async def generate(self, prompt: str, system: str) -> Optional[str]:
-        """General-purpose generate call (used by SummaryService)."""
+    async def generate(self, prompt: str, system: str, options: Optional[dict] = None,
+                       fmt: Optional[str] = None) -> Optional[str]:
+        """General-purpose generate call. Optional `options` (e.g. {"temperature":0.0,
+        "num_predict":256}) and `fmt` ("json") enable deterministic, constrained output for
+        graders — the provider-isolation seam (callers stay LLM-agnostic)."""
         payload = {
             "model": self.model,
             "system": system,
             "prompt": prompt,
             "stream": False,
         }
+        if options:
+            payload["options"] = options
+        if fmt:
+            payload["format"] = fmt
         try:
             session = await self._get_session()
             async with session.post(

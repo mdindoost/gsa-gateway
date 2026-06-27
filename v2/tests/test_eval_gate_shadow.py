@@ -54,3 +54,39 @@ def test_low_ce_supported_answers():
         band=0.70,
     ))
     assert rec["outcome"] == "answer" and rec["gate"] == "gate2"
+
+
+from eval_gate_shadow import derive_outcome, score_at_band
+
+
+def test_derive_outcome_gate1_deflects():
+    assert derive_outcome({"stage": "gate1"}, band=0.70) == "deflect"
+
+
+def test_derive_outcome_exempt_answers():
+    assert derive_outcome({"stage": "exempt"}, band=0.70) == "answer"
+
+
+def test_derive_outcome_high_ce_skips_to_answer():
+    r = {"stage": "gated", "ce": 0.95, "fact_shaped": False, "label": "NOT_IN_CONTEXT"}
+    assert derive_outcome(r, band=0.70) == "answer"  # gate-the-gate skip
+
+
+def test_derive_outcome_fact_shaped_uses_label_even_high_ce():
+    r = {"stage": "gated", "ce": 0.99, "fact_shaped": True, "label": "NOT_IN_CONTEXT"}
+    assert derive_outcome(r, band=0.70) == "fallback"
+
+
+def test_derive_outcome_low_ce_uses_label():
+    r = {"stage": "gated", "ce": 0.20, "fact_shaped": False, "label": "NOT_IN_CONTEXT"}
+    assert derive_outcome(r, band=0.70) == "fallback"
+
+
+def test_score_at_band_counts_abstain_caught():
+    recs = [
+        {"stage": "gate1", "ce": None, "fact_shaped": False, "label": None},          # deflect -> caught
+        {"stage": "gated", "ce": 0.2, "fact_shaped": False, "label": "NOT_IN_CONTEXT"},  # fallback -> caught
+        {"stage": "gated", "ce": 0.95, "fact_shaped": False, "label": "NOT_IN_CONTEXT"},  # high-ce skip -> answer = LEAK
+    ]
+    s = score_at_band(recs, band=0.70, want="deflect")
+    assert s["caught"] == 2 and s["leak"] == 1

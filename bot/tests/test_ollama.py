@@ -69,6 +69,25 @@ class TestGenerateAnswer:
         result = await client.generate_answer("question", [])
         assert result is None
 
+
+class TestGenerateOptions:
+    @pytest.mark.asyncio
+    async def test_generate_passes_options_and_format(self, client: OllamaClient) -> None:
+        session = _mock_session_with_response(200, {"response": "{}"})
+        client._session = session
+        await client.generate("p", "s", options={"temperature": 0.0, "num_predict": 256}, fmt="json")
+        payload = session.post.call_args[1]["json"]
+        assert payload["options"] == {"temperature": 0.0, "num_predict": 256}
+        assert payload["format"] == "json"
+
+    @pytest.mark.asyncio
+    async def test_generate_omits_options_when_not_given(self, client: OllamaClient) -> None:
+        session = _mock_session_with_response(200, {"response": "ok"})
+        client._session = session
+        await client.generate("p", "s")
+        payload = session.post.call_args[1]["json"]
+        assert "options" not in payload and "format" not in payload
+
     @pytest.mark.asyncio
     async def test_returns_none_on_http_error(self, client: OllamaClient) -> None:
         session = _mock_session_with_response(500, {})

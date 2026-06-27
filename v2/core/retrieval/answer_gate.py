@@ -41,8 +41,8 @@ _GUIDANCE = re.compile(
 )
 
 # Personal/account STATUS-or-VALUE query about the user's OWN record.
+# Self-sufficient high-precision frames (fire alone):
 _PERSONAL_SPECIFIC = [
-    re.compile(r"\bwhat(?:'s| is) my\b"),
     re.compile(r"\bhow much do i owe\b"),
     re.compile(r"\bwhen (will|is) my\b"),
     re.compile(r"\bhow many credits have i (completed|earned)\b"),
@@ -51,10 +51,14 @@ _PERSONAL_SPECIFIC = [
     # mentions in a policy question ("why is there a hold on my account", caught in TDD held-out).
     re.compile(r"\bwhat\b.{0,20}\b(holds?|charges?|balance|fees?)\b.{0,15}\bon my\b"),
 ]
-_PERSONAL_GENERIC = re.compile(r"^(has|have|is|are|did|does|do)\b.*\bmy\b")
+# "what is my X" / status-verb-start — fire ONLY with a personal-record noun (fold #5: never bare "my").
+# Status verbs only (has/have/is/are/did/was/were) — NOT do/does ("does my GPA matter" is policy, I3).
+_WHATIS_MY = re.compile(r"\bwhat(?:'s| is) my\b")
+_PERSONAL_GENERIC = re.compile(r"^(has|have|is|are|did|was|were)\b.*\bmy\b")
+# Conservative — clearly-private records only. Broad nouns (credits/grades/application/account/status)
+# were removed because they false-fire on policy questions ("do my credits transfer", review I3).
 _RECORD_NOUN = re.compile(
-    r"\b(balance|holds?|refund|transcript|gpa|grades?|credits?|account|application|"
-    r"assistantship|financial aid|i-?20|visa|status|deposit|registration|document)\b"
+    r"\b(balance|holds?|refund|transcript|gpa|assistantship|financial aid|i-?20|visa|tuition refund)\b"
 )
 
 # do-a-task verbs governing a personal deliverable. The verb must sit NEAR the personal object so a
@@ -67,9 +71,14 @@ _OTHER_SCHOOL = re.compile(
     r"stanford|yale|seton hall|kean|rowan|tcnj|drexel|penn state)\b"
 )
 
-# Live / time cue — fires ONLY with a personal referent (events/food "today" carve-out, fold #5).
+# Live cue — two ways to fire (events/food "today" carve-out kept, fold #5):
+#  (1) time-cue + personal referent ("my appointment today");
+#  (2) live-STATE word + now-word ("is the gym open right now") — review I6, no possessive needed.
 _TIMECUE = re.compile(r"\b(today|tonight|right now|currently|at the moment|this minute)\b")
 _POSSESS = re.compile(r"\bmy\b")
+_LIVE_STATE_WORD = re.compile(r"\b(open|available|free|cancell?ed|busy|wait time|the line|seats? left|spots? left)\b")
+_NOW_WORD = re.compile(r"\b(right now|now|today|tonight|currently|current|at the moment|this minute)\b")
+_EVENT_FOOD = re.compile(r"\b(events?|menu|dining)\b")  # carve-out: these are answerable from the corpus
 
 
 def gate1_intent(question: str) -> Gate1Verdict:
@@ -86,7 +95,7 @@ def gate1_intent(question: str) -> Gate1Verdict:
             m = pat.search(q)
             if m:
                 return Gate1Verdict(True, "personal", m.group(0))
-        if _PERSONAL_GENERIC.search(q) and _RECORD_NOUN.search(q):
+        if (_WHATIS_MY.search(q) or _PERSONAL_GENERIC.search(q)) and _RECORD_NOUN.search(q):
             return Gate1Verdict(True, "personal", _RECORD_NOUN.search(q).group(0))
 
     # do-a-task — skip guidance ("how do I write …")
@@ -100,9 +109,11 @@ def gate1_intent(question: str) -> Gate1Verdict:
     if m and not ("transfer" in q and "njit" in q):
         return Gate1Verdict(True, "other_institution", m.group(0))
 
-    # live + personal referent
+    # live — (1) time-cue + personal referent, or (2) live-state + now-word (no events/food)
     if _TIMECUE.search(q) and _POSSESS.search(q):
         return Gate1Verdict(True, "live", _TIMECUE.search(q).group(0))
+    if _LIVE_STATE_WORD.search(q) and _NOW_WORD.search(q) and not _EVENT_FOOD.search(q):
+        return Gate1Verdict(True, "live", _LIVE_STATE_WORD.search(q).group(0))
 
     return Gate1Verdict(False)
 
@@ -130,24 +141,65 @@ class Gate2Verdict:
     label: str          # FULLY_SUPPORTED | PARTIALLY_SUPPORTED | NOT_IN_CONTEXT
     quote: str = ""
     missing: str = ""
+    parsed: bool = True  # False => answer-biased default (model produced no valid JSON), review I2
 
 
 _VALID_LABELS = {"FULLY_SUPPORTED", "PARTIALLY_SUPPORTED", "NOT_IN_CONTEXT"}
 
+# specific-fact-shaped questions: high retrieval relevance does NOT imply the datum is present, so
+# these are answerability-checked even at high ce (review B2 — relevance != answerability for facts).
+_FACT_SHAPED = re.compile(
+    r"\b(how many|how much|how long|what percentage|pass rate|acceptance rate|graduation rate|"
+    r"(number|count|total|average|amount|rate|percentage) of|compare(d)? to|how does .* compare)\b"
+)
+
+
+def is_fact_shaped(question: str) -> bool:
+    return bool(_FACT_SHAPED.search((question or "").lower()))
+
 
 def parse_gate2(raw: str) -> Gate2Verdict:
-    """Parse the model's JSON verdict. Answer-biased: any parse failure => FULLY_SUPPORTED so a
-    grounding-checker malfunction NEVER withholds a real answer (never-withhold hard line)."""
+    """Parse the model's JSON verdict. Answer-biased: any parse failure => FULLY_SUPPORTED (parsed=False)
+    so a grounding-checker malfunction NEVER withholds a real answer (never-withhold hard line)."""
     m = re.search(r"\{.*\}", raw or "", re.S)
     if m:
         try:
             d = json.loads(m.group(0))
             label = str(d.get("label", "")).strip().upper()
             if label in _VALID_LABELS:
-                return Gate2Verdict(label, str(d.get("supporting_quote", "") or ""), str(d.get("missing_piece", "") or ""))
+                return Gate2Verdict(label, str(d.get("supporting_quote", "") or ""),
+                                    str(d.get("missing_piece", "") or ""), parsed=True)
         except (ValueError, TypeError):
             pass
-    return Gate2Verdict("FULLY_SUPPORTED")
+    return Gate2Verdict("FULLY_SUPPORTED", parsed=False)
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").lower()).strip()
+
+
+def quote_grounded(quote: str, context, min_overlap: float = 0.6) -> bool:
+    """True iff the model's supporting quote actually appears (fuzzily) in the context — guards against
+    a hallucinated citation surviving as FULLY_SUPPORTED (review I5; Self-RAG ISSUP / RAGAS faithfulness).
+    Uses longest-common-substring ratio, not exact match (tolerant of partials/multi-hop)."""
+    import difflib
+    q = _norm(quote)
+    if not q:
+        return False
+    c = _norm("\n".join(context) if isinstance(context, (list, tuple)) else context)
+    if not c:
+        return False
+    match = difflib.SequenceMatcher(None, q, c).find_longest_match(0, len(q), 0, len(c))
+    return match.size / len(q) >= min_overlap
+
+
+def verify_support(verdict: Gate2Verdict, context) -> Gate2Verdict:
+    """Downgrade a PARSED FULLY/PARTIALLY_SUPPORTED verdict to NOT_IN_CONTEXT when its quote is not
+    grounded in the context. Leaves the answer-biased (parsed=False) default untouched (never-withhold)."""
+    if verdict.parsed and verdict.label in ("FULLY_SUPPORTED", "PARTIALLY_SUPPORTED") \
+            and not quote_grounded(verdict.quote, context):
+        return Gate2Verdict("NOT_IN_CONTEXT", verdict.quote, verdict.missing, parsed=True)
+    return verdict
 
 
 # ──────────────────────────────────────────────────────────────────── decision (gate-the-gate + ordering)
@@ -158,16 +210,18 @@ class GateDecision:
     skip_fallback: bool    # Gate-1 deflects skip fallback entirely (fold #5)
 
 
-def gate_decision(gate1_cue: str | None, ce_score: float | None, gate2_label: str | None, band: float) -> GateDecision:
+def gate_decision(gate1_cue: str | None, ce_score: float | None, gate2_label: str | None,
+                  band: float, fact_shaped: bool = False) -> GateDecision:
     """Combine Gate 1 + gate-the-gate ce band + Gate 2 into a shadow outcome.
 
     gate2_label=None means Gate 2 has not been evaluated yet: the returned run_gate2 tells the caller
-    whether it must run it (cheap gate-the-gate: skip when retrieval is already confident, ce>=band).
+    whether it must run it. Gate-the-gate skips Gate 2 when retrieval is confident (ce>=band) — EXCEPT
+    for fact_shaped questions, where high relevance does not imply the datum is present (review B2).
     """
     if gate1_cue:
         return GateDecision("deflect", run_gate2=False, skip_fallback=True)
 
-    run_gate2 = ce_score is None or ce_score < band
+    run_gate2 = fact_shaped or ce_score is None or ce_score < band
     if not run_gate2:
         return GateDecision("answer", run_gate2=False, skip_fallback=False)
 

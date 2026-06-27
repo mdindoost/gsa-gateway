@@ -13,6 +13,9 @@ from v2.core.retrieval.answer_gate import (
     gate2_prompt,
     parse_gate2,
     gate_decision,
+    is_fact_shaped,
+    quote_grounded,
+    verify_support,
 )
 
 
@@ -58,6 +61,93 @@ def test_gate1_does_not_fire_on_conditional_policy_with_my_account():
 def test_gate1_still_fires_on_listing_whats_on_my_account():
     # the state-listing frame ("what holds are on my account") IS a private-record query
     assert gate1_intent("what holds are on my student account").deflect is True
+
+
+# ----------------------------------------------- Gate 1: tightened personal cues (review I3-senior)
+def test_gate1_what_is_my_requires_record_noun():
+    # bare "what is my <non-record>" must NOT fire (fold #5: never bare "my")
+    assert gate1_intent("what is my best path to graduate early").deflect is False
+
+
+def test_gate1_does_not_fire_on_policy_with_possessive_record_word():
+    # general policy questions that merely contain "my <record-ish word>" must not fire
+    assert gate1_intent("do my credits transfer between programs").deflect is False
+    assert gate1_intent("does my GPA matter for assistantship eligibility").deflect is False
+    assert gate1_intent("is my program accredited").deflect is False
+
+
+# ----------------------------------------------- Gate 1: live-state cue (review I6)
+def test_gate1_fires_on_live_state_without_possessive():
+    v = gate1_intent("is the gym open right now")
+    assert v.deflect is True and v.cue == "live"
+
+
+def test_gate1_live_state_fires_on_availability_now():
+    assert gate1_intent("are there study rooms free right now").deflect is True
+
+
+def test_gate1_live_state_carves_out_events():
+    # events ARE in the corpus — "today" + event must not fire (food/events carve-out)
+    assert gate1_intent("what events are happening today").deflect is False
+
+
+# ----------------------------------------------- fact-shaped trigger (review B2)
+def test_is_fact_shaped_detects_count_and_rate_questions():
+    assert is_fact_shaped("exactly how many students are enrolled") is True
+    assert is_fact_shaped("what is the pass rate for the exam") is True
+    assert is_fact_shaped("tell me about the computer science department") is False
+
+
+def test_decision_runs_gate2_on_fact_shaped_even_when_ce_high():
+    # B2: a specific-fact question must be answerability-checked even at high ce
+    d = gate_decision(gate1_cue=None, ce_score=0.99, gate2_label=None, band=0.70, fact_shaped=True)
+    assert d.run_gate2 is True
+
+
+def test_decision_high_ce_non_fact_still_skips_gate2():
+    d = gate_decision(gate1_cue=None, ce_score=0.99, gate2_label=None, band=0.70, fact_shaped=False)
+    assert d.run_gate2 is False
+
+
+# ----------------------------------------------- quote grounding (review I5)
+def test_quote_grounded_true_when_quote_in_context():
+    assert quote_grounded("The late fee is $250.", "Policy: The late fee is $250 per term.") is True
+
+
+def test_quote_grounded_false_when_quote_absent():
+    assert quote_grounded("Tuition is $40,000 per year.", "NJIT has many graduate clubs.") is False
+
+
+def test_quote_grounded_false_on_empty_quote():
+    assert quote_grounded("", "anything") is False
+
+
+def test_verify_support_downgrades_ungrounded_claim():
+    from v2.core.retrieval.answer_gate import Gate2Verdict
+    v = Gate2Verdict(label="FULLY_SUPPORTED", quote="Enrollment is 12,345 students.", parsed=True)
+    out = verify_support(v, ["NJIT enrolls many graduate students each year."])
+    assert out.label == "NOT_IN_CONTEXT"
+
+
+def test_verify_support_keeps_grounded_claim():
+    from v2.core.retrieval.answer_gate import Gate2Verdict
+    v = Gate2Verdict(label="FULLY_SUPPORTED", quote="The fee is $250.", parsed=True)
+    out = verify_support(v, ["The fee is $250 per semester."])
+    assert out.label == "FULLY_SUPPORTED"
+
+
+def test_verify_support_does_not_touch_unparsed_default():
+    # parse-failure answer-biased default must NOT be downgraded (never-withhold)
+    from v2.core.retrieval.answer_gate import Gate2Verdict
+    v = Gate2Verdict(label="FULLY_SUPPORTED", quote="", parsed=False)
+    out = verify_support(v, ["irrelevant context"])
+    assert out.label == "FULLY_SUPPORTED"
+
+
+def test_parse_gate2_sets_parsed_flag():
+    ok = parse_gate2('{"label":"NOT_IN_CONTEXT","supporting_quote":"","missing_piece":"x"}')
+    bad = parse_gate2("no json here")
+    assert ok.parsed is True and bad.parsed is False
 
 
 # ---------------------------------------------------------------- Gate 1: do-a-task
