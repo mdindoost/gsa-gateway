@@ -7,17 +7,23 @@ degraded row boundaries -> table_degraded=True (serving layer adds source-link +
 """
 from __future__ import annotations
 
+import io
 import re
 import statistics
 from dataclasses import dataclass
 from pathlib import Path
 
 from pypdf import PdfReader
-from pypdf.errors import PyPdfError
 
 # image-heavy heuristic (validated on real NJIT PDFs 2026-06-27)
 _MIN_CHARS_PER_PAGE = 200
 _MIN_BYTES_PER_TEXT_CHAR = 800
+
+# near-empty-page threshold: pages with fewer chars than this count as blank/image
+_NEAR_EMPTY_PAGE_CHARS = 20
+
+# minimum monetary count to declare a table degraded (validated on tuition.pdf 2026-06-27)
+_MIN_MONETARY_COUNT = 5
 
 # dense-numeric-table heuristic (validated on tuition.pdf 2026-06-27):
 # A dense monetary table loses its column alignment after whitespace normalization.
@@ -55,11 +61,10 @@ def extract_pdf_text(source) -> ExtractResult:
     size = len(raw)
     if raw[:5] != b"%PDF-":
         return ExtractResult(None, "invalid", 0, 0, 0.0, False, "missing %PDF- header")
-    import io
     try:
         reader = PdfReader(io.BytesIO(raw))
         page_texts = [(p.extract_text() or "") for p in reader.pages]
-    except (PyPdfError, Exception) as e:          # pypdf raises various; treat all as invalid
+    except Exception as e:          # pypdf raises various; treat all as invalid
         return ExtractResult(None, "invalid", 0, 0, 0.0, False, f"{type(e).__name__}: {e}")
 
     n = len(page_texts)
@@ -67,7 +72,7 @@ def extract_pdf_text(source) -> ExtractResult:
     total_chars = sum(per_page_chars)
     median_cpp = int(statistics.median(per_page_chars)) if per_page_chars else 0
     bpc = size / total_chars if total_chars else float("inf")
-    near_empty = sum(1 for c in per_page_chars if c < 20)
+    near_empty = sum(1 for c in per_page_chars if c < _NEAR_EMPTY_PAGE_CHARS)
 
     if total_chars == 0:
         return ExtractResult(None, "empty", n, 0, bpc, False, "no extractable text")
@@ -76,7 +81,7 @@ def extract_pdf_text(source) -> ExtractResult:
                              "low text + high bytes/char -> likely scanned/screenshots")
 
     text = _clean("\n".join(page_texts))
-    degraded = bool(_CONSEC_MONETARY.search(text)) and len(_MANY_NUMBERS.findall(text)) >= 5
+    degraded = bool(_CONSEC_MONETARY.search(text)) and len(_MANY_NUMBERS.findall(text)) >= _MIN_MONETARY_COUNT
     status = "ok"
     reason = ""
     if n > 1 and near_empty >= 1 and near_empty < n:

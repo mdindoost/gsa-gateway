@@ -34,16 +34,10 @@ def test_invalid_pdf_skipped():
     assert r.text is None
 
 
-def test_image_heavy_pdf_skipped(tmp_path):
-    # synth a minimal multi-page PDF with ~no text but large byte size -> image_heavy heuristic
-    from pypdf import PdfWriter
-    w = PdfWriter()
-    for _ in range(8):
-        w.add_blank_page(width=600, height=800)
-    p = tmp_path / "img.pdf"
-    # pad to look image-heavy: low chars/page AND high bytes/text-char
-    with open(p, "wb") as fh:
-        w.write(fh); fh.write(b"%" + b"0" * 200000)   # trailing bytes inflate size (header still valid)
-    r = extract_pdf_text(p)
+def test_image_heavy_pdf_skipped():
+    # Pre-generated committed fixture: 8 blank pages + 300KB padding bytes
+    # -> low chars/page AND high bytes/text-char -> triggers image_heavy or empty heuristic.
+    # Generated 2026-06-27; sha256: 3d4fb0e95c49719fc37c6a9bf329bb4e0530a1c3b05986d0cf20594b4cfe800a
+    r = extract_pdf_text(FIX / "image_heavy_synth.pdf")
     assert r.status in ("image_heavy", "empty")
     assert r.text is None
