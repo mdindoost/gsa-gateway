@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -107,6 +108,7 @@ class MessageResponse:
     question_id: Optional[int] = None
     offer_live_search: bool = False   # connector should attach a "search NJIT's website" offer
     is_live: bool = False             # answer came from the live njit.edu fallback (verbatim extract)
+    is_deep: bool = False             # answer came from the deep-fallback chunk-rescue
 
 
 class MessageHandler:
@@ -671,12 +673,21 @@ class MessageHandler:
             used_deep = False
             if (primary_miss and not used_office and botcfg.RETRIEVAL_DEEP_FALLBACK
                     and self.retriever):
+                _t0 = time.perf_counter()
                 rescue = await self.retriever.retrieve_deep(base_q)   # query_vec reuse: see note
+                elapsed_ms = (time.perf_counter() - _t0) * 1000
                 rescue_rel = self.retriever.top_relevance(base_q, rescue) if rescue else None
                 if rescue and _deep_adopt(relevance, rescue_rel, botcfg.DEEP_FALLBACK_THRESHOLD):
                     chunks = rescue
                     used_deep = True
                     primary_miss = False        # rescued -> do not fall through to live
+                logger.info(
+                    "deep-fallback: candidates=%d rescue_rel=%s adopted=%s %.0fms",
+                    len(rescue or []),
+                    f"{rescue_rel:.3f}" if rescue_rel is not None else "none",
+                    used_deep,
+                    elapsed_ms,
+                )
             if (primary_miss and not used_office and botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
                     and self.ollama and self.retriever):
                 attempted_live = True
@@ -785,6 +796,7 @@ class MessageHandler:
                 question_id=question_id,
                 offer_live_search=offer_live_search,
                 is_live=used_live,
+                is_deep=used_deep,
             )
 
         except Exception as exc:

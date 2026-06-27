@@ -22,3 +22,7 @@ def test_adopt_when_current_is_none_but_over_threshold():
 
 def test_reject_when_rescue_rel_none():
     assert _deep_adopt(current_rel=0.10, rescue_rel=None, threshold=0.15) is False
+
+
+def test_adopt_when_exactly_at_threshold():
+    assert _deep_adopt(current_rel=0.10, rescue_rel=0.15, threshold=0.15) is True
