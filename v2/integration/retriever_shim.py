@@ -134,7 +134,8 @@ class V2RetrieverShim:
             similarity=c.similarity or 0.0,
             relevance_score=rel,
             metadata={"org_path": c.org_path, "source": c.source,
-                      "ce_score": getattr(c, "ce_score", None)},
+                      "ce_score": getattr(c, "ce_score", None),
+                      "pdf_table_degraded": getattr(c, "pdf_table_degraded", False)},
             item_id=c.item_id,        # v2 RetrievedChunk always has it
             source_url=getattr(c, "source_url", None),
             verified=getattr(c, "verified", True),

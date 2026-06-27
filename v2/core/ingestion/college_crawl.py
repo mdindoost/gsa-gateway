@@ -15,7 +15,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -217,6 +217,92 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
             (org_id, ptype, p.title, p.content, json.dumps(meta), p.source_url, PROSE_SOURCE))
     return {"org_id": org_id, "prose_inserted": inserted, "prose_updated": updated,
             "prose_unchanged": unchanged, "skipped": len(result.skipped)}
+
+
+def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_bytes,
+                     org_type="college") -> dict:
+    """Ingest discovered PDF links as type='pdf' knowledge_items rows.
+
+    pdf_items   -- iterable of (url, label) tuples; deduplicated by url inside this function.
+    fetch_bytes -- callable(url) -> bytes | None (injectable; None = fetch failed → manifest skip).
+
+    For each unique url:
+      - fetch_bytes(url) → None  → manifest skip {"url","status":"fetch_failed","reason":…}
+      - extract_pdf_text(data):
+          status in {ok, mixed_low_text} → content-hash idempotent INSERT of type='pdf' row.
+          status in {empty, image_heavy, invalid} → manifest skip, NO row.
+
+    Idempotent on (org_id, natural_key=url, created_by) exactly like ingest_college.
+    Does NOT commit (caller owns the transaction).
+
+    Returns {"org_id":…,"pdf_inserted":n,"pdf_updated":n,"pdf_unchanged":n,"skipped":[…]}.
+    """
+    from v2.core.ingestion.pdf_extract import extract_pdf_text
+
+    org_id = ensure_org(conn, org_slug, org_name, parent_slug=parent_slug, type=org_type)
+    sync_org_nodes(conn)
+
+    inserted = updated = unchanged = 0
+    skipped: list[dict] = []
+    seen_urls: set[str] = set()
+
+    for url, label in pdf_items:
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+
+        data = fetch_bytes(url)
+        if data is None:
+            skipped.append({"url": url, "status": "fetch_failed",
+                            "reason": "fetch_bytes returned None"})
+            continue
+
+        res = extract_pdf_text(data)
+        if res.status not in ("ok", "mixed_low_text"):
+            skipped.append({"url": url, "status": res.status, "reason": res.reason})
+            continue
+
+        # Mechanical title: label if non-empty, else filename stem with hyphens/underscores→spaces.
+        if label and label.strip():
+            title = label.strip()
+        else:
+            stem = urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1]
+            if "." in stem:
+                stem = stem.rsplit(".", 1)[0]
+            title = re.sub(r"[-_]+", " ", stem)
+
+        text = res.text or ""
+        ch = hashlib.sha1(text.encode("utf-8")).hexdigest()
+        meta = {
+            "natural_key": url,
+            "content_hash": ch,
+            "pdf_table_degraded": res.table_degraded,
+            "status": res.status,
+            "source": PROSE_SOURCE,
+        }
+
+        row = conn.execute(
+            "SELECT id, json_extract(metadata,'$.content_hash') FROM knowledge_items "
+            "WHERE is_active=1 AND org_id=? AND json_extract(metadata,'$.natural_key')=? "
+            "AND created_by=?", (org_id, url, PROSE_SOURCE)).fetchone()
+
+        if row and row[1] == ch:
+            unchanged += 1
+            continue
+        if row:
+            conn.execute("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
+                         "WHERE id=?", (row[0],))
+            updated += 1
+        else:
+            inserted += 1
+
+        conn.execute(
+            "INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
+            "version,is_active,created_by) VALUES(?,?,?,?,?,?,1,1,?)",
+            (org_id, "pdf", title, text, json.dumps(meta), url, PROSE_SOURCE))
+
+    return {"org_id": org_id, "pdf_inserted": inserted, "pdf_updated": updated,
+            "pdf_unchanged": unchanged, "skipped": skipped}
 
 
 @dataclass(frozen=True)

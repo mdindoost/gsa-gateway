@@ -238,6 +238,11 @@ class OllamaClient:
             source_url = getattr(chunk, "source_url", None)
             if source_url:
                 lines.append(f"Source: {source_url}")
+            if (getattr(chunk, "metadata", {}) or {}).get("pdf_table_degraded"):
+                lines.append(
+                    "[Note: this text is from a PDF table — row/column figures may be "
+                    "misaligned; direct the student to the Source link above for exact numbers.]"
+                )
             lines.append(chunk.text)
             lines.append(f"[Relevance: {chunk.relevance_score:.0%}]")
         lines.append("\n=== END OF DOCUMENTS ===")
