@@ -81,7 +81,8 @@ async def main() -> None:
             r = await handler.handle(MessageRequest(user_id=f"eval-{i}", text=q, platform="telegram"))
             ans = (r.text or "").strip()
             rec = {"i": i, "cat": cat, "q": q, "answer": ans, "class": classify(ans),
-                   "source": r.source_note, "secs": round(time.time() - t0, 1)}
+                   "source": r.source_note, "is_deep": getattr(r, "is_deep", False),
+                   "secs": round(time.time() - t0, 1)}
         except Exception as e:  # noqa: BLE001
             rec = {"i": i, "cat": cat, "q": q, "error": repr(e), "class": "error",
                    "secs": round(time.time() - t0, 1)}

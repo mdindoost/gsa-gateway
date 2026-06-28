@@ -160,9 +160,12 @@ OFFICE_THRESHOLD = float(os.getenv("OFFICE_THRESHOLD", str(LIVE_THRESHOLD)))
 # Phase-2 deep-fallback chunk-rescue (M2). OFF by default. On a primary miss, consult the
 # chunk index and ADOPT the rescued parent pages ONLY if they score strictly better than the
 # existing chunks (no-regression contract). Distinct floor from LIVE_THRESHOLD (chunk-CE is
-# not calibrated against whole-doc CE) — calibrated on a copy (Task 6).
+# not calibrated against whole-doc CE). Default 0.30 CALIBRATED in Task 7 on a full chunk-built
+# copy: a threshold sweep + a 227-question full-pipeline A/B (deep OFF vs ON) showed 0.30 gives
+# zero common-case false-adoption while preserving deep recall; the binding A/B fired on exactly
+# 1/227 questions (a deflect -> correct improvement) with 0 regressions.
 RETRIEVAL_DEEP_FALLBACK = os.getenv("RETRIEVAL_DEEP_FALLBACK", "").strip().lower() in ("1","true","yes","on")
-DEEP_FALLBACK_THRESHOLD = float(os.getenv("DEEP_FALLBACK_THRESHOLD", str(LIVE_THRESHOLD)))
+DEEP_FALLBACK_THRESHOLD = float(os.getenv("DEEP_FALLBACK_THRESHOLD", "0.30"))
 
 
 # --- Kavosh v2.1 unified router (Phase 1b) ---

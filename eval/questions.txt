@@ -271,3 +271,17 @@ what is the penalty for paying my NJIT tuition bill late
 while on a medical leave of absence from NJIT can I keep my campus job
 does NJIT cover health insurance for graduate student employees
 how does NJIT determine the food allowance in the cost of attendance
+
+# phase-2 deep-fallback regression lock (Task 7: deep chunk-rescue fires only on a primary miss,
+# adopts only if strictly better; froze DEEP_FALLBACK_THRESHOLD=0.30. These exercise the rescue.)
+what's the per diem for meals on conference travel
+what is the policy on conference travel meal reimbursement rates at NJIT
+
+# phase-2 kg/structured regression lock (the structured router path must be untouched by the
+# deep-fallback — it answers before the RAG miss-ladder)
+what are the GSA Executive Officer positions
+who are the GSA officers
+
+# phase-2 pdf-sourced (FORWARD lock — only answerable once PDFs are ingested at Task 8 live re-embed;
+# expected to deflect until then)
+what does the NJIT tuition table list for graduate per-credit rates
