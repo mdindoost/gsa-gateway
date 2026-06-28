@@ -25,20 +25,16 @@ def test_create_all_includes_events_table():
     conn.close()
 
 
-def test_events_table_is_strict():
+def test_events_table_matches_live_shape():
+    # The v2 STRICT `events` DDL was dead code (the live DB's events table is the v1
+    # non-STRICT/AUTOINCREMENT shape with announcement_sent/channel_posted). The split-ops
+    # build owns `events` in the OPS schema reproducing that LIVE shape + org_slug (spec HIGH-2),
+    # so events is intentionally NON-STRICT now. The OPS events shape is asserted in detail by
+    # test_schema_split.test_ops_events_is_live_shape; here we just confirm the legacy columns
+    # exist on the events table create_all builds.
     conn = create_all(":memory:")
-    org = conn.execute(
-        "INSERT INTO organizations(name,slug,type) VALUES('GSA','gsa','gsa')").lastrowid
-    # reminder flag must be an int under STRICT
-    import sqlite3
-    try:
-        conn.execute(
-            "INSERT INTO events(org_id,name,date,reminder_sent_7d,created_by) "
-            "VALUES(?,?,?,?,?)", (org, "E", "2026-06-12", "not-an-int", "t"))
-        raised = False
-    except sqlite3.IntegrityError:
-        raised = True
-    assert raised, "events should be STRICT and reject a non-int reminder flag"
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()}
+    assert {"announcement_sent", "channel_posted", "org_slug"} <= cols
     conn.close()
 
 
