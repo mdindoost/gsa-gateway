@@ -15,7 +15,7 @@ ONLY their own `build-<N>-report.md` and code/tests — never this ledger, never
 | # | Phase | Plan | Report | Status |
 |---|-------|------|--------|--------|
 | 1 | Schema split + config + retire create_all (HIGH-3) | `2026-06-28-split-ops-build1-schema-config.md` | `build-1-report.md` | ✅ DONE + reviewed (gate clean) |
-| 2 | Repoint subsystems to two-conn | `2026-06-28-split-ops-build2-repoint.md` (SKELETON) | `build-2-report.md` | ⬜ blocked by 1 |
+| 2 | Repoint subsystems to two-conn | `2026-06-28-split-ops-build2-repoint.md` (FINAL) | `build-2-report.md` | 🔵 DISPATCHED (Sonnet bg) — CRITICAL phase → dual review (Claude+Codex) at gate |
 | 3 | EVENT→KB derive + cross-DB writes | `2026-06-28-split-ops-build3-event-derive.md` (SKELETON) | `build-3-report.md` | ⬜ blocked by 1 |
 | 4 | Dashboard /db-ops + app.js two-DB | `2026-06-28-split-ops-build4-dashboard.md` (SKELETON) | `build-4-report.md` | ⬜ blocked by 1 |
 | 5 | Gated migration script + acceptance gate | `2026-06-28-split-ops-build5-migration.md` (SKELETON) | `build-5-report.md` | ⬜ blocked by 1-4 |
