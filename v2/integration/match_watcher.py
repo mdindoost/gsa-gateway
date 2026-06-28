@@ -594,18 +594,19 @@ class MatchWatcher:
     async def start(self) -> None:
         self.load_states()        # resume any match that was in progress at shutdown
         from v2.core.database.schema import get_ops_connection
-        # Open OPS connection (for enqueue_post) and KB connection (for org/settings reads)
-        self._conn = get_ops_connection(self.ops_path)       # OPS: post writes
-        self._kb_conn = get_connection(self.kb_path)         # KB: org lookup + settings
+        from v2.core.publishing.org_resolve import resolve_org
+        # Both connections opened inside the try so neither leaks on failure (F7).
         try:
-            row = self._kb_conn.execute(
-                "SELECT id FROM organizations WHERE slug=?", (self.org_slug,)).fetchone()
-            if row is None:
-                raise RuntimeError(f"MatchWatcher: org slug '{self.org_slug}' not found")
-            self.org_id = row["id"]
+            self._conn = get_ops_connection(self.ops_path)   # OPS: post writes
+            self._kb_conn = get_connection(self.kb_path)     # KB: org lookup + settings
+            # resolve_org fails loudly on >1 match (LOW-11) so slug collisions
+            # are caught before any posts are enqueued (F6).
+            org_row = resolve_org(self._kb_conn, self.org_slug)
+            self.org_id = org_row["id"]
         except Exception:
-            self._conn.close()
-            self._conn = None
+            if self._conn:
+                self._conn.close()
+                self._conn = None
             if self._kb_conn:
                 self._kb_conn.close()
                 self._kb_conn = None

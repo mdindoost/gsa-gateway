@@ -143,7 +143,7 @@ async def main():
     questions = questions[args.offset: args.offset + args.limit]
 
     db = Database(config.database_path); db.connect()
-    db.init_tables(); db.migrate_events_columns(); db.migrate_rag_columns()
+    db.init_tables(); db.migrate_rag_columns()
     kb = KnowledgeBase(data_dir=config.data_dir); kb.load()
     # rate limit effectively off; unique user per Q also avoids it
     rl = RateLimiter(max_calls=100000, period_seconds=1)

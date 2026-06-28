@@ -102,6 +102,15 @@ class GatewayHandler(BaseHTTPRequestHandler):
         conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
+    def _ops_conn(self):
+        """Open a fresh connection to the OPS DB (posts/judging/events cluster)."""
+        conn = sqlite3.connect(str(OPS_DB_PATH), timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
+        return conn
+
     # ── responses ──────────────────────────────────────────────────────────--
     def _cors(self):
         # localhost-only server behind an SSH tunnel; * is safe and works from
@@ -197,7 +206,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
             # ── judging endpoints (live API, not sql.js) ──────────────────
             if path == "/judging/events":
                 from v2.core.judging import db as jdb
-                conn = self._conn()
+                conn = self._ops_conn()
                 try:
                     return self._json(jdb.list_events(conn))
                 finally:
@@ -284,7 +293,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
             return self._error("invalid event id", 400)
         action = parts[3] if len(parts) > 3 else None
 
-        conn = self._conn()
+        conn = self._ops_conn()
         try:
             if action == "status":
                 return self._json({
@@ -351,7 +360,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
         score_max = int(body.get("score_max", 5))
         min_coverage = int(body.get("min_coverage", 3))
         audience_top_n = int(body.get("audience_top_n", 1))
-        conn = self._conn()
+        conn = self._ops_conn()
         try:
             event_id = jdb.create_event(
                 conn, name, criteria, top_n,
@@ -378,7 +387,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
             return self._error("invalid event id", 400)
         action = parts[3] if len(parts) > 3 else None
 
-        conn = self._conn()
+        conn = self._ops_conn()
         try:
             if action == "open":
                 try:

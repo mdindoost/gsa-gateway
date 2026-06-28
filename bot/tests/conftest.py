@@ -16,19 +16,16 @@ from bot.services.search import SearchService
 def db() -> Database:
     """In-memory SQLite database, fully initialised.
 
-    After the Phase-1 schema split, 'events' is no longer created by init_tables
-    (it belongs to the OPS DB). We re-create the OPS events DDL here on the same
-    in-memory connection so that bot tests that call db.add_event() / get_all_events()
-    etc. (the v1 event CRUD methods) continue to work in the test environment.
-    The live DB still has the events table; Phase 5 cutover migrates it to OPS.
+    Uses the split-ops two-connection model: KB tables on the primary in-memory
+    connection, OPS tables (events, posts …) on a separate in-memory connection.
+    ``Database(":memory:", ops_db_path=":memory:")`` opens two distinct in-memory
+    DBs; connect() runs create_ops_schema on the OPS one so the events table exists.
+    This correctly exercises the OPS-connection routing in add_event() /
+    get_upcoming_events_db() / get_all_events() / mark_*() — no masking bridge.
     """
-    from v2.core.database.schema import OPS_EVENTS
-    database = Database(":memory:")
+    database = Database(":memory:", ops_db_path=":memory:")
     database.connect()
     database.init_tables()
-    # Create the events table on the same connection (OPS schema seam for tests)
-    database.conn.executescript(OPS_EVENTS)
-    database.conn.commit()
     yield database
     database.close()
 

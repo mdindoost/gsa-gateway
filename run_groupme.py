@@ -44,10 +44,9 @@ async def main() -> None:
         sys.exit(1)
 
     # ── Services (mirrors run_telegram.py / bot/main.py setup_hook) ───────────
-    db = Database(config.database_path)
+    db = Database(config.database_path, ops_db_path=str(config.operations_db_path))
     db.connect()
     db.init_tables()
-    db.migrate_events_columns()
     db.migrate_rag_columns()
 
     kb = KnowledgeBase(data_dir=config.data_dir)

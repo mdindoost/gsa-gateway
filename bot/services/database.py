@@ -18,32 +18,64 @@ def hash_user_id(user_id: int | str) -> str:
 
 
 class Database:
-    """Wraps a SQLite connection and provides typed CRUD helpers."""
+    """Wraps a SQLite connection and provides typed CRUD helpers.
 
-    def __init__(self, db_path: str) -> None:
+    ``db_path`` — path to the Knowledge DB (questions, feedback, analytics …).
+    ``ops_db_path`` — path to the OPS DB (events, posts … once moved).  When
+    ``None`` (default), events CRUD uses the same connection as the Knowledge DB
+    (combined-file / test mode). Pass ``config.operations_db_path`` in production
+    so the v1 events methods route to the correct OPS connection.
+    """
+
+    def __init__(self, db_path: str, ops_db_path: str | None = None) -> None:
         self.db_path = db_path
+        # When ops_db_path is explicitly provided, open a second connection for
+        # events CRUD (split-ops mode).  None → combined mode (same conn).
+        self._ops_db_path_explicit: str | None = ops_db_path
+        self.ops_db_path: str = ops_db_path if ops_db_path is not None else db_path
         self._conn: sqlite3.Connection | None = None
+        self.__ops_conn: sqlite3.Connection | None = None  # only set in split mode
 
     # ── Connection ────────────────────────────────────────────────────────────
 
     def connect(self) -> None:
-        """Open the database connection."""
+        """Open the database connection(s).
+
+        Always opens the Knowledge DB.  If an explicit ``ops_db_path`` was
+        provided, also opens a separate connection to the OPS DB and runs
+        ``create_ops_schema`` on it so the events table exists.
+        """
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         logger.info("Database connected: %s", self.db_path)
+        if self._ops_db_path_explicit is not None:
+            from v2.core.database.schema import create_ops_schema
+            self.__ops_conn = create_ops_schema(self._ops_db_path_explicit)
+            logger.info("Database OPS connection: %s", self._ops_db_path_explicit)
 
     def close(self) -> None:
-        """Close the database connection."""
+        """Close the database connection(s)."""
         if self._conn:
             self._conn.close()
             self._conn = None
+        if self.__ops_conn:
+            self.__ops_conn.close()
+            self.__ops_conn = None
 
     @property
     def conn(self) -> sqlite3.Connection:
         if self._conn is None:
             raise RuntimeError("Database.connect() has not been called.")
         return self._conn
+
+    @property
+    def _ops_conn(self) -> sqlite3.Connection:
+        """OPS DB connection for events CRUD.  Returns the separate OPS conn when
+        in split mode, or the KB conn in combined/test mode."""
+        if self.__ops_conn is not None:
+            return self.__ops_conn
+        return self.conn
 
     # ── Schema ────────────────────────────────────────────────────────────────
 
@@ -125,6 +157,12 @@ class Database:
         """)
         self.conn.commit()
         logger.info("Database tables initialised.")
+
+    def migrate_events_columns(self) -> None:
+        """No-op stub — events table moved to OPS DB in Build 1 of the split-ops project.
+        Kept so external callers (run_telegram, eval scripts) that haven't been cleaned up
+        yet don't crash with AttributeError. Remove callers then remove this stub."""
+        pass  # deprecated; events DDL now owned by create_ops_schema
 
     def migrate_rag_columns(self) -> None:
         """Add RAG-related columns to questions table if missing."""
@@ -484,8 +522,9 @@ class Database:
         category: str,
         officer_id: int,
     ) -> int:
-        """Insert a new event. Returns the new row ID."""
-        cur = self.conn.execute(
+        """Insert a new event. Returns the new row ID.
+        Routes to the OPS DB connection (split mode) or KB conn (combined mode)."""
+        cur = self._ops_conn.execute(
             """INSERT INTO events
                (name, date, time, location, description, organizer, rsvp_link,
                 category, created_at, created_by)
@@ -497,12 +536,12 @@ class Database:
                 hash_user_id(officer_id),
             ),
         )
-        self.conn.commit()
+        self._ops_conn.commit()
         return cur.lastrowid  # type: ignore[return-value]
 
     def get_events_for_reminders(self) -> list[dict[str, Any]]:
         """Return all future (and today's) events for reminder processing."""
-        rows = self.conn.execute(
+        rows = self._ops_conn.execute(
             "SELECT * FROM events WHERE date >= date('now') ORDER BY date ASC"
         ).fetchall()
         return [dict(r) for r in rows]
@@ -512,12 +551,13 @@ class Database:
         by the audience's **US Eastern** day — not UTC. With ``date('now')`` (UTC),
         an event on the current ET day is dropped once UTC rolls past midnight (after
         ~8 PM ET) — the same UTC/local boundary bug fixed for the World Cup digest.
-        Event dates are stored as ET calendar dates."""
+        Event dates are stored as ET calendar dates.
+        Routes to the OPS DB connection (split mode) or KB conn (combined mode)."""
         from datetime import datetime, timedelta
         from zoneinfo import ZoneInfo
 
         today = datetime.now(ZoneInfo("America/New_York")).date()
-        rows = self.conn.execute(
+        rows = self._ops_conn.execute(
             """SELECT * FROM events
                WHERE date >= ? AND date <= ?
                ORDER BY date ASC""",
@@ -526,8 +566,9 @@ class Database:
         return [dict(r) for r in rows]
 
     def get_all_events(self) -> list[dict[str, Any]]:
-        """Return all events ordered by date."""
-        rows = self.conn.execute(
+        """Return all events ordered by date.
+        Routes to the OPS DB connection (split mode) or KB conn (combined mode)."""
+        rows = self._ops_conn.execute(
             "SELECT * FROM events ORDER BY date ASC"
         ).fetchall()
         return [dict(r) for r in rows]
@@ -543,13 +584,13 @@ class Database:
         if col is None:
             logger.warning("Unknown reminder type: %s", reminder_type)
             return
-        self.conn.execute(f"UPDATE events SET {col} = 1 WHERE id = ?", (event_id,))
-        self.conn.commit()
+        self._ops_conn.execute(f"UPDATE events SET {col} = 1 WHERE id = ?", (event_id,))
+        self._ops_conn.commit()
 
     def mark_announcement_sent(self, event_id: int, channel_name: str) -> None:
         """Mark an event's initial announcement as sent."""
-        self.conn.execute(
+        self._ops_conn.execute(
             "UPDATE events SET announcement_sent = 1, channel_posted = ? WHERE id = ?",
             (channel_name, event_id),
         )
-        self.conn.commit()
+        self._ops_conn.commit()

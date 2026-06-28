@@ -37,10 +37,9 @@ async def main() -> None:
         sys.exit(1)
 
     # ── Services (mirrors bot/main.py setup_hook) ────────────────────────────
-    db = Database(config.database_path)
+    db = Database(config.database_path, ops_db_path=str(config.operations_db_path))
     db.connect()
     db.init_tables()
-    db.migrate_events_columns()
     db.migrate_rag_columns()
 
     kb = KnowledgeBase(data_dir=config.data_dir)
@@ -57,7 +56,7 @@ async def main() -> None:
     logger.info("Assistant wired (Telegram)")
 
     from v2.core.judging.session import JudgingSessionManager
-    judging_manager = JudgingSessionManager(db_path=str(config.database_path))
+    judging_manager = JudgingSessionManager(db_path=str(config.operations_db_path))
 
     # Unified mode dispatch. The ModeRegistry composes the ONE per-process conversation-mode
     # store (built by build_assistant, shared with the message handler) with the judging

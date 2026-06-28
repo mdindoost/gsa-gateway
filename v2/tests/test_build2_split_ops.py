@@ -409,6 +409,7 @@ def test_scheduler_materializes_templates_on_ops(two_db):
     posts = ops_conn.execute("SELECT * FROM posts WHERE source_type='template'").fetchall()
     assert len(posts) == 1
     assert posts[0]["content"] == "Template content"
+    assert posts[0]["org_slug"] == "gsa"  # F4: materializer stamps org_slug
 
 
 def test_scheduler_materialize_reminders_on_ops(two_db):
@@ -442,6 +443,7 @@ def test_scheduler_materialize_reminders_on_ops(two_db):
 
     posts = ops_conn.execute("SELECT * FROM posts WHERE source_type='event_reminder'").fetchall()
     assert len(posts) == 1
+    assert posts[0]["org_slug"] == "gsa"  # F4: reminder materializer stamps org_slug
 
 
 def test_scheduler_combined_db_still_works(combined_db):
@@ -492,7 +494,10 @@ def test_match_watcher_make_watcher_accepts_both_paths(two_db):
 
 
 def test_match_watcher_start_resolves_org_from_kb(two_db):
-    """MatchWatcher.start() looks up org from KB, opens OPS for enqueue."""
+    """MatchWatcher.start() resolves org via resolve_org (fail-loud on >1 match),
+    opens both OPS and KB connections inside the try guard (F7 + F8).
+    Exercises real await start() with the _loop patched to return immediately."""
+    from unittest.mock import AsyncMock, patch
     from v2.integration.match_watcher import MatchWatcher
 
     watcher = MatchWatcher(
@@ -500,21 +505,48 @@ def test_match_watcher_start_resolves_org_from_kb(two_db):
         ops_path=two_db["ops_path"],
         kb_path=two_db["kb_path"],
         org_slug="gsa",
-        state_file="/tmp/test_watcher_start_state.json",
+        state_file="/tmp/test_watcher_start_real_state.json",
     )
-    # Simulate start without the loop task
-    import sqlite3
-    from v2.core.database.schema import get_connection, get_ops_connection
-    watcher._kb_conn = get_connection(two_db["kb_path"])
-    watcher._ops_conn = get_ops_connection(two_db["ops_path"])
-    row = watcher._kb_conn.execute(
-        "SELECT id FROM organizations WHERE slug=?", (watcher.org_slug,)
-    ).fetchone()
-    assert row is not None
-    watcher.org_id = row["id"]
+
+    # Patch asyncio.create_task so the _loop coroutine doesn't actually run
+    async def _noop_loop():
+        pass
+
+    with patch.object(watcher, "_loop", return_value=_noop_loop()):
+        import asyncio
+        with patch("asyncio.create_task", return_value=None):
+            asyncio.get_event_loop().run_until_complete(watcher.start())
+
+    # start() resolved the org from the KB using resolve_org
     assert watcher.org_id == 1
-    watcher._kb_conn.close()
-    watcher._ops_conn.close()
+    # Connections were opened (and should be cleaned up by stop)
+    assert watcher._conn is not None
+    assert watcher._kb_conn is not None
+    await_result = _run(watcher.stop())
+
+
+def test_match_watcher_start_duplicate_slug_raises(two_db):
+    """LOW-11: start() raises when org slug maps to >1 org (resolve_org fails loudly)."""
+    from v2.integration.match_watcher import MatchWatcher
+    from unittest.mock import patch
+
+    # Insert a second org with the same slug under a different parent
+    two_db["kb_conn"].execute(
+        "INSERT INTO organizations(id, name, slug, type, parent_id) "
+        "VALUES(99, 'GSA-Sub', 'gsa', 'club', 1)"
+    )
+    two_db["kb_conn"].commit()
+
+    watcher = MatchWatcher(
+        keys="",
+        ops_path=two_db["ops_path"],
+        kb_path=two_db["kb_path"],
+        org_slug="gsa",
+        state_file="/tmp/test_watcher_dup_slug_state.json",
+    )
+    with pytest.raises(ValueError, match=">1 org"):
+        with patch("asyncio.create_task", return_value=None):
+            _run(watcher.start())
 
 
 # ─────────────────────────────────────────────────────────────────────────────

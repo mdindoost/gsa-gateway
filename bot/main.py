@@ -252,24 +252,26 @@ class GSABot(commands.Bot):
                     from v2.core.publishing.sources import SourceRunner
                     from v2.integration.daily_fixtures import DailyFixturesSource
                     from v2.core.publishing.sources import platform_channels
+                    from v2.core.publishing.org_resolve import resolve_org
                     chan = os.getenv("FOOTBALL_CHANNEL", "world-cup-2026")
                     org_slug = os.getenv("FOOTBALL_ORG_SLUG", "gsa")
                     hour = int(os.getenv("WC_FIXTURES_HOUR_ET", "9"))
-                    # KB conn for org lookup; OPS conn for post writes
+                    # KB conn for org lookup (resolve_org enforces LOW-11); OPS conn for post writes
                     self._fixtures_kb_conn = get_connection(config.database_path)
                     self._fixtures_conn = get_ops_connection(config.operations_db_path)
-                    row = self._fixtures_kb_conn.execute(
-                        "SELECT id FROM organizations WHERE slug=?", (org_slug,)).fetchone()
-                    if row is None:
+                    try:
+                        org_row = resolve_org(self._fixtures_kb_conn, org_slug)
+                    except ValueError:
                         logger.warning("WC fixtures: org slug '%s' not found — skipping", org_slug)
                         self._fixtures_conn.close()
                         self._fixtures_conn = None
                         self._fixtures_kb_conn.close()
                         self._fixtures_kb_conn = None
-                    else:
+                        org_row = None
+                    if org_row is not None:
                         try:
                             source = DailyFixturesSource(
-                                api_key=key, org_id=row["id"],
+                                api_key=key, org_id=org_row["id"],
                                 channels=platform_channels(), discord_channel=chan,
                                 post_hour_et=hour)
                             self.v2_fixtures_runner = SourceRunner(
@@ -297,28 +299,34 @@ class GSABot(commands.Bot):
                     logger.warning("FAILURE_DIGEST_ENABLED set but V2_SCHEDULER_ENABLED is off — "
                                    "digests would queue but never deliver; skipping")
                 else:
-                    from v2.core.database.schema import get_connection
+                    from v2.core.database.schema import get_connection, get_ops_connection
                     from v2.core.publishing.sources import SourceRunner, platform_channels
+                    from v2.core.publishing.org_resolve import resolve_org
                     from v2.integration.failure_digest import FailureDigestSource
                     org_slug = os.getenv("FAILURE_DIGEST_ORG_SLUG", "gsa")
                     hour = int(os.getenv("FAILURE_DIGEST_HOUR_ET", "9"))
                     period = int(os.getenv("FAILURE_DIGEST_PERIOD_DAYS", "1"))
                     plats = [p.strip() for p in os.getenv("FAILURE_DIGEST_PLATFORMS", "").split(",") if p.strip()]
-                    self._failure_digest_conn = get_connection("gsa_gateway.db")
-                    row = self._failure_digest_conn.execute(
-                        "SELECT id FROM organizations WHERE slug=?", (org_slug,)).fetchone()
-                    if row is None:
+                    self._failure_digest_kb_conn = get_connection(config.database_path)
+                    self._failure_digest_conn = get_ops_connection(config.operations_db_path)
+                    try:
+                        org_row = resolve_org(self._failure_digest_kb_conn, org_slug)
+                    except ValueError:
                         logger.warning("failure digest: org slug '%s' not found — skipping", org_slug)
                         self._failure_digest_conn.close()
                         self._failure_digest_conn = None
-                    else:
+                        self._failure_digest_kb_conn.close()
+                        self._failure_digest_kb_conn = None
+                        org_row = None
+                    if org_row is not None:
                         try:
                             source = FailureDigestSource(
-                                self._failure_digest_conn, org_id=row["id"],
+                                self._failure_digest_kb_conn, org_id=org_row["id"],
                                 channels=plats or platform_channels(), discord_channel=chan,
                                 period_days=period, post_hour_et=hour)
                             self.v2_failure_digest_runner = SourceRunner(
-                                self._failure_digest_conn, source, interval=3600)
+                                self._failure_digest_conn, self._failure_digest_kb_conn,
+                                source, interval=3600)
                             await self.v2_failure_digest_runner.start()
                             logger.info("V2 failure digest active (channel #%s, %02d:00 ET, every %dd)",
                                         chan, hour, period)
@@ -326,6 +334,8 @@ class GSABot(commands.Bot):
                             logger.exception("failure digest runner failed to start")
                             self._failure_digest_conn.close()
                             self._failure_digest_conn = None
+                            self._failure_digest_kb_conn.close()
+                            self._failure_digest_kb_conn = None
                             self.v2_failure_digest_runner = None
         else:
             logger.info("V2 Scheduler disabled (default)")

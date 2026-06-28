@@ -116,7 +116,7 @@ def main() -> None:
 
         async def gen():
             db = Database(config.database_path); db.connect()
-            db.init_tables(); db.migrate_events_columns(); db.migrate_rag_columns()
+            db.init_tables(); db.migrate_rag_columns()
             kb = KnowledgeBase(data_dir=config.data_dir); kb.load()
             from bot.core.assistant import build_assistant
             asst = await build_assistant(config, db, kb, RateLimiter(max_calls=99999, period_seconds=1))

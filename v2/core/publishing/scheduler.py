@@ -142,6 +142,11 @@ class Scheduler:
         # UTC-canonical: scheduled_for / event datetimes are stored UTC, so "now"
         # must be UTC too. Naive UTC (tzinfo stripped) to compare with naive
         # parsed datetimes. Matches SQLite datetime('now').
+        # Clear the per-tick OrgCache so the next tick sees fresh org data
+        # (e.g. if an org was renamed or deactivated between ticks). MED-7/F6.
+        from v2.core.publishing.org_resolve import OrgCache
+        _tick_org_cache = OrgCache()
+        _tick_org_cache.clear()  # explicitly cleared at top of each tick
         now_dt = now or datetime.now(timezone.utc).replace(tzinfo=None)
         templates = self.materialize_templates(now_dt)
         reminders = self.materialize_event_reminders(now_dt)
@@ -166,11 +171,11 @@ class Scheduler:
         count = 0
         for t in rows:
             self.conn.execute(
-                "INSERT INTO posts(org_id,type,title,content,channels,discord_channel,"
+                "INSERT INTO posts(org_id,org_slug,type,title,content,channels,discord_channel,"
                 "scheduled_for,status,source_type,source_id,signature) "
-                "VALUES (?,?,?,?,?,?,?, 'scheduled', 'template', ?, ?)",
-                (t["org_id"], t["post_type"], t["name"], t["content"], t["channels"],
-                 t["discord_channel"], now_s, t["id"], t["signature"]),
+                "VALUES (?,?,?,?,?,?,?,?, 'scheduled', 'template', ?, ?)",
+                (t["org_id"], t["org_slug"], t["post_type"], t["name"], t["content"],
+                 t["channels"], t["discord_channel"], now_s, t["id"], t["signature"]),
             )
             nxt = next_occurrence(json.loads(t["recurrence"]), now_dt)
             self.conn.execute(
@@ -185,7 +190,8 @@ class Scheduler:
         rows = self.conn.execute(
             "SELECT er.id AS rid, er.event_id, er.offset_value, er.offset_unit, "
             "er.channels, er.template, e.name AS ev_name, e.date AS ev_date, "
-            "e.time AS ev_time, e.location AS ev_loc, e.org_id AS ev_org "
+            "e.time AS ev_time, e.location AS ev_loc, e.org_id AS ev_org, "
+            "e.org_slug AS ev_org_slug "
             "FROM event_reminders er JOIN events e ON e.id=er.event_id "
             "WHERE er.enabled=1 AND er.post_id IS NULL"
         ).fetchall()
@@ -198,11 +204,11 @@ class Scheduler:
                 f"Reminder: {r['ev_name']} is on {r['ev_date']} at {r['ev_time']}, {r['ev_loc']}."
             )
             cur = self.conn.execute(
-                "INSERT INTO posts(org_id,type,title,content,channels,scheduled_for,"
+                "INSERT INTO posts(org_id,org_slug,type,title,content,channels,scheduled_for,"
                 "status,source_type,source_id) "
-                "VALUES (?, 'event_reminder', ?, ?, ?, ?, 'scheduled', 'event_reminder', ?)",
-                (r["ev_org"], f"Reminder: {r['ev_name']}", content, r["channels"],
-                 now_dt.strftime(_FMT), r["event_id"]),
+                "VALUES (?, ?, 'event_reminder', ?, ?, ?, ?, 'scheduled', 'event_reminder', ?)",
+                (r["ev_org"], r["ev_org_slug"], f"Reminder: {r['ev_name']}", content,
+                 r["channels"], now_dt.strftime(_FMT), r["event_id"]),
             )
             self.conn.execute(
                 "UPDATE event_reminders SET post_id=? WHERE id=?", (cur.lastrowid, r["rid"])

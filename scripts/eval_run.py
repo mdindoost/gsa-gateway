@@ -65,7 +65,6 @@ async def main() -> None:
     db = Database(config.database_path)
     db.connect()
     db.init_tables()
-    db.migrate_events_columns()
     db.migrate_rag_columns()
     kb = KnowledgeBase(data_dir=config.data_dir)
     kb.load()
