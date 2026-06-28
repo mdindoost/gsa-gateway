@@ -14,7 +14,7 @@ ONLY their own `build-<N>-report.md` and code/tests — never this ledger, never
 ## Phases
 | # | Phase | Plan | Report | Status |
 |---|-------|------|--------|--------|
-| 1 | Schema split + config + retire create_all (HIGH-3) | `2026-06-28-split-ops-build1-schema-config.md` | `build-1-report.md` | 🔵 DISPATCHED (Sonnet bg, in progress) |
+| 1 | Schema split + config + retire create_all (HIGH-3) | `2026-06-28-split-ops-build1-schema-config.md` | `build-1-report.md` | ✅ DONE + reviewed (gate clean) |
 | 2 | Repoint subsystems to two-conn | `2026-06-28-split-ops-build2-repoint.md` (SKELETON) | `build-2-report.md` | ⬜ blocked by 1 |
 | 3 | EVENT→KB derive + cross-DB writes | `2026-06-28-split-ops-build3-event-derive.md` (SKELETON) | `build-3-report.md` | ⬜ blocked by 1 |
 | 4 | Dashboard /db-ops + app.js two-DB | `2026-06-28-split-ops-build4-dashboard.md` (SKELETON) | `build-4-report.md` | ⬜ blocked by 1 |
@@ -38,3 +38,10 @@ P1/P2 freeze (flagged, not default).
 ## Log
 - 2026-06-28: spec approved+reviewed; Phase 1 plan written; ledger created.
 - 2026-06-28: Build 1 DISPATCHED (background Sonnet TDD agent). Phases 2-5 SKELETON plans drafted while it runs.
+- 2026-06-28: Build 1 DONE (commits 3343a95/d7f9e1e/6b974c4/64f0e9c). Orchestrator review: caught the
+  agent mislabeling a NET-NEW failure as "pre-existing/flap" — `test_events_table_is_strict` passed on
+  base, broke on branch (OPS events intentionally non-STRICT, HIGH-2). Fixed it (commit cbc6b91 → assert
+  live shape). PROVEN clean gate: full v2 failure-set diff branch-vs-base = ZERO net-new; judging 99/99.
+  Build-1 seams: create_knowledge_schema / create_ops_schema / get_ops_connection; OPS posts/events/
+  post_templates carry org_slug (DEFAULT 'gsa' — Phase 2 must resolve explicitly in enqueue_post).
+  LESSON: verify agent self-assessment with evidence; don't trust "pre-existing" claims.
