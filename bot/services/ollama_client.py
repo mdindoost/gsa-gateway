@@ -21,9 +21,9 @@ except Exception:  # pragma: no cover - tiktoken is a hard dep; this is defensiv
 
 # Generation context-budget guard (see specs/2026-06-28-context-budget-guard-design.md)
 _DEFAULT_NUM_CTX = 16384
-TOKEN_SAFETY_FACTOR = 1.2      # tiktoken (cl100k) vs llama3.1 divergence cushion
+TOKEN_SAFETY_FACTOR = 1.2      # generic cushion for tokenizer divergence (the served model's
+                               # tokenizer may split more aggressively than cl100k)
 CONTEXT_CUSHION_TOKENS = 1024  # fixed headroom kept below num_ctx
-MAX_HISTORY_TURNS = 6          # newest-first cap on conversation turns fed to the prompt
 MIN_DOC_TOKENS = 128           # floor below which we'd rather send no doc than a useless sliver
 TRUNCATION_NOTE = (
     "\n\n[Document truncated to fit the context budget; later sections are not shown — "
@@ -195,10 +195,21 @@ class OllamaClient:
         # but legacy non-decomposed FAQ/policy rows can still be sizeable) +
         # conversation history + the 512-token answer. llama3.1 supports far more.
         # Default 16384; override via OLLAMA_NUM_CTX env var or constructor arg.
-        self.num_ctx = (
-            num_ctx if num_ctx is not None
-            else int(os.getenv("OLLAMA_NUM_CTX", str(_DEFAULT_NUM_CTX)))
-        )
+        if num_ctx is not None:
+            self.num_ctx = num_ctx
+        else:
+            raw = os.getenv("OLLAMA_NUM_CTX")
+            if raw is None:
+                self.num_ctx = _DEFAULT_NUM_CTX
+            else:
+                try:
+                    self.num_ctx = int(raw)
+                except ValueError:
+                    logger.warning(
+                        "Invalid OLLAMA_NUM_CTX=%r; falling back to default %d",
+                        raw, _DEFAULT_NUM_CTX,
+                    )
+                    self.num_ctx = _DEFAULT_NUM_CTX
         self.generate_url = f"{self.base_url}/api/generate"
         self.embed_url = f"{self.base_url}/api/embed"
         self._session: Optional[aiohttp.ClientSession] = None
@@ -297,9 +308,8 @@ class OllamaClient:
     def _build_system_prompt(self, conversation_history=None) -> str:
         system_prompt = BASE_SYSTEM_PROMPT
         if conversation_history:
-            recent = conversation_history[-MAX_HISTORY_TURNS:]
             system_prompt += "\n\n=== CONVERSATION HISTORY ===\n"
-            for turn in recent:
+            for turn in conversation_history:
                 prefix = "Student" if turn["role"] == "user" else "GSA Gateway"
                 system_prompt += f"{prefix}: {turn['content'][:400]}\n"
             system_prompt += (
@@ -394,7 +404,8 @@ class OllamaClient:
         # model has no reason to expand an abbreviation from the question.
         user_prompt = (f"User asked: {question}\n\nFacts (the complete, authoritative "
                        f"answer — rephrase these exactly):\n{facts}\n\nReply:")
-        if (_estimate_tokens(system_prompt) + _estimate_tokens(user_prompt) + 900
+        num_predict = 900  # long-roster headroom; shared by the budget check and the payload
+        if (_estimate_tokens(system_prompt) + _estimate_tokens(user_prompt) + num_predict
                 > self.num_ctx - CONTEXT_CUSHION_TOKENS):
             logger.warning("compose_from_rows: facts exceed context budget; "
                            "falling back to deterministic facts")
@@ -408,7 +419,7 @@ class OllamaClient:
                 "temperature": 0.0,
                 "top_p": 1.0,
                 "num_ctx": self.num_ctx,
-                "num_predict": 900,
+                "num_predict": num_predict,
                 "stop": ["Student:", "===", "Human:"],
             },
         }

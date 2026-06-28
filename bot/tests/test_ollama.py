@@ -160,6 +160,10 @@ class TestEstimateTokens:
             "the cap gap period bridges F-1 status to H-1B",
         ]:
             assert oc._estimate_tokens(s) >= len(enc.encode(s))
+        # the 1.2 safety factor must be load-bearing: on a sufficiently long input the
+        # estimate is STRICTLY greater than the raw count (a factor of 1.0 would only give >=)
+        long_s = "the cap gap period bridges F-1 status to H-1B " * 50
+        assert oc._estimate_tokens(long_s) > len(enc.encode(long_s))
 
     def test_empty_is_zero(self):
         assert oc._estimate_tokens("") == 0
@@ -186,6 +190,11 @@ class TestNumCtxConfig:
         monkeypatch.setenv("OLLAMA_NUM_CTX", "12000")
         assert OllamaClient(base_url="http://x", model="m", num_ctx=9000).num_ctx == 9000
 
+    def test_bad_env_falls_back_to_default(self, monkeypatch):
+        # a non-integer OLLAMA_NUM_CTX must not crash startup; fall back to the default
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "bad")
+        assert OllamaClient(base_url="http://x", model="m").num_ctx == 16384
+
 
 class TestFitChunks:
     def _client(self, num_ctx):
@@ -209,6 +218,16 @@ class TestFitChunks:
         # rendered prompt is within budget
         user = c._assemble_user(c._build_context_block(fitted), "q")
         assert oc._estimate_tokens("sys") + oc._estimate_tokens(user) + 256 <= 2000
+
+    def test_logs_telemetry_when_pages_dropped(self, caplog):
+        # spec §8 telemetry: dropping at least one page emits a logger.info "kept N/M pages"
+        c = self._client(2000)
+        big = "word " * 200
+        chunks = [make_chunk("rank1 " + big), make_chunk("rank2 " + big), make_chunk("rank3 " + big)]
+        with caplog.at_level("INFO", logger="bot.services.ollama_client"):
+            fitted = c._fit_chunks(chunks, "sys", "q", num_predict=256)
+        assert len(fitted) < len(chunks)  # at least one page dropped
+        assert any("context budget: kept" in r.message for r in caplog.records)
 
     def test_single_page_overflow_is_prefix_truncated(self):
         # num_ctx=2048 → enforced doc budget = 2048 - CONTEXT_CUSHION_TOKENS - 128 = 896.
@@ -287,14 +306,15 @@ class TestGuardWiring:
         await c.generate_answer("cap gap period", chunks)
         assert "The cap-gap period extends F-1 status." in c._session.post.call_args[1]["json"]["prompt"]
 
-    @pytest.mark.asyncio
-    async def test_history_bounded_to_max_turns(self):
+    def test_build_system_prompt_includes_all_turns(self):
+        # No history cap: every passed turn is rendered (byte-identical to the old
+        # _build_full_prompt history loop). The budget guard, not a cap, prevents overflow.
         c = self._client(16384)
-        c._session = _mock_session_with_response(200, {"response": "ok"})
         history = [{"role": "user", "content": f"turn{i}"} for i in range(20)]
-        await c.generate_answer("q", [make_chunk("a")], conversation_history=history)
-        sys = c._session.post.call_args[1]["json"]["system"]
-        assert "turn19" in sys and "turn0" not in sys  # only the last MAX_HISTORY_TURNS kept
+        sys = c._build_system_prompt(history)
+        assert all(f"turn{i}" in sys for i in range(20))  # turn0..turn19 all present
+        assert "=== CONVERSATION HISTORY ===" in sys
+        assert "=== END OF CONVERSATION HISTORY ===" in sys
 
     @pytest.mark.asyncio
     async def test_empty_fitted_returns_none(self):
@@ -311,20 +331,6 @@ class TestGuardWiring:
         await c.generate_answer("q", [make_chunk("a " * 2000) for _ in range(4)])
         assert c._session.post.call_args is not None, "POST must be called (at least one chunk fits)"
         assert "ADDITIONAL SOURCES" not in c._session.post.call_args[1]["json"]["prompt"]
-
-    def test_build_system_prompt_keeps_exactly_max_turns(self):
-        c = self._client(16384)
-        # exactly MAX_HISTORY_TURNS: all kept, history framing present (≤6 = old behavior)
-        six = [{"role": "user", "content": f"turn{i}"} for i in range(oc.MAX_HISTORY_TURNS)]
-        sys6 = c._build_system_prompt(six)
-        assert all(f"turn{i}" in sys6 for i in range(oc.MAX_HISTORY_TURNS))
-        assert "=== CONVERSATION HISTORY ===" in sys6
-        assert "=== END OF CONVERSATION HISTORY ===" in sys6
-        # one more turn than the cap: the oldest is dropped, the rest survive
-        seven = [{"role": "user", "content": f"turn{i}"} for i in range(oc.MAX_HISTORY_TURNS + 1)]
-        sys7 = c._build_system_prompt(seven)
-        assert "turn0" not in sys7
-        assert all(f"turn{i}" in sys7 for i in range(1, oc.MAX_HISTORY_TURNS + 1))
 
 
 class TestComposeBudget:
