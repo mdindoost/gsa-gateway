@@ -13,7 +13,8 @@ the gate refit / DB-rebuild (Decision A = hybrid; Decision B = fresh branch off 
 > **rev-2 changelog (reviews folded):** estimator → tiktoken + safety factor (was chars/3.5, not a true
 > upper bound); architecture → assemble-measure-shrink over the FULL rendered prompt (was body-only budget);
 > ADDITIONAL SOURCES URL block REMOVED (unbudgeted + unsafe 8B framing); `compose_from_rows` over-budget →
-> returns `None` (no truncate-then-rephrase); conversation history bounded before packing; chunk order
+> returns `None` (no truncate-then-rephrase); conversation history flows in full (final-review I1: NO
+> separate cap — the budget measurement is the protection; a cap would undercut conversation_max_turns); chunk order
 > preserved (no re-sort); truncated-chunk copy preserves provenance; whitespace-snap hard-cut fallback;
 > degenerate-budget handled; `num_ctx` config/env override; claims weakened to honest wording; quality-cap
 > added as a deferred goal.
@@ -69,8 +70,9 @@ cap-gap query (and the long-page class it represents) answers correctly, never "
 - **D2 — Budget is DERIVED from the model, never hardcoded**, and measured over the **full rendered prompt**
   (system + user), not just bodies. `target = num_ctx − num_predict − CUSHION`; pack/shrink until the
   estimated whole prompt ≤ target.
-- **D3 — Token estimate = tiktoken (`cl100k_base`) × `SAFETY_FACTOR` (1.2)**, with a char-based fallback
-  (`ceil(chars / 3.0)`) if tiktoken import fails. tiktoken gives real subword counts (URLs/code/IDs handled
+- **D3 — Token estimate = tiktoken (`cl100k_base`) × `SAFETY_FACTOR` (1.2)**, with a **pessimistic
+  byte-count fallback** (`len(text.encode("utf-8"))`, always ≥ true BPE token count) if tiktoken is
+  unavailable. tiktoken gives real subword counts (URLs/code/IDs handled
   far better than a flat char ratio); the safety factor covers llama-vs-tiktoken divergence; the `CUSHION`
   (D2) absorbs residual error. This is a conservative counting heuristic, **provider-isolated** (not the
   generation model's tokenizer — no LLM coupling). Honest limit: not provably model-exact → G9 defers exact
@@ -97,16 +99,16 @@ framing fits, we **build the real prompt, measure it, and shrink until it fits**
 
 ```
 generate_answer
-  1. bound history (last MAX_HISTORY_TURNS turns)         ← deterministic, newest-first
-  2. system_prompt = BASE + bounded-history
-  3. fitted = _fit_chunks(chunks, system_prompt, question, num_predict)   ← NEW: measure-shrink loop
+  1. system_prompt = BASE + full history (history is already bounded upstream by conversation_max_turns;
+     the fit step MEASURES it, so it can never overflow — no separate history cap)
+  2. fitted = _fit_chunks(chunks, system_prompt, question, num_predict)   ← NEW: measure-shrink loop
         repeat:
           context_block = _build_context_block(included)   ← real rendered text, incl. all framing
           user = context_block + question + INSTRUCTIONS
           est = estimate(system_prompt) + estimate(user)
           if est + num_predict <= num_ctx - CUSHION: break
           else: shrink(included)   ← drop lowest-ranked whole page; if only 1 left, prefix-truncate it
-  4. payload(system_prompt, user, num_ctx)                 ← final est asserted <= num_ctx (log+shrink if not)
+  3. payload(system_prompt, user, num_ctx)                 ← final est asserted <= num_ctx (log+shrink if not)
 ```
 
 `shrink` order: drop the **lowest-ranked included page** first (preserve input/rank order — no re-sort,
@@ -161,10 +163,13 @@ No ADDITIONAL SOURCES block (removed). Included pages keep their `Source:` line 
 page additionally shows the D4 truncation marker at the end of its body. Nothing else changes in the block.
 
 ### 5.5 `generate_answer` / `_build_full_prompt` wiring
-`_build_full_prompt` is refactored to: bound history → build `system_prompt` → run `_fit_chunks` → build the
-final user prompt from the fitted set. History bounding: keep the **last `MAX_HISTORY_TURNS = 6`** turns
-(each already clipped to 400 chars), newest-first, before appending to the system prompt (SE#5). num_predict
-stays 512.
+`_build_full_prompt` is refactored to: build `system_prompt` (with the FULL conversation history, as before)
+→ run `_fit_chunks` → build the final user prompt from the fitted set. **No separate history cap** (final
+review I1): history is already bounded upstream by `conversation_max_turns`, and the fit step measures the
+system prompt (history included), so over-long history just drops chunks — it can never overflow, and the
+multi-turn common path stays byte-identical to before. (SE#5's overflow concern is satisfied by the
+measurement + the degenerate→`[]`→`None` path, not by a second, tighter cap that would silently undercut the
+operator's `conversation_max_turns` knob.) num_predict stays 512.
 
 ### 5.6 `compose_from_rows` (SE#9 / RAG#7)
 `facts` is the COMPLETE structured answer; its contract is "include every item." So we do **not** truncate
@@ -277,7 +282,7 @@ longer pinned at the cap. Show the output (evidence-before-claim).
 ## 12. Build sequence (for writing-plans)
 
 1. `_estimate_tokens` (tiktoken + factor + char fallback) + constants (`SAFETY_FACTOR`, `CUSHION`,
-   `MAX_HISTORY_TURNS`, `MIN_DOC_TOKENS`) + `num_ctx` 16384/env (tests).
+   `MIN_DOC_TOKENS`) + `num_ctx` 16384/env (tests).
 2. `_fit_chunks` measure-shrink loop: drop-lowest-rank → single-page prefix-truncate + marker → degenerate
    `[]`; provenance-preserving copy; no re-sort (tests: all §8 cases).
 3. `_build_context_block`: remove ADDITIONAL SOURCES; add truncation marker rendering (tests).
