@@ -652,6 +652,27 @@ class TestAcceptanceGate:
         for t in MOVED_TABLES:
             assert t in kb_tables, f"{t} was dropped from KB despite gate failure"
 
+    def test_gate_fails_on_wrong_but_non_empty_slug(self, kb_and_ops, tmp_path):
+        """F5: gate FAILS if org_slug is non-empty but wrong (not matching org_slug_map).
+
+        The slug gate must check correctness, not merely non-NULL/non-empty presence.
+        """
+        from scripts.split_ops_migrate import build_org_slug_map, acceptance_gate
+        kbc = kb_and_ops["kb_conn"]
+        opsc = kb_and_ops["ops_conn"]
+        slug_map = build_org_slug_map(kbc)
+        kb_cols_map = self._do_full_copy(kbc, opsc, slug_map)
+
+        # Corrupt one row's org_slug to a wrong-but-non-empty value
+        opsc.execute("UPDATE posts SET org_slug='wrong-slug' WHERE id=1")
+        opsc.commit()
+
+        result = acceptance_gate(kbc, opsc, kb_cols_map, slug_map)
+        assert result["passed"] is False, (
+            "Gate must fail when org_slug is wrong, not just when it is NULL/empty"
+        )
+        assert result["checks"]["posts_slug_resolved"]["status"] == "FAIL"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Task 5 — drop-LAST + reversibility
@@ -713,11 +734,22 @@ class TestDropLastAndReversibility:
         assert orgs_count >= 1, "organizations must survive the migration"
 
     def test_restore_from_backup_reverts_migration(self, tmp_path):
-        """Restoring the hardened_backup snapshot fully reverts KB to pre-migration state."""
+        """F7: Restoring the hardened_backup snapshot fully reverts KB to pre-migration state.
+
+        Verified with byte/checksum identity, not just row counts.
+        """
         from scripts._area_tag_migrate import hardened_backup
+        from scripts.split_ops_migrate import table_checksum, get_kb_columns
+        import shutil
         kb_path = str(tmp_path / "kb.db")
         ops_path = str(tmp_path / "ops.db")
         kbc = _seed_fixture_kb(kb_path)
+
+        # Capture checksums BEFORE migration for byte-identity verification
+        pre_checksums: dict[str, str] = {}
+        for t in MOVED_TABLES:
+            cols = get_kb_columns(kbc, t)
+            pre_checksums[t] = table_checksum(kbc, t, cols)
         kbc.close()
 
         # Run migration with --commit
@@ -745,7 +777,6 @@ class TestDropLastAndReversibility:
             assert t not in post_tables
 
         # Restore from backup
-        import shutil
         shutil.copy2(str(backup_path), kb_path)
 
         # Now KB should have all MOVED tables back
@@ -761,6 +792,15 @@ class TestDropLastAndReversibility:
         assert kbc_restored.execute("SELECT COUNT(*) FROM posts").fetchone()[0] == 2
         assert kbc_restored.execute("SELECT COUNT(*) FROM post_deliveries").fetchone()[0] == 3
         assert kbc_restored.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 2
+
+        # F7: Byte/checksum identity — restored data must be bit-for-bit equal to pre-migration
+        for t in MOVED_TABLES:
+            cols = get_kb_columns(kbc_restored, t)
+            restored_chk = table_checksum(kbc_restored, t, cols)
+            assert restored_chk == pre_checksums[t], (
+                f"Checksum mismatch for {t} after restore: "
+                f"pre={pre_checksums[t]!r}, restored={restored_chk!r}"
+            )
         kbc_restored.close()
 
     def test_fk_ordered_drop_matches_expected_sequence(self):
@@ -769,6 +809,52 @@ class TestDropLastAndReversibility:
         assert actual_drop_order == DROP_ORDER, (
             f"Expected FK-ordered drop:\n{DROP_ORDER}\nGot:\n{actual_drop_order}"
         )
+
+    def test_main_commit_forced_gate_fail_all_11_tables_intact(self, tmp_path):
+        """F8: main(["--commit"]) with a FORCED gate failure leaves ALL 11 KB MOVED tables intact.
+
+        Drives the full orchestrator (not just acceptance_gate()) to verify fail-closed
+        at the main() level: after a gate failure, drop loop never executes.
+        """
+        kb_path = str(tmp_path / "kb.db")
+        ops_path = str(tmp_path / "ops.db")
+        kbc = _seed_fixture_kb(kb_path)
+        kbc.close()
+
+        # Wrapper: patch acceptance_gate to always fail (any failure mode), then run main()
+        wrapper = tmp_path / "forced_gate_fail.py"
+        wrapper.write_text(
+            f"import sys; sys.path.insert(0, {str(REPO)!r})\n"
+            "import scripts.split_ops_migrate as m\n"
+            # Force gate to report failure on count check (simulates FK or checksum failure)
+            "m.acceptance_gate = lambda *a, **kw: "
+            "{'passed': False, 'checks': {'posts_count': {'status': 'FAIL', "
+            "'kb': 2, 'ops': 3, 'diff': 1}}}\n"
+            f"rc = m.main(['--db', {str(kb_path)!r}, '--ops-db', {str(ops_path)!r}, "
+            f"'--backups-dir', {str(tmp_path)!r}, '--commit'])\n"
+            "sys.exit(rc)\n"
+        )
+        result = subprocess.run(
+            [sys.executable, str(wrapper)],
+            capture_output=True, text=True,
+        )
+        # Orchestrator must exit nonzero when gate fails
+        assert result.returncode != 0, (
+            f"main() must exit nonzero on gate failure;\n"
+            f"stdout={result.stdout}\nstderr={result.stderr}"
+        )
+
+        # ALL 11 KB MOVED tables must still exist (drop loop must not have run)
+        kbc2 = sqlite3.connect(kb_path)
+        kb_tables = {r[0] for r in kbc2.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        kbc2.close()
+        for t in MOVED_TABLES:
+            assert t in kb_tables, (
+                f"F8: MOVED table {t!r} was dropped from KB despite gate failure — "
+                "orchestrator is NOT fail-closed"
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -798,17 +884,28 @@ class TestPhase5Backfills:
         kb_conn.commit()
 
     def test_natural_key_back_fill_computes_correct_key(self, tmp_path):
-        """natural_key back-fill sets metadata.natural_key correctly."""
+        """natural_key back-fill sets metadata.natural_key correctly (sources from OPS event)."""
         from scripts.split_ops_migrate import backfill_event_info_natural_key
         kb_path = str(tmp_path / "kb.db")
+        ops_path = str(tmp_path / "ops.db")
         kb_conn = create_all(kb_path)
         kb_conn.row_factory = sqlite3.Row
         kb_conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'GSA','gsa','gsa')")
         kb_conn.commit()
+        # Seed OPS event that the event_info references
+        ops_conn = create_ops_schema(ops_path)
+        ops_conn.execute(
+            "INSERT INTO events(id,name,date,time,location,description,organizer,rsvp_link,"
+            "category,reminder_sent_7d,reminder_sent_1d,reminder_sent_1h,announcement_sent,"
+            "created_by,org_id,org_slug)"
+            " VALUES(1,'Spring Social','2026-04-10','6:00 PM','TBD','','GSA','','general',"
+            "0,0,0,0,'system',1,'gsa')"
+        )
+        ops_conn.commit()
         self._seed_event_info(kb_conn, name="Spring Social", date="2026-04-10", time="6:00 PM",
                                ops_event_id=1, has_natural_key=False)
 
-        count = backfill_event_info_natural_key(kb_conn)
+        count = backfill_event_info_natural_key(kb_conn, ops_conn)
         kb_conn.commit()
         assert count >= 1
 
@@ -819,37 +916,52 @@ class TestPhase5Backfills:
         expected_nk = event_natural_key("Spring Social", "2026-04-10", "6:00 PM")
         assert meta["natural_key"] == expected_nk
         kb_conn.close()
+        ops_conn.close()
 
     def test_natural_key_back_fill_is_idempotent(self, tmp_path):
         """Running natural_key back-fill twice does not change anything."""
         from scripts.split_ops_migrate import backfill_event_info_natural_key
         kb_path = str(tmp_path / "kb.db")
+        ops_path = str(tmp_path / "ops.db")
         kb_conn = create_all(kb_path)
         kb_conn.row_factory = sqlite3.Row
         kb_conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'GSA','gsa','gsa')")
         kb_conn.commit()
+        ops_conn = create_ops_schema(ops_path)
+        ops_conn.execute(
+            "INSERT INTO events(id,name,date,time,location,description,organizer,rsvp_link,"
+            "category,reminder_sent_7d,reminder_sent_1d,reminder_sent_1h,announcement_sent,"
+            "created_by,org_id,org_slug)"
+            " VALUES(1,'Spring Social','2026-04-10','6:00 PM','TBD','','GSA','','general',"
+            "0,0,0,0,'system',1,'gsa')"
+        )
+        ops_conn.commit()
         self._seed_event_info(kb_conn, name="Spring Social", date="2026-04-10",
                                time="6:00 PM", has_natural_key=False, ops_event_id=1)
-        backfill_event_info_natural_key(kb_conn)
+        backfill_event_info_natural_key(kb_conn, ops_conn)
         kb_conn.commit()
 
-        count_second = backfill_event_info_natural_key(kb_conn)
+        count_second = backfill_event_info_natural_key(kb_conn, ops_conn)
         kb_conn.commit()
         # Second run: key already set, should report 0 updates
         assert count_second == 0
         kb_conn.close()
+        ops_conn.close()
 
     def test_natural_key_back_fill_no_op_on_empty(self, tmp_path):
         """natural_key back-fill returns 0 when there are no event_info rows (live case)."""
         from scripts.split_ops_migrate import backfill_event_info_natural_key
         kb_path = str(tmp_path / "kb.db")
+        ops_path = str(tmp_path / "ops.db")
         kb_conn = create_all(kb_path)
         kb_conn.row_factory = sqlite3.Row
         kb_conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'GSA','gsa','gsa')")
         kb_conn.commit()
-        count = backfill_event_info_natural_key(kb_conn)
+        ops_conn = create_ops_schema(ops_path)
+        count = backfill_event_info_natural_key(kb_conn, ops_conn)
         assert count == 0
         kb_conn.close()
+        ops_conn.close()
 
     def test_ki_content_back_fill_copies_content_to_ops(self, tmp_path):
         """ki_content back-fill copies event_info.content → OPS events.ki_content."""
@@ -925,7 +1037,7 @@ class TestPhase5Backfills:
                                time="TBD", content=rich2, ops_event_id=2)
 
         # Run both back-fills
-        backfill_event_info_natural_key(kb_conn)
+        backfill_event_info_natural_key(kb_conn, ops_conn)
         kb_conn.commit()
         backfill_ki_content(kb_conn, ops_conn)
         ops_conn.commit()
@@ -987,6 +1099,72 @@ class TestPhase5Backfills:
         row = ops_conn.execute("SELECT ki_content FROM events WHERE id=2").fetchone()
         assert row is not None
         assert row[0] == rich
+        kb_conn.close()
+        ops_conn.close()
+
+    def test_natural_key_back_fill_uses_ops_event_name_not_kb_title(self, tmp_path):
+        """F3 regression: back-fill uses OPS event name/time, not KB title/metadata.time.
+
+        A legacy event_info has title != OPS event name AND missing metadata.time.
+        After back-fill, derive_event_kb must return created==0 (no duplicate created).
+        """
+        from scripts.split_ops_migrate import backfill_event_info_natural_key
+        kb_path = str(tmp_path / "kb.db")
+        ops_path = str(tmp_path / "ops.db")
+        kb_conn = create_all(kb_path)
+        kb_conn.row_factory = sqlite3.Row
+        kb_conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'GSA','gsa','gsa')")
+        kb_conn.commit()
+
+        # OPS event: name="Spring Social", date="2026-04-10", time="6:00 PM"
+        ops_conn = create_ops_schema(ops_path)
+        ops_conn.execute(
+            "INSERT INTO events(id,name,date,time,location,description,organizer,rsvp_link,"
+            "category,reminder_sent_7d,reminder_sent_1d,reminder_sent_1h,announcement_sent,"
+            "created_by,org_id,org_slug)"
+            " VALUES(1,'Spring Social','2026-04-10','6:00 PM','TBD','','GSA','','general',"
+            "0,0,0,0,'system',1,'gsa')"
+        )
+        ops_conn.commit()
+
+        # Legacy event_info: title DIFFERS ("Spring Celebration" != "Spring Social"),
+        # NO metadata.time (simulates rows written before time was captured)
+        legacy_meta = {
+            "derived_from": "ops_event",
+            "org_slug": "gsa",
+            "ops_event_id": 1,
+            "date": "2026-04-10",
+            # NOTE: no "time" key — this is the regression scenario
+        }
+        kb_conn.execute(
+            "INSERT INTO knowledge_items(org_id,type,title,content,metadata,created_by)"
+            " VALUES(1,'event_info','Spring Celebration','Old blurb.',?,'test')",
+            (json.dumps(legacy_meta),)
+        )
+        kb_conn.commit()
+
+        # Back-fill must use OPS event name + time (not KB title / missing time)
+        count = backfill_event_info_natural_key(kb_conn, ops_conn)
+        kb_conn.commit()
+        assert count >= 1, "Back-fill must update the legacy row"
+
+        row = kb_conn.execute(
+            "SELECT metadata FROM knowledge_items WHERE type='event_info'"
+        ).fetchone()
+        meta = json.loads(row["metadata"])
+        expected_nk = event_natural_key("Spring Social", "2026-04-10", "6:00 PM")
+        assert meta["natural_key"] == expected_nk, (
+            f"Back-fill must use OPS event name/time; got {meta.get('natural_key')!r}, "
+            f"expected {expected_nk!r}"
+        )
+
+        # After correct back-fill, derive_event_kb must NOT create a duplicate
+        result = derive_event_kb(ops_conn, kb_conn, org_slugs=("gsa",))
+        assert result["created"] == 0, (
+            f"F3 regression: derive_event_kb must not duplicate after OPS-sourced back-fill; "
+            f"created={result['created']}"
+        )
+
         kb_conn.close()
         ops_conn.close()
 

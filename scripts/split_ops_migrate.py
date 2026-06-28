@@ -267,9 +267,15 @@ def acceptance_gate(
     Checks performed:
     1. Per-table count: KB count == OPS count.
     2. Per-table checksum: sha256 over COMMON (KB) cols identical.
-    3. Slug resolution: all org_slug values in posts/post_templates/events are non-NULL.
+    3. Slug correctness: every org_slug in posts/post_templates/events equals
+       org_slug_map[org_id] (not just non-NULL).
     4. OPS FK integrity: PRAGMA foreign_key_check returns no violations.
     5. R3 invariant: create_knowledge_schema produces NONE of the 11 MOVED tables.
+
+    Reject #7 (no-duplicate-event_info-on-re-derive) is enforced by the
+    backfill_event_info_natural_key OPS-sourced fix + the F3 regression test.
+    It is NOT live-enforced here because derive_event_kb mutates KB; on current
+    live data the check is a no-op (event_info=0).
     """
     checks: dict[str, dict] = {}
     passed = True
@@ -329,21 +335,35 @@ def acceptance_gate(
                 "digest": kb_chk,
             }
 
-    # ── 3: slug resolution ────────────────────────────────────────────────────
+    # ── 3: slug correctness (not just non-empty — assert expected value) ─────────
     for table in ("posts", "post_templates", "events"):
         try:
-            unresolved = [
-                r[0]
-                for r in ops_conn.execute(
-                    f"SELECT id FROM `{table}` WHERE org_slug IS NULL OR org_slug=''"
-                ).fetchall()
-            ]
+            rows = ops_conn.execute(
+                f"SELECT id, org_id, org_slug FROM `{table}`"
+            ).fetchall()
         except sqlite3.OperationalError:
-            unresolved = []  # table missing — already caught above
-        if unresolved:
+            rows = []  # table missing — already caught above
+        wrong: list[dict] = []
+        for row in rows:
+            row_id, org_id_val, org_slug_val = row[0], row[1], row[2]
+            expected = org_slug_map.get(int(org_id_val)) if org_id_val is not None else None
+            if expected is None:
+                wrong.append(
+                    {"id": row_id, "org_id": org_id_val, "reason": "org_id not in map"}
+                )
+            elif org_slug_val != expected:
+                wrong.append(
+                    {
+                        "id": row_id,
+                        "org_id": org_id_val,
+                        "org_slug": org_slug_val,
+                        "expected": expected,
+                    }
+                )
+        if wrong:
             checks[f"{table}_slug_resolved"] = {
                 "status": "FAIL",
-                "unresolved_row_ids": unresolved,
+                "wrong_rows": wrong,
             }
             passed = False
         else:
@@ -379,36 +399,58 @@ def acceptance_gate(
 # Phase-5 back-fills
 # ─────────────────────────────────────────────────────────────────────────────
 
-def backfill_event_info_natural_key(kb_conn: sqlite3.Connection) -> int:
+def backfill_event_info_natural_key(
+    kb_conn: sqlite3.Connection,
+    ops_conn: sqlite3.Connection,
+) -> int:
     """Recompute metadata.natural_key for existing event_info KB items.
 
-    Uses event_natural_key(title, metadata.date, metadata.time) — the same
-    3-arg formula as Phase 3. Idempotent: rows that already have the correct
-    natural_key are skipped.
+    Sources name/date/time from the MATCHED OPS events row (via
+    metadata.ops_event_id or metadata.event_id) — single source of truth.
+    This prevents a divergence where a legacy KB row has title != OPS event
+    name or no metadata.time, which would produce a wrong natural_key and
+    cause derive_event_kb to create a duplicate (reject #7 violation).
+
+    If no OPS match is found for a given event_info row, that row is skipped
+    (natural_key left absent, so MED-8 fallback can still match it on next
+    derive run).
+
+    Idempotent: rows that already have the correct natural_key are skipped.
 
     Returns the number of rows updated.
     """
     rows = kb_conn.execute(
-        "SELECT id, title, metadata FROM knowledge_items "
+        "SELECT id, metadata FROM knowledge_items "
         "WHERE type='event_info' AND is_active=1"
     ).fetchall()
 
     updated = 0
     for row in rows:
         row_id = row[0]
-        name = row[1] or ""
         try:
-            meta = json.loads(row[2] or "{}")
+            meta = json.loads(row[1] or "{}")
         except (json.JSONDecodeError, TypeError):
             meta = {}
 
-        date = meta.get("date", "")
-        time_val = meta.get("time", "TBD") or "TBD"
+        ops_event_id = meta.get("ops_event_id") or meta.get("event_id")
+        if ops_event_id is None:
+            continue  # no OPS link — skip
 
-        if not name or not date:
+        ops_row = ops_conn.execute(
+            "SELECT name, date, time FROM events WHERE id=?",
+            (int(ops_event_id),),
+        ).fetchone()
+        if ops_row is None:
+            continue  # OPS event not found — skip, leave natural_key absent
+
+        ops_name = ops_row[0] or ""
+        ops_date = ops_row[1] or ""
+        ops_time = ops_row[2] or "TBD"
+
+        if not ops_name or not ops_date:
             continue
 
-        nk = event_natural_key(name, date, time_val)
+        nk = event_natural_key(ops_name, ops_date, ops_time)
         if meta.get("natural_key") == nk:
             continue  # already correct
 
@@ -495,6 +537,7 @@ def main(argv=None) -> int:
     # ── Open KB connection ────────────────────────────────────────────────────
     kb_conn = sqlite3.connect(kb_path)
     kb_conn.row_factory = sqlite3.Row
+    kb_conn.execute("PRAGMA busy_timeout=5000")  # fail cleanly if a lock is held
 
     # ── Build org_slug map (gate: ambiguous slug fails fast) ──────────────────
     try:
@@ -538,9 +581,12 @@ def main(argv=None) -> int:
         print(f"  {i:2d}. DROP TABLE {table}")
 
     print()
-    print("Rollback recipe:")
-    print("  cp <backup_path> <kb_path>   (then restart services)")
-    print("  # Backup path printed after --commit run")
+    print("Rollback recipe (if migration goes wrong):")
+    print("  1. Stop all services: pkill -TERM -f 'bot\\.main'; pkill -TERM -f 'v2/local_server\\.py'")
+    print("  2. Restore KB:        cp <backup_path> <kb_path>")
+    print("  3. Delete OPS DB:     rm gsa_gateway_ops.db")
+    print("  4. Restart on pre-split code: bash scripts/restart.sh")
+    print("  # Backup path is printed after --commit run")
 
     if not commit:
         print()
@@ -567,6 +613,33 @@ def main(argv=None) -> int:
     ops_conn = create_ops_schema(ops_path)
     print(f"  OPS schema ready: {ops_path}")
 
+    # F4: Assert OPS is greenfield — every MOVED table must be empty.
+    # If OPS already has rows (prior aborted --commit, or the two-conn bot wrote
+    # to OPS before migration), the copy would collide on PK. Catch it here with
+    # a clear recovery instruction rather than an opaque IntegrityError.
+    print()
+    print("Greenfield check: asserting all 11 OPS MOVED tables are empty...")
+    non_empty_ops = []
+    for table in MOVED_TABLES:
+        try:
+            cnt = ops_conn.execute(f"SELECT COUNT(*) FROM `{table}`").fetchone()[0]
+            if cnt > 0:
+                non_empty_ops.append((table, cnt))
+        except sqlite3.OperationalError:
+            pass  # table absent from a very fresh DB — that's fine too
+    if non_empty_ops:
+        for t, c in non_empty_ops:
+            print(f"  OPS already has {c} rows in {t}", file=sys.stderr)
+        print(
+            "ABORT: OPS already populated — delete gsa_gateway_ops.db and re-run "
+            "with services stopped.",
+            file=sys.stderr,
+        )
+        ops_conn.close()
+        kb_conn.close()
+        return 1
+    print("  All 11 OPS MOVED tables empty.")
+
     # 3. Copy all 11 MOVED tables KB → OPS (column-mapped)
     print()
     print("Step 3: Copying tables KB → OPS...")
@@ -590,7 +663,7 @@ def main(argv=None) -> int:
     # 4. Phase-5 back-fills (BEFORE the gate)
     print()
     print("Step 4: Phase-5 back-fills...")
-    nk_updated = backfill_event_info_natural_key(kb_conn)
+    nk_updated = backfill_event_info_natural_key(kb_conn, ops_conn)
     ki_updated = backfill_ki_content(kb_conn, ops_conn)
     kb_conn.commit()
     ops_conn.commit()
@@ -624,6 +697,39 @@ def main(argv=None) -> int:
 
     print("  → Gate PASSED. Proceeding to drop MOVED tables from KB.")
 
+    # F2b: Pre-drop re-verify — re-read KB counts + checksums vs OPS to collapse
+    # the gate→drop loss window (catches a writer that sneaked a row in after gate).
+    print()
+    print("Pre-drop re-verify (writer-race guard)...")
+    for table in MOVED_TABLES:
+        kb_count_now = kb_conn.execute(f"SELECT COUNT(*) FROM `{table}`").fetchone()[0]
+        ops_count_now = ops_conn.execute(f"SELECT COUNT(*) FROM `{table}`").fetchone()[0]
+        kb_chk_now = table_checksum(kb_conn, table, copied_kb_cols[table])
+        ops_chk_now = table_checksum(ops_conn, table, copied_kb_cols[table])
+        if kb_count_now != ops_count_now or kb_chk_now != ops_chk_now:
+            print(
+                f"ABORT: KB {table} changed between gate check and drop! "
+                f"(KB count={kb_count_now}, OPS count={ops_count_now}). "
+                "STOP ALL WRITERS and re-run.",
+                file=sys.stderr,
+            )
+            ops_conn.close()
+            kb_conn.close()
+            return 1
+    print("  All KB tables unchanged since gate. Safe to drop.")
+
+    # F2c: Loud mandatory warning — data loss is impossible ONLY if all writers
+    # have been stopped before this point.
+    print()
+    print("!" * 64)
+    print("! IMMORTAL-DATA GUARD: ALL BOT/DASHBOARD PROCESSES MUST BE  !")
+    print("! STOPPED BEFORE THIS POINT. A row written to KB between the  !")
+    print("! gate check and the DROP is silently lost. Stop services with:")
+    print("!   pkill -TERM -f 'bot\\.main'")
+    print("!   pkill -TERM -f 'v2/local_server\\.py'")
+    print("! then verify with: pgrep -af 'bot\\.main|v2/local_server\\.py'")
+    print("!" * 64)
+
     # 6. Drop MOVED tables from KB (FK-ordered, LAST — immortal-safe)
     print()
     print("Step 6: Dropping MOVED tables from KB (FK-ordered)...")
@@ -638,7 +744,12 @@ def main(argv=None) -> int:
     print("Migration COMPLETE")
     print(f"  OPS DB: {ops_path}")
     print(f"  Backup for rollback: {backup_path}")
-    print(f"  Rollback command: cp {backup_path} {kb_path}")
+    print()
+    print("Rollback (if needed):")
+    print(f"  1. Stop services: pkill -TERM -f 'bot\\.main'; pkill -TERM -f 'v2/local_server\\.py'")
+    print(f"  2. Restore KB:    cp {backup_path} {kb_path}")
+    print(f"  3. Delete OPS:    rm {ops_path}")
+    print(f"  4. Restart on pre-split code: bash scripts/restart.sh")
     print("=" * 64)
 
     ops_conn.close()

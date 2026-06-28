@@ -99,17 +99,23 @@ After restore: all 11 MOVED tables present with original row counts (431/2/1177/
 ## Rollback Recipe
 
 ```bash
-# Find the backup (created in .backups/ during --commit run)
-ls .backups/gsa_gateway.*.pre-split-ops-migrate.db
+# 1. Stop all services FIRST (immortal-data guard)
+pkill -TERM -f 'bot\.main'
+pkill -TERM -f 'v2/local_server\.py'
+# Verify all stopped:
+pgrep -af 'bot\.main|v2/local_server\.py'   # must return empty
 
-# Restore KB to pre-migration state
+# 2. Restore KB to pre-migration state
 cp .backups/gsa_gateway.<TIMESTAMP>.pre-split-ops-migrate.db gsa_gateway.db
 
-# Restart services (bots read live KB)
+# 3. Delete the (now stale) OPS DB — a retry would collide on PK otherwise
+rm gsa_gateway_ops.db
+
+# 4. Restart services on pre-split code
 bash scripts/restart.sh
 ```
 
-The OPS DB (`gsa_gateway_ops.db`) can be deleted after rollback — it holds no data that wasn't in KB.
+The OPS DB holds no data that wasn't already in KB, so deleting it is safe after restore.
 
 ---
 
@@ -143,8 +149,12 @@ python3 scripts/split_ops_migrate.py \
   --db gsa_gateway.db \
   --ops-db gsa_gateway_ops.db
 
-# 2. Stop services (optional but recommended to avoid WAL contention)
-bash scripts/restart.sh --no-llm   # or kill bots first
+# 2. MANDATORY: Stop ALL writers before migration
+#    (A row written to KB between gate check and DROP is silently lost — immortal-data guard)
+pkill -TERM -f 'bot\.main'
+pkill -TERM -f 'v2/local_server\.py'
+# Verify all stopped (must return empty):
+pgrep -af 'bot\.main|v2/local_server\.py'
 
 # 3. Execute migration (backup → copy → gate → drop)
 python3 scripts/split_ops_migrate.py \
@@ -154,7 +164,7 @@ python3 scripts/split_ops_migrate.py \
 
 # 4. Verify output ends with "Migration COMPLETE" and gate shows all [PASS]
 
-# 5. Restart services pointing to split DBs (Build 2 already wired two-conn)
+# 5. Restart services on the two-conn code (Build 2 already wired)
 bash scripts/restart.sh
 
 # 6. If anything is wrong: rollback (see recipe above) and restart
