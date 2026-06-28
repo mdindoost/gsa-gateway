@@ -93,7 +93,6 @@ class GSABot(commands.Bot):
         self.db = Database(config.database_path)
         self.db.connect()
         self.db.init_tables()
-        self.db.migrate_events_columns()
         self.db.migrate_rag_columns()
 
         self.kb = KnowledgeBase(data_dir=config.data_dir)

@@ -107,25 +107,6 @@ class Database:
                 guild_id     TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS events (
-                id                INTEGER PRIMARY KEY AUTOINCREMENT,
-                name              TEXT    NOT NULL,
-                date              TEXT    NOT NULL,
-                time              TEXT    NOT NULL DEFAULT 'TBD',
-                location          TEXT    NOT NULL DEFAULT 'TBD',
-                description       TEXT    NOT NULL DEFAULT '',
-                organizer         TEXT    NOT NULL DEFAULT 'GSA',
-                rsvp_link         TEXT    NOT NULL DEFAULT '',
-                category          TEXT    NOT NULL DEFAULT 'general',
-                reminder_sent_7d  INTEGER NOT NULL DEFAULT 0,
-                reminder_sent_1d  INTEGER NOT NULL DEFAULT 0,
-                reminder_sent_1h  INTEGER NOT NULL DEFAULT 0,
-                announcement_sent INTEGER NOT NULL DEFAULT 0,
-                channel_posted    TEXT,
-                created_at        TEXT    NOT NULL,
-                created_by        TEXT    NOT NULL
-            );
-
             CREATE TABLE IF NOT EXISTS events_log (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_name      TEXT    NOT NULL,
@@ -143,24 +124,7 @@ class Database:
             );
         """)
         self.conn.commit()
-        self.migrate_events_columns()
         logger.info("Database tables initialised.")
-
-    def migrate_events_columns(self) -> None:
-        """Add reminder tracking columns to events table if missing (safe for old DBs)."""
-        columns = [
-            ("reminder_sent_7d",  "INTEGER NOT NULL DEFAULT 0"),
-            ("reminder_sent_1d",  "INTEGER NOT NULL DEFAULT 0"),
-            ("reminder_sent_1h",  "INTEGER NOT NULL DEFAULT 0"),
-            ("announcement_sent", "INTEGER NOT NULL DEFAULT 0"),
-            ("channel_posted",    "TEXT"),
-        ]
-        for col, typedef in columns:
-            try:
-                self.conn.execute(f"ALTER TABLE events ADD COLUMN {col} {typedef}")
-                self.conn.commit()
-            except sqlite3.OperationalError:
-                pass  # Column already exists
 
     def migrate_rag_columns(self) -> None:
         """Add RAG-related columns to questions table if missing."""

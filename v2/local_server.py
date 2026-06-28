@@ -32,6 +32,7 @@ from urllib.parse import urlparse, parse_qs
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))  # so `bot.services.jobs` imports when run directly
 DB_PATH = REPO_ROOT / "gsa_gateway.db"
+OPS_DB_PATH = Path(os.environ.get("OPERATIONS_DB_PATH", str(REPO_ROOT / "gsa_gateway_ops.db")))
 DASHBOARD_DIR = REPO_ROOT / "dashboard"          # served so one URL = whole app
 HOST = "127.0.0.1"   # localhost ONLY — reachable only via SSH tunnel
 PORT = int(os.environ.get("GSA_SERVER_PORT", "5555"))  # override for testing/alt ports
@@ -1037,10 +1038,12 @@ def main():
     if not DB_PATH.exists():
         logger.error("Database not found: %s", DB_PATH)
         sys.exit(1)
-    # Self-heal the schema: apply any new tables/indexes idempotently (e.g. the judging
-    # audit table) so a standalone server stays in sync even when the bot hasn't restarted.
-    from v2.core.database.schema import create_all as _create_all
-    _create_all(str(DB_PATH)).close()
+    # Self-heal the schema: apply any new tables/indexes idempotently so a standalone
+    # server stays in sync even when the bot hasn't restarted. Use the split builders
+    # so moved (OPS) tables are never re-created in the Knowledge DB (HIGH-3).
+    from v2.core.database.schema import create_knowledge_schema, create_ops_schema
+    create_knowledge_schema(str(DB_PATH)).close()
+    create_ops_schema(str(OPS_DB_PATH)).close()
     JOBS.ensure_schema()       # create the jobs table if missing (backend owns it)
     JOBS.reconcile_startup()   # any 'running' row from a prior process → interrupted
     server = ThreadingHTTPServer((HOST, PORT), GatewayHandler)
