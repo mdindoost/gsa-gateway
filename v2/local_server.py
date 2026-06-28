@@ -902,9 +902,14 @@ class GatewayHandler(BaseHTTPRequestHandler):
     def _post_post(self, conn, b):
         """Create a post.  ``conn`` is the KB connection (from do_POST).
 
-        Cross-DB ordering (MED-9): the post is written to OPS first (committed),
-        then the optional ``knowledge_item`` is written to KB (``conn``).  A KB
-        failure is tolerated — the OPS post stands and the KB item is rebuildable.
+        Cross-DB write (NOT a rebuildable projection — B3-4):
+        - The post is written to OPS (committed first, MED-9).
+        - When ``add_to_kb`` is True, a manual ``announcement`` knowledge_item
+          (``created_by='dashboard'``) is written to KB.  This item is manual
+          content, preserved through rebuilds as manual content — it is NOT
+          auto-derived from the post.  Re-running _post_post would create a
+          second post; it is NOT an idempotent derive.  On KB write failure the
+          OPS post stands and the KB item can be re-added manually.
         """
         if b.get("type") == "event":
             return self._create_event(conn, b)
@@ -959,8 +964,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 needs_reindex = True
             except Exception:  # noqa: BLE001
                 logger.warning(
-                    "_post_post: KB knowledge_item write failed for post %s — "
-                    "OPS post stands, KB item rebuildable", post_id, exc_info=True
+                    "_post_post: KB announcement knowledge_item write failed for post %s — "
+                    "OPS post stands; re-add the KB item manually if needed",
+                    post_id, exc_info=True
                 )
 
         return {"success": True, "post_id": post_id, "message": "Post scheduled",
@@ -994,10 +1000,12 @@ class GatewayHandler(BaseHTTPRequestHandler):
         try:
             cur = ops_conn.execute(
                 "INSERT INTO events(org_id,org_slug,name,date,time,location,description,"
-                "organizer,category,created_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "ki_content,organizer,category,created_at,created_by) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (b["org_id"], org_slug, b["name"], b["date"],
                  b.get("time", "TBD"), b.get("location", "TBD"),
-                 b.get("description", ""), "GSA", "general", now, "dashboard"))
+                 b.get("description", ""), b.get("ki_content") or None,
+                 "GSA", "general", now, "dashboard"))
             event_id = cur.lastrowid
 
             ann = ops_conn.execute(
@@ -1026,25 +1034,27 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 ops_conn.close()
 
         # KB write — derive event_info via derive_event_kb (one-way, rebuildable).
+        # B3-2: only derive for GSA org (non-GSA events are not projected to KB).
         # If this fails, the OPS rows stand; a warning is logged.
         # Combined-DB mode: _ops_conn not available → use conn (same combined DB).
-        try:
-            _ops_fn = getattr(self, "_ops_conn", None)
-            if callable(_ops_fn):
-                ops_ro = _ops_fn()
-                try:
-                    derive_event_kb(ops_ro, conn, org_slugs=(org_slug,))
-                finally:
-                    ops_ro.close()
-            else:
-                # Combined-DB mode: ops_conn == conn; pass the same connection for read.
-                derive_event_kb(conn, conn, org_slugs=(org_slug,))
-        except Exception:  # noqa: BLE001
-            logger.warning(
-                "_create_event: KB derive failed for event %s (%r) — "
-                "OPS event stands, KB item rebuildable via scripts/derive_event_kb.py",
-                event_id, b.get("name"), exc_info=True
-            )
+        if org_slug == "gsa":
+            try:
+                _ops_fn = getattr(self, "_ops_conn", None)
+                if callable(_ops_fn):
+                    ops_ro = _ops_fn()
+                    try:
+                        derive_event_kb(ops_ro, conn, org_slugs=(org_slug,))
+                    finally:
+                        ops_ro.close()
+                else:
+                    # Combined-DB mode: ops_conn == conn; pass the same connection for read.
+                    derive_event_kb(conn, conn, org_slugs=(org_slug,))
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "_create_event: KB derive failed for event %s (%r) — "
+                    "OPS event stands, KB item rebuildable via scripts/derive_event_kb.py",
+                    event_id, b.get("name"), exc_info=True
+                )
 
         return {"success": True, "post_id": post_id, "event_id": event_id,
                 "reminders": reminders, "message": "Event scheduled"}

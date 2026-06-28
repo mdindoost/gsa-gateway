@@ -100,9 +100,9 @@ def derive_event_kb(
 
         org_id = org["id"]
 
-        # Fetch all events for this org from OPS
+        # Fetch all events for this org from OPS (include ki_content — B3-1)
         ops_events = ops_conn.execute(
-            "SELECT id, name, date, time, location FROM events WHERE org_slug=?",
+            "SELECT id, name, date, time, location, ki_content FROM events WHERE org_slug=?",
             (org_slug,),
         ).fetchall()
 
@@ -115,9 +115,9 @@ def derive_event_kb(
             # Build the KB item fields
             time_val = evt["time"] or "TBD"
             location_val = evt["location"] or "TBD"
-            content = (
-                f"{evt['name']} — {evt['date']} at {time_val}, {location_val}."
-            )
+            one_liner = f"{evt['name']} — {evt['date']} at {time_val}, {location_val}."
+            # B3-1: use officer-supplied blurb when present; fall back to one-liner.
+            insert_content = evt["ki_content"] or one_liner
             metadata = {
                 "derived_from": "ops_event",
                 "org_slug": org_slug,
@@ -130,7 +130,7 @@ def derive_event_kb(
 
             # --- Primary match: by natural_key ---
             existing = kb_conn.execute(
-                "SELECT id, metadata FROM knowledge_items "
+                "SELECT id, metadata, content FROM knowledge_items "
                 "WHERE type='event_info' AND org_id=? "
                 "AND json_extract(metadata,'$.natural_key')=?",
                 (org_id, nk),
@@ -144,7 +144,7 @@ def derive_event_kb(
             # and a new item to be created with the new name.  Correct behavior.
             if existing is None:
                 existing = kb_conn.execute(
-                    "SELECT id, metadata FROM knowledge_items "
+                    "SELECT id, metadata, content FROM knowledge_items "
                     "WHERE type='event_info' AND org_id=? "
                     "AND json_extract(metadata,'$.natural_key') IS NULL "
                     "AND (json_extract(metadata,'$.event_id')=? OR "
@@ -153,12 +153,22 @@ def derive_event_kb(
                 ).fetchone()
 
             if existing is not None:
+                # B3-1 preservation rule: if the OPS event has no ki_content (NULL/
+                # empty), do NOT overwrite an already non-empty KB content with the
+                # one-liner.  This protects existing rows that carry rich text
+                # (e.g. pre-migration rows) until Phase-5 back-fills ki_content.
+                if evt["ki_content"]:
+                    update_content = evt["ki_content"]
+                elif existing["content"]:
+                    update_content = existing["content"]
+                else:
+                    update_content = one_liner
                 kb_conn.execute(
                     "UPDATE knowledge_items "
                     "SET metadata=?, content=?, title=?, is_active=1, "
                     "    updated_at=datetime('now') "
                     "WHERE id=?",
-                    (meta_json, content, evt["name"], existing["id"]),
+                    (meta_json, update_content, evt["name"], existing["id"]),
                 )
                 totals["updated"] += 1
             else:
@@ -166,7 +176,7 @@ def derive_event_kb(
                     "INSERT INTO knowledge_items"
                     "(org_id,type,title,content,metadata,created_by) "
                     "VALUES (?,?,?,?,?,?)",
-                    (org_id, "event_info", evt["name"], content, meta_json,
+                    (org_id, "event_info", evt["name"], insert_content, meta_json,
                      "derive_event_kb"),
                 )
                 totals["created"] += 1

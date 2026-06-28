@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS events (
     time              TEXT    NOT NULL DEFAULT 'TBD',
     location          TEXT    NOT NULL DEFAULT 'TBD',
     description       TEXT    NOT NULL DEFAULT '',
+    ki_content        TEXT,                          -- custom KB blurb (B3-1); NULL → one-liner
     organizer         TEXT    NOT NULL DEFAULT 'GSA',
     rsvp_link         TEXT    NOT NULL DEFAULT '',
     category          TEXT    NOT NULL DEFAULT 'general',
@@ -566,6 +567,8 @@ _OPS_COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("post_deliveries", "deleted_at",      "TEXT"),
     ("post_deliveries", "delete_error",    "TEXT"),
     ("post_deliveries", "delete_attempts", "INTEGER NOT NULL DEFAULT 0"),
+    # B3-1: KB blurb stored on OPS event so derive_event_kb can reproduce it.
+    ("events",          "ki_content",      "TEXT"),
 ]
 
 # Back-compat: callers that imported _COLUMN_MIGRATIONS still work.

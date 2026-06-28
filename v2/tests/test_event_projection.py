@@ -702,3 +702,178 @@ def test_derive_script_commit_idempotent_rerun(tmp_path):
     ).fetchone()[0]
     conn.close()
     assert count == 2, f"Idempotent rerun must yield same count; got {count}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# B3-1 — ki_content preservation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_derive_ki_content_is_used_as_kb_content(two_db):
+    """B3-1: an OPS event with a non-empty ki_content must derive a KB item
+    whose content == ki_content (not the generated one-liner)."""
+    from v2.core.publishing.event_projection import derive_event_kb
+
+    rich = "Join us for the GSA Spring Social — food, music, and prizes!"
+    two_db["ops_conn"].execute(
+        "INSERT INTO events(name,date,time,location,description,ki_content,"
+        "organizer,category,org_id,org_slug) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("Spring Social", "2026-04-10", "6:00 PM", "Campus Center",
+         "description text", rich, "GSA", "general", 1, "gsa")
+    )
+    two_db["ops_conn"].commit()
+
+    derive_event_kb(two_db["ops_conn"], two_db["kb_conn"])
+
+    row = two_db["kb_conn"].execute(
+        "SELECT content FROM knowledge_items WHERE type='event_info'"
+    ).fetchone()
+    assert row is not None
+    assert row["content"] == rich, (
+        f"KB content must equal ki_content; got: {row['content']!r}"
+    )
+
+
+def test_derive_ki_content_null_uses_one_liner(two_db):
+    """B3-1: if ki_content is NULL, the derive falls back to the one-liner."""
+    from v2.core.publishing.event_projection import derive_event_kb
+
+    two_db["ops_conn"].execute(
+        "INSERT INTO events(name,date,time,location,description,ki_content,"
+        "organizer,category,org_id,org_slug) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("Spring Social", "2026-04-10", "6:00 PM", "Campus Center",
+         "", None, "GSA", "general", 1, "gsa")
+    )
+    two_db["ops_conn"].commit()
+
+    derive_event_kb(two_db["ops_conn"], two_db["kb_conn"])
+
+    row = two_db["kb_conn"].execute(
+        "SELECT content FROM knowledge_items WHERE type='event_info'"
+    ).fetchone()
+    assert row is not None
+    expected = "Spring Social — 2026-04-10 at 6:00 PM, Campus Center."
+    assert row["content"] == expected, (
+        f"One-liner mismatch; got: {row['content']!r}"
+    )
+
+
+def test_derive_ki_content_null_does_not_overwrite_existing_rich_content(two_db):
+    """B3-1: if OPS ki_content is NULL and the existing KB row already has
+    non-empty content (pre-migration rich text), the UPDATE must NOT overwrite
+    it with the generated one-liner."""
+    from v2.core.publishing.event_projection import derive_event_kb, event_natural_key
+
+    rich = "This is rich pre-existing content that must be preserved."
+    nk = event_natural_key("Spring Social", "2026-04-10", "6:00 PM")
+    two_db["kb_conn"].execute(
+        "INSERT INTO knowledge_items(org_id,type,title,content,metadata,created_by) "
+        "VALUES(?,?,?,?,?,?)",
+        (1, "event_info", "Spring Social", rich,
+         json.dumps({"derived_from": "ops_event", "org_slug": "gsa",
+                     "ops_event_id": 99, "date": "2026-04-10",
+                     "time": "6:00 PM", "natural_key": nk}),
+         "derive_event_kb")
+    )
+    two_db["kb_conn"].commit()
+
+    # OPS event with the matching id but NULL ki_content
+    two_db["ops_conn"].execute(
+        "INSERT INTO events(id,name,date,time,location,description,ki_content,"
+        "organizer,category,org_id,org_slug) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (99, "Spring Social", "2026-04-10", "6:00 PM", "Campus Center",
+         "", None, "GSA", "general", 1, "gsa")
+    )
+    two_db["ops_conn"].commit()
+
+    derive_event_kb(two_db["ops_conn"], two_db["kb_conn"])
+
+    row = two_db["kb_conn"].execute(
+        "SELECT content FROM knowledge_items WHERE type='event_info'"
+    ).fetchone()
+    assert row["content"] == rich, (
+        "Existing rich content must NOT be overwritten by one-liner when ki_content is NULL; "
+        f"got: {row['content']!r}"
+    )
+
+
+def test_create_event_persists_ki_content_to_ops(two_db):
+    """B3-1: _create_event must write ki_content from the request body into
+    the OPS events row so derive_event_kb can reproduce the KB content."""
+    handler = _make_test_handler(two_db["ops_path"])
+
+    rich = "Custom KB blurb supplied by the dashboard officer."
+    body = {
+        "org_id": 1,
+        "name": "Spring Social",
+        "date": "2026-04-10",
+        "time": "6:00 PM",
+        "location": "Campus Center",
+        "ki_content": rich,
+        "channels": [],
+    }
+    handler._create_event(two_db["kb_conn"], body)
+
+    from v2.core.database.schema import get_ops_connection
+    ops_ro = get_ops_connection(two_db["ops_path"])
+    try:
+        evt = ops_ro.execute(
+            "SELECT ki_content FROM events WHERE name='Spring Social'"
+        ).fetchone()
+        assert evt is not None
+        assert evt["ki_content"] == rich, (
+            f"OPS events.ki_content must store the dashboard value; got: {evt['ki_content']!r}"
+        )
+    finally:
+        ops_ro.close()
+
+    # KB must also reflect the ki_content (derive ran)
+    ki = two_db["kb_conn"].execute(
+        "SELECT content FROM knowledge_items WHERE type='event_info'"
+    ).fetchone()
+    assert ki is not None
+    assert ki["content"] == rich, (
+        f"KB event_info.content must equal ki_content; got: {ki['content']!r}"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# B3-2 — GSA-only live derive in _create_event
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_create_event_non_gsa_skips_event_info_derive(two_db):
+    """B3-2: _create_event must NOT derive event_info for non-GSA orgs.
+    The OPS event is still written; only the KB derive is skipped."""
+    two_db["kb_conn"].execute(
+        "INSERT INTO organizations(id,name,slug,type) VALUES(2,'CS Club','cs-club','club')"
+    )
+    two_db["kb_conn"].commit()
+
+    handler = _make_test_handler(two_db["ops_path"])
+    body = {
+        "org_id": 2,
+        "name": "CS Club Mixer",
+        "date": "2026-04-15",
+        "time": "7:00 PM",
+        "channels": [],
+    }
+    result = handler._create_event(two_db["kb_conn"], body)
+    assert result["success"] is True
+
+    # OPS event must be written
+    from v2.core.database.schema import get_ops_connection
+    ops_ro = get_ops_connection(two_db["ops_path"])
+    try:
+        evt = ops_ro.execute(
+            "SELECT * FROM events WHERE name='CS Club Mixer'"
+        ).fetchone()
+        assert evt is not None, "OPS event must be written even for non-GSA"
+    finally:
+        ops_ro.close()
+
+    # But NO event_info must appear in KB
+    rows = two_db["kb_conn"].execute(
+        "SELECT * FROM knowledge_items WHERE type='event_info'"
+    ).fetchall()
+    assert len(rows) == 0, (
+        f"Non-GSA _create_event must not produce event_info; got {len(rows)} rows"
+    )
