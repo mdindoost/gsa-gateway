@@ -93,11 +93,25 @@ def _half_label(half: int) -> str:
 
 
 class MatchWatcher:
-    def __init__(self, keys, db_path: str, org_slug: str = "gsa",
+    def __init__(self, keys, ops_path: str, kb_path: str | None = None,
+                 org_slug: str = "gsa",
                  channel: str = "world-cup-2026", state_file=None):
+        """Two-connection constructor.
+
+        ``ops_path`` — path to the OPS DB; ``enqueue_post`` writes posts here.
+        ``kb_path``  — path to the Knowledge DB; org lookup + settings reads
+                       (``auto_delete_hours``). Defaults to ``ops_path`` when
+                       not provided (behavior-preserving combined-file mode).
+
+        Existing callers that pass a single ``db_path`` continue to work because
+        ``kb_path`` defaults to ``ops_path``.
+        """
         self.keys = keys if isinstance(keys, list) else \
             [k.strip() for k in (keys or "").split(",") if k.strip()]
-        self.db_path = db_path
+        self.ops_path = ops_path
+        self.kb_path = kb_path if kb_path is not None else ops_path
+        # Back-compat alias: callers that read .db_path still get the ops path
+        self.db_path = self.ops_path
         self.org_slug = org_slug
         self.channel = channel
         self.state_file = Path(state_file) if state_file else DEFAULT_STATE_FILE
@@ -105,7 +119,8 @@ class MatchWatcher:
         self._active: dict[int, dict] = {}   # match_id -> {et_day, kickoff_utc} for OPEN windows
         self._hot_until: dict[int, datetime.datetime] = {}  # match_id -> stay-hot deadline
         self._key_idx = 0                     # round-robin cursor over self.keys
-        self._conn = None
+        self._conn = None      # OPS connection (legacy name kept for subclass compat)
+        self._kb_conn = None   # Knowledge connection for org/settings reads
         self.org_id = None
         self._task = None
         self._running = False
@@ -243,7 +258,7 @@ class MatchWatcher:
             return False
         content = build_match_preview(match, group_rows, _kickoff_et(match.get("utcDate", "")))
         try:
-            enqueue_post(self._conn, PostDraft(
+            enqueue_post(self._conn, self._kb_conn or self._conn, PostDraft(
                 org_id=self.org_id, content=content, type="worldcup",
                 channels=platform_channels(), discord_channel=self.channel,
                 source_type="worldcup", dedup_key=f"{match_id}:preview",
@@ -421,14 +436,18 @@ class MatchWatcher:
 
     def _wc_delete_at(self) -> str:
         """WorldCup posts flood the channel, so they auto-delete after the configured window
-        (default.auto_delete_hours, default 24, clamped 1..48). Absolute UTC delete_at."""
+        (default.auto_delete_hours, default 24, clamped 1..48). Absolute UTC delete_at.
+        Reads settings from the Knowledge DB (self._kb_conn)."""
         from v2.core.publishing.sources import auto_delete_hours
-        hours = auto_delete_hours(self._conn, self.org_id)
+        # Use KB conn for settings reads; fall back to OPS conn in combined-file mode
+        kb = self._kb_conn if self._kb_conn is not None else self._conn
+        hours = auto_delete_hours(kb, self.org_id)
         return (_utcnow() + datetime.timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
 
     def _post(self, match_id: int, ev: dict) -> None:
         try:
-            enqueue_post(self._conn, PostDraft(
+            # OPS conn for enqueue; KB conn was used at start() to resolve org_id
+            enqueue_post(self._conn, self._kb_conn or self._conn, PostDraft(
                 org_id=self.org_id, content=format_event(ev), type="worldcup",
                 channels=platform_channels(), discord_channel=self.channel,
                 source_type="worldcup", dedup_key=self._dedup_key(match_id, ev),
@@ -574,9 +593,12 @@ class MatchWatcher:
 
     async def start(self) -> None:
         self.load_states()        # resume any match that was in progress at shutdown
-        self._conn = get_connection(self.db_path)
+        from v2.core.database.schema import get_ops_connection
+        # Open OPS connection (for enqueue_post) and KB connection (for org/settings reads)
+        self._conn = get_ops_connection(self.ops_path)       # OPS: post writes
+        self._kb_conn = get_connection(self.kb_path)         # KB: org lookup + settings
         try:
-            row = self._conn.execute(
+            row = self._kb_conn.execute(
                 "SELECT id FROM organizations WHERE slug=?", (self.org_slug,)).fetchone()
             if row is None:
                 raise RuntimeError(f"MatchWatcher: org slug '{self.org_slug}' not found")
@@ -584,6 +606,9 @@ class MatchWatcher:
         except Exception:
             self._conn.close()
             self._conn = None
+            if self._kb_conn:
+                self._kb_conn.close()
+                self._kb_conn = None
             raise
         self._running = True
         logger.info("MatchWatcher started (keys=%d, channel #%s, org=%s)",
@@ -600,4 +625,6 @@ class MatchWatcher:
                 pass
         if self._conn:
             self._conn.close()
+        if self._kb_conn:
+            self._kb_conn.close()
         logger.info("MatchWatcher stopped")

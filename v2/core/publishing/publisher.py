@@ -40,8 +40,20 @@ def _now_str() -> str:
 
 
 class PostPublisher:
-    def __init__(self, conn, registry, signatures):
-        self.conn = conn
+    def __init__(self, ops_conn, kb_conn, registry, signatures):
+        """Two-connection constructor.
+
+        ``ops_conn`` — connection to the OPS DB; used for all reads/writes of
+        ``posts`` and ``post_deliveries``.
+
+        ``kb_conn`` — connection to the Knowledge DB; used only for settings
+        lookups (``default.platforms``, ``default.channel.*``, ``org.*``).
+
+        For the behavior-preserving combined-file mode, pass the same connection
+        for both: ``PostPublisher(conn, conn, registry, signatures)``.
+        """
+        self.conn = ops_conn       # OPS: posts reads/writes
+        self._kb_conn = kb_conn    # Knowledge: settings reads
         self.registry = registry
         self.signatures = signatures
 
@@ -50,21 +62,21 @@ class PostPublisher:
         declared = json.loads(row["channels"] or "[]")
         if declared:
             return declared
-        return get_setting_typed(self.conn, row["org_id"], "default.platforms", ["discord"]) \
+        return get_setting_typed(self._kb_conn, row["org_id"], "default.platforms", ["discord"]) \
             or ["discord"]
 
     def _discord_channel(self, row) -> str | None:
         if row["discord_channel"]:
             return row["discord_channel"]
         key = _TYPE_CHANNEL_KEY.get(row["type"], "broadcast")
-        return (get_setting(self.conn, row["org_id"], f"default.channel.{key}")
-                or get_setting(self.conn, row["org_id"], "default.channel.broadcast"))
+        return (get_setting(self._kb_conn, row["org_id"], f"default.channel.{key}")
+                or get_setting(self._kb_conn, row["org_id"], "default.channel.broadcast"))
 
     def _telegram_channel(self, row) -> str | None:
-        return get_setting(self.conn, row["org_id"], "org.telegram_channel")
+        return get_setting(self._kb_conn, row["org_id"], "org.telegram_channel")
 
     def _groupme_group(self, row) -> str | None:
-        return get_setting(self.conn, row["org_id"], "org.groupme_group")
+        return get_setting(self._kb_conn, row["org_id"], "org.groupme_group")
 
     def build_post(self, row) -> Post:
         platforms = self._platforms(row)

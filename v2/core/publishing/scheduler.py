@@ -117,13 +117,26 @@ def reminder_fire_time(date_str, time_str, offset_value, offset_unit) -> datetim
 # ── scheduler ────────────────────────────────────────────────────────────────
 
 class Scheduler:
-    def __init__(self, conn, publisher, registry=None):
-        self.conn = conn
+    def __init__(self, ops_conn, kb_conn, publisher, registry=None):
+        """Two-connection constructor.
+
+        ``ops_conn`` — OPS DB connection; used for all reads/writes of
+        ``posts``, ``post_templates``, ``events``, and ``event_reminders``.
+
+        ``kb_conn`` — Knowledge DB connection; reserved for future org/settings
+        stamping (currently the publisher handles settings reads via its own
+        kb_conn; this param is stored for completeness and Phase 3 use).
+
+        For the behavior-preserving combined-file mode, pass the same connection
+        for both: ``Scheduler(conn, conn, publisher)``.
+        """
+        self.conn = ops_conn       # OPS: all scheduling reads/writes
+        self._kb_conn = kb_conn    # Knowledge: future org/settings use
         self.publisher = publisher
         # Optional deleter: unsends posts whose delete_at has passed. None in pure-materialize
         # contexts/tests; the SchedulerRunner supplies the registry so it runs in production.
         from v2.core.publishing.deleter import PostDeleter
-        self.deleter = PostDeleter(conn, registry) if registry is not None else None
+        self.deleter = PostDeleter(ops_conn, registry) if registry is not None else None
 
     async def tick(self, now: datetime | None = None) -> dict:
         # UTC-canonical: scheduled_for / event datetimes are stored UTC, so "now"

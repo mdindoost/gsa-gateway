@@ -98,8 +98,17 @@ def _dedup_key(draft: "PostDraft") -> str:
     return f"{draft.source_type}:auto:{digest}"
 
 
-def enqueue_post(conn, draft: "PostDraft", *, allowed_channels=None) -> int:
+def enqueue_post(ops_conn, kb_conn, draft: "PostDraft", *, allowed_channels=None) -> int:
     """Validate, dedup, and insert ONE posts row (status='scheduled').
+
+    Two-connection signature:
+    ``ops_conn`` — OPS DB connection; receives the new ``posts`` row.
+    ``kb_conn``  — Knowledge DB connection; used to validate the org and resolve
+                   ``org_slug`` (never stored cross-DB by rowid — the slug is the
+                   durable contract per §3.2 of the design).
+
+    For the behavior-preserving combined-file mode, pass the same connection for
+    both: ``enqueue_post(conn, conn, draft)``.
 
     Returns the new post id, or the existing id when the draft is a duplicate.
     Raises EnqueueError on invalid input. ``allowed_channels`` (a set of
@@ -108,16 +117,17 @@ def enqueue_post(conn, draft: "PostDraft", *, allowed_channels=None) -> int:
     """
     valid_channels = DEFAULT_CHANNELS if allowed_channels is None else set(allowed_channels)
 
-    # 1) validate
+    # 1) validate org via Knowledge DB
     if not isinstance(draft.org_id, int):
         raise EnqueueError("org_id must be an int")
-    org = conn.execute(
-        "SELECT is_active FROM organizations WHERE id=?", (draft.org_id,)
+    org = kb_conn.execute(
+        "SELECT is_active, slug FROM organizations WHERE id=?", (draft.org_id,)
     ).fetchone()
     if org is None:
         raise EnqueueError(f"org_id {draft.org_id} does not exist")
     if not org["is_active"]:
         raise EnqueueError(f"org_id {draft.org_id} is not active")
+    org_slug = org["slug"]  # resolved from KB; set explicitly on OPS insert
 
     content = (draft.content or "").strip()
     if not content:
@@ -142,8 +152,9 @@ def enqueue_post(conn, draft: "PostDraft", *, allowed_channels=None) -> int:
         raise EnqueueError(f"metadata not JSON-serializable: {exc}")
 
     # 2) dedup (by stable key stored in metadata._dedup_key, scoped to org+source_type)
+    # Dedup query hits the OPS conn (that's where posts live).
     key = _dedup_key(draft)
-    existing = conn.execute(
+    existing = ops_conn.execute(
         "SELECT id FROM posts WHERE org_id=? AND source_type=? "
         "AND json_extract(metadata, '$._dedup_key')=?",
         (draft.org_id, draft.source_type, key),
@@ -159,18 +170,18 @@ def enqueue_post(conn, draft: "PostDraft", *, allowed_channels=None) -> int:
     if len(meta_json.encode()) > MAX_META_BYTES:
         raise EnqueueError(f"metadata exceeds {MAX_META_BYTES} bytes")
 
-    # 4) insert
-    cur = conn.execute(
-        "INSERT INTO posts(org_id, type, title, content, channels, discord_channel, "
+    # 4) insert into OPS with explicitly resolved org_slug (never rely on DEFAULT 'gsa')
+    cur = ops_conn.execute(
+        "INSERT INTO posts(org_id, org_slug, type, title, content, channels, discord_channel, "
         "scheduled_for, delete_at, status, source_type, source_id, metadata, created_by) "
-        "VALUES (?,?,?,?,?,?,?,?,'scheduled',?,?,?,?)",
-        (draft.org_id, draft.type, draft.title, content,
+        "VALUES (?,?,?,?,?,?,?,?,?,'scheduled',?,?,?,?)",
+        (draft.org_id, org_slug, draft.type, draft.title, content,
          json.dumps(draft.channels or []), draft.discord_channel, draft.scheduled_for,
          draft.delete_at, draft.source_type, draft.source_id, meta_json, draft.created_by),
     )
-    conn.commit()
-    logger.info("enqueue_post: queued post id=%s type=%s org=%s key=%s",
-                cur.lastrowid, draft.type, draft.org_id, key)
+    ops_conn.commit()
+    logger.info("enqueue_post: queued post id=%s type=%s org=%s slug=%s key=%s",
+                cur.lastrowid, draft.type, draft.org_id, org_slug, key)
     return cur.lastrowid
 
 
@@ -196,9 +207,18 @@ class SourceRunner:
     its lifecycle. (WorldCupRunner, by contrast, opens and owns its own
     connection because it predates this and manages its own start/stop.)"""
 
-    def __init__(self, conn, source: "PostSource", *, interval: int = 60,
+    def __init__(self, ops_conn, kb_conn, source: "PostSource", *, interval: int = 60,
                  allowed_channels=None):
-        self.conn = conn
+        """Two-connection constructor.
+
+        ``ops_conn`` — OPS DB connection for post inserts.
+        ``kb_conn``  — Knowledge DB connection for org/settings reads.
+
+        For the behavior-preserving combined-file mode, pass the same connection
+        for both: ``SourceRunner(conn, conn, source)``.
+        """
+        self.conn = ops_conn       # kept as .conn for back-compat callers
+        self._kb_conn = kb_conn
         self.source = source
         self.interval = interval
         self.allowed_channels = allowed_channels
@@ -219,7 +239,7 @@ class SourceRunner:
         enqueued = 0
         for d in drafts:
             try:
-                enqueue_post(self.conn, d, allowed_channels=self.allowed_channels)
+                enqueue_post(self.conn, self._kb_conn, d, allowed_channels=self.allowed_channels)
                 enqueued += 1
             except EnqueueError as exc:
                 logger.warning("source %s: dropped invalid draft: %s", self.source.name, exc)

@@ -13,7 +13,7 @@ def test_enqueue_persists_delete_at():
     conn = create_all(":memory:")
     conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'N','njit','university')")
     conn.commit()
-    pid = enqueue_post(conn, PostDraft(org_id=1, content="hi", channels=["discord"],
+    pid = enqueue_post(conn, conn, PostDraft(org_id=1, content="hi", channels=["discord"],
                                        delete_at="2026-06-25 00:00:00"))
     row = conn.execute("SELECT delete_at FROM posts WHERE id=?", (pid,)).fetchone()
     assert row["delete_at"] == "2026-06-25 00:00:00"
@@ -24,7 +24,7 @@ def test_enqueue_delete_at_defaults_none():
     conn = create_all(":memory:")
     conn.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'N','njit','university')")
     conn.commit()
-    pid = enqueue_post(conn, PostDraft(org_id=1, content="hi", channels=["discord"]))
+    pid = enqueue_post(conn, conn, PostDraft(org_id=1, content="hi", channels=["discord"]))
     row = conn.execute("SELECT delete_at FROM posts WHERE id=?", (pid,)).fetchone()
     assert row["delete_at"] is None
     conn.close()

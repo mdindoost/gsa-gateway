@@ -33,7 +33,7 @@ def test_tick_runs_delete_due():
     conn.execute("INSERT INTO post_deliveries(id,post_id,platform,channel,message_id,status) "
                  "VALUES(1,1,'discord','c','999','success')")
     conn.commit()
-    sch = Scheduler(conn, _Pub(), registry=_Reg())
+    sch = Scheduler(conn, conn, _Pub(), registry=_Reg())
     out = _run(sch.tick())
     assert out["deleted"] == 1
     conn.close()
@@ -41,6 +41,6 @@ def test_tick_runs_delete_due():
 
 def test_tick_without_registry_still_works():
     conn = create_all(":memory:")
-    out = _run(Scheduler(conn, _Pub()).tick())   # no registry → no deletion, no crash
+    out = _run(Scheduler(conn, conn, _Pub()).tick())   # no registry → no deletion, no crash
     assert out.get("deleted", 0) == 0
     conn.close()

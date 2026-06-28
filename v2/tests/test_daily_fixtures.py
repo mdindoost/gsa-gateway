@@ -170,12 +170,12 @@ def test_source_poll_no_matches_posts_nothing(monkeypatch):
 
 def test_enqueue_and_same_day_dedup(conn):
     draft = build_fixtures_draft(org_id=2, day=DAY, matches=[M_MEX], channels=["discord"])
-    first = enqueue_post(conn, draft)
+    first = enqueue_post(conn, conn, draft)
     row = conn.execute("SELECT status, source_type FROM posts WHERE id=?", (first,)).fetchone()
     assert row["status"] == "scheduled"
     assert row["source_type"] == "wc_fixtures"
     # re-enqueue same day -> dedup to one row
-    second = enqueue_post(conn, build_fixtures_draft(org_id=2, day=DAY, matches=[M_MEX], channels=["discord"]))
+    second = enqueue_post(conn, conn, build_fixtures_draft(org_id=2, day=DAY, matches=[M_MEX], channels=["discord"]))
     assert first == second
     n = conn.execute("SELECT COUNT(*) FROM posts WHERE source_type='wc_fixtures'").fetchone()[0]
     assert n == 1

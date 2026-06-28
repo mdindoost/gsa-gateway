@@ -210,7 +210,8 @@ class GSABot(commands.Bot):
 
             if v2_sched and self.v2_scheduler_runner is None:
                 from v2.integration.scheduler_runner import SchedulerRunner
-                self.v2_scheduler_runner = SchedulerRunner("gsa_gateway.db", registry)
+                self.v2_scheduler_runner = SchedulerRunner(
+                    config.operations_db_path, config.database_path, registry)
                 await self.v2_scheduler_runner.start()
                 logger.info("V2 Scheduler active (%d connector(s))",
                             len(registry.get_enabled()))
@@ -231,7 +232,8 @@ class GSABot(commands.Bot):
                     chan = os.getenv("FOOTBALL_CHANNEL", "world-cup-2026")
                     org_slug = os.getenv("FOOTBALL_ORG_SLUG", "gsa")
                     self.v2_worldcup_runner = make_watcher(
-                        key, "gsa_gateway.db", org_slug, chan)
+                        key, config.operations_db_path, config.database_path,
+                        org_slug, chan)
                     await self.v2_worldcup_runner.start()
                     logger.info("V2 World Cup watcher active (provider=%s, channel #%s)",
                                 provider, chan)
@@ -246,20 +248,24 @@ class GSABot(commands.Bot):
                     logger.warning("WC_FIXTURES_ENABLED set but V2_SCHEDULER_ENABLED is off — "
                                    "fixture digests would queue but never deliver; skipping")
                 else:
-                    from v2.core.database.schema import get_connection
+                    from v2.core.database.schema import get_connection, get_ops_connection
                     from v2.core.publishing.sources import SourceRunner
                     from v2.integration.daily_fixtures import DailyFixturesSource
                     from v2.core.publishing.sources import platform_channels
                     chan = os.getenv("FOOTBALL_CHANNEL", "world-cup-2026")
                     org_slug = os.getenv("FOOTBALL_ORG_SLUG", "gsa")
                     hour = int(os.getenv("WC_FIXTURES_HOUR_ET", "9"))
-                    self._fixtures_conn = get_connection("gsa_gateway.db")
-                    row = self._fixtures_conn.execute(
+                    # KB conn for org lookup; OPS conn for post writes
+                    self._fixtures_kb_conn = get_connection(config.database_path)
+                    self._fixtures_conn = get_ops_connection(config.operations_db_path)
+                    row = self._fixtures_kb_conn.execute(
                         "SELECT id FROM organizations WHERE slug=?", (org_slug,)).fetchone()
                     if row is None:
                         logger.warning("WC fixtures: org slug '%s' not found — skipping", org_slug)
                         self._fixtures_conn.close()
                         self._fixtures_conn = None
+                        self._fixtures_kb_conn.close()
+                        self._fixtures_kb_conn = None
                     else:
                         try:
                             source = DailyFixturesSource(
@@ -267,7 +273,8 @@ class GSABot(commands.Bot):
                                 channels=platform_channels(), discord_channel=chan,
                                 post_hour_et=hour)
                             self.v2_fixtures_runner = SourceRunner(
-                                self._fixtures_conn, source, interval=3600)
+                                self._fixtures_conn, self._fixtures_kb_conn,
+                                source, interval=3600)
                             await self.v2_fixtures_runner.start()
                             logger.info("V2 WC fixtures digest active (channel #%s, %02d:00 ET, hourly)",
                                         chan, hour)

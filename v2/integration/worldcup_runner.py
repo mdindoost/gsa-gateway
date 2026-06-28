@@ -110,7 +110,7 @@ class WorldCupRunner:
                 metadata={"event_type": ev.get("type")},
             )
             try:
-                enqueue_post(self._conn, draft, allowed_channels=self.allowed)
+                enqueue_post(self._conn, self._conn, draft, allowed_channels=self.allowed)
                 enqueued += 1
             except EnqueueError as exc:
                 logger.warning("World Cup: dropped invalid event draft: %s", exc)

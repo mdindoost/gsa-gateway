@@ -65,7 +65,7 @@ def test_source_poll_returns_one_draft():
 
 def test_enqueue_inserts_scheduled_row(conn):
     draft = build_quote_draft(org_id=2, day=datetime.date(2026, 6, 10), channels=["discord"])
-    pid = enqueue_post(conn, draft)
+    pid = enqueue_post(conn, conn, draft)
     row = conn.execute("SELECT status, type, source_type FROM posts WHERE id=?", (pid,)).fetchone()
     assert row["status"] == "scheduled"
     assert row["source_type"] == "daily_quote"
@@ -73,8 +73,8 @@ def test_enqueue_inserts_scheduled_row(conn):
 
 def test_same_day_dedup_posts_once(conn):
     day = datetime.date(2026, 6, 10)
-    first = enqueue_post(conn, build_quote_draft(org_id=2, day=day, channels=["discord"]))
-    second = enqueue_post(conn, build_quote_draft(org_id=2, day=day, channels=["discord"]))
+    first = enqueue_post(conn, conn, build_quote_draft(org_id=2, day=day, channels=["discord"]))
+    second = enqueue_post(conn, conn, build_quote_draft(org_id=2, day=day, channels=["discord"]))
     assert first == second
     n = conn.execute("SELECT COUNT(*) FROM posts WHERE source_type='daily_quote'").fetchone()[0]
     assert n == 1

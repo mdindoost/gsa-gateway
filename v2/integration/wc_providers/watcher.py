@@ -38,9 +38,15 @@ DEFAULT_ESPN_STATE_FILE = (
 
 
 class EspnMatchWatcher(MatchWatcher):
-    def __init__(self, keys, db_path, org_slug="gsa", channel="world-cup-2026",
-                 state_file=None, provider=None):
-        super().__init__(keys, db_path, org_slug, channel,
+    def __init__(self, keys, ops_path, kb_path=None, org_slug="gsa",
+                 channel="world-cup-2026", state_file=None, provider=None):
+        """Two-connection constructor (inherits from MatchWatcher).
+
+        ``ops_path`` — OPS DB path for post writes.
+        ``kb_path``  — Knowledge DB path for org/settings reads. Defaults to
+                       ``ops_path`` when omitted (combined-file mode).
+        """
+        super().__init__(keys, ops_path, kb_path, org_slug, channel,
                          state_file or DEFAULT_ESPN_STATE_FILE)
         self._espn = provider or EspnProvider()
 
@@ -154,10 +160,17 @@ class EspnMatchWatcher(MatchWatcher):
         self.save_states()
 
 
-def make_watcher(keys, db_path, org_slug="gsa", channel="world-cup-2026", state_file=None):
+def make_watcher(keys, ops_path, kb_path=None, org_slug="gsa",
+                 channel="world-cup-2026", state_file=None):
     """Select the live World Cup watcher by ``WC_PROVIDER`` (default ``espn``).
-    ``WC_PROVIDER=football_data`` returns the legacy MatchWatcher — the kill-switch."""
+
+    ``ops_path`` — OPS DB path (post writes).
+    ``kb_path``  — Knowledge DB path (org/settings reads). Defaults to ``ops_path``
+                   when omitted for backward-compat / combined-file mode.
+
+    ``WC_PROVIDER=football_data`` returns the legacy MatchWatcher — the kill-switch.
+    """
     provider = os.getenv("WC_PROVIDER", "espn").strip().lower()
     if provider == "football_data":
-        return MatchWatcher(keys, db_path, org_slug, channel, state_file)
-    return EspnMatchWatcher(keys, db_path, org_slug, channel, state_file)
+        return MatchWatcher(keys, ops_path, kb_path, org_slug, channel, state_file)
+    return EspnMatchWatcher(keys, ops_path, kb_path, org_slug, channel, state_file)

@@ -56,8 +56,8 @@ def env():
     registry.register(StubConnector("telegram"))
     registry.register(StubConnector("groupme"))
     sigs = SignatureService(conn)
-    publisher = PostPublisher(conn, registry, sigs)
-    scheduler = Scheduler(conn, publisher)
+    publisher = PostPublisher(conn, conn, registry, sigs)
+    scheduler = Scheduler(conn, conn, publisher)
     return dict(conn=conn, org=org, registry=registry, sigs=sigs,
                 publisher=publisher, scheduler=scheduler)
 
