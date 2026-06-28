@@ -9,6 +9,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _ops_path_default(database_path: str) -> str:
+    """Derive the default OPS DB path as a sibling of database_path.
+
+    Swaps the filename of database_path to ``gsa_gateway_ops.db``.
+    E.g. ``./gsa_gateway.db`` → ``./gsa_gateway_ops.db``.
+    """
+    p = Path(database_path)
+    return str(p.parent / "gsa_gateway_ops.db")
+
+
 @dataclass
 class Config:
     """Typed configuration object for the GSA Gateway bot."""
@@ -17,6 +27,7 @@ class Config:
     discord_guild_id: int | None
     admin_role_name: str
     database_path: str
+    operations_db_path: str
     ollama_enabled: bool
     ollama_model: str
     ollama_url: str
@@ -81,11 +92,13 @@ def load_config() -> Config:
     raw_channels = os.getenv("ALLOWED_CHANNELS", "").strip()
     allowed = [ch.strip() for ch in raw_channels.split(",") if ch.strip()]
 
+    db_path = os.getenv("DATABASE_PATH", "./gsa_gateway.db")
     return Config(
         discord_token=os.getenv("DISCORD_TOKEN", ""),
         discord_guild_id=guild_id,
         admin_role_name=os.getenv("ADMIN_ROLE_NAME", "GSA Officer"),
-        database_path=os.getenv("DATABASE_PATH", "./gsa_gateway.db"),
+        database_path=db_path,
+        operations_db_path=os.getenv("OPERATIONS_DB_PATH", _ops_path_default(db_path)),
         ollama_enabled=os.getenv("OLLAMA_ENABLED", "false").lower() == "true",
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
         ollama_url=os.getenv("OLLAMA_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")),
