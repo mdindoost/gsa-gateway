@@ -421,11 +421,14 @@ def test_create_event_writes_cluster_to_ops_and_event_info_to_kb(two_db):
     assert meta["ops_event_id"] == result["event_id"]
 
     # KB must NOT contain events or posts tables
+    import sqlite3 as _sqlite3
     try:
         two_db["kb_conn"].execute("SELECT 1 FROM events LIMIT 1").fetchone()
         assert False, "KB should not have events table in split mode"
-    except Exception:
-        pass  # expected
+    except _sqlite3.OperationalError as exc:
+        assert "no such table" in str(exc).lower(), (
+            f"Expected 'no such table' error, got: {exc}"
+        )
 
 
 def test_create_event_ops_first_kb_failure_ops_persists(two_db, caplog):
@@ -518,11 +521,14 @@ def test_post_post_writes_post_to_ops(two_db):
         ops_ro.close()
 
     # KB should have no posts table
+    import sqlite3 as _sqlite3
     try:
         two_db["kb_conn"].execute("SELECT 1 FROM posts LIMIT 1").fetchone()
         assert False, "KB must not have posts table"
-    except Exception:
-        pass
+    except _sqlite3.OperationalError as exc:
+        assert "no such table" in str(exc).lower(), (
+            f"Expected 'no such table' error, got: {exc}"
+        )
 
 
 def test_post_post_add_to_kb_writes_ki_to_kb(two_db):
