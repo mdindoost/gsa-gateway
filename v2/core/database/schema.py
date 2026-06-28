@@ -21,6 +21,19 @@ Design decisions (approved 2026-06-08):
 
 Timestamps are UTC text (``datetime('now')`` -> ``YYYY-MM-DD HH:MM:SS``), matching
 v1 conventions.
+
+Schema split (Phase 1, 2026-06-28):
+  * ``create_knowledge_schema`` — creates ONLY knowledge/KG tables + FTS + triggers
+    + settings + schema_migrations. No moved (OPS) tables. Loads sqlite-vec.
+  * ``create_ops_schema`` — creates ONLY the publishing cluster + judging tables
+    + their indexes + column migrations. Does NOT load sqlite-vec.
+  * ``get_ops_connection`` — like ``get_connection`` but without sqlite-vec.
+  * ``create_all`` — thin back-compat wrapper that calls both builders against the
+    same path (used only by tests/fixtures that want one combined DB).
+  * MOVED table set (must never appear in the knowledge schema):
+    posts, post_templates, post_deliveries, events, event_reminders,
+    judging_events, judging_judges, judging_presenters, judging_scores,
+    judging_audience_votes, judging_score_audit.
 """
 
 from __future__ import annotations
@@ -36,7 +49,7 @@ except ImportError:  # pragma: no cover - surfaced clearly at runtime
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Group A — core tables (STRICT)
+# Group A — Knowledge/KG tables (STRICT) — stay in gsa_gateway.db
 # ─────────────────────────────────────────────────────────────────────────────
 
 ORGANIZATIONS = """
@@ -77,10 +90,15 @@ CREATE TABLE IF NOT EXISTS knowledge_items (
 ) STRICT;
 """
 
-POSTS = """
+# ─── OPS: Publishing cluster DDL constants ───────────────────────────────────
+# These carry org_slug TEXT NOT NULL (durable cross-DB join key) and retain
+# org_id as a plain informational INTEGER (NO FK to organizations — different DB).
+
+OPS_POSTS = """
 CREATE TABLE IF NOT EXISTS posts (
     id              INTEGER PRIMARY KEY,
-    org_id          INTEGER NOT NULL REFERENCES organizations(id),
+    org_id          INTEGER,
+    org_slug        TEXT    NOT NULL DEFAULT 'gsa',
     type            TEXT    NOT NULL,          -- one_time|recurring_instance|event_announcement|
                                                -- event_reminder|mathcafe|worldcup|broadcast|digest
     title           TEXT,
@@ -100,10 +118,11 @@ CREATE TABLE IF NOT EXISTS posts (
 ) STRICT;
 """
 
-POST_TEMPLATES = """
+OPS_POST_TEMPLATES = """
 CREATE TABLE IF NOT EXISTS post_templates (
     id              INTEGER PRIMARY KEY,
-    org_id          INTEGER NOT NULL REFERENCES organizations(id),
+    org_id          INTEGER,
+    org_slug        TEXT    NOT NULL DEFAULT 'gsa',
     name            TEXT    NOT NULL,
     content         TEXT    NOT NULL,
     post_type       TEXT    NOT NULL DEFAULT 'recurring_instance', -- type stamped on emitted posts
@@ -135,31 +154,31 @@ CREATE TABLE IF NOT EXISTS post_deliveries (
 ) STRICT;
 """
 
-# v1-column-compatible `events` so v2 is self-sufficient on GREENFIELD deployments
-# (other universities with no v1). Matches the exact column layout v1 creates, plus
-# org_id. On the NJIT migration path the v1 table already exists, so IF NOT EXISTS
-# is a harmless no-op and there is ZERO divergence between NJIT and greenfield — all
-# existing code (scheduler, migrate_events) works on both. A cleaner
-# start_datetime/tags schema is deferred until v1 is retired (it cannot change the
-# live table without breaking the running v1 bot, which reads date/time/category).
-EVENTS = """
+# OPS events: the LIVE v1 shape (INTEGER PRIMARY KEY AUTOINCREMENT, two legacy columns
+# announcement_sent + channel_posted, org_id as plain INTEGER) plus org_slug.
+# This is NOT the dead STRICT v2 DDL. The DEFAULT 'gsa' on org_slug is a convenience
+# for fresh inserts; the migration sets it explicitly per existing row.
+OPS_EVENTS = """
 CREATE TABLE IF NOT EXISTS events (
-    id               INTEGER PRIMARY KEY,
-    org_id           INTEGER REFERENCES organizations(id),
-    name             TEXT    NOT NULL,
-    date             TEXT    NOT NULL,
-    time             TEXT    NOT NULL DEFAULT 'TBD',
-    location         TEXT    NOT NULL DEFAULT 'TBD',
-    description      TEXT    NOT NULL DEFAULT '',
-    organizer        TEXT    NOT NULL DEFAULT 'GSA',
-    rsvp_link        TEXT    NOT NULL DEFAULT '',
-    category         TEXT    NOT NULL DEFAULT 'general',
-    reminder_sent_7d INTEGER NOT NULL DEFAULT 0,
-    reminder_sent_1d INTEGER NOT NULL DEFAULT 0,
-    reminder_sent_1h INTEGER NOT NULL DEFAULT 0,
-    created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
-    created_by       TEXT    NOT NULL DEFAULT 'system'
-) STRICT;
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    name              TEXT    NOT NULL,
+    date              TEXT    NOT NULL,
+    time              TEXT    NOT NULL DEFAULT 'TBD',
+    location          TEXT    NOT NULL DEFAULT 'TBD',
+    description       TEXT    NOT NULL DEFAULT '',
+    organizer         TEXT    NOT NULL DEFAULT 'GSA',
+    rsvp_link         TEXT    NOT NULL DEFAULT '',
+    category          TEXT    NOT NULL DEFAULT 'general',
+    reminder_sent_7d  INTEGER NOT NULL DEFAULT 0,
+    reminder_sent_1d  INTEGER NOT NULL DEFAULT 0,
+    reminder_sent_1h  INTEGER NOT NULL DEFAULT 0,
+    announcement_sent INTEGER NOT NULL DEFAULT 0,
+    channel_posted    TEXT,
+    created_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+    created_by        TEXT    NOT NULL DEFAULT 'system',
+    org_id            INTEGER,
+    org_slug          TEXT    NOT NULL DEFAULT 'gsa'
+);
 """
 
 EVENT_REMINDERS = """
@@ -175,6 +194,8 @@ CREATE TABLE IF NOT EXISTS event_reminders (
     created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 ) STRICT;
 """
+
+# ─── Knowledge-only tables (continued) ───────────────────────────────────────
 
 SETTINGS = """
 CREATE TABLE IF NOT EXISTS settings (
@@ -199,7 +220,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Group B — search tables (virtual; cannot be STRICT)
+# Group B — search tables (virtual; cannot be STRICT) — knowledge only
 # ─────────────────────────────────────────────────────────────────────────────
 
 KNOWLEDGE_VECTORS = """
@@ -218,7 +239,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Group C — knowledge graph (STRICT)
+# Group C — knowledge graph (STRICT) — knowledge only
 # ─────────────────────────────────────────────────────────────────────────────
 
 RAW_PAGES = """
@@ -293,7 +314,7 @@ CREATE TABLE IF NOT EXISTS page_nodes (
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Group D — judging system (STRICT)
+# Group D — judging system (STRICT) — OPS only
 # ─────────────────────────────────────────────────────────────────────────────
 
 JUDGING_EVENTS = """
@@ -351,9 +372,9 @@ JUDGING_AUDIENCE_VOTES = """
 CREATE TABLE IF NOT EXISTS judging_audience_votes (
     id               INTEGER PRIMARY KEY,
     event_id         INTEGER NOT NULL REFERENCES judging_events(id) ON DELETE CASCADE,
-    voter_hash       TEXT NOT NULL,
+    voter_hash       TEXT    NOT NULL,
     presenter_number INTEGER NOT NULL,
-    voted_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    voted_at         TEXT    NOT NULL DEFAULT (datetime('now')),
     UNIQUE(event_id, voter_hash)
 ) STRICT;
 """
@@ -381,10 +402,10 @@ CREATE TABLE IF NOT EXISTS judging_score_audit (
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Indexes
+# Indexes — split into knowledge vs ops
 # ─────────────────────────────────────────────────────────────────────────────
 
-INDEXES = [
+_KNOWLEDGE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_org_parent   ON organizations(parent_id);",
     "CREATE INDEX IF NOT EXISTS idx_org_type     ON organizations(type);",
     "CREATE INDEX IF NOT EXISTS idx_org_slug     ON organizations(slug);",
@@ -395,17 +416,6 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ki_root      ON knowledge_items(root_id, version);",
     "CREATE INDEX IF NOT EXISTS idx_ki_parent    ON knowledge_items(parent_id);",
     "CREATE INDEX IF NOT EXISTS idx_ki_natural_key ON knowledge_items(json_extract(metadata,'$.natural_key'));",
-    "CREATE INDEX IF NOT EXISTS idx_posts_due    ON posts(status, scheduled_for);",
-    "CREATE INDEX IF NOT EXISTS idx_posts_org    ON posts(org_id);",
-    "CREATE INDEX IF NOT EXISTS idx_posts_type   ON posts(type);",
-    "CREATE INDEX IF NOT EXISTS idx_posts_source ON posts(source_type, source_id);",
-    "CREATE INDEX IF NOT EXISTS idx_tmpl_due     ON post_templates(enabled, next_run_at);",
-    "CREATE INDEX IF NOT EXISTS idx_deliv_post     ON post_deliveries(post_id);",
-    "CREATE INDEX IF NOT EXISTS idx_deliv_platform ON post_deliveries(platform, status);",
-    "CREATE INDEX IF NOT EXISTS idx_events_org   ON events(org_id);",
-    "CREATE INDEX IF NOT EXISTS idx_events_date  ON events(date);",
-    "CREATE INDEX IF NOT EXISTS idx_remind_event ON event_reminders(event_id);",
-    "CREATE INDEX IF NOT EXISTS idx_remind_due   ON event_reminders(enabled, post_id);",
     "CREATE INDEX IF NOT EXISTS idx_settings_org ON settings(org_id);",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_nodes_key   ON nodes(type, key);",
     "CREATE INDEX        IF NOT EXISTS idx_nodes_type  ON nodes(type, is_active);",
@@ -418,6 +428,20 @@ INDEXES = [
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_frontier_root ON frontier(url) WHERE from_node_id IS NULL;",
     "CREATE INDEX        IF NOT EXISTS idx_frontier_status ON frontier(status);",
     "CREATE INDEX        IF NOT EXISTS idx_page_nodes_node ON page_nodes(node_id);",
+]
+
+_OPS_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_posts_due    ON posts(status, scheduled_for);",
+    "CREATE INDEX IF NOT EXISTS idx_posts_org    ON posts(org_id);",
+    "CREATE INDEX IF NOT EXISTS idx_posts_type   ON posts(type);",
+    "CREATE INDEX IF NOT EXISTS idx_posts_source ON posts(source_type, source_id);",
+    "CREATE INDEX IF NOT EXISTS idx_tmpl_due     ON post_templates(enabled, next_run_at);",
+    "CREATE INDEX IF NOT EXISTS idx_deliv_post     ON post_deliveries(post_id);",
+    "CREATE INDEX IF NOT EXISTS idx_deliv_platform ON post_deliveries(platform, status);",
+    "CREATE INDEX IF NOT EXISTS idx_events_org   ON events(org_id);",
+    "CREATE INDEX IF NOT EXISTS idx_events_date  ON events(date);",
+    "CREATE INDEX IF NOT EXISTS idx_remind_event ON event_reminders(event_id);",
+    "CREATE INDEX IF NOT EXISTS idx_remind_due   ON event_reminders(enabled, post_id);",
     "CREATE INDEX IF NOT EXISTS idx_jscores_event      ON judging_scores(event_id);",
     "CREATE INDEX IF NOT EXISTS idx_jscores_presenter  ON judging_scores(event_id, presenter_number);",
     "CREATE INDEX IF NOT EXISTS idx_judges_event       ON judging_judges(event_id);",
@@ -430,8 +454,11 @@ INDEXES = [
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_judging_one_open ON judging_events(status) WHERE status='open';",
 ]
 
+# Back-compat alias so existing code that imports INDEXES still works.
+INDEXES = _KNOWLEDGE_INDEXES + _OPS_INDEXES
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Triggers
+# Triggers — knowledge only (FTS + root_id)
 # ─────────────────────────────────────────────────────────────────────────────
 
 # root_id self-population: originals (root_id IS NULL on insert) point at
@@ -475,24 +502,30 @@ BEGIN
 END;
 """
 
-# Order matters: parents before children, content tables before their FTS/triggers.
-_TABLE_DDL = [
+# ─────────────────────────────────────────────────────────────────────────────
+# DDL lists (order matters: parents before children)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_KNOWLEDGE_TABLE_DDL = [
     SCHEMA_MIGRATIONS,
     ORGANIZATIONS,
     KNOWLEDGE_ITEMS,
     KNOWLEDGE_VECTORS,
     KNOWLEDGE_FTS,
-    POSTS,
-    POST_TEMPLATES,
-    POST_DELIVERIES,
-    EVENTS,
-    EVENT_REMINDERS,
     SETTINGS,
     RAW_PAGES,
     NODES,
     EDGES,
     FRONTIER,
     PAGE_NODES,
+]
+
+_OPS_TABLE_DDL = [
+    OPS_POSTS,
+    OPS_POST_TEMPLATES,
+    POST_DELIVERIES,
+    OPS_EVENTS,
+    EVENT_REMINDERS,
     JUDGING_EVENTS,
     JUDGING_JUDGES,
     JUDGING_PRESENTERS,
@@ -508,11 +541,15 @@ _TRIGGER_DDL = [
     TRIGGER_FTS_UPDATE,
 ]
 
-# Additive column migrations for already-created v2 tables (ALTER ... ADD COLUMN is
-# idempotent here via try/except — SQLite has no "ADD COLUMN IF NOT EXISTS").
-_COLUMN_MIGRATIONS = [
-    ("frontier",           "error",           "TEXT"),
-    # judging_events — new fields (safe to add on existing DBs)
+# Additive column migrations split by DB.
+# Knowledge: only frontier.error (already present in DDL above, kept for idempotence on old DBs).
+_KNOWLEDGE_COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("frontier", "error", "TEXT"),
+]
+
+# OPS: judging + posts + post_deliveries column additions (safe on old DBs via try/except).
+_OPS_COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
+    # judging_events — new fields
     ("judging_events",     "score_min",        "INTEGER NOT NULL DEFAULT 1"),
     ("judging_events",     "score_max",        "INTEGER NOT NULL DEFAULT 5"),
     ("judging_events",     "min_coverage",     "INTEGER NOT NULL DEFAULT 3"),
@@ -522,9 +559,7 @@ _COLUMN_MIGRATIONS = [
     # judging_events — audience voting
     ("judging_events",     "audience_voting",  "TEXT NOT NULL DEFAULT 'closed'"),
     ("judging_events",     "audience_top_n",   "INTEGER NOT NULL DEFAULT 1"),
-    # scheduled post-deletion (2026-06-23): platform unsend + per-delivery outcome. delete_status
-    # values written by code: 'deleted'|'delete_unsupported'|'delete_failed'|'not_applicable' (CHECK
-    # omitted — SQLite ALTER ADD COLUMN can't add it to an existing table; PostDeleter is the sole writer).
+    # scheduled post-deletion: platform unsend + per-delivery outcome.
     ("posts",           "delete_at",       "TEXT"),
     ("posts",           "deleted_at",      "TEXT"),
     ("post_deliveries", "delete_status",   "TEXT"),
@@ -533,12 +568,23 @@ _COLUMN_MIGRATIONS = [
     ("post_deliveries", "delete_attempts", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
-# Indexes that reference migration-added columns (run AFTER _COLUMN_MIGRATIONS in create_all).
+# Back-compat: callers that imported _COLUMN_MIGRATIONS still work.
+_COLUMN_MIGRATIONS = _KNOWLEDGE_COLUMN_MIGRATIONS + _OPS_COLUMN_MIGRATIONS
+
+# Indexes that reference migration-added columns (run AFTER _COLUMN_MIGRATIONS).
+# These are OPS-only (deletion index on posts).
 _POST_MIGRATION_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_posts_delete_due ON posts(delete_at) "
     "WHERE delete_at IS NOT NULL AND deleted_at IS NULL",
 ]
 
+# Back-compat alias for the original combined _TABLE_DDL (used by create_all).
+_TABLE_DDL = _KNOWLEDGE_TABLE_DDL + _OPS_TABLE_DDL
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Connection helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
 def load_sqlite_vec(conn: sqlite3.Connection) -> None:
     """Load the sqlite-vec extension into a connection (needed for vec0)."""
@@ -565,12 +611,98 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def get_ops_connection(db_path: str) -> sqlite3.Connection:
+    """Open an OPS-DB connection with FK enforcement but WITHOUT sqlite-vec.
+
+    The OPS DB has no vectors, so we skip the extension to keep the connection
+    lean and avoid requiring sqlite-vec wherever only ops data is touched.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA busy_timeout = 5000;")
+    return conn
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Schema builders
+# ─────────────────────────────────────────────────────────────────────────────
+
+def create_knowledge_schema(db_path: str) -> sqlite3.Connection:
+    """Create ONLY the knowledge/KG tables, indexes, triggers, FTS, and settings seed.
+
+    Loads sqlite-vec (required for the vec0 virtual table). Does NOT create any
+    of the MOVED tables (posts, events, judging_*, …). This is the correct startup
+    call for the Knowledge DB path; it enforces the HIGH-3 invariant.
+    """
+    conn = get_connection(db_path)
+    try:
+        for ddl in _KNOWLEDGE_TABLE_DDL:
+            conn.execute(ddl)
+        for ddl in _KNOWLEDGE_INDEXES:
+            conn.execute(ddl)
+        for ddl in _TRIGGER_DDL:
+            conn.execute(ddl)
+        for table, col, coltype in _KNOWLEDGE_COLUMN_MIGRATIONS:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+            except sqlite3.OperationalError:
+                pass  # column already exists — idempotent
+        # Idempotent settings seed: ensure the auto-delete default exists on the ROOT org.
+        conn.execute(
+            "INSERT INTO settings(org_id,key,value,type,description,updated_by) "
+            "SELECT o.id, 'default.auto_delete_hours', '24', 'int', "
+            "'Auto-delete window (hours, 1-48) when a post opts in', 'system' "
+            "FROM organizations o WHERE o.parent_id IS NULL AND NOT EXISTS "
+            "(SELECT 1 FROM settings s WHERE s.org_id=o.id AND s.key='default.auto_delete_hours')")
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(version) VALUES (?);",
+            (SCHEMA_VERSION,),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return conn
+
+
+def create_ops_schema(db_path: str) -> sqlite3.Connection:
+    """Create ONLY the OPS tables (publishing cluster + judging) + their indexes.
+
+    Does NOT load sqlite-vec (OPS has no vectors). Safe to call at server startup
+    against gsa_gateway_ops.db. Column migrations (judging + deletion columns) run
+    here for OPS tables; idx_posts_delete_due is created after the migrations.
+    """
+    conn = get_ops_connection(db_path)
+    try:
+        for ddl in _OPS_TABLE_DDL:
+            conn.execute(ddl)
+        for ddl in _OPS_INDEXES:
+            conn.execute(ddl)
+        for table, col, coltype in _OPS_COLUMN_MIGRATIONS:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+            except sqlite3.OperationalError:
+                pass  # column already exists — idempotent
+        for ddl in _POST_MIGRATION_INDEXES:
+            conn.execute(ddl)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return conn
+
+
 def create_all(db_path: str) -> sqlite3.Connection:
     """Create every v2 table, index and trigger in ``db_path`` (idempotent).
 
+    Back-compat wrapper that runs BOTH knowledge and OPS schemas in ONE connection.
+    Used only by tests/fixtures that want a combined DB (greenfield + test setups,
+    incl. ``:memory:`` databases). Production startup uses the two separate builders
+    against their respective file paths.
+
     Only creates NEW v2 objects — never alters or drops v1 tables. Safe to run
-    against the live ``gsa_gateway.db`` or a fresh standalone file. Records the
-    schema version in ``schema_migrations``.
+    against the live ``gsa_gateway.db`` or a fresh standalone file.
     """
     conn = get_connection(db_path)
     try:
@@ -584,17 +716,10 @@ def create_all(db_path: str) -> sqlite3.Connection:
             try:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
             except sqlite3.OperationalError:
-                pass                                   # column already exists — idempotent
-        # Indexes over migration-added columns — MUST run after the ALTERs above (the columns
-        # don't exist yet when the main INDEXES loop runs). Partial index keeps the deletion
-        # poll (delete_at<=now AND deleted_at IS NULL) cheap on a growing posts table.
+                pass   # column already exists — idempotent
         for ddl in _POST_MIGRATION_INDEXES:
             conn.execute(ddl)
-        # Idempotent seed: the auto-delete default must exist on the ROOT org so the dashboard
-        # Settings tab can edit it (the live DB was migrated before this key existed, and
-        # `seed_settings` only runs at v1→v2 migration). The NOT EXISTS guard makes it idempotent on
-        # every startup (settings DOES have UNIQUE(org_id,key), so this also can't duplicate). Code
-        # readers still fall back to 24 via get_setting regardless of whether the row exists.
+        # Idempotent settings seed: ensure the auto-delete default exists on the ROOT org.
         conn.execute(
             "INSERT INTO settings(org_id,key,value,type,description,updated_by) "
             "SELECT o.id, 'default.auto_delete_hours', '24', 'int', "
