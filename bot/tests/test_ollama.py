@@ -333,7 +333,10 @@ class TestComposeBudget:
 
     @pytest.mark.asyncio
     async def test_over_budget_facts_return_none_without_calling_ollama(self):
-        c = self._client(2000)
+        # num_ctx=2500 → budget 1476, comfortably above the ~1150 fixed floor
+        # (compose system prompt + num_predict 900), so a SMALL facts string fits.
+        # The large `"name, " * 5000` (~12k est tokens) is what drives the overflow.
+        c = self._client(2500)
         c._session = _mock_session_with_response(200, {"response": "should not be used"})
         result = await c.compose_from_rows("list everyone", "name, " * 5000)
         assert result is None
