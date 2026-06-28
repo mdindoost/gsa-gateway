@@ -1,7 +1,10 @@
 """Ollama LLM integration — generates answers grounded in retrieved KB chunks."""
 
 import asyncio
+import copy
 import logging
+import math
+import os
 from typing import Optional
 
 import aiohttp
@@ -9,6 +12,36 @@ import aiohttp
 from bot.services.retriever import RetrievedChunk
 
 logger = logging.getLogger(__name__)
+
+try:
+    import tiktoken
+    _TIKTOKEN_ENC = tiktoken.get_encoding("cl100k_base")
+except Exception:  # pragma: no cover - tiktoken is a hard dep; this is defensive
+    _TIKTOKEN_ENC = None
+
+# Generation context-budget guard (see specs/2026-06-28-context-budget-guard-design.md)
+_DEFAULT_NUM_CTX = 16384
+TOKEN_SAFETY_FACTOR = 1.2      # tiktoken (cl100k) vs llama3.1 divergence cushion
+CONTEXT_CUSHION_TOKENS = 1024  # fixed headroom kept below num_ctx
+MAX_HISTORY_TURNS = 6          # newest-first cap on conversation turns fed to the prompt
+MIN_DOC_TOKENS = 128           # floor below which we'd rather send no doc than a useless sliver
+TRUNCATION_NOTE = (
+    "\n\n[Document truncated to fit the context budget; later sections are not shown — "
+    "open the Source link above for the full page.]"
+)
+
+
+def _estimate_tokens(text: str) -> int:
+    """Conservative token estimate for budgeting. tiktoken count x safety factor;
+    pessimistic byte-count fallback (bytes >= true BPE token count, never under-counts)."""
+    if not text:
+        return 0
+    if _TIKTOKEN_ENC is not None:
+        try:
+            return math.ceil(len(_TIKTOKEN_ENC.encode(text)) * TOKEN_SAFETY_FACTOR)
+        except Exception:  # pragma: no cover - defensive
+            pass
+    return len(text.encode("utf-8"))
 
 SOURCE_FRIENDLY_NAMES = {
     "gsa_faq.md": "GSA FAQ",
@@ -140,7 +173,7 @@ class OllamaClient:
         model: str = "llama3.1:8b",
         timeout: int = 60,
         embedding_model: str = "nomic-embed-text",
-        num_ctx: int = 8192,
+        num_ctx: Optional[int] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -152,7 +185,11 @@ class OllamaClient:
         # the system prompt + the retrieved items (decomposed, so each is small,
         # but legacy non-decomposed FAQ/policy rows can still be sizeable) +
         # conversation history + the 512-token answer. llama3.1 supports far more.
-        self.num_ctx = num_ctx
+        # Default 16384; override via OLLAMA_NUM_CTX env var or constructor arg.
+        self.num_ctx = (
+            num_ctx if num_ctx is not None
+            else int(os.getenv("OLLAMA_NUM_CTX", str(_DEFAULT_NUM_CTX)))
+        )
         self.generate_url = f"{self.base_url}/api/generate"
         self.embed_url = f"{self.base_url}/api/embed"
         self._session: Optional[aiohttp.ClientSession] = None

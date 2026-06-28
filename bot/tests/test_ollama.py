@@ -7,6 +7,7 @@ import pytest
 
 from bot.services.ollama_client import OllamaClient
 from bot.services.retriever import RetrievedChunk
+from bot.services import ollama_client as oc
 
 
 def make_chunk(text: str = "Answer: some info") -> RetrievedChunk:
@@ -144,3 +145,43 @@ class TestCheckConnection:
         client._session = session
         result = await client.check_connection()
         assert result is False
+
+
+class TestEstimateTokens:
+    def test_overcounts_vs_raw_tiktoken(self):
+        # estimate must be >= the raw tiktoken count (the safety factor) for adversarial inputs
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
+        for s in [
+            "https://www.njit.edu/global/h1b-cap-gap?year=2026&term=fall",
+            "def f(x):\n  return x*x  # minified",
+            "学生签证 OPT STEM 延期 申请",
+            "AAAA1234-BBBB5678-CCCC9012",
+            "the cap gap period bridges F-1 status to H-1B",
+        ]:
+            assert oc._estimate_tokens(s) >= len(enc.encode(s))
+
+    def test_empty_is_zero(self):
+        assert oc._estimate_tokens("") == 0
+
+    def test_fallback_is_pessimistic_when_tiktoken_unavailable(self, monkeypatch):
+        # force the fallback path; byte count is always >= true token count
+        monkeypatch.setattr(oc, "_TIKTOKEN_ENC", None)
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
+        for s in ["https://x.njit.edu/a?b=c", "学生签证延期", "plain english text"]:
+            assert oc._estimate_tokens(s) >= len(enc.encode(s))
+            assert oc._estimate_tokens(s) == len(s.encode("utf-8"))
+
+
+class TestNumCtxConfig:
+    def test_default_is_16384(self):
+        assert OllamaClient(base_url="http://x", model="m").num_ctx == 16384
+
+    def test_env_override(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "12000")
+        assert OllamaClient(base_url="http://x", model="m").num_ctx == 12000
+
+    def test_constructor_arg_wins(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "12000")
+        assert OllamaClient(base_url="http://x", model="m", num_ctx=9000).num_ctx == 9000
