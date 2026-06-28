@@ -294,17 +294,12 @@ class OllamaClient:
         logger.info("context budget: prefix-truncated rank-1 page to fit")
         return [truncated]
 
-    def _build_full_prompt(
-        self,
-        question: str,
-        chunks: list[RetrievedChunk],
-        conversation_history: Optional[list[dict]] = None,
-    ) -> tuple[str, str]:
+    def _build_system_prompt(self, conversation_history=None) -> str:
         system_prompt = BASE_SYSTEM_PROMPT
-
         if conversation_history:
+            recent = conversation_history[-MAX_HISTORY_TURNS:]
             system_prompt += "\n\n=== CONVERSATION HISTORY ===\n"
-            for turn in conversation_history:
+            for turn in recent:
                 prefix = "Student" if turn["role"] == "user" else "GSA Gateway"
                 system_prompt += f"{prefix}: {turn['content'][:400]}\n"
             system_prompt += (
@@ -317,10 +312,7 @@ class OllamaClient:
                 "the answer — never repeat a previous 'I couldn't find it' when the answer is "
                 "present in the documents below."
             )
-
-        context_block = self._build_context_block(chunks)
-        user_prompt = self._assemble_user(context_block, question)
-        return system_prompt, user_prompt
+        return system_prompt
 
     async def generate_answer(
         self,
@@ -331,10 +323,12 @@ class OllamaClient:
     ) -> Optional[str]:
         if not chunks:
             return None
-
-        system_prompt, user_prompt = self._build_full_prompt(
-            question, chunks, conversation_history
-        )
+        system_prompt = self._build_system_prompt(conversation_history)
+        fitted = self._fit_chunks(chunks, system_prompt, question, num_predict=512)
+        if not fitted:
+            logger.warning("Ollama generate: no chunk fits context budget; returning None")
+            return None
+        user_prompt = self._assemble_user(self._build_context_block(fitted), question)
 
         payload = {
             "model": self.model,

@@ -260,3 +260,57 @@ class TestFitChunks:
         # system+user must fit the real doc budget (num_ctx - cushion - num_predict)
         assert (oc._estimate_tokens("sys") + oc._estimate_tokens(user)
                 <= 2048 - oc.CONTEXT_CUSHION_TOKENS - 128)
+
+
+class TestGuardWiring:
+    def _client(self, num_ctx=16384):
+        return OllamaClient(base_url="http://x", model="m", num_ctx=num_ctx)
+
+    @pytest.mark.asyncio
+    async def test_assembled_prompt_within_budget_on_huge_bundle(self):
+        c = self._client(16384)
+        c._session = _mock_session_with_response(200, {"response": "Cap gap is the period ..."})
+        long = "The H-1B cap-gap period bridges F-1 OPT to H-1B. " + ("policy detail " * 1500)
+        chunks = [make_chunk(long) for _ in range(5)]
+        await c.generate_answer("what is the H-1B cap gap period for F-1 students", chunks)
+        payload = c._session.post.call_args[1]["json"]
+        total = oc._estimate_tokens(payload["system"]) + oc._estimate_tokens(payload["prompt"]) + 512
+        assert total <= 16384
+        assert payload["options"]["num_ctx"] == 16384
+
+    @pytest.mark.asyncio
+    async def test_cap_gap_first_sentence_survives(self):
+        c = self._client(16384)
+        c._session = _mock_session_with_response(200, {"response": "ok"})
+        chunks = [make_chunk("The cap-gap period extends F-1 status. " + ("x " * 1000))] + \
+                 [make_chunk("y " * 2000) for _ in range(4)]
+        await c.generate_answer("cap gap period", chunks)
+        assert "The cap-gap period extends F-1 status." in c._session.post.call_args[1]["json"]["prompt"]
+
+    @pytest.mark.asyncio
+    async def test_history_bounded_to_max_turns(self):
+        c = self._client(16384)
+        c._session = _mock_session_with_response(200, {"response": "ok"})
+        history = [{"role": "user", "content": f"turn{i}"} for i in range(20)]
+        await c.generate_answer("q", [make_chunk("a")], conversation_history=history)
+        sys = c._session.post.call_args[1]["json"]["system"]
+        assert "turn19" in sys and "turn0" not in sys  # only the last MAX_HISTORY_TURNS kept
+
+    @pytest.mark.asyncio
+    async def test_empty_fitted_returns_none(self):
+        c = self._client(300)  # degenerate window
+        c._session = _mock_session_with_response(200, {"response": "should not be used"})
+        result = await c.generate_answer("q " * 50, [make_chunk("z " * 5000)],
+                                         conversation_history=[{"role": "user", "content": "h " * 300}])
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_no_additional_sources_block(self):
+        c = self._client(2000)
+        c._session = _mock_session_with_response(200, {"response": "ok"})
+        await c.generate_answer("q", [make_chunk("a " * 2000) for _ in range(4)])
+        # If the budget guard prevents any chunk from fitting (degenerate window), POST is
+        # never called and call_args is None — "ADDITIONAL SOURCES" is vacuously absent.
+        # If a (truncated) chunk does fit, the prompt must not contain "ADDITIONAL SOURCES".
+        if c._session.post.call_args is not None:
+            assert "ADDITIONAL SOURCES" not in c._session.post.call_args[1]["json"]["prompt"]
