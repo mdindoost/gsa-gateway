@@ -105,13 +105,30 @@ Linked PDF URL → download → `extract_pdf_text` → on `ok`/`mixed_low_text` 
 ### 6.1 Re-chunk/embed + build-version gating (finding #11)
 Run `embed_chunks.py` (gated, dev-copy first, `--commit`, resumable, ~52 s) to chunk+embed every active served item incl. Phase-1 crawl + new PDF rows. **Build-version gating:** write crawl changes → build chunks into the current build → reconcile → run invariant → **only then is `corpus_build_ready` true and deep-fallback eligible** (else deep stays OFF). Closes the stale-window between a crawl write and the embed pass. The live embed is a production write at an owner checkpoint (with the rebuild, or approved standalone).
 
+> ⚠️ **DEFERRED to Task 8 (NOT shipped in the flag-off branch; final-review Important-2):** the
+> `corpus_build_ready` HELPER exists and is tested (`vector_gc.corpus_build_ready`), but it is **not
+> wired into the runtime miss-ladder** (`message_handler.py` does not consult it). While the flag is
+> OFF this is inert; it is a **prerequisite before flipping `RETRIEVAL_DEEP_FALLBACK=1`** — compute it
+> once at startup and gate deep-eligibility on it, so a half-built chunk index can't be served the
+> instant the flag is set. Tracked as a Task-8 must-fix in the plan.
+
 ### 6.2 Invalidation completeness — invariant (findings #10/#11)
 Architecture (durable-foundation SE HIGH-2): writers do NOT embed inline; enforced by GC + reconcile + an **invariant test** asserting:
 - every active served item has chunks **for the current `descriptor.id`**;
 - every chunk has a vector; every vector has a live parent;
 - no chunks/vectors for inactive/missing parents;
 - **chunk/vector dimension matches the descriptor**; duplicate chunk sets for old `model_id`s are removed/ignored (model-version invalidation, finding #10).
-`vector_gc` extended to chunk vectors; reconcile drops chunks of superseded/deactivated/departed items; writer audit enumerates the sites.
+`vector_gc` extended to chunk vectors; writer audit enumerates the sites.
+
+> ⚠️ **DEFERRED to Task 8 (NOT shipped in the flag-off branch; final-review Important-1):** the
+> invariant test + `vector_gc` chunk-vector sweeps (`sweep_orphan_chunk_vectors`, `assert_chunk_invariant`)
+> ARE shipped and tested. **But `reconcile` does NOT yet drop chunks of superseded/deactivated/departed
+> items** (`reconcile.py` is untouched), and `sweep_orphan_chunks` (orphan chunk ROWS, distinct from
+> orphan chunk VECTORS) has no production caller. Today this is **serving-safe** — the retriever drops
+> any candidate whose parent is inactive, and the invariant fail-closes `corpus_build_ready` — but chunk
+> rows accumulate as cruft and the post-crawl `embed_chunks` pass is the de-facto (undocumented) rebuild
+> step. **Task-8 must-fix:** either call the chunk sweeps from `reconcile`, or document+enforce a
+> mandatory post-crawl/post-reconcile `embed_chunks` step, and resolve the dead `sweep_orphan_chunks`.
 
 ---
 
@@ -150,15 +167,16 @@ LLM-agnostic (sizes/prefixes from `model_descriptor`; embed + pypdf provider-iso
 ---
 
 ## 10. Goals checklist
-- [ ] **P2-G1** — `retrieve_deep` via shared `_retrieve(semantic_mode)` core (full-parent payload, query_vec reuse).
-- [ ] **P2-G2** — Deep-fallback wired into the pinned ladder (office→deep→live), flag OFF, adopt-if-better, None≠miss, build-gated.
-- [ ] **P2-G3** — Distinct `DEEP_FALLBACK_THRESHOLD` calibrated (false-adoption cost, frozen); deep recall ↑ AND per-question common-case no-regression with flag ON.
-- [ ] **P2-G4** — `pdf_extract.py` (default extract + text-preserving cleanup + per-page status codes + degraded-table flag), fixture-tested.
-- [ ] **P2-G5** — PDF ingestion wired (mechanical, `type='pdf'`, content-hash recrawl, manifest-flag skips, degraded-table serving safeguards); `pypdf` in requirements.
-- [ ] **P2-G6** — Re-chunk/embed pass on a copy (live at owner checkpoint); corpus chunk-complete; build-version gating.
-- [ ] **P2-G7** — Invalidation completeness: GC + reconcile + invariant (descriptor id/dim, model-version dedup); writer audit.
+> **Status as of 2026-06-27 (final whole-branch review, commit `b85bf12`, flag-OFF, prod untouched).**
+- [x] **P2-G1** — `retrieve_deep` via shared `_retrieve(semantic_mode)` core (full-parent payload). SHIPPED. *(query_vec REUSE at the handler call-site DEFERRED — Task 4; the plumbing exists, the handler re-embeds on the rare miss path.)*
+- [x] **P2-G2** — Deep-fallback wired into the pinned ladder (office→deep→live), flag OFF, adopt-if-better, None≠miss. SHIPPED. *(runtime `corpus_build_ready` build-gate DEFERRED to Task 8 — see §6.1 warning; inert while flag OFF.)*
+- [x] **P2-G3** — Distinct `DEEP_FALLBACK_THRESHOLD` calibrated + frozen at **0.30**; 227-Q full-pipeline A/B: 1/227 fired (deflect→correct), 0 regressions. SHIPPED.
+- [x] **P2-G4** — `pdf_extract.py` (default extract + text-preserving cleanup + per-page status codes + degraded-table flag), fixture-tested. SHIPPED.
+- [x] **P2-G5** — PDF ingestion wired (mechanical, `type='pdf'`, content-hash recrawl, manifest-flag skips, degraded-table serving safeguards); `pypdf` in requirements. SHIPPED.
+- [~] **P2-G6** — Re-chunk/embed pass on a COPY proven (Task 7, 6086→8818, invariant OK). LIVE re-embed = **Task 8 owner checkpoint (DEFERRED, gated prod write)**.
+- [~] **P2-G7** — Invariant (descriptor id/dim, model-version dedup, orphan vectors) + `vector_gc` chunk sweeps SHIPPED & tested. **reconcile chunk-drop + runtime build-gate DEFERRED to Task 8** (see §6.1/§6.2 warnings; serving-safe today, must-fix before flag flip).
 - [ ] **P2-G8** — DEFERRED out of Phase 2: whole-doc `[:2000]` de-dup (common-path embedding change; its own measured A/B later).
-- [ ] **P2-G9** — PDF ingestion does NOT regress the common path (eval with PDFs added, deep OFF then ON).
+- [~] **P2-G9** — PDF-ingest-no-regress eval: regression-lock Qs committed; the PDFs-added deep-OFF/ON A/B **DEFERRED to Task 8** (owner chose to run it against the real live-crawl PDF batch where re-embed is free).
 - [ ] **Deferred (loud):** G3 section-structure, G7 office-dilution, gate wiring/cutover → Track C/Phase 3.
 
 ---

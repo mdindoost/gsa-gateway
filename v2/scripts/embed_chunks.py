@@ -87,7 +87,9 @@ def main() -> None:
 
     swept = vector_gc.sweep_orphan_chunk_vectors(conn) + vector_gc.sweep_orphan_item_vectors(conn)
     conn.commit()
-    vector_gc.assert_no_orphans(conn)
+    # Full invariant (coverage + model-id + dim + no-orphans), not just orphans, so the
+    # "invariant OK" message is truthful and the batch pass self-verifies before any flag flip.
+    vector_gc.assert_chunk_invariant(conn, d)
     print(f"DONE items={len(rows)} chunks={len(pending)} vectors={written} swept={swept}; invariant OK")
 
 

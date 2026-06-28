@@ -613,10 +613,28 @@ git -c commit.gpgsign=false commit -m "test(eval): add deep-content + pdf + kg-r
 
 **This task writes the LIVE DB and is NOT executed without explicit owner approval at the checkpoint.** It is staged here for completeness; the recommended path is folding it into the planned DB wipe+rebuild (free re-embed).
 
+**Frozen value:** `DEEP_FALLBACK_THRESHOLD=0.30` (Task 7 calibration).
+
+**MUST-FIX BEFORE FLIPPING THE FLAG (from the final whole-branch review — these are NOT shipped in the
+flag-off branch; all serving-safe while the flag is OFF, but required before `RETRIEVAL_DEEP_FALLBACK=1`):**
+- [ ] **P1 (review Important-2):** wire `vector_gc.corpus_build_ready(conn, descriptor)` into the runtime
+      miss-ladder — compute once at startup, gate deep-eligibility on it, so a half-built chunk index can't
+      be served the instant the flag is set. (TDD; own gate.)
+- [ ] **P2 (review Important-1):** wire chunk invalidation into `reconcile` (call the `vector_gc` chunk
+      sweeps) **OR** document + enforce a mandatory post-crawl/post-reconcile `embed_chunks` step; resolve
+      the dead `sweep_orphan_chunks`. (Closes spec §6.2; today chunk rows accumulate as cruft.)
+- [ ] **P3 (review Minor-5):** confirm no active served row with empty/whitespace content can stall the
+      invariant (it would hold `corpus_build_ready` False forever) — scope coverage to non-empty content
+      or guarantee no empty served rows.
+- [ ] **P4 (review Minor-8, recommended):** add one end-to-end ingest→embed→recrawl→sweep→invariant test
+      (locks reject #5).
+
+**Execution steps:**
 - [ ] **Step 1:** `hardened_backup` the live DB (un-skippable).
-- [ ] **Step 2:** `python3 v2/scripts/embed_chunks.py --db gsa_gateway.db --commit` (after dev-copy dry-run proven).
+- [ ] **Step 2:** `python3 v2/scripts/embed_chunks.py --db gsa_gateway.db --commit` (after dev-copy dry-run proven). *(Now runs the FULL `assert_chunk_invariant` at the end — truthful self-check.)*
 - [ ] **Step 3:** `assert_chunk_invariant` on the live DB → evidence-before-claim (print counts).
-- [ ] **Step 4:** Owner enables `RETRIEVAL_DEEP_FALLBACK=1` + `DEEP_FALLBACK_THRESHOLD=<frozen>` and restarts (`bash scripts/restart.sh`). DB-only changes need no restart, but the flag is read at startup.
+- [ ] **Step 3b (folds in Step 5 / P2-G9):** ingest the real live-crawl PDF batch, then run the PDFs-added deep-OFF then deep-ON eval A/B (owner chose to run G9 here against the real batch, not a copy).
+- [ ] **Step 4:** Owner enables `RETRIEVAL_DEEP_FALLBACK=1` + `DEEP_FALLBACK_THRESHOLD=0.30` and restarts (`bash scripts/restart.sh`). DB-only changes need no restart, but the flag is read at startup.
 
 ---
 
