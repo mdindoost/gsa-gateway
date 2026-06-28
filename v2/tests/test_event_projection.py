@@ -77,10 +77,10 @@ def two_db(tmp_path):
 
 def test_event_natural_key_stable_under_whitespace_noise():
     from v2.core.publishing.event_projection import event_natural_key
-    k1 = event_natural_key("Spring Social", "2026-04-10")
-    k2 = event_natural_key("  Spring Social  ", "2026-04-10")
-    k3 = event_natural_key("SPRING SOCIAL", "2026-04-10")
-    k4 = event_natural_key("spring  social", "2026-04-10")
+    k1 = event_natural_key("Spring Social", "2026-04-10", "6:00 PM")
+    k2 = event_natural_key("  Spring Social  ", "2026-04-10", "6:00 PM")
+    k3 = event_natural_key("SPRING SOCIAL", "2026-04-10", "6:00 PM")
+    k4 = event_natural_key("spring  social", "2026-04-10", "6:00 PM")
     # Leading/trailing whitespace and case must not change the key
     assert k1 == k2
     assert k1 == k3
@@ -90,23 +90,58 @@ def test_event_natural_key_stable_under_whitespace_noise():
 
 def test_event_natural_key_differs_by_date():
     from v2.core.publishing.event_projection import event_natural_key
-    k1 = event_natural_key("Spring Social", "2026-04-10")
-    k2 = event_natural_key("Spring Social", "2026-04-11")
+    k1 = event_natural_key("Spring Social", "2026-04-10", "6:00 PM")
+    k2 = event_natural_key("Spring Social", "2026-04-11", "6:00 PM")
     assert k1 != k2
 
 
 def test_event_natural_key_differs_by_name():
     from v2.core.publishing.event_projection import event_natural_key
-    k1 = event_natural_key("Spring Social", "2026-04-10")
-    k2 = event_natural_key("Fall Gala",     "2026-04-10")
+    k1 = event_natural_key("Spring Social", "2026-04-10", "6:00 PM")
+    k2 = event_natural_key("Fall Gala",     "2026-04-10", "6:00 PM")
     assert k1 != k2
 
 
 def test_event_natural_key_is_a_string():
     from v2.core.publishing.event_projection import event_natural_key
-    k = event_natural_key("Test Event", "2026-01-01")
+    k = event_natural_key("Test Event", "2026-01-01", "TBD")
     assert isinstance(k, str)
     assert len(k) > 0
+
+
+def test_event_natural_key_differs_by_time():
+    """B3-3: same name+date but different time must produce different natural keys."""
+    from v2.core.publishing.event_projection import event_natural_key
+    k1 = event_natural_key("Spring Social", "2026-04-10", "6:00 PM")
+    k2 = event_natural_key("Spring Social", "2026-04-10", "8:00 PM")
+    assert k1 != k2, "Same name+date with different time must yield distinct natural keys"
+
+
+def test_derive_same_name_same_date_different_time_two_kb_rows(two_db):
+    """B3-3: two OPS events with same name+date but different time must derive
+    TWO distinct KB rows (not collapse to one)."""
+    from v2.core.publishing.event_projection import derive_event_kb
+
+    two_db["ops_conn"].execute(
+        "INSERT INTO events(name,date,time,location,description,organizer,category,"
+        "org_id,org_slug) VALUES(?,?,?,?,?,?,?,?,?)",
+        ("Spring Social", "2026-04-10", "6:00 PM", "Campus Center", "", "GSA", "general", 1, "gsa")
+    )
+    two_db["ops_conn"].execute(
+        "INSERT INTO events(name,date,time,location,description,organizer,category,"
+        "org_id,org_slug) VALUES(?,?,?,?,?,?,?,?,?)",
+        ("Spring Social", "2026-04-10", "8:00 PM", "Campus Center", "", "GSA", "general", 1, "gsa")
+    )
+    two_db["ops_conn"].commit()
+
+    derive_event_kb(two_db["ops_conn"], two_db["kb_conn"])
+
+    rows = two_db["kb_conn"].execute(
+        "SELECT * FROM knowledge_items WHERE type='event_info' AND is_active=1"
+    ).fetchall()
+    assert len(rows) == 2, (
+        f"Same name+date / different time must produce 2 distinct KB rows; got {len(rows)}"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -139,7 +174,7 @@ def test_derive_creates_event_info_for_gsa_event(two_db):
     assert meta["ops_event_id"] == event_id
     assert meta["date"] == "2026-04-10"
     assert meta["time"] == "6:00 PM"
-    nk = event_natural_key("Spring Social", "2026-04-10")
+    nk = event_natural_key("Spring Social", "2026-04-10", "6:00 PM")
     assert meta["natural_key"] == nk
 
 

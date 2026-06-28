@@ -4,9 +4,11 @@
 idempotent, rebuildable function that copies a GSA event from the OPS DB into a
 ``knowledge_item`` (type ``event_info``) in the Knowledge DB.
 
-``event_natural_key(name, date)`` computes the stable derive key for a given
-event: normalized name + date. The natural key is stored in the KB item's
-``metadata`` so re-runs match on it and never duplicate.
+``event_natural_key(name, date, time)`` computes the stable derive key for a
+given event: normalized name + date + time. The natural key is stored in the KB
+item's ``metadata`` so re-runs match on it and never duplicate.  Time is
+included (B3-3) so that two same-name/same-date events at different times
+produce distinct rows.
 
 ``resolve_org`` is **imported from** ``org_resolve.py`` — this module does NOT
 redefine it (Phase 3 spec: REUSE the Build-2 helper).
@@ -40,19 +42,26 @@ logger = logging.getLogger(__name__)
 # Stable derive key
 # ─────────────────────────────────────────────────────────────────────────────
 
-def event_natural_key(name: str, date: str) -> str:
+def event_natural_key(name: str, date: str, time: str) -> str:
     """Return a stable, normalized derive key for a GSA event.
 
-    Normalization:
+    Normalization applied to ``name``:
     - strip leading/trailing whitespace
     - collapse internal whitespace to a single space
     - lowercase
 
-    The key is ``"{normalized_name}|{date}"``.  ``date`` is stored verbatim
-    (YYYY-MM-DD); callers must not normalize it independently.
+    ``date`` is stored verbatim (YYYY-MM-DD).
+    ``time`` is stored verbatim (e.g. "6:00 PM", "TBD").
+
+    Key format: ``"{normalized_name}|{date}|{time}"``.
+
+    Including ``time`` (B3-3) disambiguates two same-name/same-date events at
+    different times — they produce distinct natural keys and therefore distinct
+    KB ``event_info`` rows.  Phase-5 migration must back-fill existing
+    ``event_info`` metadata using this same three-argument formula.
     """
     normalized = re.sub(r"\s+", " ", name.strip()).lower()
-    return f"{normalized}|{date}"
+    return f"{normalized}|{date}|{time}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -100,7 +109,7 @@ def derive_event_kb(
         current_natural_keys: set[str] = set()
 
         for evt in ops_events:
-            nk = event_natural_key(evt["name"], evt["date"])
+            nk = event_natural_key(evt["name"], evt["date"], evt["time"] or "TBD")
             current_natural_keys.add(nk)
 
             # Build the KB item fields
