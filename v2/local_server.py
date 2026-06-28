@@ -190,6 +190,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 })
             if path == "/db":  # consistent snapshot, for the dashboard's read layer
                 return self._send_db_snapshot()
+            if path == "/db-ops":  # OPS snapshot for the dashboard's posts/events read layer
+                return self._send_db_ops_snapshot()
             conn = self._conn()
             try:
                 if path == "/posts":
@@ -885,6 +887,25 @@ class GatewayHandler(BaseHTTPRequestHandler):
         tmp.close()
         try:
             src = sqlite3.connect(str(DB_PATH))
+            dst = sqlite3.connect(tmp.name)
+            src.backup(dst)
+            src.close(); dst.close()
+            data = Path(tmp.name).read_bytes()
+        finally:
+            os.unlink(tmp.name)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(len(data)))
+        self._cors()
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_db_ops_snapshot(self):
+        # WAL-consistent OPS snapshot for the dashboard's posts/events read layer.
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        tmp.close()
+        try:
+            src = sqlite3.connect(str(OPS_DB_PATH))
             dst = sqlite3.connect(tmp.name)
             src.backup(dst)
             src.close(); dst.close()

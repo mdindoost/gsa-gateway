@@ -4,7 +4,8 @@
    embedding coverage comes from the plain `knowledge_vectors_rowids` shadow table. */
 
 let SQL = null;   // sql.js module
-let db = null;    // loaded database
+let db = null;    // loaded database (KB: knowledge_items, organizations, settings, …)
+let dbOps = null; // loaded OPS database (posts, post_deliveries, events, judging_*)
 
 const POST_ICONS = {
   one_time: "📢", recurring_instance: "🔁", event_announcement: "📅",
@@ -152,6 +153,13 @@ function reloadFromServer() {
   return fetch(SERVER_URL + "/db").then((r) => r.arrayBuffer()).then((buf) => {
     db = new SQL.Database(new Uint8Array(buf));
     PL.prepareForDashboard(db);
+    // Also load the OPS snapshot (posts/events/judging) from /db-ops.
+    // PL.prepareForDashboard is NOT called on dbOps — it drops knowledge_fts triggers
+    // which are KB-only; the OPS DB has no FTS tables so skipping is correct.
+    return fetch(SERVER_URL + "/db-ops").then((r) => r.arrayBuffer()).then((opsBuf) => {
+      dbOps = new SQL.Database(new Uint8Array(opsBuf));
+    }).catch(() => { dbOps = null; });
+  }).then(() => {
     const active = document.querySelector(".nav-item.active");
     if (active) switchTab(active.dataset.tab);
   });
@@ -166,6 +174,13 @@ function connectToServer(url, auto = false) {
   }).then((buf) => {
     db = new SQL.Database(new Uint8Array(buf));
     PL.prepareForDashboard(db);
+    // Also load OPS snapshot from /db-ops.
+    // PL.prepareForDashboard is NOT called on dbOps — it targets KB-only FTS triggers;
+    // OPS has no FTS tables, so skipping is correct.
+    return fetch(base + "/db-ops").then((r) => r.arrayBuffer()).then((opsBuf) => {
+      dbOps = new SQL.Database(new Uint8Array(opsBuf));
+    }).catch(() => { dbOps = null; });
+  }).then(() => {
     currentDbName = base;
     onDbLoaded(base);
     const st = document.getElementById("db-status");
@@ -189,6 +204,23 @@ function query(sql, params = []) {
 function one(sql, params = []) { return query(sql, params)[0] || null; }
 function scalar(sql, params = []) {
   try { const r = one(sql, params); return r ? Object.values(r)[0] : null; }
+  catch (e) { return null; }
+}
+
+// ── OPS query helpers (degrade safely when dbOps is null — file-mode) ────────
+function queryOps(sql, params = []) {
+  if (!dbOps) return [];
+  const stmt = dbOps.prepare(sql);
+  if (params.length) stmt.bind(params);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+function oneOps(sql, params = []) { return queryOps(sql, params)[0] || null; }
+function scalarOps(sql, params = []) {
+  if (!dbOps) return null;
+  try { const r = oneOps(sql, params); return r ? Object.values(r)[0] : null; }
   catch (e) { return null; }
 }
 
@@ -803,6 +835,10 @@ function reloadDbQuietly() {
   return fetch(SERVER_URL + "/db").then((r) => r.arrayBuffer()).then((buf) => {
     db = new SQL.Database(new Uint8Array(buf));
     PL.prepareForDashboard(db);
+    // Also refresh the OPS snapshot quietly.
+    return fetch(SERVER_URL + "/db-ops").then((r) => r.arrayBuffer()).then((opsBuf) => {
+      dbOps = new SQL.Database(new Uint8Array(opsBuf));
+    }).catch(() => { dbOps = null; });
   }).catch(() => {});
 }
 
@@ -865,17 +901,17 @@ function renderOverview() {
   const answerRate = totalQ ? Math.round((answered / totalQ) * 1000) / 10 : 0;
   const kiActive = scalar("SELECT COUNT(*) FROM knowledge_items WHERE is_active=1") ?? 0;
   const kiInactive = scalar("SELECT COUNT(*) FROM knowledge_items WHERE is_active=0") ?? 0;
-  const activeEvents = scalar("SELECT COUNT(*) FROM events WHERE date >= date('now')") ?? 0;
+  const activeEvents = scalarOps("SELECT COUNT(*) FROM events WHERE date >= date('now')") ?? 0;
   const orgCount = scalar("SELECT COUNT(*) FROM organizations") ?? 0;
   // embeddings via vec0 shadow table (sql.js can't query the vec0 table itself)
   const embeds = scalar("SELECT COUNT(*) FROM knowledge_vectors_rowids") ?? 0;
   const qToday = scalar("SELECT COUNT(*) FROM questions WHERE DATE(timestamp)=DATE('now')") ?? 0;
-  const lastSent = scalar("SELECT MAX(sent_at) FROM posts WHERE sent_at IS NOT NULL");
-  const nextSched = scalar("SELECT MIN(scheduled_for) FROM posts WHERE status='scheduled' AND scheduled_for IS NOT NULL");
+  const lastSent = scalarOps("SELECT MAX(sent_at) FROM posts WHERE sent_at IS NOT NULL");
+  const nextSched = scalarOps("SELECT MIN(scheduled_for) FROM posts WHERE status='scheduled' AND scheduled_for IS NOT NULL");
 
-  const recent = query(
+  const recent = queryOps(
     "SELECT id,type,title,content,status,sent_at,created_at FROM posts ORDER BY created_at DESC LIMIT 10");
-  const upcoming = query(
+  const upcoming = queryOps(
     "SELECT id,type,title,content,channels,scheduled_for FROM posts " +
     "WHERE status='scheduled' ORDER BY scheduled_for ASC LIMIT 10");
 
@@ -955,9 +991,9 @@ function upcomingRow(p) {
 
 // ───────── post detail modal ─────────
 function openPost(id) {
-  const p = one("SELECT * FROM posts WHERE id=?", [id]);
+  const p = oneOps("SELECT * FROM posts WHERE id=?", [id]);
   if (!p) return;
-  const deliveries = query(
+  const deliveries = queryOps(
     "SELECT platform,channel,status,error,sent_at FROM post_deliveries WHERE post_id=? ORDER BY platform", [id]);
   let plats = []; try { plats = JSON.parse(p.channels || "[]"); } catch (e) {}
 
@@ -1050,11 +1086,11 @@ function listWhere() {
 
 function renderPostsList() {
   const { clause, params } = listWhere();
-  const total = scalar(`SELECT COUNT(*) FROM posts WHERE ${clause}`, params) || 0;
+  const total = scalarOps(`SELECT COUNT(*) FROM posts WHERE ${clause}`, params) || 0;
   const pages = Math.max(1, Math.ceil(total / PS.pageSize));
   if (PS.page > pages) PS.page = pages;
   const offset = (PS.page - 1) * PS.pageSize;
-  const rows = query(
+  const rows = queryOps(
     `SELECT id,type,title,content,status,channels,scheduled_for,sent_at FROM posts WHERE ${clause} ` +
     `ORDER BY COALESCE(scheduled_for,created_at) DESC, id DESC LIMIT ? OFFSET ?`, [...params, PS.pageSize, offset]);
   const list = document.getElementById("plist");
@@ -1097,9 +1133,10 @@ function renderRightPane() {
 
 // ── detail view ──────────────────────────────────────────────────────────
 function renderPostDetail(id) {
-  const p = one("SELECT * FROM posts WHERE id=?", [id]);
+  const p = oneOps("SELECT * FROM posts WHERE id=?", [id]);
   if (!p) { PS.view = "none"; renderRightPane(); return; }
-  const deliveries = query("SELECT platform,channel,status,error,sent_at FROM post_deliveries WHERE post_id=? ORDER BY platform", [id]);
+  const deliveries = queryOps("SELECT platform,channel,status,error,sent_at FROM post_deliveries WHERE post_id=? ORDER BY platform", [id]);
+  // renderSignature and org-name lookup stay on db (KB) — these are separate statements, not a JOIN.
   const sig = PL.renderSignature(db, p.org_id, p.signature);
   const orgName = scalar("SELECT name FROM organizations WHERE id=?", [p.org_id]) || "—";
   const delRows = deliveries.length
@@ -1897,9 +1934,9 @@ function renderAnalytics() {
   const sat = (fUp + fDown) ? Math.round((fUp / (fUp + fDown)) * 1000) / 10 : 0;
 
   const sentClause = periodClause("sent_at");
-  const postsSent = scalar(`SELECT COUNT(*) FROM posts WHERE sent_at IS NOT NULL AND ${sentClause}`) || 0;
-  const delivOk = scalar(`SELECT COUNT(*) FROM post_deliveries WHERE status='success' AND ${periodClause("sent_at")}`) || 0;
-  const delivFail = scalar(`SELECT COUNT(*) FROM post_deliveries WHERE status='failed' AND ${periodClause("sent_at")}`) || 0;
+  const postsSent = scalarOps(`SELECT COUNT(*) FROM posts WHERE sent_at IS NOT NULL AND ${sentClause}`) || 0;
+  const delivOk = scalarOps(`SELECT COUNT(*) FROM post_deliveries WHERE status='success' AND ${periodClause("sent_at")}`) || 0;
+  const delivFail = scalarOps(`SELECT COUNT(*) FROM post_deliveries WHERE status='failed' AND ${periodClause("sent_at")}`) || 0;
 
   const kbTotal = scalar("SELECT COUNT(*) FROM knowledge_items WHERE is_active=1") || 0;
   const byOrg = query("SELECT o.name, COUNT(*) c FROM knowledge_items ki JOIN organizations o ON o.id=ki.org_id WHERE ki.is_active=1 GROUP BY o.id ORDER BY c DESC");
@@ -1909,7 +1946,7 @@ function renderAnalytics() {
   const unanswered = query(
     `SELECT question_text, COUNT(*) n, MAX(timestamp) last_asked, ROUND(AVG(confidence),1) avg_c
      FROM questions WHERE confidence<50 AND ${pq} GROUP BY question_text ORDER BY n DESC LIMIT 10`);
-  const postsByType = query(
+  const postsByType = queryOps(
     `SELECT p.type, COUNT(*) total, SUM(CASE WHEN pd.status='success' THEN 1 ELSE 0 END) success
      FROM posts p LEFT JOIN post_deliveries pd ON p.id=pd.post_id
      WHERE p.sent_at IS NOT NULL AND ${periodClause("p.sent_at")} GROUP BY p.type ORDER BY total DESC`);
