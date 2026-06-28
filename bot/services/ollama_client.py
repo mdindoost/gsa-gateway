@@ -154,6 +154,15 @@ _EXPAND_EXAMPLES = (
     "Input: officers → Who are the GSA officers at NJIT?\n"
 )
 
+_ANSWER_INSTRUCTIONS = (
+    "Instructions: Answer the student's question using ONLY the documents above. "
+    "Cite which document you used. If the documents don't contain the answer, say so "
+    "and direct them to a GSA officer. If the question names a specific person or "
+    "organization, answer ONLY from documents about that exact person/organization — "
+    "if none of the documents are about them, say you couldn't find that information "
+    "for them and stop; do not report a different person's details."
+)
+
 _SUMMARY_SYSTEM = (
     "You are helping GSA officers prepare a weekly student-engagement report. "
     "You will receive initiative submissions and feedback from the past week. "
@@ -223,6 +232,68 @@ class OllamaClient:
         lines.append("\n=== END OF DOCUMENTS ===")
         return "\n".join(lines)
 
+    def _assemble_user(self, context_block: str, question: str) -> str:
+        return f"{context_block}\n\nStudent question: {question}\n\n{_ANSWER_INSTRUCTIONS}"
+
+    def _truncate_chunk_to_fit(self, chunk, system_prompt: str, question: str, num_predict: int) -> Optional["RetrievedChunk"]:
+        """Return a copy.copy of `chunk` whose body is the largest verbatim prefix (whitespace-snapped,
+        hard-cut fallback) such that the full rendered prompt fits the budget, with TRUNCATION_NOTE
+        appended. Return None if even MIN_DOC_TOKENS of body won't fit."""
+        budget = self.num_ctx - num_predict - CONTEXT_CUSHION_TOKENS
+        sys_tokens = _estimate_tokens(system_prompt)
+
+        def rendered_tokens(text: str) -> int:
+            tmp = copy.copy(chunk)
+            tmp.text = text
+            user = self._assemble_user(self._build_context_block([tmp]), question)
+            return sys_tokens + _estimate_tokens(user)
+
+        body = chunk.text
+        # binary-search the largest prefix length whose rendered prompt fits
+        lo, hi, best = 0, len(body), 0
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if rendered_tokens(body[:mid] + TRUNCATION_NOTE) <= budget:
+                best, lo = mid, mid + 1
+            else:
+                hi = mid - 1
+        if best <= 0 or _estimate_tokens(body[:best]) < MIN_DOC_TOKENS:
+            return None
+        # whitespace-snap to avoid a mid-word cut; hard-cut if no good boundary in the back half
+        snap = max(body.rfind(" ", 0, best), body.rfind("\n", 0, best))
+        if snap < best // 2:
+            snap = best
+        truncated = copy.copy(chunk)
+        truncated.text = body[:snap].rstrip() + TRUNCATION_NOTE
+        return truncated
+
+    def _fit_chunks(self, chunks: list, system_prompt: str, question: str, num_predict: int) -> list:
+        """Drop lowest-ranked whole pages (input order = rank order, never re-sorted) until the rendered
+        system+user prompt fits num_ctx - num_predict - CUSHION; if one page remains and still overflows,
+        prefix-truncate it; return [] only in the degenerate case (caller treats as a generation miss)."""
+        if not chunks:
+            return []
+        budget = self.num_ctx - num_predict - CONTEXT_CUSHION_TOKENS
+        sys_tokens = _estimate_tokens(system_prompt)
+
+        def fits(items) -> bool:
+            user = self._assemble_user(self._build_context_block(items), question)
+            return sys_tokens + _estimate_tokens(user) <= budget
+
+        included = list(chunks)
+        while len(included) > 1 and not fits(included):
+            included.pop()  # drop the lowest-ranked page
+        if fits(included):
+            if len(included) < len(chunks):
+                logger.info("context budget: kept %d/%d pages", len(included), len(chunks))
+            return included
+        truncated = self._truncate_chunk_to_fit(included[0], system_prompt, question, num_predict)
+        if truncated is None:
+            logger.warning("context budget: no doc fits; returning empty fitted context")
+            return []
+        logger.info("context budget: prefix-truncated rank-1 page to fit")
+        return [truncated]
+
     def _build_full_prompt(
         self,
         question: str,
@@ -248,16 +319,7 @@ class OllamaClient:
             )
 
         context_block = self._build_context_block(chunks)
-        user_prompt = (
-            f"{context_block}\n\n"
-            f"Student question: {question}\n\n"
-            "Instructions: Answer the student's question using ONLY the documents above. "
-            "Cite which document you used. If the documents don't contain the answer, say so "
-            "and direct them to a GSA officer. If the question names a specific person or "
-            "organization, answer ONLY from documents about that exact person/organization — "
-            "if none of the documents are about them, say you couldn't find that information "
-            "for them and stop; do not report a different person's details."
-        )
+        user_prompt = self._assemble_user(context_block, question)
         return system_prompt, user_prompt
 
     async def generate_answer(

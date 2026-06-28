@@ -185,3 +185,70 @@ class TestNumCtxConfig:
     def test_constructor_arg_wins(self, monkeypatch):
         monkeypatch.setenv("OLLAMA_NUM_CTX", "12000")
         assert OllamaClient(base_url="http://x", model="m", num_ctx=9000).num_ctx == 9000
+
+
+class TestFitChunks:
+    def _client(self, num_ctx):
+        return OllamaClient(base_url="http://x", model="m", num_ctx=num_ctx)
+
+    def test_under_budget_is_identity(self):
+        c = self._client(16384)
+        chunks = [make_chunk("short a"), make_chunk("short b")]
+        fitted = c._fit_chunks(chunks, "sys", "q", num_predict=512)
+        assert fitted == chunks  # same objects, untouched
+
+    def test_drops_lowest_ranked_until_fit(self):
+        # word*200 makes each chunk ~407 est tokens so 2 fit (677<=720) but 3 don't (947>720).
+        # budget = 2000 - 256 - CONTEXT_CUSHION_TOKENS = 720.
+        c = self._client(2000)  # tiny window forces dropping
+        big = "word " * 200
+        chunks = [make_chunk("rank1 " + big), make_chunk("rank2 " + big), make_chunk("rank3 " + big)]
+        fitted = c._fit_chunks(chunks, "sys", "q", num_predict=256)
+        assert len(fitted) < 3
+        assert fitted[0] is chunks[0]  # rank-1 kept, input order preserved
+        # rendered prompt is within budget
+        user = c._assemble_user(c._build_context_block(fitted), "q")
+        assert oc._estimate_tokens("sys") + oc._estimate_tokens(user) + 256 <= 2000
+
+    def test_single_page_overflow_is_prefix_truncated(self):
+        # num_ctx=2048 → budget 2048-128-CONTEXT_CUSHION_TOKENS=896; enough for framing+MIN_DOC.
+        # The final assert <= 1200 holds because 896+128=1024 < 1200.
+        c = self._client(2048)
+        body = "FIRST SENTENCE is the answer. " + ("filler tail " * 2000)
+        chunks = [make_chunk(body)]
+        fitted = c._fit_chunks(chunks, "sys", "q", num_predict=128)
+        assert len(fitted) == 1
+        assert fitted[0] is not chunks[0]               # a copy, not the original
+        assert chunks[0].text == body                   # original unmutated
+        assert "FIRST SENTENCE is the answer." in fitted[0].text
+        assert oc.TRUNCATION_NOTE.strip()[:20] in fitted[0].text
+        user = c._assemble_user(c._build_context_block(fitted), "q")
+        assert oc._estimate_tokens("sys") + oc._estimate_tokens(user) + 128 <= 2048
+
+    def test_truncated_copy_preserves_provenance(self):
+        c = self._client(2048)
+        ch = make_chunk("answer. " + ("x " * 4000))
+        ch.item_id = 27226           # dynamic non-field attrs (as the runtime shim sets)
+        ch.source_url = "https://www.njit.edu/global/h1b"
+        ch.verified = True
+        fitted = c._fit_chunks([ch], "sys", "q", num_predict=128)
+        assert getattr(fitted[0], "item_id") == 27226
+        assert getattr(fitted[0], "source_url") == "https://www.njit.edu/global/h1b"
+        assert getattr(fitted[0], "verified") is True
+
+    def test_empty_input_returns_empty(self):
+        assert self._client(16384)._fit_chunks([], "sys", "q", 512) == []
+
+    def test_degenerate_budget_returns_empty(self):
+        c = self._client(300)  # system+framing+num_predict+cushion already blow the window
+        fitted = c._fit_chunks([make_chunk("x " * 5000)], "huge " * 200, "q", num_predict=128)
+        assert fitted == []
+
+    def test_no_whitespace_hard_cut(self):
+        # num_ctx=2048 → budget 896; 896+128=1024 < 2048.  Hard-cuts "A"*N (no spaces/newlines).
+        c = self._client(2048)
+        chunks = [make_chunk("A" * 40000)]  # no whitespace at all
+        fitted = c._fit_chunks(chunks, "sys", "q", num_predict=128)
+        assert len(fitted) == 1
+        user = c._assemble_user(c._build_context_block(fitted), "q")
+        assert oc._estimate_tokens("sys") + oc._estimate_tokens(user) + 128 <= 2048
