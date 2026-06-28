@@ -2,8 +2,10 @@
 
 **Date:** 2026-06-28
 **Branch:** `feat/context-budget-guard` (off `main` @ `69fcfd6`)
-**Status:** rev-2 — both hard-gate reviews folded (senior-eng NO-GO + RAG GO-WITH-CHANGES, 2026-06-28);
-awaiting Codex re-review of rev-2 → owner sign-off → TDD build.
+**Status:** rev-2 — both hard-gate reviews folded (senior-eng NO-GO + RAG GO-WITH-CHANGES) + Codex
+re-review of rev-2 folded (GO-WITH-CHANGES: 3/4 blockers RESOLVED, SE-B1 PARTIAL + 2 IMPORTANT, all folded
+— pessimistic byte-count fallback + tiktoken-hard-dep; empty-context two-path disambiguation). 2026-06-28.
+Awaiting owner sign-off → TDD build.
 **Arc:** Phase-3 Task #1 of the teacher-eval / answer-stack arc ([[project_answer_stack_design]],
 [[project_m2_embedding]], [[project_teacher_eval]]). Corpus-independent; ships to prod independently of
 the gate refit / DB-rebuild (Decision A = hybrid; Decision B = fresh branch off main).
@@ -123,7 +125,11 @@ paths already read `self.num_ctx`.
 
 ### 5.2 `_estimate_tokens(text: str) -> int` (NEW, module-level)
 tiktoken `cl100k_base` (lazy-loaded, cached module-level): `ceil(len(enc.encode(text)) * SAFETY_FACTOR)`,
-`SAFETY_FACTOR = 1.2`. Fallback on import/encode failure: `ceil(len(text) / 3.0)`. Pure; deterministic.
+`SAFETY_FACTOR = 1.2`. **tiktoken is a hard project dependency** (already imported unconditionally by
+`bot/services/chunker.py`), so the tiktoken path is the norm. The fallback (only if `enc.encode` raises on
+pathological input) is a **genuinely pessimistic upper bound**: `len(text.encode("utf-8"))` — byte count is
+always ≥ the true BPE token count, so it can never under-count (re-review SE-B1 fold). NOT `chars/3.0` (that
+was not conservative). Pure; deterministic. Tested on the fallback path, not only the tiktoken path (§8).
 
 ### 5.3 `_fit_chunks(chunks, system_prompt, question, num_predict) -> list[RetrievedChunk]` (NEW)
 - `target = num_ctx − num_predict − CUSHION` (`CUSHION = 1024`, module constant).
@@ -139,8 +145,16 @@ tiktoken `cl100k_base` (lazy-loaded, cached module-level): `ceil(len(enc.encode(
 - Originals never mutated. Returns the fitted list (≥1 chunk when input non-empty).
 - **Degenerate case** (SE#4/#5): if even rank-1 hard-cut to a minimum floor (`MIN_DOC_TOKENS = 128`) can't
   fit because `system + framing + num_predict` alone ≥ `num_ctx − CUSHION` (pathological history despite the
-  D-bounded turns), log a warning and return `[]`; the caller treats empty fitted-context as a generation
-  miss (returns `None` → existing deflection/fallback), never a silent overflow.
+  D-bounded turns), log a warning and return `[]`.
+
+**Empty-context semantics — two distinct paths (re-review fold, keep them separate in code + tests):**
+1. **Initial empty retrieval** — the caller passes `chunks=[]` (retriever found nothing). `generate_answer`
+   already returns `None` at its top guard (`if not chunks: return None`) BEFORE fitting; `_fit_chunks` is
+   not invoked. `_build_context_block([])` → "No relevant context found." is only for any other caller.
+2. **Post-fit degenerate empty** — the caller passed a NON-empty `chunks`, but `_fit_chunks` returns `[]`
+   (pathological budget). `generate_answer` treats an empty *fitted* set identically to no chunks: return
+   `None` → existing deflection/fallback. Never a silent overflow, never a fabricated empty-context answer.
+Both paths yield `None` from `generate_answer`, but they have different causes → §8 tests cover each.
 
 ### 5.4 `_build_context_block` change
 No ADDITIONAL SOURCES block (removed). Included pages keep their `Source:` line as today. A prefix-truncated
@@ -192,6 +206,12 @@ Model-free unit tests (deterministic CI):
   alphanumeric IDs, CJK, emoji, whitespace-heavy) — assert `_estimate_tokens(x) ≥ raw_tiktoken(x)` (the
   safety factor) so the estimate is a conservative-vs-its-own-tokenizer bound. (Honest caveat: this bounds
   vs tiktoken, not vs llama — G9. The CUSHION is the backstop for that gap.)
+- **Fallback-path estimator** (re-review fold): force the fallback (monkeypatch encode to raise) and assert
+  the byte-count fallback ≥ raw tiktoken count on the same adversarial samples (a true upper bound, never
+  under-counts) — so a tiktoken outage can't reintroduce overflow.
+- **Empty-context, both paths** (re-review fold): (a) `generate_answer(chunks=[])` → `None` without invoking
+  the fit loop; (b) non-empty `chunks` but a pathological budget driving `_fit_chunks` → `[]` →
+  `generate_answer` → `None`. Distinct causes, both return `None`, neither overflows nor fabricates context.
 - **`_fit_chunks`**: fits-as-is = identity (same objects); over-budget = lowest-ranked pages dropped in
   rank order; single-page-overflow = one prefix-truncated copy with marker, rank-1 never dropped; originals
   unmutated; truncated copy preserves `item_id`/`source_url`/`verified`; whitespace-snap + no-whitespace
