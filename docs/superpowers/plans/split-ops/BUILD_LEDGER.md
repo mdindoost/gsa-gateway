@@ -14,16 +14,20 @@ ONLY their own `build-<N>-report.md` and code/tests — never this ledger, never
 ## Phases
 | # | Phase | Plan | Report | Status |
 |---|-------|------|--------|--------|
-| 1 | Schema split + config + retire create_all (HIGH-3) | `2026-06-28-split-ops-build1-schema-config.md` | `build-1-report.md` | ⬜ ready to dispatch |
-| 2 | Repoint subsystems to two-conn | (write before dispatch) | `build-2-report.md` | ⬜ blocked by 1 |
-| 3 | EVENT→KB derive + cross-DB writes | (write before dispatch) | `build-3-report.md` | ⬜ blocked by 1 |
-| 4 | Dashboard /db-ops + app.js two-DB | (write before dispatch) | `build-4-report.md` | ⬜ blocked by 1 |
-| 5 | Gated migration script + acceptance gate | (write before dispatch) | `build-5-report.md` | ⬜ blocked by 1-4 |
+| 1 | Schema split + config + retire create_all (HIGH-3) | `2026-06-28-split-ops-build1-schema-config.md` | `build-1-report.md` | 🔵 DISPATCHED (Sonnet bg, in progress) |
+| 2 | Repoint subsystems to two-conn | `2026-06-28-split-ops-build2-repoint.md` (SKELETON) | `build-2-report.md` | ⬜ blocked by 1 |
+| 3 | EVENT→KB derive + cross-DB writes | `2026-06-28-split-ops-build3-event-derive.md` (SKELETON) | `build-3-report.md` | ⬜ blocked by 1 |
+| 4 | Dashboard /db-ops + app.js two-DB | `2026-06-28-split-ops-build4-dashboard.md` (SKELETON) | `build-4-report.md` | ⬜ blocked by 1 |
+| 5 | Gated migration script + acceptance gate | `2026-06-28-split-ops-build5-migration.md` (SKELETON) | `build-5-report.md` | ⬜ blocked by 1-4 |
 | — | OWNER GATE: live migration + cutover | — | — | ⬜ owner-run (own checkpoint) |
 
-## Phase plans are written JUST-IN-TIME
-Each phase's plan is authored right before dispatch, using the actual interfaces the prior phase
-delivered (avoids speculative code). Phase 1 plan is written.
+## Phase plans: Phase 1 FINAL; Phases 2-5 SKELETON
+Skeletons carry file lists, contracts, test intentions, acceptance + reject-criteria mapping. Before
+EACH dispatch, finalize the `«LOCK AFTER P…»` signatures against the prior phase's `build-N-report.md`
+(avoids speculative code). Build dispatch stays SEQUENTIAL (shared files: local_server.py spans P2/3/4;
+sequential dependency on P1 seams). Optional later parallel win: P5 migration on its own worktree once
+P1/P2 freeze (flagged, not default).
 
 ## Log
-- 2026-06-28: spec written+approved+reviewed; Phase 1 plan written; ledger created. Ready to dispatch Build 1.
+- 2026-06-28: spec approved+reviewed; Phase 1 plan written; ledger created.
+- 2026-06-28: Build 1 DISPATCHED (background Sonnet TDD agent). Phases 2-5 SKELETON plans drafted while it runs.
