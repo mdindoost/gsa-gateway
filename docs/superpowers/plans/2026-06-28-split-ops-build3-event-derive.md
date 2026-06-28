@@ -7,10 +7,22 @@
 KNOWLEDGE DB — idempotent, rebuildable, one-way. Wire it into the dashboard create-event flow and the
 `add_to_kb` post flow as OPS-commit-first cross-DB writes. Reproduces today's behavior; NO retrieval change.
 
-**Architecture:** New `v2/core/publishing/event_projection.py` with `derive_event_kb` + `resolve_org`.
-Keyed by a stable `(org_slug, normalized name + date)` natural key (with `ops_event_id` as an
-informational secondary match during transition — MED-8). Embedding rides the existing `embed_all` pass
-(Q1: inline-embed the single item in the dashboard flow — confirm with owner; lean yes).
+**Architecture:** New `v2/core/publishing/event_projection.py` with `derive_event_kb`. **REUSE
+`resolve_org` from `v2/core/publishing/org_resolve.py` (Build 2) — do NOT redefine.** Keyed by a stable
+`(org_slug, normalized name + date)` natural key (with `ops_event_id` as an informational secondary match
+during transition — MED-8). Embedding rides the existing `embed_all` pass (Q1: inline-embed the single
+item in the dashboard flow — lean yes).
+
+**LOCKED inputs from Build 1/2 (verified):**
+- Two-DB test fixture: `two_db` in `v2/tests/test_build2_split_ops.py` returns
+  `{"kb_conn","ops_conn","kb_path","ops_path"}` (GSA org + settings seeded in KB). EXTEND it with
+  `ops_conn.execute("INSERT INTO events(...)")` for derive tests.
+- OPS `events` columns (live shape): `id, name, date, time, location, description, organizer, rsvp_link,
+  category, reminder_sent_*, announcement_sent, channel_posted, created_at, created_by, org_id, org_slug`.
+  `events.org_slug` is present → derive reads it directly (no resolve needed for the event's own org).
+- `local_server.py` ALREADY has `_conn()` (KB) and `_ops_conn()` (OPS, Build 2 F2). `_create_event` /
+  `_post_post` write cluster rows via `_ops_conn()` then the derived `knowledge_item` via `_conn()`.
+- Cross-DB ordering (MED-9): commit OPS first, then KB derive; KB failure → log + rebuildable (never reverse).
 
 ## Global Constraints
 - One-way only: OPS event → KB item. Never write back to OPS from the derive.
@@ -42,7 +54,14 @@ informational secondary match during transition — MED-8). Embedding rides the 
 - Test: delete the OPS event → derive deactivates (`is_active=0`) the stale item. Rename → old item deactivated, new natural_key item created.
 
 ### Task 5 — `_create_event` cross-DB (OPS-commit-first)
-- Test (two-DB fixture): create a GSA event via the handler → events/posts/reminders in OPS, one `event_info` in KB. Simulate KB-write failure → OPS event persists, warning logged, re-derive script repairs it.
+- Today (`local_server.py:932`) `_create_event(conn, b)` inserts events + event_info knowledge_item +
+  event_announcement post + reminders in ONE `conn`. Split: events/post/reminders → `self._ops_conn()`,
+  derived `event_info` → `self._conn()` (KB) via `derive_event_kb`. **Stamp `org_slug` on the OPS
+  events + posts INSERTs** — look it up once from KB by `b["org_id"]` (`SELECT slug FROM organizations
+  WHERE id=?`); these INSERTs currently omit it and would fall back to the schema default `'gsa'`.
+- Test (two-DB fixture): create a GSA event via the handler → events/posts/reminders in OPS (with correct
+  org_slug), one `event_info` in KB. Simulate KB-write failure → OPS event persists, warning logged,
+  re-derive script repairs it.
 
 ### Task 6 — `_post_post(add_to_kb)` cross-DB
 - Test: post → OPS; `add_to_kb` → KB knowledge_item; ordering OPS-first; failure leaves OPS post intact.
