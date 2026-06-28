@@ -25,7 +25,8 @@ each other in KB (`event_projection.py:43` + `:123`). FIX: include `time` (and/o
 test's own assertion failure → they pass even if the forbidden table exists. FIX: catch
 `sqlite3.OperationalError` and assert "no such table" (or query `sqlite_master`).
 
-## DECISION NEEDED (owner) — then fix
+## DECISION (owner 2026-06-28): **GSA-only everywhere (Option A).** `_create_event` skips the live derive
+unless `org_slug=='gsa'`; rebuild stays GSA-only. Non-GSA dashboard events no longer get an `event_info`.
 **B3-2 (MED) — scope inconsistency: live derive vs rebuild re-derive.**
 `_create_event` derives for the event's OWN org (`org_slugs=(that slug,)`), but `scripts/derive_event_kb.py`
 + the rebuild default to GSA-only (`:73`). So a non-GSA dashboard event gets a live KB `event_info` that a
