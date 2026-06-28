@@ -74,15 +74,31 @@ cross-DB FKs, violating G2):
 
 **Judging** is fully self-contained (every FK is judging→judging); cleanest to relocate as a unit.
 
-**Cross-layer references today:**
+**Cross-layer references today** (every org-referencing moved table — verified against the live DB):
 
-- `posts.org_id → organizations(id)` (NOT cascade — posts outlive orgs)
-- `events.org_id → organizations(id)` (optional)
+- `posts.org_id → organizations(id)` (NOT cascade — posts outlive orgs). 427 live rows, all org `gsa`.
+- `events.org_id → organizations(id)` (optional). 2 live rows, all `gsa`.
+- `post_templates.org_id → organizations(id)` **NOT NULL** (`schema.py:106`). 2 live rows, all `gsa`.
+  **(Caught in senior-eng review — was missed in the first draft; all three get `org_slug`.)**
 - `settings.org_id → organizations(id)` — **settings stays in Knowledge DB, so this FK is unaffected.**
-- Judging has **no** FK to `organizations` (org-agnostic).
-- One-way derive: `_create_event()` (dashboard) inserts `events` + `event_info` knowledge_item +
-  `event_announcement` post + `event_reminders` in one transaction today. After the split this
-  transaction is split: cluster rows → OPS, derived knowledge_item → Knowledge.
+- Judging has **no** FK to `organizations` (org-agnostic — verified: zero `REFERENCES organizations`
+  in any `judging_*` table).
+- One-way derive: `_create_event()` (`local_server.py:922`) inserts `events` + `event_info`
+  knowledge_item + `event_announcement` post + `event_reminders` in one transaction today; **and**
+  `_post_post(add_to_kb)` (`local_server.py:911`) writes a `post` + a `knowledge_item` in one
+  transaction. After the split BOTH become cross-DB writes: cluster rows → OPS, derived
+  knowledge_item → Knowledge.
+
+**⚠ `events` is the v1 NON-STRICT table, dual-defined (verified live).** The live `events` table is
+created by `bot/services/database.py:110` (`init_tables`) — `INTEGER PRIMARY KEY AUTOINCREMENT`, two
+legacy columns the v2 DDL lacks (`announcement_sent`, `channel_posted`), and `org_id`
+ALTER-appended **last**. It is registered in `sqlite_sequence`. The STRICT v2 `events` DDL in
+`schema.py:146` is **dead code** (the `IF NOT EXISTS` no-ops because the v1 table already exists).
+Consequences for this project: (a) the OPS `events` table must reproduce the **live** shape, not the
+v2 DDL; (b) the migration must do an **explicit column-mapped copy** (never `SELECT *`) and seed
+`sqlite_sequence`; (c) this project **resolves the dual-definition** — `events` is created **once**
+by `create_ops_schema` (live shape + `org_slug`), and the two old creators are removed from the
+Knowledge path (see Touch Points HIGH-3).
 
 **Connection plumbing today:**
 
@@ -112,7 +128,10 @@ transactions are fragile (no atomic commit across files, WAL interactions, vec e
 `schema.py` splits its DDL into two builders:
 
 - `create_knowledge_schema(conn)` — current tables minus the moved cluster.
-- `create_ops_schema(conn)` — the moved cluster + judging, with the OPS-side schema below.
+- `create_ops_schema(conn)` — the moved cluster + judging. The OPS `events` table reproduces the
+  **live v1 shape** (AUTOINCREMENT + `announcement_sent`/`channel_posted`) **plus `org_slug`** — it
+  does **not** adopt the dead STRICT v2 DDL (see §2). The monolithic `create_all` is **retired** from
+  every Knowledge-DB startup path and replaced by these two builders (see Touch Points HIGH-3).
 
 A small helper `get_ops_connection(path)` mirrors `get_connection` **without** loading sqlite-vec
 (OPS has no vectors) — keeps the OPS connection lean and avoids requiring the extension wherever
@@ -120,15 +139,24 @@ only ops data is touched.
 
 ### 3.2 Cross-DB org reference = stable slug (G2)
 
-On the OPS side, `posts` and `events` carry **`org_slug TEXT NOT NULL`** — the durable join key.
+On the OPS side, `posts`, `events`, **and `post_templates`** carry **`org_slug TEXT NOT NULL`** — the
+durable join key.
 
-- `org_id` is **retained as a plain informational INTEGER** (no FK) so no immortal data is lost and
-  historical rows keep their original id. The **contract** join key is `org_slug`.
-- Reads that need org details resolve `org_slug → organizations` against the Knowledge DB
-  (`SELECT id,name,... FROM organizations WHERE slug=?`). A tiny cached resolver
-  (`resolve_org(kb_conn, slug)`) lives next to the publishing code.
-- Writers set `org_slug` at enqueue/create time (they already know the org). The migration
-  back-fills `org_slug` for every existing row from `organizations`.
+- `org_id` is **retained as a plain informational INTEGER** (no FK) so no data is lost and historical
+  rows keep their original id. The **contract** join key is `org_slug`.
+- Reads that need org details resolve `org_slug → organizations` against the Knowledge DB.
+  `resolve_org(kb_conn, slug)` returns the **full org row (including `id`)** and is **cached per
+  scheduler tick** — resolved once per org per tick, never per-setting (avoids an N+1 on the publish
+  hot path, where `build_post` does ~5 settings reads/post — MED-7).
+- **`organizations.slug` is only `UNIQUE(parent_id, slug)`, not globally unique** (`schema.py:54`).
+  Today no global slug collision exists and only `gsa` (root) is referenced, so it is safe — but
+  `resolve_org` **fails loudly on >1 match**, and the migration acceptance gate asserts global
+  uniqueness for every referenced slug (LOW-11). This makes the slug contract an enforced invariant.
+- **Settings reads use the resolved `id`, not a stored rowid.** This is NOT a G2 violation: the
+  durable cross-DB reference stored in moved tables is the slug; the `id` is obtained at read time
+  from `resolve_org`. The retained `org_id` column is informational only, never the contract key.
+- Writers set `org_slug` at enqueue/create time. The migration back-fills `org_slug` for every
+  existing `posts`/`events`/`post_templates` row from `organizations`.
 
 `judging_*` needs no org reference (unchanged).
 
@@ -146,6 +174,13 @@ function:
   `(org_slug, event natural key)` where the natural key = normalized `name` + `date`. Stored in
   metadata; the upsert matches on it. `ops_event_id` is stored as an informational value only
   (it is an OPS rowid — never used as the cross-DB contract key, per G2).
+- **Transition reconciliation (MED-8):** today's `event_info` rows were written by `_create_event`
+  keyed implicitly on `metadata.event_id` (an OPS rowid), **not** the new natural key. So the
+  migration must **back-fill the new derive key onto the existing `event_info` rows** (match each by
+  its stored `event_id` → the corresponding OPS event → compute + write the natural key). The derive
+  upsert then matches on **either** `ops_event_id` **or** the natural key during the transition, so
+  the 2 existing rows are recognized and **not duplicated**. A test asserts: re-deriving over the
+  migrated DB yields zero new `event_info` rows.
 - **Idempotent + reconcilable:** running it is safe repeatedly; an event removed/renamed in OPS
   deactivates (`is_active=0`) its stale derived item (mirrors existing reconcile semantics).
 - **Embedding:** the derived `knowledge_item` is embedded by the existing `embed_all.py` pass
@@ -159,16 +194,33 @@ function:
 This **reproduces existing behavior** — events already become `event_info` KB. No retrieval or
 answer-composition code changes.
 
-### 3.4 Components that hold both connections
+### 3.4 Components that hold both connections (corrected per review — HIGH-4/5, MED-6)
 
-Only two:
+The first draft under-counted this. **Anything that enqueues or publishes a post needs BOTH
+connections**, because enqueue validates the org and resolves the slug against `organizations`
+(Knowledge) while writing the post (OPS), and publishing reads `settings` (Knowledge) while writing
+`post_deliveries` (OPS). The true two-connection set:
 
-1. **Scheduler / Publisher / Deleter** — posts/deliveries on the OPS conn; org settings
-   (signatures, channels, `default.auto_delete_hours`) on the Knowledge conn via `org_slug` resolve.
-2. **Dashboard server (`local_server.py`)** — routes each endpoint to the right DB (below).
+1. **Scheduler stack** (`scheduler_runner`): `Scheduler` (templates/reminders/publish-due), `PostPublisher`,
+   `PostDeleter` → **OPS** for posts/deliveries; **`SignatureService`** and `PostPublisher`'s
+   platform/channel defaults → **Knowledge** (`settings`); **`ConnectorRegistry.conn` → OPS** (it
+   writes `post_deliveries`).
+2. **`enqueue_post`** (`sources.py`) — validates `organizations.is_active` + resolves `org_slug`
+   (Knowledge) and inserts the post (OPS). So `SourceRunner`, the **WorldCup `match_watcher`**
+   (also reads `settings` via `auto_delete_hours` + resolves org by slug), and the **fixtures digest**
+   all hold both. `bot/main.py` must pass both paths to the watcher (today it passes a hardcoded
+   `"gsa_gateway.db"` at `:236`).
+3. **Dashboard server (`local_server.py`)** — routes each endpoint to the right DB (below) and does
+   the cross-DB event/post→KB derives.
 
-Everything else holds exactly one: judging → OPS only; retriever/router/embedder → Knowledge only;
-WorldCup enqueue → OPS only.
+Holds exactly one: judging → **OPS** only; retriever / router / embedder → **Knowledge** only.
+
+**Cross-DB write ordering (MED-9).** Both `_create_event` and `_post_post(add_to_kb)` write OPS
+cluster rows + a Knowledge `knowledge_item`. Order: **commit OPS first, then write the derived
+Knowledge row.** If the Knowledge write fails, the OPS post/event still stands (immortal/authoritative)
+and the derived KB item is **rebuildable** via `derive_event_kb` (a logged warning + the standalone
+re-derive script close the gap) — so a partial failure never loses operational data and never leaves
+an un-rebuildable KB hole. The reverse order is forbidden (a KB item with no backing OPS row).
 
 ---
 
@@ -176,18 +228,22 @@ WorldCup enqueue → OPS only.
 
 | File | Change |
 |---|---|
-| `v2/core/database/schema.py` | Split DDL into `create_knowledge_schema` / `create_ops_schema`; add `get_ops_connection` (no vec load); OPS `posts`/`events` get `org_slug`. |
+| `v2/core/database/schema.py` | Split DDL into `create_knowledge_schema` / `create_ops_schema`; add `get_ops_connection` (no vec load); OPS `posts`/`events`/`post_templates` get `org_slug`; OPS `events` matches the **live v1 shape**. Keep `create_all` only as a thin "both schemas" helper for tests. |
+| **`bot/services/database.py`** **(HIGH-3)** | **Stop creating `events` (and any moved table) on the Knowledge path.** Remove `events`/`events_log`-adjacent moved-table DDL from `init_tables`; `events` is owned by `create_ops_schema`. Prevents silent re-creation of the dropped table in the Knowledge DB. |
+| **`v2/local_server.py` startup** **(HIGH-3)** | `main()` currently calls `create_all(DB_PATH)` (`:1043`) which self-heals **all** v2 tables incl. moved ones onto the Knowledge DB every server start. Replace with `create_knowledge_schema(DB_PATH)` + `create_ops_schema(OPS_PATH)`. |
 | `bot/config.py` | Add `operations_db_path = os.getenv("OPERATIONS_DB_PATH", <sibling of database_path>)`. |
-| `bot/main.py` | Open both connections/paths; pass OPS path to scheduler + judging; Knowledge path to retriever. |
-| `v2/integration/scheduler_runner.py` | Open OPS conn (posts) + Knowledge conn (settings/orgs); pass both down. |
-| `v2/core/publishing/publisher.py` | Read/write posts/deliveries on OPS conn; resolve org settings via Knowledge conn + `org_slug`. |
-| `v2/core/publishing/deleter.py` | Posts/deliveries on OPS conn. |
-| `v2/core/publishing/sources.py` (`enqueue_post`) | Write posts on OPS conn; set `org_slug`. |
-| `v2/core/publishing/scheduler.py` | `materialize_templates` / `materialize_event_reminders` on OPS conn. |
-| `v2/integration/match_watcher.py` (WorldCup enqueue) | Enqueue on OPS conn. |
-| `v2/core/judging/db.py`, `session.py` | Open OPS conn (`_conn()` → ops path). |
-| `v2/local_server.py` | Open both; route posts/judging/event-create endpoints → OPS; KB/people/settings → Knowledge; `_create_event` writes cluster → OPS then `derive_event_kb` → Knowledge; serve OPS at `/db-ops`. |
-| `dashboard/app.js` | Load a second sql.js DB from `/db-ops`; Posts tab + post-based Analytics queries read the OPS DB; KB/People/Settings read `/db`. (Judging already uses live `/judging/*` APIs — server-side repoint only.) |
+| `bot/main.py` | Open both paths; pass OPS path to scheduler + judging + **WorldCup watcher** (replaces hardcoded `"gsa_gateway.db"` at `:236`); Knowledge path to retriever. |
+| `v2/integration/scheduler_runner.py` | Open OPS conn (posts/deliveries) + Knowledge conn (settings/orgs); pass both to `Scheduler`, `PostPublisher`, `PostDeleter`, **`SignatureService`** (Knowledge), and set **`registry.conn = OPS`** (delivery logging). |
+| `v2/core/publishing/publisher.py` | Posts/deliveries → OPS conn; platform/channel defaults from `settings` → Knowledge conn via per-tick `resolve_org`. |
+| `v2/core/publishing/signature.py` (`SignatureService`) | Reads `settings` → Knowledge conn. |
+| `v2/core/connectors/registry.py` | `ConnectorRegistry.conn` writes `post_deliveries` → OPS conn. |
+| `v2/core/publishing/deleter.py` | Posts/deliveries → OPS conn. |
+| `v2/core/publishing/sources.py` (`enqueue_post`) | Takes **both** conns (or pre-resolved slug + OPS conn): validate org + resolve `org_slug` → Knowledge; insert post → OPS. |
+| `v2/core/publishing/scheduler.py` | `materialize_templates` (reads `post_templates.org_slug`) / `materialize_event_reminders` → OPS conn; org/settings stamping via Knowledge resolve. |
+| `v2/integration/match_watcher.py` (WorldCup) | Both conns: org-by-slug + `auto_delete_hours`(`settings`) → Knowledge; enqueue posts → OPS. |
+| `v2/core/judging/db.py`, `session.py` | Open OPS conn (`_conn()` → ops path). Self-contained. |
+| `v2/local_server.py` (endpoints) | Open both; posts/judging/event endpoints → OPS; KB/people/settings → Knowledge; `_create_event` + `_post_post(add_to_kb)` write cluster → OPS then derive `knowledge_item` → Knowledge (OPS-commit-first ordering, §3.4); serve OPS at `/db-ops`. |
+| `dashboard/app.js` | Load a second sql.js DB from `/db-ops`; **Overview** (`:873-879`), **Posts**, and post-based **Analytics** (`:1885+`) queries read the OPS handle; KB/People/Settings read `/db`. Thread two `db` handles into `renderOverview`/`renderPosts`/`renderAnalytics`. (Judging already uses live `/judging/*` APIs — server-side repoint only.) |
 | `v2/core/publishing/__init__` + callers | Thread the OPS/Knowledge conn pair where a single `conn` was passed. |
 
 A new module `v2/core/publishing/event_projection.py` houses `derive_event_kb` + `resolve_org`.
@@ -202,27 +258,40 @@ gated-write convention: `hardened_backup(...)` of the live DB first; reversible.
 **Procedure:**
 
 1. **Backup** the live `gsa_gateway.db` (hardened_backup: online-backup API + integrity check).
-2. **Create** `gsa_gateway_ops.db` with `create_ops_schema`.
-3. **Copy** each moved table row-for-row into the OPS DB. For `posts`/`events`, back-fill
-   `org_slug` from `organizations` (fail if any `org_id` has no slug — see gate).
+2. **Create** `gsa_gateway_ops.db` with `create_ops_schema` (OPS `events` = live v1 shape + `org_slug`).
+3. **Copy** each moved table with an **explicit column-mapped INSERT** (never `SELECT *` — HIGH-2):
+   - Preserve `id` values exactly (immortal rowid stability for `posts`/`post_deliveries`).
+   - For `posts`/`events`/`post_templates`, back-fill `org_slug` from `organizations` (fail if any
+     `org_id` has no slug — see gate). Keep `org_id` as the informational column.
+   - `events` carries its legacy `announcement_sent`/`channel_posted` through unchanged (no loss).
+   - **Seed `sqlite_sequence`** for the AUTOINCREMENT `events` table (`max(id)`), so future inserts
+     don't collide.
 4. **Verify (evidence-before-claim):**
    - Row counts match per table (Knowledge source vs OPS destination).
-   - **Per-table content checksum matches** for `posts` and `post_deliveries` (the immortal tables):
-     e.g. `SELECT md5/sha over ordered concatenation of all columns` computed identically on both
-     sides. Judging tables: row-count + checksum.
-   - `org_slug` resolves for **100%** of `posts`/`events` rows.
+   - **Per-table content checksum matches** for `posts` and `post_deliveries` (immortal) and all
+     judging + event tables. SQLite has **no built-in md5** → compute the checksum **in Python**
+     (sha256 over each row's ordered, type-normalized column tuple; deterministic `ORDER BY id`).
+   - `org_slug` resolves for **100%** of `posts`/`events`/`post_templates` rows.
+   - **Global slug-uniqueness** holds for every referenced slug (LOW-11) — abort if any slug maps to
+     >1 org.
    - FK integrity check passes inside the OPS DB (`PRAGMA foreign_key_check`).
 5. **Fail-closed acceptance gate:** if ANY check fails → abort, drop nothing, report the diff. The
    OPS DB is left for inspection; the Knowledge DB is untouched.
 6. **Only after the gate passes:** drop the moved tables from `gsa_gateway.db` (within the same
    `--commit` run, after a second confirmation that OPS counts/checksums still hold). The
-   `hardened_backup` is the rollback path.
-7. **Re-derive** GSA `event_info` items via `derive_event_kb` (no-op if they already exist; this
-   just re-points provenance) — optional, since existing `event_info` rows already live in the
-   Knowledge DB and are untouched by the move.
+   `hardened_backup` is the rollback path. **Pre-drop guard:** the migration also confirms the
+   startup-schema repoints (HIGH-3) are in place, so the next process start won't re-create the
+   dropped tables in the Knowledge DB.
+7. **Back-fill the EVENT derive key** onto existing `event_info` rows (MED-8) so a subsequent
+   `derive_event_kb` recognizes them and does not duplicate. Assert: re-derive yields 0 new rows.
 
 **Reversibility:** worst case = restore the `hardened_backup` snapshot (whole old DB) and delete the
 OPS file. No row is dropped from the source until its exact copy is checksum-proven in OPS.
+
+**Two-file backup (was Q3, now in-scope — LOW-12):** after cutover the OPS DB holds the immortal
+posts, so the backup story must cover it. `hardened_backup` + its rotation and `scripts/restart.sh`
+learn about the second file as part of this project — an un-backed-up OPS DB would undermine the
+immortal-posts guarantee.
 
 **Cutover (owner-gated):** the live migration + service restart is a **production write** → owner
 runs/approves it. Candidate for its own session if the build lands earlier.
@@ -231,11 +300,15 @@ runs/approves it. Candidate for its own session if the build lands earlier.
 
 ## 6. Build Order (each gated, TDD)
 
-1. **Schema split + config plumbing** (additive; `create_ops_schema`, `get_ops_connection`,
-   `operations_db_path`). No behavior change. Tests: both schemas build; OPS conn has no vec dep.
-2. **Repoint subsystems** to the two-connection model behind the new path (scheduler, publisher,
-   deleter, enqueue, judging, WorldCup). Tests: posts publish/delete, enqueue, judging flows all
-   operate against an OPS DB fixture; settings resolved via Knowledge DB.
+1. **Schema split + config plumbing** (additive; `create_knowledge_schema`/`create_ops_schema`,
+   `get_ops_connection`, `operations_db_path`). OPS `events` = live v1 shape + `org_slug`;
+   `posts`/`post_templates` get `org_slug`. **Retire `create_all` from Knowledge startup paths**
+   (`local_server.main`, `bot/services/database.py` `events`) — HIGH-3. Tests: both schemas build;
+   OPS conn has no vec dep; **invariant test — Knowledge schema contains none of the moved tables**.
+2. **Repoint subsystems** to the two-connection model (scheduler stack incl. `SignatureService` +
+   `registry.conn`, publisher, deleter, `enqueue_post` (both conns), judging, WorldCup (both conns));
+   `resolve_org` per-tick cache. Tests: posts publish/delete, enqueue, judging flows operate against
+   a two-DB fixture; settings resolved via Knowledge DB; no writer touches a moved table on Knowledge.
 3. **EVENT→KB derive** (`event_projection.py`) + dashboard `_create_event` cross-DB write +
    `scripts/derive_event_kb.py`. Tests: idempotent upsert, GSA-only scope, reconcile of removed
    events, derive key stability.
@@ -270,14 +343,22 @@ Each step: subagent-driven TDD (Sonnet runners), reviewer per cost-tiering, show
   backup + fail-closed gate. Drop is the final step, never before proof.
 - **R2 — dangling org reference across DBs.** Mitigated by `org_slug` contract + migration gate
   requiring 100% slug resolution; `org_id` retained as informational fallback.
-- **R3 — partial repoint (some writer still hits the old DB).** Mitigated by a grep/audit of every
-  `posts`/`judging` access (build step 2 enumerates them) + integration tests on the OPS fixture.
-  After cutover, the Knowledge DB no longer has these tables, so a stray writer fails loudly (not
-  silently) — surfaced immediately.
-- **R4 — dashboard sql.js two-DB drift.** The Posts tab reads `/db-ops`; writes still go through
-  live POST endpoints (server-side, correct DB). Low risk; smoke-tested.
-- **R5 — two-file backup/ops burden.** Accepted trade for separation; the migration + restart docs
-  note both files. (The future split-further into a judging DB stays out of scope.)
+- **R3 — moved tables silently re-created in the Knowledge DB on startup (HIGH-3, the most dangerous
+  gap).** Two paths run `CREATE TABLE IF NOT EXISTS` over moved tables against the Knowledge DB every
+  start: `bot/services/database.py:110` (`events`) and `v2/local_server.py:1043` (`create_all` →
+  all v2 tables). **A naive drop is futile** — the tables reappear empty and stray writes succeed
+  into the wrong DB. **Mitigation (required, in build step 1/2):** retire `create_all` from the
+  Knowledge startup path (use `create_knowledge_schema`), and stop `init_tables` from creating
+  `events`. Only then is "the table is gone, a stray writer fails loudly" actually true. An
+  **invariant test** asserts the Knowledge DB has none of the moved tables after `create_knowledge_schema`.
+- **R4 — partial repoint (some writer still hits the wrong DB).** Mitigated by a grep/audit of every
+  `posts`/`post_deliveries`/`judging`/`events`/`post_templates` access (build step 2 enumerates them)
+  + integration tests on the two-DB fixture + the R3 invariant test.
+- **R5 — dashboard sql.js two-DB drift.** Overview/Posts/Analytics read `/db-ops`; writes still go
+  through live POST endpoints (server-side, correct DB). Low risk; smoke-tested.
+- **R6 — two-file backup/ops burden.** Now in-scope (LOW-12): `hardened_backup` rotation + `restart.sh`
+  cover the OPS file from cutover, since it holds the immortal posts. (Further split into a judging DB
+  stays out of scope.)
 
 ---
 
@@ -296,10 +377,12 @@ Each step: subagent-driven TDD (Sonnet runners), reviewer per cost-tiering, show
 ## 10. Reject Criteria (any → STOP, surface to owner)
 
 1. Any immortal `posts`/`post_deliveries` row not exactly reproduced (count or checksum) in OPS.
-2. Any cross-DB foreign key remaining after the split.
-3. Any `posts`/`events` row whose `org_slug` fails to resolve.
+2. Any cross-DB foreign key remaining after the split (incl. `post_templates.org_id`).
+3. Any `posts`/`events`/`post_templates` row whose `org_slug` fails to resolve.
 4. Retrieval/answer behavior for events changes (it must not).
 5. Migration that drops a source table before its OPS copy is checksum-verified.
+6. Any moved table re-creatable in the Knowledge DB after cutover (the R3 invariant test must pass).
+7. A `derive_event_kb` re-run over the migrated DB creating duplicate `event_info` rows.
 
 ---
 
@@ -309,5 +392,33 @@ Each step: subagent-driven TDD (Sonnet runners), reviewer per cost-tiering, show
   the next `embed_all` pass? (Lean: inline for the single item, consistent with existing UX.)
 - **Q2.** Default `OPERATIONS_DB_PATH` exact value — sibling `./gsa_gateway_ops.db` (proposed) vs a
   `data/` subdir. (Lean: sibling, matches `gsa_gateway.db`.)
-- **Q3.** Whether `restart.sh` / backup rotation should learn about the second file now, or as a
-  fast-follow. (Lean: include OPS in `hardened_backup` rotation from the start.)
+- **Q3. RESOLVED (senior-eng review):** `restart.sh` + `hardened_backup` rotation cover the OPS file
+  **from the start** (in-scope, build step 5/cutover) — an un-backed-up OPS DB would undermine the
+  immortal-posts guarantee. No longer an open question.
+
+---
+
+## 12. Senior-Eng Review (2026-06-28) — verdict CHANGES-REQUIRED, all folded
+
+Reviewer verified every claim against the live DB. Verdict CHANGES-REQUIRED; all 12 findings accepted
+and folded above (the orchestrator independently re-verified HIGH-1/2/3 against the live DB before
+folding). Summary:
+
+- **HIGH-1** `post_templates.org_id` FK was missed → now gets `org_slug` (§3.2, touch points, gate).
+- **HIGH-2** live `events` is the v1 NON-STRICT/AUTOINCREMENT table with legacy columns; OPS `events`
+  matches live shape, migration uses column-mapped copy + seeds `sqlite_sequence` (§2, §3.1, §5).
+- **HIGH-3** `bot/services/database.py` + `local_server` startup re-create moved tables on the
+  Knowledge DB → retire `create_all` from the Knowledge path, stop `init_tables` creating `events`,
+  add an invariant test (§3.1, touch points, R3, reject #6). Most dangerous gap.
+- **HIGH-4/5** `enqueue_post` + WorldCup `match_watcher` need BOTH connections → §3.4 corrected.
+- **MED-6** `SignatureService` (Knowledge) + `ConnectorRegistry.conn` (OPS) enumerated (touch points).
+- **MED-7** settings read via per-tick `resolve_org`→id (no N+1; slug stays the stored contract) (§3.2).
+- **MED-8** derive-key/back-fill so existing `event_info` rows aren't duplicated (§3.3, §5, reject #7).
+- **MED-9** `_post_post(add_to_kb)` is also a cross-DB write; OPS-commit-first ordering (§3.4).
+- **MED-10** Overview + Analytics tabs also read posts via sql.js → both repointed (touch points).
+- **LOW-11** `organizations.slug` only `UNIQUE(parent_id,slug)`; `resolve_org` fails on >1 match +
+  gate asserts global uniqueness for referenced slugs (§3.2, §5).
+- **LOW-12** two-file backup promoted to in-scope (R6, Q3 resolved).
+
+RAG review **not** triggered: the EVENT→KB projection reproduces existing `event_info` behavior with
+no retrieval/answering change.
