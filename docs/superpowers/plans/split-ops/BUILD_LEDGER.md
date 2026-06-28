@@ -16,7 +16,7 @@ ONLY their own `build-<N>-report.md` and code/tests — never this ledger, never
 |---|-------|------|--------|--------|
 | 1 | Schema split + config + retire create_all (HIGH-3) | `2026-06-28-split-ops-build1-schema-config.md` | `build-1-report.md` | ✅ DONE + reviewed (gate clean) |
 | 2 | Repoint subsystems to two-conn | `2026-06-28-split-ops-build2-repoint.md` (FINAL) | `build-2-report.md` + `build-2-review-findings.md` + `build-2-fix-report.md` | ✅ DONE — built (6306c83) + dual-review CHANGES-REQUIRED + fix (6563686) + orchestrator F6 cleanup (4ffb064); GATE CLEAR (0 net-new, judging 99/99) |
-| 3 | EVENT→KB derive + cross-DB writes | `2026-06-28-split-ops-build3-event-derive.md` (FINAL) | `build-3-report.md` + `build-3-review-findings.md` | 🟠 BUILT (d37df05) but Codex review = CHANGES-REQUIRED → FIX pending (B3-1 ki_content loss HIGH; B3-3 nat-key; B3-5 test; B3-2 owner scope decision). Owner looped before Build 4. |
+| 3 | EVENT→KB derive + cross-DB writes | `…build3-event-derive.md` + `build-3-review-findings.md` + `build-3-fix-report.md` | ✅ DONE — built (d37df05) + Codex CHANGES-REQUIRED + fix (6242e71/fd59671/0c4703b) + verified; GATE CLEAR (0 net-new, 28 derive tests, GSA-only, ki_content preserved). ⚠ Phase-5 back-fill flags folded into Build-5 plan. |
 | 4 | Dashboard /db-ops + app.js two-DB | `2026-06-28-split-ops-build4-dashboard.md` (SKELETON) | `build-4-report.md` | ⬜ blocked by 1 |
 | 5 | Gated migration script + acceptance gate | `2026-06-28-split-ops-build5-migration.md` (SKELETON) | `build-5-report.md` | ⬜ blocked by 1-4 |
 | — | OWNER GATE: live migration + cutover | — | — | ⬜ owner-run (own checkpoint) |
@@ -38,6 +38,12 @@ P1/P2 freeze (flagged, not default).
 ## Log
 - 2026-06-28: spec approved+reviewed; Phase 1 plan written; ledger created.
 - 2026-06-28: Build 1 DISPATCHED (background Sonnet TDD agent). Phases 2-5 SKELETON plans drafted while it runs.
+- 2026-06-28: Build 3 GATE CLEARED. Built (d37df05) → Codex single-review CHANGES-REQUIRED (caught B3-1 HIGH
+  ki_content content-loss that orchestrator's own review missed — dual/independent review earns its keep again)
+  → owner decided B3-2 = GSA-only everywhere → fix (6242e71/fd59671/0c4703b) → verified (0 net-new, 28 derive
+  tests, GSA gate, ki_content no-clobber guard correct, nat-key+time). Build 3 DONE. ⚠ Phase-5 must back-fill
+  OPS events.ki_content from existing event_info.content + recompute natural_key (name|date|time) on existing
+  event_info rows — FOLDED into Build-5 plan. Next: HOLD before Build 4 (owner asked to be looped).
 - 2026-06-28: Build 2 GATE CLEARED. Fix agent (6563686) fixed F1-F8; orchestrator verified (0 net-new v2+bot
   in-location, judging 99/99) + removed a cosmetic per-tick OrgCache and DEFERRED the publisher slug-resolve to
   the rebuild project (see build-2-review-findings RESOLUTION; 4ffb064). Build 2 DONE. Next: finalize+dispatch Build 3.

@@ -53,9 +53,16 @@ pass/fail + a diff, tested for every failure mode.
 - Test (on a copy): after gate pass, `--commit` drops moved tables from KB; KB now has none of MOVED
   (invariant); restoring the `hardened_backup` snapshot fully reverts.
 
-### Task 6 — event_info natural_key back-fill (MED-8)
-- Test: existing `event_info` rows get the natural_key in metadata; a subsequent `derive_event_kb`
-  produces 0 duplicates (reject #7).
+### Task 6 — event_info natural_key + ki_content back-fill (MED-8 + Build-3 B3-1/B3-3)
+- **natural_key back-fill:** recompute `metadata.natural_key` on every existing `event_info` row using the
+  **three-arg formula** `event_natural_key(name, date, time)` → `"{normalized_name}|{date}|{time}"`
+  (`metadata.time` already holds the time). A subsequent `derive_event_kb` produces 0 duplicates (reject #7).
+- **ki_content back-fill (B3-1):** for every existing `event_info` row, copy its `content` → the matching
+  OPS `events.ki_content` (matched by `metadata.ops_event_id`/`event_id`). WITHOUT this, the rebuild
+  re-derive emits a one-liner instead of today's rich content (the derive's no-clobber guard protects a
+  live re-run, but a fresh rebuild from OPS needs the source content present).
+- Test: after back-fill, `derive_event_kb` over the migrated DB reproduces each event_info's content
+  byte-identically AND yields 0 new rows.
 
 ### Task 7 — dry-run vs commit + two-file backup
 - Test: dry-run writes nothing and prints the plan + projected counts/checksums; `--commit` performs
