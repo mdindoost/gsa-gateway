@@ -306,11 +306,22 @@ class TestGuardWiring:
 
     @pytest.mark.asyncio
     async def test_no_additional_sources_block(self):
-        c = self._client(2000)
+        c = self._client(16384)
         c._session = _mock_session_with_response(200, {"response": "ok"})
         await c.generate_answer("q", [make_chunk("a " * 2000) for _ in range(4)])
-        # If the budget guard prevents any chunk from fitting (degenerate window), POST is
-        # never called and call_args is None — "ADDITIONAL SOURCES" is vacuously absent.
-        # If a (truncated) chunk does fit, the prompt must not contain "ADDITIONAL SOURCES".
-        if c._session.post.call_args is not None:
-            assert "ADDITIONAL SOURCES" not in c._session.post.call_args[1]["json"]["prompt"]
+        assert c._session.post.call_args is not None, "POST must be called (at least one chunk fits)"
+        assert "ADDITIONAL SOURCES" not in c._session.post.call_args[1]["json"]["prompt"]
+
+    def test_build_system_prompt_keeps_exactly_max_turns(self):
+        c = self._client(16384)
+        # exactly MAX_HISTORY_TURNS: all kept, history framing present (≤6 = old behavior)
+        six = [{"role": "user", "content": f"turn{i}"} for i in range(oc.MAX_HISTORY_TURNS)]
+        sys6 = c._build_system_prompt(six)
+        assert all(f"turn{i}" in sys6 for i in range(oc.MAX_HISTORY_TURNS))
+        assert "=== CONVERSATION HISTORY ===" in sys6
+        assert "=== END OF CONVERSATION HISTORY ===" in sys6
+        # one more turn than the cap: the oldest is dropped, the rest survive
+        seven = [{"role": "user", "content": f"turn{i}"} for i in range(oc.MAX_HISTORY_TURNS + 1)]
+        sys7 = c._build_system_prompt(seven)
+        assert "turn0" not in sys7
+        assert all(f"turn{i}" in sys7 for i in range(1, oc.MAX_HISTORY_TURNS + 1))
