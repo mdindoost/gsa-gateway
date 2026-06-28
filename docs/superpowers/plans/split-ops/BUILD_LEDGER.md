@@ -21,6 +21,13 @@ ONLY their own `build-<N>-report.md` and code/tests — never this ledger, never
 | 5 | Gated migration script + acceptance gate | `2026-06-28-split-ops-build5-migration.md` (SKELETON) | `build-5-report.md` | ⬜ blocked by 1-4 |
 | — | OWNER GATE: live migration + cutover | — | — | ⬜ owner-run (own checkpoint) |
 
+## Review strategy (dual-model at gates)
+Orchestrator reviews every diff first (plan + invariants + run suites). CROSS-MODEL second opinion,
+cost-tiered: critical phases — **Build 2 (repoint)** and **Build 5 (migration)** — get BOTH a Claude
+senior-eng reviewer (bg general-purpose agent) AND a **Codex** review (`codex exec` / `codex exec review`,
+run from the worktree on the phase diff). Light phases get one. Findings folded before the gate clears.
+Live cutover gets both models too. (Codex CLI confirmed on PATH, v0.142.3.)
+
 ## Phase plans: Phase 1 FINAL; Phases 2-5 SKELETON
 Skeletons carry file lists, contracts, test intentions, acceptance + reject-criteria mapping. Before
 EACH dispatch, finalize the `«LOCK AFTER P…»` signatures against the prior phase's `build-N-report.md`
