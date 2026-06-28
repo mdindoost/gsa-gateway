@@ -142,11 +142,12 @@ class Scheduler:
         # UTC-canonical: scheduled_for / event datetimes are stored UTC, so "now"
         # must be UTC too. Naive UTC (tzinfo stripped) to compare with naive
         # parsed datetimes. Matches SQLite datetime('now').
-        # Clear the per-tick OrgCache so the next tick sees fresh org data
-        # (e.g. if an org was renamed or deactivated between ticks). MED-7/F6.
-        from v2.core.publishing.org_resolve import OrgCache
-        _tick_org_cache = OrgCache()
-        _tick_org_cache.clear()  # explicitly cleared at top of each tick
+        # NOTE (F6 deferral): the publisher/signature settings reads still key on the post's
+        # retained `org_id`, which is CORRECT for split-ops (org_id stays valid; organizations
+        # is untouched in the KB). Converting those reads to resolve via `org_slug` + a per-tick
+        # OrgCache is rebuild-hardening (matters only when org_ids RENUMBER) and is deferred to
+        # the DB-wipe+rebuild project, where it can be done with proper publisher-test seeding.
+        # resolve_org IS live where >1-slug safety matters (match_watcher, bot/main digests).
         now_dt = now or datetime.now(timezone.utc).replace(tzinfo=None)
         templates = self.materialize_templates(now_dt)
         reminders = self.materialize_event_reminders(now_dt)
