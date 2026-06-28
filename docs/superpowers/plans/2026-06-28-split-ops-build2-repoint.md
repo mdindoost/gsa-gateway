@@ -9,9 +9,13 @@ judging and the KNOWLEDGE connection for `organizations`/`settings`, with org re
 per tick). No data move (that's Phase 5); behavior must be unchanged when both DBs point at the same file.
 
 **Architecture:** Introduce a two-connection seam through the scheduler stack, `enqueue_post`, the
-WorldCup watcher, and judging. `resolve_org(kb_conn, slug)` (from Phase 3's `event_projection.py`, or
-add a tiny `v2/core/publishing/org_resolve.py` if Phase 3 hasn't landed) returns the org row incl `id`,
-cached per scheduler tick.
+WorldCup watcher, and judging. **LOCKED:** Build 2 CREATES `v2/core/publishing/org_resolve.py` with
+`resolve_org(kb_conn, slug) -> sqlite3.Row` (returns the org row incl `id`; raises on unknown / on >1
+match per LOW-11) + a per-tick cache helper. Phase 3's `event_projection.py` REUSES this module (does
+not define its own). Build-1 seams available (from `build-1-report.md`): `create_knowledge_schema` /
+`create_ops_schema` / `get_ops_connection`; OPS `posts`/`events`/`post_templates` already carry
+`org_slug` (currently `DEFAULT 'gsa'` — Build 2 sets it EXPLICITLY in `enqueue_post`, removing reliance
+on the default). The events-STRICT test was already updated in Build 1 (no action here).
 
 ## Global Constraints
 - No data move/drop. No live-DB writes. No new pip deps. No Claude/AI attribution.
@@ -35,9 +39,9 @@ cached per scheduler tick.
 - `bot/main.py` — pass `(operations_db_path, database_path)` to SchedulerRunner + watcher (replace hardcoded `"gsa_gateway.db"` at `:236`); judging gets `operations_db_path`.
 
 ## Tasks (skeleton — each is full TDD: failing test → impl → green → commit)
-### Task 1 — `resolve_org` + per-tick cache
-- Test: `resolve_org(kb_conn, "gsa")` returns row with `id`; unknown slug → raises; >1 match → raises (LOW-11). Cache returns same object within a tick, refreshes across ticks.
-- Impl: «LOCK AFTER P1» reuse Phase-3 `event_projection.resolve_org` if present, else add `org_resolve.py`.
+### Task 1 — `resolve_org` + per-tick cache (NEW module `v2/core/publishing/org_resolve.py`)
+- Test: `resolve_org(kb_conn, "gsa")` returns row with `id`; unknown slug → raises `ValueError`; >1 match → raises (LOW-11). Cache returns same row within a tick, refreshes across ticks.
+- Impl: create `org_resolve.py`. `resolve_org(kb_conn, slug)` = `SELECT * FROM organizations WHERE slug=?`; assert exactly one row. Provide a small `OrgCache`/`resolve_cached(kb_conn, slug, cache)` the scheduler clears each tick.
 
 ### Task 2 — Publisher reads settings on kb, posts on ops
 - Test: a post row in OPS (with org_id+org_slug) publishes; `_platforms/_discord_channel/_telegram_channel/_groupme_group/signatures` read from the KB settings; status lifecycle writes go to OPS. Use a two-DB fixture.
