@@ -99,11 +99,13 @@ After restore: all 11 MOVED tables present with original row counts (431/2/1177/
 ## Rollback Recipe
 
 ```bash
-# 1. Stop all services FIRST (immortal-data guard)
-pkill -TERM -f 'bot\.main'
+# 1. Stop ALL FOUR writer services FIRST (immortal-data guard)
+pkill -TERM -f 'python.*bot\.main'
 pkill -TERM -f 'v2/local_server\.py'
+pkill -TERM -f 'python.*run_telegram'
+pkill -TERM -f 'python.*run_groupme'
 # Verify all stopped:
-pgrep -af 'bot\.main|v2/local_server\.py'   # must return empty
+pgrep -af 'bot\.main|local_server|run_telegram|run_groupme'   # must return empty
 
 # 2. Restore KB to pre-migration state
 cp .backups/gsa_gateway.<TIMESTAMP>.pre-split-ops-migrate.db gsa_gateway.db
@@ -149,12 +151,14 @@ python3 scripts/split_ops_migrate.py \
   --db gsa_gateway.db \
   --ops-db gsa_gateway_ops.db
 
-# 2. MANDATORY: Stop ALL writers before migration
+# 2. MANDATORY: Stop ALL FOUR writers before migration
 #    (A row written to KB between gate check and DROP is silently lost — immortal-data guard)
-pkill -TERM -f 'bot\.main'
+pkill -TERM -f 'python.*bot\.main'
 pkill -TERM -f 'v2/local_server\.py'
+pkill -TERM -f 'python.*run_telegram'
+pkill -TERM -f 'python.*run_groupme'
 # Verify all stopped (must return empty):
-pgrep -af 'bot\.main|v2/local_server\.py'
+pgrep -af 'bot\.main|local_server|run_telegram|run_groupme'
 
 # 3. Execute migration (backup → copy → gate → drop)
 python3 scripts/split_ops_migrate.py \
