@@ -17,7 +17,7 @@ ONLY their own `build-<N>-report.md` and code/tests — never this ledger, never
 | 1 | Schema split + config + retire create_all (HIGH-3) | `2026-06-28-split-ops-build1-schema-config.md` | `build-1-report.md` | ✅ DONE + reviewed (gate clean) |
 | 2 | Repoint subsystems to two-conn | `2026-06-28-split-ops-build2-repoint.md` (FINAL) | `build-2-report.md` + `build-2-review-findings.md` + `build-2-fix-report.md` | ✅ DONE — built (6306c83) + dual-review CHANGES-REQUIRED + fix (6563686) + orchestrator F6 cleanup (4ffb064); GATE CLEAR (0 net-new, judging 99/99) |
 | 3 | EVENT→KB derive + cross-DB writes | `…build3-event-derive.md` + `build-3-review-findings.md` + `build-3-fix-report.md` | ✅ DONE — built (d37df05) + Codex CHANGES-REQUIRED + fix (6242e71/fd59671/0c4703b) + verified; GATE CLEAR (0 net-new, 28 derive tests, GSA-only, ki_content preserved). ⚠ Phase-5 back-fill flags folded into Build-5 plan. |
-| 4 | Dashboard /db-ops + app.js two-DB | `2026-06-28-split-ops-build4-dashboard.md` (SKELETON) | `build-4-report.md` | ⬜ blocked by 1 |
+| 4 | Dashboard /db-ops + app.js two-DB | `2026-06-28-split-ops-build4-dashboard.md` (FINAL) | `build-4-report.md` | ✅ DONE — built (037fc39/572907d) + orchestrator review; GATE CLEAR (0 net-new vs 117-line baseline, 5 new tests pass, judging 99/99, app.js node --check OK). Single review (light phase). Browser smoke deferred to cutover (no live OPS data until Build 5). |
 | 5 | Gated migration script + acceptance gate | `2026-06-28-split-ops-build5-migration.md` (SKELETON) | `build-5-report.md` | ⬜ blocked by 1-4 |
 | — | OWNER GATE: live migration + cutover | — | — | ⬜ owner-run (own checkpoint) |
 
@@ -36,6 +36,18 @@ sequential dependency on P1 seams). Optional later parallel win: P5 migration on
 P1/P2 freeze (flagged, not default).
 
 ## Log
+- 2026-06-28: Build 4 GATE CLEARED. Plan finalized vs live anchors (d1ba963): caught that `events` is in OPS
+  too (not just posts/post_deliveries), the 3 server-load sites, the 2 post-detail fns, the org-name-on-KB
+  nuance (no cross-DB JOIN), and the file-mode write caveat; documented the pre-existing 6 `test_local_server`
+  403s (host-guard predates harness — NOT net-new). Sonnet TDD agent built (037fc39): `/db-ops` +
+  `_send_db_ops_snapshot`; `dbOps` global + queryOps/oneOps/scalarOps (null-guarded for file-mode); loaded at
+  reloadFromServer/connectToServer/reloadDbQuietly; repointed all OPS reads (renderOverview events+posts,
+  openPost, renderPostsList, renderPostDetail, renderAnalytics) — org-name + renderSignature stay on `db`.
+  `prepareForDashboard` correctly NOT run on dbOps (KB-only FTS). Orchestrator independently verified:
+  in-location full-suite name-set diff vs pre-build baseline (117 lines) = ZERO net-new both directions;
+  +5 passed (new tests); judging 99/99; app.js node --check OK. report=build-4-report.md (572907d). Next:
+  finalize+dispatch Build 5 (gated migration — CRITICAL, dual Claude+Codex review) incl. folded Phase-5
+  back-fills (OPS events.ki_content ← event_info.content; recompute natural_key name|date|time).
 - 2026-06-28: spec approved+reviewed; Phase 1 plan written; ledger created.
 - 2026-06-28: Build 1 DISPATCHED (background Sonnet TDD agent). Phases 2-5 SKELETON plans drafted while it runs.
 - 2026-06-28: Build 3 GATE CLEARED. Built (d37df05) → Codex single-review CHANGES-REQUIRED (caught B3-1 HIGH
