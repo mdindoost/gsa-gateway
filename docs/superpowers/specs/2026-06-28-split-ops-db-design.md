@@ -371,6 +371,11 @@ Each step: subagent-driven TDD (Sonnet runners), reviewer per cost-tiering, show
 - [ ] G5 Gated migration: copy→verify(counts+checksum)→fail-closed gate→drop-last; reversible.
 - [ ] G6 No user-visible behavior change.
 - [ ] Deferred (flag loudly if any): further OPS split; non-GSA event projection; analytics move.
+- [ ] **DEFERRED to the rebuild project (Build-2 dual-review F6):** the publisher/signature settings
+  reads still key on the post's retained `org_id` (correct for split-ops — org_id stays valid; the
+  slug-resolve only matters when org_ids RENUMBER at the rebuild). `resolve_org` IS live where >1-slug
+  safety matters (enqueue stamps org_slug; match_watcher + bot/main digests resolve by slug, fail-loud).
+  Convert the publisher read-path to `org_slug`+OrgCache during the rebuild (with publisher-test seeding).
 
 ---
 

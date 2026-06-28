@@ -74,3 +74,16 @@ cache enforces uniqueness." Neither was true. The fix agent's report must be acc
 - bot events CRUD reads/writes OPS; food path verified; conftest no longer masks the split.
 - resolve_org/OrgCache wired (no dead code); raw slug fetchone sites replaced; per-tick cache cleared.
 - Re-run: ZERO net-new failures vs base (in-location diff); judging 99/99.
+
+## RESOLUTION (fix agent commit 6563686 + orchestrator commit 4ffb064) — GATE CLEARED
+F1–F5, F7, F8 FULLY FIXED + orchestrator-verified (no migrate_events_columns calls; judging on OPS at
+run_telegram + local_server `_ops_conn`; failure-digest two-conn; materializers stamp org_slug; bot events
+CRUD on OPS conn + conftest de-masked; watcher leak fixed; watcher test exercises real start()).
+**F6 — resolve_org genuinely wired** (match_watcher, bot/main digests; fail-loud on >1 slug = LOW-11).
+The fix agent left a COSMETIC per-tick OrgCache in `Scheduler.tick` (created+cleared, never `.get()`) because
+the publisher (its intended consumer) still reads settings by `row["org_id"]`. Orchestrator REMOVED the
+cosmetic cache (commit 4ffb064) and DEFERRED the publisher/signature slug-resolve to the **DB-wipe+rebuild
+project** (its correct home — org_id only renumbers there; reviewer-sanctioned: Claude LOW-6 = "acceptable as
+deferral"; converting now would break publisher tests that don't seed a resolvable org, for zero split-ops
+correctness gain — posts.org_id stays valid through this migration). The OrgCache class stays as a tested
+utility for that future conversion. Verified: ZERO net-new failures (v2+bot, in-location), judging 99/99.

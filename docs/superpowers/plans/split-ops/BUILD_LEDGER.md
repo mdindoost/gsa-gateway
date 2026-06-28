@@ -15,7 +15,7 @@ ONLY their own `build-<N>-report.md` and code/tests — never this ledger, never
 | # | Phase | Plan | Report | Status |
 |---|-------|------|--------|--------|
 | 1 | Schema split + config + retire create_all (HIGH-3) | `2026-06-28-split-ops-build1-schema-config.md` | `build-1-report.md` | ✅ DONE + reviewed (gate clean) |
-| 2 | Repoint subsystems to two-conn | `2026-06-28-split-ops-build2-repoint.md` (FINAL) | `build-2-report.md` + `build-2-review-findings.md` | 🟠 BUILT (6306c83) but DUAL REVIEW = CHANGES-REQUIRED → FIX pass pending (F1-F8) |
+| 2 | Repoint subsystems to two-conn | `2026-06-28-split-ops-build2-repoint.md` (FINAL) | `build-2-report.md` + `build-2-review-findings.md` + `build-2-fix-report.md` | ✅ DONE — built (6306c83) + dual-review CHANGES-REQUIRED + fix (6563686) + orchestrator F6 cleanup (4ffb064); GATE CLEAR (0 net-new, judging 99/99) |
 | 3 | EVENT→KB derive + cross-DB writes | `2026-06-28-split-ops-build3-event-derive.md` (SKELETON) | `build-3-report.md` | ⬜ blocked by 1 |
 | 4 | Dashboard /db-ops + app.js two-DB | `2026-06-28-split-ops-build4-dashboard.md` (SKELETON) | `build-4-report.md` | ⬜ blocked by 1 |
 | 5 | Gated migration script + acceptance gate | `2026-06-28-split-ops-build5-migration.md` (SKELETON) | `build-5-report.md` | ⬜ blocked by 1-4 |
@@ -38,6 +38,9 @@ P1/P2 freeze (flagged, not default).
 ## Log
 - 2026-06-28: spec approved+reviewed; Phase 1 plan written; ledger created.
 - 2026-06-28: Build 1 DISPATCHED (background Sonnet TDD agent). Phases 2-5 SKELETON plans drafted while it runs.
+- 2026-06-28: Build 2 GATE CLEARED. Fix agent (6563686) fixed F1-F8; orchestrator verified (0 net-new v2+bot
+  in-location, judging 99/99) + removed a cosmetic per-tick OrgCache and DEFERRED the publisher slug-resolve to
+  the rebuild project (see build-2-review-findings RESOLUTION; 4ffb064). Build 2 DONE. Next: finalize+dispatch Build 3.
 - 2026-06-28: Build 2 BUILT (6306c83/1addd08); test-clean (0 net-new vs base, in-location diff; judging 99/99).
   DUAL REVIEW (Claude SE agent + Codex unsandboxed) both CHANGES-REQUIRED, strong convergence. Consolidated
   + orchestrator-verified findings → `build-2-review-findings.md` (F1-F8). Core repoint correct; gaps:
