@@ -15,7 +15,7 @@ ONLY their own `build-<N>-report.md` and code/tests — never this ledger, never
 | # | Phase | Plan | Report | Status |
 |---|-------|------|--------|--------|
 | 1 | Schema split + config + retire create_all (HIGH-3) | `2026-06-28-split-ops-build1-schema-config.md` | `build-1-report.md` | ✅ DONE + reviewed (gate clean) |
-| 2 | Repoint subsystems to two-conn | `2026-06-28-split-ops-build2-repoint.md` (FINAL) | `build-2-report.md` | 🔵 DISPATCHED (Sonnet bg) — CRITICAL phase → dual review (Claude+Codex) at gate |
+| 2 | Repoint subsystems to two-conn | `2026-06-28-split-ops-build2-repoint.md` (FINAL) | `build-2-report.md` + `build-2-review-findings.md` | 🟠 BUILT (6306c83) but DUAL REVIEW = CHANGES-REQUIRED → FIX pass pending (F1-F8) |
 | 3 | EVENT→KB derive + cross-DB writes | `2026-06-28-split-ops-build3-event-derive.md` (SKELETON) | `build-3-report.md` | ⬜ blocked by 1 |
 | 4 | Dashboard /db-ops + app.js two-DB | `2026-06-28-split-ops-build4-dashboard.md` (SKELETON) | `build-4-report.md` | ⬜ blocked by 1 |
 | 5 | Gated migration script + acceptance gate | `2026-06-28-split-ops-build5-migration.md` (SKELETON) | `build-5-report.md` | ⬜ blocked by 1-4 |
@@ -38,6 +38,12 @@ P1/P2 freeze (flagged, not default).
 ## Log
 - 2026-06-28: spec approved+reviewed; Phase 1 plan written; ledger created.
 - 2026-06-28: Build 1 DISPATCHED (background Sonnet TDD agent). Phases 2-5 SKELETON plans drafted while it runs.
+- 2026-06-28: Build 2 BUILT (6306c83/1addd08); test-clean (0 net-new vs base, in-location diff; judging 99/99).
+  DUAL REVIEW (Claude SE agent + Codex unsandboxed) both CHANGES-REQUIRED, strong convergence. Consolidated
+  + orchestrator-verified findings → `build-2-review-findings.md` (F1-F8). Core repoint correct; gaps:
+  F1 migrate_events_columns crash (5 callers), F2 judging on KB (run_telegram + local_server), F3 failure-digest
+  old SourceRunner sig, F4 materializers miss org_slug, F5 bot events CRUD on KB (live food path), F6 resolve_org/
+  OrgCache DEAD CODE, F7 watcher conn leak, F8 weak test. Dual review PAID OFF (tests passed but real gaps). Fix pass next.
 - 2026-06-28: Build 1 DONE (commits 3343a95/d7f9e1e/6b974c4/64f0e9c). Orchestrator review: caught the
   agent mislabeling a NET-NEW failure as "pre-existing/flap" — `test_events_table_is_strict` passed on
   base, broke on branch (OPS events intentionally non-STRICT, HIGH-2). Fixed it (commit cbc6b91 → assert
