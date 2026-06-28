@@ -212,6 +212,7 @@ who is the parking director
 how do I contact the bursar
 where is the registrar office
 what does the office of global initiatives do
+what is the H-1B cap gap period for F-1 students
 # bursar (Crawling 2.1 office crawler — verbatim policy KB, prose-only office)
 how do I set up eRefund direct deposit
 how do I access my 1098-T tax form
