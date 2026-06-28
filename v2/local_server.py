@@ -43,6 +43,7 @@ from v2.core.ingestion.departments import DEPARTMENTS as DEPT_REGISTRY  # noqa: 
 from v2.core.ingestion.departments import supported as supported_depts  # noqa: E402
 from v2.core.ingestion.entry_points import crawl_scope as _crawl_scope  # noqa: E402
 from v2.core.ingestion import scholar as _scholar  # noqa: E402
+from v2.core.publishing.event_projection import derive_event_kb  # noqa: E402
 
 # Control-plane job runner (faculty refresh, …). Same DB the bot/dashboard use.
 JOBS = JobManager(db_path=DB_PATH, repo_root=REPO_ROOT, python_bin=sys.executable)
@@ -899,68 +900,153 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
     # ── POST handlers ─────────────────────────────────────────────────────────
     def _post_post(self, conn, b):
+        """Create a post.  ``conn`` is the KB connection (from do_POST).
+
+        Cross-DB ordering (MED-9): the post is written to OPS first (committed),
+        then the optional ``knowledge_item`` is written to KB (``conn``).  A KB
+        failure is tolerated — the OPS post stands and the KB item is rebuildable.
+        """
         if b.get("type") == "event":
             return self._create_event(conn, b)
         if not b.get("content"):
             raise ValueError("content is required")
         if not b.get("org_id"):
             raise ValueError("org_id is required")
+
+        # Look up org_slug from KB so we stamp it on the OPS post.
+        org_slug_row = conn.execute(
+            "SELECT slug FROM organizations WHERE id=?", (b["org_id"],)
+        ).fetchone()
+        org_slug = org_slug_row["slug"] if org_slug_row else "gsa"
+
         scheduled = b.get("scheduled_for") or None  # null = send asap
         delete_at = b.get("delete_at") or None       # null = keep forever (auto-delete off)
         if delete_at:                                 # cap at send-time+48h (Telegram ceiling)
             delete_at = _clamp_delete_at(delete_at, scheduled or utc_now())
-        cur = conn.execute(
-            "INSERT INTO posts(org_id,type,title,content,channels,discord_channel,scheduled_for,"
-            "delete_at,status,source_type,signature,created_by,created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (b["org_id"], b.get("type", "one_time"), b.get("title"), b["content"],
-             json.dumps(b.get("channels", [])), b.get("discord_channel"), scheduled, delete_at,
-             b.get("status", "scheduled"), b.get("source_type", "manual"),
-             b.get("signature"), b.get("created_by", "dashboard"), utc_now()))
+
+        # OPS write — post goes to OPS, committed first.
+        # Backward-compat: if self has no _ops_conn (e.g. tests with combined DB),
+        # use conn directly (combined-DB mode; same as pre-split behavior).
+        _ops_fn = getattr(self, "_ops_conn", None)
+        ops_conn = _ops_fn() if callable(_ops_fn) else conn
+        _own_ops = ops_conn is not conn  # only close if we opened it
+        try:
+            cur = ops_conn.execute(
+                "INSERT INTO posts(org_id,org_slug,type,title,content,channels,"
+                "discord_channel,scheduled_for,delete_at,status,source_type,"
+                "signature,created_by,created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (b["org_id"], org_slug, b.get("type", "one_time"), b.get("title"),
+                 b["content"], json.dumps(b.get("channels", [])),
+                 b.get("discord_channel"), scheduled, delete_at,
+                 b.get("status", "scheduled"), b.get("source_type", "manual"),
+                 b.get("signature"), b.get("created_by", "dashboard"), utc_now()))
+            post_id = cur.lastrowid
+            ops_conn.commit()  # OPS committed first (MED-9)
+        finally:
+            if _own_ops:
+                ops_conn.close()
+
         needs_reindex = False
         if b.get("add_to_kb"):  # also file the post's content as a KB item
-            conn.execute(
-                "INSERT INTO knowledge_items(org_id,type,title,content,metadata,created_by) "
-                "VALUES (?,?,?,?,?,?)",
-                (b["org_id"], "announcement", b["content"][:80], b["content"],
-                 json.dumps({"source": "post"}), "dashboard"))
-            needs_reindex = True
-        conn.commit()
-        return {"success": True, "post_id": cur.lastrowid, "message": "Post scheduled",
+            try:
+                conn.execute(
+                    "INSERT INTO knowledge_items(org_id,type,title,content,metadata,created_by) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (b["org_id"], "announcement", b["content"][:80], b["content"],
+                     json.dumps({"source": "post"}), "dashboard"))
+                conn.commit()
+                needs_reindex = True
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "_post_post: KB knowledge_item write failed for post %s — "
+                    "OPS post stands, KB item rebuildable", post_id, exc_info=True
+                )
+
+        return {"success": True, "post_id": post_id, "message": "Post scheduled",
                 "needs_reindex": needs_reindex}
 
     def _create_event(self, conn, b):
+        """Create an event.  ``conn`` is the KB connection (from do_POST).
+
+        Cross-DB ordering (MED-9):
+        1. Stamp ``org_slug`` from KB (by ``org_id``).
+        2. Write event + announcement post + reminders to OPS, commit.
+        3. Call ``derive_event_kb`` to write the ``event_info`` item to KB.
+           A KB failure is caught and logged; the OPS rows are never lost.
+        """
         if not b.get("name") or not b.get("date"):
             raise ValueError("event name and date are required")
+
+        # Resolve org_slug from KB once (MED-9: stamp on OPS rows).
+        org_slug_row = conn.execute(
+            "SELECT slug FROM organizations WHERE id=?", (b["org_id"],)
+        ).fetchone()
+        org_slug = org_slug_row["slug"] if org_slug_row else "gsa"
+
         now = utc_now()
-        cur = conn.execute(
-            "INSERT INTO events(org_id,name,date,time,location,description,organizer,category,"
-            "created_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (b["org_id"], b["name"], b["date"], b.get("time", "TBD"), b.get("location", "TBD"),
-             b.get("description", ""), "GSA", "general", now, "dashboard"))
-        event_id = cur.lastrowid
-        ki = b.get("ki_content") or f"{b['name']} — {b['date']} at {b.get('time','TBD')}, {b.get('location','TBD')}."
-        conn.execute(
-            "INSERT INTO knowledge_items(org_id,type,title,content,metadata,created_by) VALUES (?,?,?,?,?,?)",
-            (b["org_id"], "event_info", b["name"], ki,
-             json.dumps({"event_id": event_id, "date": b["date"], "time": b.get("time")}), "dashboard"))
-        ann = conn.execute(
-            "INSERT INTO posts(org_id,type,title,content,channels,discord_channel,scheduled_for,"
-            "status,source_type,source_id,signature,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (b["org_id"], "event_announcement", b["name"],
-             b.get("announce_content") or f"\U0001F4C5 {b['name']} — {b['date']}",
-             json.dumps(b.get("channels", [])), b.get("discord_channel"),
-             b.get("announce_at") or now, "scheduled", "event", event_id,
-             b.get("signature"), "dashboard", now))
-        reminders = 0
-        for r in (b.get("reminders") or []):
-            conn.execute(
-                "INSERT INTO event_reminders(event_id,offset_value,offset_unit,channels,enabled,created_at) "
-                "VALUES (?,?,?,?,1,?)",
-                (event_id, r["offset"], r["unit"], json.dumps(r.get("channels", b.get("channels", []))), now))
-            reminders += 1
-        conn.commit()
-        return {"success": True, "post_id": ann.lastrowid, "event_id": event_id,
+
+        # OPS write — event + announcement post + reminders committed first.
+        # Backward-compat: if self has no _ops_conn (combined-DB mode), use conn.
+        _ops_fn = getattr(self, "_ops_conn", None)
+        ops_conn = _ops_fn() if callable(_ops_fn) else conn
+        _own_ops = ops_conn is not conn
+        try:
+            cur = ops_conn.execute(
+                "INSERT INTO events(org_id,org_slug,name,date,time,location,description,"
+                "organizer,category,created_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (b["org_id"], org_slug, b["name"], b["date"],
+                 b.get("time", "TBD"), b.get("location", "TBD"),
+                 b.get("description", ""), "GSA", "general", now, "dashboard"))
+            event_id = cur.lastrowid
+
+            ann = ops_conn.execute(
+                "INSERT INTO posts(org_id,org_slug,type,title,content,channels,"
+                "discord_channel,scheduled_for,status,source_type,source_id,"
+                "signature,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (b["org_id"], org_slug, "event_announcement", b["name"],
+                 b.get("announce_content") or f"\U0001F4C5 {b['name']} — {b['date']}",
+                 json.dumps(b.get("channels", [])), b.get("discord_channel"),
+                 b.get("announce_at") or now, "scheduled", "event", event_id,
+                 b.get("signature"), "dashboard", now))
+
+            reminders = 0
+            for r in (b.get("reminders") or []):
+                ops_conn.execute(
+                    "INSERT INTO event_reminders(event_id,offset_value,offset_unit,"
+                    "channels,enabled,created_at) VALUES (?,?,?,?,1,?)",
+                    (event_id, r["offset"], r["unit"],
+                     json.dumps(r.get("channels", b.get("channels", []))), now))
+                reminders += 1
+
+            ops_conn.commit()  # OPS committed first (MED-9)
+            post_id = ann.lastrowid
+        finally:
+            if _own_ops:
+                ops_conn.close()
+
+        # KB write — derive event_info via derive_event_kb (one-way, rebuildable).
+        # If this fails, the OPS rows stand; a warning is logged.
+        # Combined-DB mode: _ops_conn not available → use conn (same combined DB).
+        try:
+            _ops_fn = getattr(self, "_ops_conn", None)
+            if callable(_ops_fn):
+                ops_ro = _ops_fn()
+                try:
+                    derive_event_kb(ops_ro, conn, org_slugs=(org_slug,))
+                finally:
+                    ops_ro.close()
+            else:
+                # Combined-DB mode: ops_conn == conn; pass the same connection for read.
+                derive_event_kb(conn, conn, org_slugs=(org_slug,))
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "_create_event: KB derive failed for event %s (%r) — "
+                "OPS event stands, KB item rebuildable via scripts/derive_event_kb.py",
+                event_id, b.get("name"), exc_info=True
+            )
+
+        return {"success": True, "post_id": post_id, "event_id": event_id,
                 "reminders": reminders, "message": "Event scheduled"}
 
     def _post_knowledge(self, conn, b):
