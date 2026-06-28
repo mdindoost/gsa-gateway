@@ -325,3 +325,23 @@ class TestGuardWiring:
         sys7 = c._build_system_prompt(seven)
         assert "turn0" not in sys7
         assert all(f"turn{i}" in sys7 for i in range(1, oc.MAX_HISTORY_TURNS + 1))
+
+
+class TestComposeBudget:
+    def _client(self, num_ctx):
+        return OllamaClient(base_url="http://x", model="m", num_ctx=num_ctx)
+
+    @pytest.mark.asyncio
+    async def test_over_budget_facts_return_none_without_calling_ollama(self):
+        c = self._client(2000)
+        c._session = _mock_session_with_response(200, {"response": "should not be used"})
+        result = await c.compose_from_rows("list everyone", "name, " * 5000)
+        assert result is None
+        c._session.post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_under_budget_facts_compose_normally(self):
+        c = self._client(16384)
+        c._session = _mock_session_with_response(200, {"response": "Here are the officers: ..."})
+        result = await c.compose_from_rows("who are the officers", "President: A\nVP: B")
+        assert result == "Here are the officers: ..."

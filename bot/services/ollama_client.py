@@ -394,6 +394,11 @@ class OllamaClient:
         # model has no reason to expand an abbreviation from the question.
         user_prompt = (f"User asked: {question}\n\nFacts (the complete, authoritative "
                        f"answer — rephrase these exactly):\n{facts}\n\nReply:")
+        if (_estimate_tokens(system_prompt) + _estimate_tokens(user_prompt) + 900
+                > self.num_ctx - CONTEXT_CUSHION_TOKENS):
+            logger.warning("compose_from_rows: facts exceed context budget; "
+                           "falling back to deterministic facts")
+            return None
         payload = {
             "model": self.model,
             "system": system_prompt,
