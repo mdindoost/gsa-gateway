@@ -211,8 +211,7 @@ class TestFitChunks:
         assert oc._estimate_tokens("sys") + oc._estimate_tokens(user) + 256 <= 2000
 
     def test_single_page_overflow_is_prefix_truncated(self):
-        # num_ctx=2048 → budget 2048-128-CONTEXT_CUSHION_TOKENS=896; enough for framing+MIN_DOC.
-        # The final assert <= 1200 holds because 896+128=1024 < 1200.
+        # num_ctx=2048 → enforced doc budget = 2048 - CONTEXT_CUSHION_TOKENS - 128 = 896.
         c = self._client(2048)
         body = "FIRST SENTENCE is the answer. " + ("filler tail " * 2000)
         chunks = [make_chunk(body)]
@@ -223,7 +222,9 @@ class TestFitChunks:
         assert "FIRST SENTENCE is the answer." in fitted[0].text
         assert oc.TRUNCATION_NOTE.strip()[:20] in fitted[0].text
         user = c._assemble_user(c._build_context_block(fitted), "q")
-        assert oc._estimate_tokens("sys") + oc._estimate_tokens(user) + 128 <= 2048
+        # system+user must fit the real doc budget (num_ctx - cushion - num_predict)
+        assert (oc._estimate_tokens("sys") + oc._estimate_tokens(user)
+                <= 2048 - oc.CONTEXT_CUSHION_TOKENS - 128)
 
     def test_truncated_copy_preserves_provenance(self):
         c = self._client(2048)
@@ -250,5 +251,12 @@ class TestFitChunks:
         chunks = [make_chunk("A" * 40000)]  # no whitespace at all
         fitted = c._fit_chunks(chunks, "sys", "q", num_predict=128)
         assert len(fitted) == 1
+        # confirm the hard-cut path ran: note appended, and the pre-note body has NO space
+        marker = oc.TRUNCATION_NOTE.strip()[:20]
+        assert marker in fitted[0].text
+        body_part = fitted[0].text.split(marker)[0]
+        assert " " not in body_part  # hard-cut "A"*N, not a whitespace-snap
         user = c._assemble_user(c._build_context_block(fitted), "q")
-        assert oc._estimate_tokens("sys") + oc._estimate_tokens(user) + 128 <= 2048
+        # system+user must fit the real doc budget (num_ctx - cushion - num_predict)
+        assert (oc._estimate_tokens("sys") + oc._estimate_tokens(user)
+                <= 2048 - oc.CONTEXT_CUSHION_TOKENS - 128)
