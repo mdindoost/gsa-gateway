@@ -7,6 +7,7 @@ import pytest
 
 from bot.services.ollama_client import OllamaClient
 from bot.services.retriever import RetrievedChunk
+from bot.services import ollama_client as oc
 
 
 def make_chunk(text: str = "Answer: some info") -> RetrievedChunk:
@@ -144,3 +145,212 @@ class TestCheckConnection:
         client._session = session
         result = await client.check_connection()
         assert result is False
+
+
+class TestEstimateTokens:
+    def test_overcounts_vs_raw_tiktoken(self):
+        # estimate must be >= the raw tiktoken count (the safety factor) for adversarial inputs
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
+        for s in [
+            "https://www.njit.edu/global/h1b-cap-gap?year=2026&term=fall",
+            "def f(x):\n  return x*x  # minified",
+            "学生签证 OPT STEM 延期 申请",
+            "AAAA1234-BBBB5678-CCCC9012",
+            "the cap gap period bridges F-1 status to H-1B",
+        ]:
+            assert oc._estimate_tokens(s) >= len(enc.encode(s))
+        # the 1.2 safety factor must be load-bearing: on a sufficiently long input the
+        # estimate is STRICTLY greater than the raw count (a factor of 1.0 would only give >=)
+        long_s = "the cap gap period bridges F-1 status to H-1B " * 50
+        assert oc._estimate_tokens(long_s) > len(enc.encode(long_s))
+
+    def test_empty_is_zero(self):
+        assert oc._estimate_tokens("") == 0
+
+    def test_fallback_is_pessimistic_when_tiktoken_unavailable(self, monkeypatch):
+        # force the fallback path; byte count is always >= true token count
+        monkeypatch.setattr(oc, "_TIKTOKEN_ENC", None)
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
+        for s in ["https://x.njit.edu/a?b=c", "学生签证延期", "plain english text"]:
+            assert oc._estimate_tokens(s) >= len(enc.encode(s))
+            assert oc._estimate_tokens(s) == len(s.encode("utf-8"))
+
+
+class TestNumCtxConfig:
+    def test_default_is_16384(self):
+        assert OllamaClient(base_url="http://x", model="m").num_ctx == 16384
+
+    def test_env_override(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "12000")
+        assert OllamaClient(base_url="http://x", model="m").num_ctx == 12000
+
+    def test_constructor_arg_wins(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "12000")
+        assert OllamaClient(base_url="http://x", model="m", num_ctx=9000).num_ctx == 9000
+
+    def test_bad_env_falls_back_to_default(self, monkeypatch):
+        # a non-integer OLLAMA_NUM_CTX must not crash startup; fall back to the default
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "bad")
+        assert OllamaClient(base_url="http://x", model="m").num_ctx == 16384
+
+
+class TestFitChunks:
+    def _client(self, num_ctx):
+        return OllamaClient(base_url="http://x", model="m", num_ctx=num_ctx)
+
+    def test_under_budget_is_identity(self):
+        c = self._client(16384)
+        chunks = [make_chunk("short a"), make_chunk("short b")]
+        fitted = c._fit_chunks(chunks, "sys", "q", num_predict=512)
+        assert fitted == chunks  # same objects, untouched
+
+    def test_drops_lowest_ranked_until_fit(self):
+        # word*200 makes each chunk ~407 est tokens so 2 fit (677<=720) but 3 don't (947>720).
+        # budget = 2000 - 256 - CONTEXT_CUSHION_TOKENS = 720.
+        c = self._client(2000)  # tiny window forces dropping
+        big = "word " * 200
+        chunks = [make_chunk("rank1 " + big), make_chunk("rank2 " + big), make_chunk("rank3 " + big)]
+        fitted = c._fit_chunks(chunks, "sys", "q", num_predict=256)
+        assert len(fitted) < 3
+        assert fitted[0] is chunks[0]  # rank-1 kept, input order preserved
+        # rendered prompt is within budget
+        user = c._assemble_user(c._build_context_block(fitted), "q")
+        assert oc._estimate_tokens("sys") + oc._estimate_tokens(user) + 256 <= 2000
+
+    def test_logs_telemetry_when_pages_dropped(self, caplog):
+        # spec §8 telemetry: dropping at least one page emits a logger.info "kept N/M pages"
+        c = self._client(2000)
+        big = "word " * 200
+        chunks = [make_chunk("rank1 " + big), make_chunk("rank2 " + big), make_chunk("rank3 " + big)]
+        with caplog.at_level("INFO", logger="bot.services.ollama_client"):
+            fitted = c._fit_chunks(chunks, "sys", "q", num_predict=256)
+        assert len(fitted) < len(chunks)  # at least one page dropped
+        assert any("context budget: kept" in r.message for r in caplog.records)
+
+    def test_single_page_overflow_is_prefix_truncated(self):
+        # num_ctx=2048 → enforced doc budget = 2048 - CONTEXT_CUSHION_TOKENS - 128 = 896.
+        c = self._client(2048)
+        body = "FIRST SENTENCE is the answer. " + ("filler tail " * 2000)
+        chunks = [make_chunk(body)]
+        fitted = c._fit_chunks(chunks, "sys", "q", num_predict=128)
+        assert len(fitted) == 1
+        assert fitted[0] is not chunks[0]               # a copy, not the original
+        assert chunks[0].text == body                   # original unmutated
+        assert "FIRST SENTENCE is the answer." in fitted[0].text
+        assert oc.TRUNCATION_NOTE.strip()[:20] in fitted[0].text
+        user = c._assemble_user(c._build_context_block(fitted), "q")
+        # system+user must fit the real doc budget (num_ctx - cushion - num_predict)
+        assert (oc._estimate_tokens("sys") + oc._estimate_tokens(user)
+                <= 2048 - oc.CONTEXT_CUSHION_TOKENS - 128)
+
+    def test_truncated_copy_preserves_provenance(self):
+        c = self._client(2048)
+        ch = make_chunk("answer. " + ("x " * 4000))
+        ch.item_id = 27226           # dynamic non-field attrs (as the runtime shim sets)
+        ch.source_url = "https://www.njit.edu/global/h1b"
+        ch.verified = True
+        fitted = c._fit_chunks([ch], "sys", "q", num_predict=128)
+        assert getattr(fitted[0], "item_id") == 27226
+        assert getattr(fitted[0], "source_url") == "https://www.njit.edu/global/h1b"
+        assert getattr(fitted[0], "verified") is True
+
+    def test_empty_input_returns_empty(self):
+        assert self._client(16384)._fit_chunks([], "sys", "q", 512) == []
+
+    def test_degenerate_budget_returns_empty(self):
+        c = self._client(300)  # system+framing+num_predict+cushion already blow the window
+        fitted = c._fit_chunks([make_chunk("x " * 5000)], "huge " * 200, "q", num_predict=128)
+        assert fitted == []
+
+    def test_no_whitespace_hard_cut(self):
+        # num_ctx=2048 → budget 896; 896+128=1024 < 2048.  Hard-cuts "A"*N (no spaces/newlines).
+        c = self._client(2048)
+        chunks = [make_chunk("A" * 40000)]  # no whitespace at all
+        fitted = c._fit_chunks(chunks, "sys", "q", num_predict=128)
+        assert len(fitted) == 1
+        # confirm the hard-cut path ran: note appended, and the pre-note body has NO space
+        marker = oc.TRUNCATION_NOTE.strip()[:20]
+        assert marker in fitted[0].text
+        body_part = fitted[0].text.split(marker)[0]
+        assert " " not in body_part  # hard-cut "A"*N, not a whitespace-snap
+        user = c._assemble_user(c._build_context_block(fitted), "q")
+        # system+user must fit the real doc budget (num_ctx - cushion - num_predict)
+        assert (oc._estimate_tokens("sys") + oc._estimate_tokens(user)
+                <= 2048 - oc.CONTEXT_CUSHION_TOKENS - 128)
+
+
+class TestGuardWiring:
+    def _client(self, num_ctx=16384):
+        return OllamaClient(base_url="http://x", model="m", num_ctx=num_ctx)
+
+    @pytest.mark.asyncio
+    async def test_assembled_prompt_within_budget_on_huge_bundle(self):
+        c = self._client(16384)
+        c._session = _mock_session_with_response(200, {"response": "Cap gap is the period ..."})
+        long = "The H-1B cap-gap period bridges F-1 OPT to H-1B. " + ("policy detail " * 1500)
+        chunks = [make_chunk(long) for _ in range(5)]
+        await c.generate_answer("what is the H-1B cap gap period for F-1 students", chunks)
+        payload = c._session.post.call_args[1]["json"]
+        total = oc._estimate_tokens(payload["system"]) + oc._estimate_tokens(payload["prompt"]) + 512
+        assert total <= 16384
+        assert payload["options"]["num_ctx"] == 16384
+
+    @pytest.mark.asyncio
+    async def test_cap_gap_first_sentence_survives(self):
+        c = self._client(16384)
+        c._session = _mock_session_with_response(200, {"response": "ok"})
+        chunks = [make_chunk("The cap-gap period extends F-1 status. " + ("x " * 1000))] + \
+                 [make_chunk("y " * 2000) for _ in range(4)]
+        await c.generate_answer("cap gap period", chunks)
+        assert "The cap-gap period extends F-1 status." in c._session.post.call_args[1]["json"]["prompt"]
+
+    def test_build_system_prompt_includes_all_turns(self):
+        # No history cap: every passed turn is rendered (byte-identical to the old
+        # _build_full_prompt history loop). The budget guard, not a cap, prevents overflow.
+        c = self._client(16384)
+        history = [{"role": "user", "content": f"turn{i}"} for i in range(20)]
+        sys = c._build_system_prompt(history)
+        assert all(f"turn{i}" in sys for i in range(20))  # turn0..turn19 all present
+        assert "=== CONVERSATION HISTORY ===" in sys
+        assert "=== END OF CONVERSATION HISTORY ===" in sys
+
+    @pytest.mark.asyncio
+    async def test_empty_fitted_returns_none(self):
+        c = self._client(300)  # degenerate window
+        c._session = _mock_session_with_response(200, {"response": "should not be used"})
+        result = await c.generate_answer("q " * 50, [make_chunk("z " * 5000)],
+                                         conversation_history=[{"role": "user", "content": "h " * 300}])
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_no_additional_sources_block(self):
+        c = self._client(16384)
+        c._session = _mock_session_with_response(200, {"response": "ok"})
+        await c.generate_answer("q", [make_chunk("a " * 2000) for _ in range(4)])
+        assert c._session.post.call_args is not None, "POST must be called (at least one chunk fits)"
+        assert "ADDITIONAL SOURCES" not in c._session.post.call_args[1]["json"]["prompt"]
+
+
+class TestComposeBudget:
+    def _client(self, num_ctx):
+        return OllamaClient(base_url="http://x", model="m", num_ctx=num_ctx)
+
+    @pytest.mark.asyncio
+    async def test_over_budget_facts_return_none_without_calling_ollama(self):
+        # num_ctx=2500 → budget 1476, comfortably above the ~1150 fixed floor
+        # (compose system prompt + num_predict 900), so a SMALL facts string fits.
+        # The large `"name, " * 5000` (~12k est tokens) is what drives the overflow.
+        c = self._client(2500)
+        c._session = _mock_session_with_response(200, {"response": "should not be used"})
+        result = await c.compose_from_rows("list everyone", "name, " * 5000)
+        assert result is None
+        c._session.post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_under_budget_facts_compose_normally(self):
+        c = self._client(16384)
+        c._session = _mock_session_with_response(200, {"response": "Here are the officers: ..."})
+        result = await c.compose_from_rows("who are the officers", "President: A\nVP: B")
+        assert result == "Here are the officers: ..."

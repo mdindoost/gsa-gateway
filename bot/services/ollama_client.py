@@ -1,7 +1,10 @@
 """Ollama LLM integration — generates answers grounded in retrieved KB chunks."""
 
 import asyncio
+import copy
 import logging
+import math
+import os
 from typing import Optional
 
 import aiohttp
@@ -9,6 +12,36 @@ import aiohttp
 from bot.services.retriever import RetrievedChunk
 
 logger = logging.getLogger(__name__)
+
+try:
+    import tiktoken
+    _TIKTOKEN_ENC = tiktoken.get_encoding("cl100k_base")
+except Exception:  # pragma: no cover - tiktoken is a hard dep; this is defensive
+    _TIKTOKEN_ENC = None
+
+# Generation context-budget guard (see specs/2026-06-28-context-budget-guard-design.md)
+_DEFAULT_NUM_CTX = 16384
+TOKEN_SAFETY_FACTOR = 1.2      # generic cushion for tokenizer divergence (the served model's
+                               # tokenizer may split more aggressively than cl100k)
+CONTEXT_CUSHION_TOKENS = 1024  # fixed headroom kept below num_ctx
+MIN_DOC_TOKENS = 128           # floor below which we'd rather send no doc than a useless sliver
+TRUNCATION_NOTE = (
+    "\n\n[Document truncated to fit the context budget; later sections are not shown — "
+    "open the Source link above for the full page.]"
+)
+
+
+def _estimate_tokens(text: str) -> int:
+    """Conservative token estimate for budgeting. tiktoken count x safety factor;
+    pessimistic byte-count fallback (bytes >= true BPE token count, never under-counts)."""
+    if not text:
+        return 0
+    if _TIKTOKEN_ENC is not None:
+        try:
+            return math.ceil(len(_TIKTOKEN_ENC.encode(text)) * TOKEN_SAFETY_FACTOR)
+        except Exception:  # pragma: no cover - defensive
+            pass
+    return len(text.encode("utf-8"))
 
 SOURCE_FRIENDLY_NAMES = {
     "gsa_faq.md": "GSA FAQ",
@@ -121,6 +154,15 @@ _EXPAND_EXAMPLES = (
     "Input: officers → Who are the GSA officers at NJIT?\n"
 )
 
+_ANSWER_INSTRUCTIONS = (
+    "Instructions: Answer the student's question using ONLY the documents above. "
+    "Cite which document you used. If the documents don't contain the answer, say so "
+    "and direct them to a GSA officer. If the question names a specific person or "
+    "organization, answer ONLY from documents about that exact person/organization — "
+    "if none of the documents are about them, say you couldn't find that information "
+    "for them and stop; do not report a different person's details."
+)
+
 _SUMMARY_SYSTEM = (
     "You are helping GSA officers prepare a weekly student-engagement report. "
     "You will receive initiative submissions and feedback from the past week. "
@@ -140,7 +182,7 @@ class OllamaClient:
         model: str = "llama3.1:8b",
         timeout: int = 60,
         embedding_model: str = "nomic-embed-text",
-        num_ctx: int = 8192,
+        num_ctx: Optional[int] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -152,7 +194,22 @@ class OllamaClient:
         # the system prompt + the retrieved items (decomposed, so each is small,
         # but legacy non-decomposed FAQ/policy rows can still be sizeable) +
         # conversation history + the 512-token answer. llama3.1 supports far more.
-        self.num_ctx = num_ctx
+        # Default 16384; override via OLLAMA_NUM_CTX env var or constructor arg.
+        if num_ctx is not None:
+            self.num_ctx = num_ctx
+        else:
+            raw = os.getenv("OLLAMA_NUM_CTX")
+            if raw is None:
+                self.num_ctx = _DEFAULT_NUM_CTX
+            else:
+                try:
+                    self.num_ctx = int(raw)
+                except ValueError:
+                    logger.warning(
+                        "Invalid OLLAMA_NUM_CTX=%r; falling back to default %d",
+                        raw, _DEFAULT_NUM_CTX,
+                    )
+                    self.num_ctx = _DEFAULT_NUM_CTX
         self.generate_url = f"{self.base_url}/api/generate"
         self.embed_url = f"{self.base_url}/api/embed"
         self._session: Optional[aiohttp.ClientSession] = None
@@ -186,14 +243,70 @@ class OllamaClient:
         lines.append("\n=== END OF DOCUMENTS ===")
         return "\n".join(lines)
 
-    def _build_full_prompt(
-        self,
-        question: str,
-        chunks: list[RetrievedChunk],
-        conversation_history: Optional[list[dict]] = None,
-    ) -> tuple[str, str]:
-        system_prompt = BASE_SYSTEM_PROMPT
+    def _assemble_user(self, context_block: str, question: str) -> str:
+        return f"{context_block}\n\nStudent question: {question}\n\n{_ANSWER_INSTRUCTIONS}"
 
+    def _truncate_chunk_to_fit(self, chunk, system_prompt: str, question: str, num_predict: int) -> Optional["RetrievedChunk"]:
+        """Return a copy.copy of `chunk` whose body is the largest verbatim prefix (whitespace-snapped,
+        hard-cut fallback) such that the full rendered prompt fits the budget, with TRUNCATION_NOTE
+        appended. Return None if even MIN_DOC_TOKENS of body won't fit."""
+        budget = self.num_ctx - num_predict - CONTEXT_CUSHION_TOKENS
+        sys_tokens = _estimate_tokens(system_prompt)
+
+        def rendered_tokens(text: str) -> int:
+            tmp = copy.copy(chunk)
+            tmp.text = text
+            user = self._assemble_user(self._build_context_block([tmp]), question)
+            return sys_tokens + _estimate_tokens(user)
+
+        body = chunk.text
+        # binary-search the largest prefix length whose rendered prompt fits
+        lo, hi, best = 0, len(body), 0
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if rendered_tokens(body[:mid] + TRUNCATION_NOTE) <= budget:
+                best, lo = mid, mid + 1
+            else:
+                hi = mid - 1
+        if best <= 0 or _estimate_tokens(body[:best]) < MIN_DOC_TOKENS:
+            return None
+        # whitespace-snap to avoid a mid-word cut; hard-cut if no good boundary in the back half
+        snap = max(body.rfind(" ", 0, best), body.rfind("\n", 0, best))
+        if snap < best // 2:
+            snap = best
+        truncated = copy.copy(chunk)
+        truncated.text = body[:snap].rstrip() + TRUNCATION_NOTE
+        return truncated
+
+    def _fit_chunks(self, chunks: list, system_prompt: str, question: str, num_predict: int) -> list:
+        """Drop lowest-ranked whole pages (input order = rank order, never re-sorted) until the rendered
+        system+user prompt fits num_ctx - num_predict - CUSHION; if one page remains and still overflows,
+        prefix-truncate it; return [] only in the degenerate case (caller treats as a generation miss)."""
+        if not chunks:
+            return []
+        budget = self.num_ctx - num_predict - CONTEXT_CUSHION_TOKENS
+        sys_tokens = _estimate_tokens(system_prompt)
+
+        def fits(items) -> bool:
+            user = self._assemble_user(self._build_context_block(items), question)
+            return sys_tokens + _estimate_tokens(user) <= budget
+
+        included = list(chunks)
+        while len(included) > 1 and not fits(included):
+            included.pop()  # drop the lowest-ranked page
+        if fits(included):
+            if len(included) < len(chunks):
+                logger.info("context budget: kept %d/%d pages", len(included), len(chunks))
+            return included
+        truncated = self._truncate_chunk_to_fit(included[0], system_prompt, question, num_predict)
+        if truncated is None:
+            logger.warning("context budget: no doc fits; returning empty fitted context")
+            return []
+        logger.info("context budget: prefix-truncated rank-1 page to fit")
+        return [truncated]
+
+    def _build_system_prompt(self, conversation_history=None) -> str:
+        system_prompt = BASE_SYSTEM_PROMPT
         if conversation_history:
             system_prompt += "\n\n=== CONVERSATION HISTORY ===\n"
             for turn in conversation_history:
@@ -209,19 +322,7 @@ class OllamaClient:
                 "the answer — never repeat a previous 'I couldn't find it' when the answer is "
                 "present in the documents below."
             )
-
-        context_block = self._build_context_block(chunks)
-        user_prompt = (
-            f"{context_block}\n\n"
-            f"Student question: {question}\n\n"
-            "Instructions: Answer the student's question using ONLY the documents above. "
-            "Cite which document you used. If the documents don't contain the answer, say so "
-            "and direct them to a GSA officer. If the question names a specific person or "
-            "organization, answer ONLY from documents about that exact person/organization — "
-            "if none of the documents are about them, say you couldn't find that information "
-            "for them and stop; do not report a different person's details."
-        )
-        return system_prompt, user_prompt
+        return system_prompt
 
     async def generate_answer(
         self,
@@ -232,10 +333,12 @@ class OllamaClient:
     ) -> Optional[str]:
         if not chunks:
             return None
-
-        system_prompt, user_prompt = self._build_full_prompt(
-            question, chunks, conversation_history
-        )
+        system_prompt = self._build_system_prompt(conversation_history)
+        fitted = self._fit_chunks(chunks, system_prompt, question, num_predict=512)
+        if not fitted:
+            logger.warning("Ollama generate: no chunk fits context budget; returning None")
+            return None
+        user_prompt = self._assemble_user(self._build_context_block(fitted), question)
 
         payload = {
             "model": self.model,
@@ -301,6 +404,12 @@ class OllamaClient:
         # model has no reason to expand an abbreviation from the question.
         user_prompt = (f"User asked: {question}\n\nFacts (the complete, authoritative "
                        f"answer — rephrase these exactly):\n{facts}\n\nReply:")
+        num_predict = 900  # long-roster headroom; shared by the budget check and the payload
+        if (_estimate_tokens(system_prompt) + _estimate_tokens(user_prompt) + num_predict
+                > self.num_ctx - CONTEXT_CUSHION_TOKENS):
+            logger.warning("compose_from_rows: facts exceed context budget; "
+                           "falling back to deterministic facts")
+            return None
         payload = {
             "model": self.model,
             "system": system_prompt,
@@ -310,7 +419,7 @@ class OllamaClient:
                 "temperature": 0.0,
                 "top_p": 1.0,
                 "num_ctx": self.num_ctx,
-                "num_predict": 900,
+                "num_predict": num_predict,
                 "stop": ["Student:", "===", "Human:"],
             },
         }
