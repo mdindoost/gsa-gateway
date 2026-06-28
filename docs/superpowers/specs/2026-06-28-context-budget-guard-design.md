@@ -1,240 +1,275 @@
-# Context-Budget Guard — design
+# Context-Budget Guard — design (rev 2)
 
 **Date:** 2026-06-28
 **Branch:** `feat/context-budget-guard` (off `main` @ `69fcfd6`)
-**Status:** design — awaiting owner review → expert reviews (senior-eng + RAG) → owner sign-off → TDD build
+**Status:** rev-2 — both hard-gate reviews folded (senior-eng NO-GO + RAG GO-WITH-CHANGES, 2026-06-28);
+awaiting Codex re-review of rev-2 → owner sign-off → TDD build.
 **Arc:** Phase-3 Task #1 of the teacher-eval / answer-stack arc ([[project_answer_stack_design]],
 [[project_m2_embedding]], [[project_teacher_eval]]). Corpus-independent; ships to prod independently of
 the gate refit / DB-rebuild (Decision A = hybrid; Decision B = fresh branch off main).
+
+> **rev-2 changelog (reviews folded):** estimator → tiktoken + safety factor (was chars/3.5, not a true
+> upper bound); architecture → assemble-measure-shrink over the FULL rendered prompt (was body-only budget);
+> ADDITIONAL SOURCES URL block REMOVED (unbudgeted + unsafe 8B framing); `compose_from_rows` over-budget →
+> returns `None` (no truncate-then-rephrase); conversation history bounded before packing; chunk order
+> preserved (no re-sort); truncated-chunk copy preserves provenance; whitespace-snap hard-cut fallback;
+> degenerate-budget handled; `num_ctx` config/env override; claims weakened to honest wording; quality-cap
+> added as a deferred goal.
 
 ---
 
 ## 1. Problem
 
-Live prod bug, confirmed 2026-06-27: the query **"what is the H-1B cap gap period for F-1 students"**
-returns just **"The"** (Source: Office of Global Initiatives).
+Live prod bug, confirmed 2026-06-27: **"what is the H-1B cap gap period for F-1 students"** returns just
+**"The"** (Source: Office of Global Initiatives).
 
-Root cause (proven read-only end-to-end, re-verified in current code 2026-06-28):
-
+Root cause (proven read-only end-to-end; re-verified in current code 2026-06-28):
 - `bot/services/ollama_client.py` runs generation with `num_ctx=8192`.
-- `_build_context_block` (line 165) packs the **full `.text` of every retrieved chunk** the caller
-  passes (top-k from the retriever, k≈5) with **no token budgeting**. Its comment ("each chunk is now a
-  single focused item … no bloated document to truncate") is false for long crawled policy/immigration
-  pages.
-- For the cap-gap query the top-5 OGI pages total ~37,273 chars ≈ 9,300 tokens; the full prompt
-  (system + docs + history + answer) is ~10–11k tokens, well over 8,192.
-- Ollama **silently truncates the front** of the prompt on overflow (the code comment at lines 149–154
-  documents this) → the model receives mangled context → llama3.1:8b degenerates to "The".
+- `_build_context_block` (line 165) packs the **full `.text` of every retrieved chunk** the caller passes
+  (top-k from the retriever, k≈5) with **no token budgeting**. Its comment ("each chunk is now a single
+  focused item … no bloated document to truncate") is false for long crawled policy/immigration pages.
+- The cap-gap top-5 OGI pages total ~37,273 chars ≈ 9,300 tokens; the full prompt is ~10–11k tokens >> 8,192.
+- Ollama **silently truncates the FRONT** of the prompt on overflow (documented in the code comment at
+  lines 149–154) → mangled context → llama3.1:8b degenerates to "The".
 - Proven: top-chunk-only (2,949 tok, fits) → correct full answer; overflow (~12.9k tok) →
   `prompt_eval_count` capped at 8191 → output "The".
 
-This is not one query — it breaks on exactly the richest long policy/immigration pages (OGI, financial
-aid, …). It is the generation-layer face of the M2 long-page problem.
+It breaks on exactly the richest long policy/immigration pages (OGI, financial aid, …) — the
+generation-layer face of the M2 long-page problem.
 
-**Why chunking does not fix it:** the planned Modified-A / Phase-2 deep-fallback returns the **full parent
-page to the LLM** (never-withhold). Handing back a 12k-char parent recreates the same overflow. A
-context-budget invariant is required **regardless of chunking**, and is a **prerequisite** before enabling
-either the long-page path or Phase-2's deep-fallback flag.
+**Why chunking does not fix it:** Modified-A / Phase-2 deep-fallback returns the **full parent page** to
+the LLM (never-withhold) → a 12k-char parent recreates the overflow. A context-budget invariant is required
+**regardless of chunking**, and is a **prerequisite** before enabling either the long-page path or Phase-2's
+deep-fallback flag.
 
 ## 2. Goal & non-goals
 
-**Goal:** the assembled generation prompt can **never** silently overflow the context window. Any
-trimming is **explicit and budgeted**, never Ollama's silent front-truncation. The canonical cap-gap
-query (and the long-page class it represents) answers correctly, never "The".
+**Goal (honest wording, per reviews):** the assembled generation prompt is **explicitly budgeted** to stay
+within `num_ctx` — never Ollama's silent front-truncation. The budget uses a **conservative token over-count
+(tiktoken + safety factor) plus a fixed cushion below `num_ctx`**, which prevents overflow for realistic NJIT
+content (English prose + URLs/IDs). Exact, model-exact tokenizer counting is deferred (G9). The canonical
+cap-gap query (and the long-page class it represents) answers correctly, never "The".
 
 **Non-goals (explicitly out of scope):**
 - No retrieval changes (ranking, fusion, CE, chunk logic) — pure generation-layer plumbing.
-- No gate refit / abstain logic (that is the later Phase-3 cutover, folded into the rebuild).
-- No chunking / `model_descriptor` / matched-chunk machinery (lives on the unmerged gate branch).
-- No merge of any unmerged branch; this ships standalone off main.
+- No gate refit / abstain logic (later Phase-3 cutover, folded into the rebuild).
+- No chunking / `model_descriptor` / matched-chunk machinery (unmerged gate branch).
+- No quality-oriented context cap (separate follow-up — G10). The guard does **not** pass more pages than
+  today (still top-k); it only stops front-truncating them into garbage, so it is strictly better than the
+  broken state.
+- No merge of any unmerged branch; ships standalone off main.
 
-## 3. Decisions locked with owner (2026-06-28)
+## 3. Decisions (locked with owner; rev-2 folds reviews)
 
-- **D1 — `num_ctx` 8192 → 16384** + budget guard as backstop. Hardware verified: RTX 4070 Ti SUPER, 16 GB,
-  loaded llama3.1:8b @ 16k ≈ ~8.5–9 GB → ~7 GB free. The typical long bundle (~9.3k tok) then fits whole;
-  the guard only trims rare monsters (e.g. 108KB grids). Honors use-max-capacity + prefer-verbatim.
-- **D2 — Budget is DERIVED, never hardcoded.** `doc_budget = num_ctx − tokens(system) − tokens(history) −
-  num_predict − safety_margin`. Tracks any change to `num_ctx`/`num_predict`. LLM-agnostic by construction.
-- **D3 — Token counting = conservative char-based estimate** (`tokens ≈ ceil(chars / CHARS_PER_TOKEN)`,
-  `CHARS_PER_TOKEN = 3.5`). On main there is no `count_tokens` helper and no llama tokenizer; a conservative
-  ratio **over-estimates** token count → **under-fills** → cannot overflow, and works for any generation
-  model (most LLM-agnostic). Accepted cost: a little headroom left unused. Flagged for RAG/senior-eng review.
-- **D4 — Truncation = verbatim prefix** (matched-chunk truncation deferred, see §7). Truncating an
-  over-budget page to its verbatim prefix preserves the canonical cap-gap answer (its first sentence) and
-  honors crawl=mechanical / verbatim. Matched-chunk-aware truncation folds in with the chunk work at the
-  rebuild.
-- **D5 — Never-withhold via link preservation.** Every page's `Source:` line is kept in the prompt even
-  when its body is trimmed or dropped, so the full content is one click away — the generalization of the
-  owner-approved "matched section + link" grid exception to "as-much-verbatim-as-fits + link".
-- **D6 — Cutover = merge to main + restart on sign-off.** This piece lands on prod at the end of its own
-  hard-gate cycle (live bug fix, corpus-independent). The gate refit / matched-chunk refinement go to main
-  later via the rebuild's own cutover.
+- **D1 — `num_ctx` 8192 → 16384**, configurable via constructor + env/config override (SE#14). Hardware
+  verified: RTX 4070 Ti SUPER 16 GB; llama3.1:8b @ 16k ≈ 8.5–9 GB → ~7 GB free. Document the expected
+  quantization; if Ollama OOMs, the override lets ops drop it.
+- **D2 — Budget is DERIVED from the model, never hardcoded**, and measured over the **full rendered prompt**
+  (system + user), not just bodies. `target = num_ctx − num_predict − CUSHION`; pack/shrink until the
+  estimated whole prompt ≤ target.
+- **D3 — Token estimate = tiktoken (`cl100k_base`) × `SAFETY_FACTOR` (1.2)**, with a char-based fallback
+  (`ceil(chars / 3.0)`) if tiktoken import fails. tiktoken gives real subword counts (URLs/code/IDs handled
+  far better than a flat char ratio); the safety factor covers llama-vs-tiktoken divergence; the `CUSHION`
+  (D2) absorbs residual error. This is a conservative counting heuristic, **provider-isolated** (not the
+  generation model's tokenizer — no LLM coupling). Honest limit: not provably model-exact → G9 defers exact
+  counting; the claim is "budgeted + conservative + cushioned," not "mathematically impossible to overflow."
+- **D4 — Truncation = verbatim prefix + in-body marker.** An over-budget boundary page is cut to a
+  whitespace-snapped verbatim prefix (hard-cut fallback if no whitespace fits) with a model-facing marker
+  appended: *"[Document truncated to fit the context budget; later sections are not shown — open the Source
+  link for the full page.]"* (tells the 8B the content is partial → no false completeness; reinforces the
+  link). Matched-chunk (answer-span) truncation DEFERRED (§7, needs gate-branch chunk work).
+- **D5 — Never-withhold via the reply's source link, NOT via prompt-stuffed URLs.** The existing reply
+  source-note (`_source_note_for`, message_handler) already surfaces the answer's source link to the user.
+  Dropped lower-ranked pages of an oversized bundle are **not** added to the model prompt (the rev-1
+  ADDITIONAL SOURCES block is REMOVED — it was unbudgeted and let the 8B hallucinate citations from URL
+  slugs). Honest framing: source links preserve **user access**; truncated/dropped bodies are **not evidence
+  for generation**.
+- **D6 — Cutover = merge to main + restart on sign-off.** Live bug fix, corpus-independent → lands on prod
+  at the end of its own hard-gate cycle. The gate refit + deferred matched-chunk/grid refinements ship to
+  main later via the DB-rebuild's own cutover.
 
-## 4. Architecture
+## 4. Architecture — assemble, measure, shrink
 
-One budgeting helper inside `bot/services/ollama_client.py`, applied to the chunk list **before**
-`_build_context_block`, used by both generation entry points.
+One budgeting path inside `bot/services/ollama_client.py`. Instead of budgeting bodies and hoping the
+framing fits, we **build the real prompt, measure it, and shrink until it fits**, with a final hard guard.
 
 ```
-generate_answer / compose_from_rows
-        │
-        ▼
-  _fit_chunks_to_budget(chunks, reserved_tokens)   ← NEW pure function
-        │   • compute doc_budget = num_ctx − reserved − num_predict − margin
-        │   • walk chunks in relevance_score order
-        │   • add whole pages while they fit
-        │   • fill remaining budget with verbatim prefix of the boundary page
-        │   • drop the rest (links still surfaced — see below)
-        ▼
-  _build_context_block(fitted_chunks)              ← unchanged body
+generate_answer
+  1. bound history (last MAX_HISTORY_TURNS turns)         ← deterministic, newest-first
+  2. system_prompt = BASE + bounded-history
+  3. fitted = _fit_chunks(chunks, system_prompt, question, num_predict)   ← NEW: measure-shrink loop
+        repeat:
+          context_block = _build_context_block(included)   ← real rendered text, incl. all framing
+          user = context_block + question + INSTRUCTIONS
+          est = estimate(system_prompt) + estimate(user)
+          if est + num_predict <= num_ctx - CUSHION: break
+          else: shrink(included)   ← drop lowest-ranked whole page; if only 1 left, prefix-truncate it
+  4. payload(system_prompt, user, num_ctx)                 ← final est asserted <= num_ctx (log+shrink if not)
 ```
 
-Rejected alternatives:
-- Guard at retriever/caller layer → duplicates budget logic across callers, drifts. Rejected.
-- num_ctx raise alone, no guard → does not scale to 108KB grids; silent truncation returns on the next
-  bigger page. Rejected (owner already chose guard-as-backstop).
+`shrink` order: drop the **lowest-ranked included page** first (preserve input/rank order — no re-sort,
+SE#6); once a single page remains and still doesn't fit, **prefix-truncate** it (D4); rank-1 is never
+dropped, only truncated. The loop terminates (each pass removes content; floor = rank-1 hard-cut).
+
+Rejected: budgeting bodies only with a `SAFETY_MARGIN` (rev-1) — undercounts framing/URLs → could overflow
+(SE#2/#3). Rejected: guard at retriever/caller layer — duplicated logic, drift. Rejected: num_ctx-raise
+alone — doesn't scale to monsters.
 
 ## 5. Components
 
 ### 5.1 `OllamaClient.__init__`
-`num_ctx` default 8192 → **16384**. (Single constant; both call paths already read `self.num_ctx`.)
+`num_ctx` default 8192 → **16384**, read from config/env (`OLLAMA_NUM_CTX`) with that default. Both call
+paths already read `self.num_ctx`.
 
-### 5.2 `_estimate_tokens(text: str) -> int` (NEW, module-level pure fn)
-`return ceil(len(text) / CHARS_PER_TOKEN)` with `CHARS_PER_TOKEN = 3.5`. Conservative on purpose.
-Module constant so reviewers/tuning have one knob.
+### 5.2 `_estimate_tokens(text: str) -> int` (NEW, module-level)
+tiktoken `cl100k_base` (lazy-loaded, cached module-level): `ceil(len(enc.encode(text)) * SAFETY_FACTOR)`,
+`SAFETY_FACTOR = 1.2`. Fallback on import/encode failure: `ceil(len(text) / 3.0)`. Pure; deterministic.
 
-### 5.3 `_fit_chunks_to_budget(chunks, reserved_tokens, num_ctx, num_predict) -> (list[RetrievedChunk], list[str])` (NEW, pure fn)
-Returns `(fitted_chunks, dropped_urls)` — the second list feeds the ADDITIONAL SOURCES block (§5.4).
-- `doc_budget = num_ctx − reserved_tokens − num_predict − SAFETY_MARGIN` where:
-  - `reserved_tokens` = estimated tokens of EVERYTHING in the prompt that is **not** the per-chunk document
-    bodies: the full system prompt (which already includes conversation history — see `_build_full_prompt`),
-    the student question, and the fixed instruction text of the user prompt. Computed by the caller and
-    passed in, because the fit must happen **before** the context block is built (§5.5).
-  - `SAFETY_MARGIN` (module constant, e.g. 384) — absorbs the per-chunk framing `_build_context_block`
-    adds (labels, `Section:`, `Source:`, `[Relevance]`, delimiters) × ~k chunks, plus char-estimate slack.
-- Sort by `relevance_score` desc (stable; chunks usually arrive already ranked — sort defensively).
-- Greedy pack: for each chunk, if `_estimate_tokens(chunk.text)` ≤ remaining budget, include whole;
-  else include a **verbatim prefix** sized to the remaining budget (chars = `remaining_tokens *
-  CHARS_PER_TOKEN`, cut on a whitespace boundary ≤ that length to avoid mid-word splits), mark it
-  truncated, and stop.
-- If **the first chunk alone** exceeds budget → include its verbatim prefix (rank-1 is never dropped).
-- A truncated chunk is returned as a shallow copy with truncated `.text` (originals never mutated).
-- Returns `(fitted_chunks, dropped_urls)`; `fitted_chunks` has ≥1 chunk whenever input non-empty and
-  budget > 0. `dropped_urls` = `source_url` of every chunk excluded entirely (deduped, order preserved).
-- **Degenerate budget** (≤ 0 from pathological history): return `([rank-1 prefix], dropped_urls)` so we
-  always send something grounded; log a warning.
+### 5.3 `_fit_chunks(chunks, system_prompt, question, num_predict) -> list[RetrievedChunk]` (NEW)
+- `target = num_ctx − num_predict − CUSHION` (`CUSHION = 1024`, module constant).
+- Start with all chunks in **input order** (callers provide rank order — no sort, SE#6).
+- Loop: render the candidate context block + user prompt with the current included set, estimate
+  `system + user`, and if `est + num_predict > num_ctx − CUSHION`, remove the **last** (lowest-ranked)
+  whole page and repeat.
+- When only one page remains and it still overflows: replace it with a **prefix-truncated copy** sized so
+  the rendered prompt fits, whitespace-snapped, hard-cut fallback if no whitespace within budget, with the
+  D4 marker appended (the marker's tokens are inside the measured prompt → counted).
+- Truncated/altered chunks are produced via `copy.copy(chunk)` then `.text = …` (or `dataclasses.replace`
+  for dataclasses) so `item_id`/`source_url`/`verified` and any runtime attrs survive (SE#7).
+- Originals never mutated. Returns the fitted list (≥1 chunk when input non-empty).
+- **Degenerate case** (SE#4/#5): if even rank-1 hard-cut to a minimum floor (`MIN_DOC_TOKENS = 128`) can't
+  fit because `system + framing + num_predict` alone ≥ `num_ctx − CUSHION` (pathological history despite the
+  D-bounded turns), log a warning and return `[]`; the caller treats empty fitted-context as a generation
+  miss (returns `None` → existing deflection/fallback), never a silent overflow.
 
-### 5.3a `_fit_text_to_budget(text, reserved_tokens, num_ctx, num_predict) -> str` (NEW, pure fn)
-Sibling for `compose_from_rows`, whose payload is a single `facts` string, not a chunk list. Same budget
-formula; if `_estimate_tokens(text)` exceeds budget, return a whitespace-snapped verbatim prefix with an
-explicit `\n…(list continues)` marker appended. No silent overflow.
+### 5.4 `_build_context_block` change
+No ADDITIONAL SOURCES block (removed). Included pages keep their `Source:` line as today. A prefix-truncated
+page additionally shows the D4 truncation marker at the end of its body. Nothing else changes in the block.
 
-### 5.4 Link preservation (never-withhold)
-`_build_context_block` already emits the `Source:` line per chunk when `source_url` is present — preserved
-unchanged for included/truncated chunks. For a **dropped** chunk that has a `source_url`, append a compact
-`=== ADDITIONAL SOURCES (not shown in full) ===` block listing those URLs, so the link survives even when
-the body was budget-dropped. (Implemented in `_build_context_block`, fed the dropped-chunk URLs from the
-fit step; keeps the never-withhold line honest without spending body budget.)
+### 5.5 `generate_answer` / `_build_full_prompt` wiring
+`_build_full_prompt` is refactored to: bound history → build `system_prompt` → run `_fit_chunks` → build the
+final user prompt from the fitted set. History bounding: keep the **last `MAX_HISTORY_TURNS = 6`** turns
+(each already clipped to 400 chars), newest-first, before appending to the system prompt (SE#5). num_predict
+stays 512.
 
-### 5.5 Wiring
-`_build_full_prompt` is refactored so the system prompt (incl. history) and the fixed user-prompt framing
-(question + instruction text) are computed **first** — they don't depend on chunks — then the chunks are
-fitted, then the context block + final user prompt are assembled from the fitted chunks. Ordering:
-1. Build `system_prompt` (BASE + history) and the constant instruction/question framing of the user prompt.
-2. `reserved = _estimate_tokens(system_prompt) + _estimate_tokens(question) + _estimate_tokens(INSTRUCTIONS)`.
-3. `fitted, dropped_urls = _fit_chunks_to_budget(chunks, reserved, self.num_ctx, num_predict=512)`.
-4. `context_block = _build_context_block(fitted, dropped_urls)` → user prompt → payload.
-- `generate_answer`: as above (num_predict=512). History is inside `system_prompt` (see `_build_full_prompt`)
-  so it is counted via step 2.
-- `compose_from_rows`: defensive — `facts` is usually small, but a long roster can be large. `reserved =
-  _estimate_tokens(system_prompt) + _estimate_tokens(question_framing)`; `facts =
-  _fit_text_to_budget(facts, reserved, self.num_ctx, num_predict=900)` before building the prompt.
+### 5.6 `compose_from_rows` (SE#9 / RAG#7)
+`facts` is the COMPLETE structured answer; its contract is "include every item." So we do **not** truncate
+facts. If `estimate(system + facts + framing) + num_predict > num_ctx − CUSHION`, return **`None`** (log)
+→ the caller already falls back to the deterministic facts text (the documented behavior). No truncate-then-
+rephrase. (In practice facts rarely approach 16k; this is the defensive floor.)
 
-## 6. Data flow / behavior
+## 6. Behavior
 
 | Case | Behavior |
 |---|---|
-| Bundle ≤ budget (typical at 16k, incl. cap-gap ~9.3k) | No-op — all chunks whole. Bug fixed because nothing overflows. |
-| Bundle > budget | Whole pages by rank until full → verbatim prefix on the boundary page → stop. Dropped pages' links surfaced in ADDITIONAL SOURCES. |
-| Rank-1 alone > budget (108KB grid) | Rank-1 verbatim prefix + its Source link. (Matched-section extraction deferred — §7.) |
+| Bundle fits target (typical at 16k, incl. cap-gap ~9.3k) | No-op — all chunks whole. Bug fixed (nothing overflows). |
+| Bundle > target | Drop lowest-ranked whole pages (rank order) until the rendered prompt fits. Dropped pages: not in prompt; answer's own source link still shown in the reply. |
+| Single page > target (108KB grid) | Prefix-truncate it (verbatim) + D4 marker + its Source line. |
 | Empty chunks | Unchanged: "No relevant context found." |
-| Degenerate budget ≤ 0 | rank-1 prefix + warning log. |
+| Degenerate (system+framing alone ≥ ceiling) | Return `[]`/`None` → existing deflection; warning logged. Never overflow. |
+| Over-budget structured facts | `compose_from_rows` → `None` → deterministic facts text. |
 
 ## 7. Deferred (loudly flagged — NOT silently dropped)
 
-- **Matched-chunk-aware truncation.** When an over-budget page must be trimmed, truncating to the
-  *matched passage* (highest-CE chunk) rather than the page prefix would preserve answers that sit
-  mid-page. Requires `ce_score` + matched-chunk, which live on the unmerged gate branch — not on main.
-  **Folds in with the chunk work at the DB-rebuild / Phase-3 cutover.** Impact on main is limited: at 16k
-  truncation only fires on >~56k-char bundles, and the canonical cap-gap answer is a page-prefix anyway.
-- **Grid "matched section + link" extraction.** Same dependency (needs chunk/section machinery). On main,
-  a monster grid is handled by verbatim-prefix + link, which is a safe subset of the approved exception.
-- **`model_descriptor`-based exact token counting.** Adopt when the descriptor merges (rebuild); the
-  char-based estimate is the LLM-agnostic interim and remains a valid fallback.
+- **G7 Matched-chunk-aware truncation.** Truncate an over-budget page to its *matched passage* (highest-CE
+  chunk) rather than the page prefix → preserves mid/late-page answers (RAG#1: prefix can drop the matched
+  span for immigration FAQs / financial-aid grids / alphabetized lists). Needs `ce_score`+matched-chunk
+  (unmerged gate branch). **Folds in at the DB-rebuild / Phase-3 cutover.** Until then, prefix + marker +
+  link is the honest interim; impact bounded because at 16k truncation fires only on >~target-size bundles.
+- **G8 Grid "matched section + link" extraction.** Same dependency; interim = verbatim prefix + link (a safe
+  subset of the approved exception).
+- **G9 Model-exact token counting** (`model_descriptor` / llama tokenizer). tiktoken+factor+cushion is the
+  conservative interim; adopt exact counting at the rebuild.
+- **G10 Quality-oriented context cap** (RAG#5). More full long pages *may* distract the 8B even when they
+  fit; a quality cap (reserve room for N distinct sources / prefer shorter high-rank pages / cap body tokens
+  below num_ctx) is a separate tuning. Add eval cases comparing full-16k vs capped context; do NOT block the
+  bug fix. Logged with telemetry (§8) so the decision is data-driven later.
 
 ## 8. Testing (TDD)
 
-Unit tests on the pure functions (no live model needed → deterministic CI):
-- `_estimate_tokens` monotonic & conservative (estimate ≥ a known lower bound for ASCII).
-- `_fit_chunks_to_budget`: under-budget = identity (same objects, untouched); over-budget = whole pages
-  packed in rank order then one prefix-truncated boundary chunk; rank-1-alone-overflow = single prefix
-  chunk, never dropped; originals never mutated; prefix cut on whitespace (no mid-word split); dropped
-  chunks' URLs returned for link surfacing; degenerate budget → rank-1 prefix.
-- `_build_context_block`: ADDITIONAL SOURCES block lists dropped-chunk URLs; included chunks keep their
-  Source line.
-- **Binding regression (the bug):** assemble the prompt for the cap-gap query against a synthetic 5×long-
-  page bundle (~9.3k tok) and assert `_estimate_tokens(system + user) + num_predict ≤ num_ctx`. Deterministic,
-  model-free — pins "never silently overflow" forever. The original page text (incl. the cap-gap first
-  sentence) is present in the assembled prompt.
-- Add the cap-gap question to `eval/questions.txt` (a live-pipeline check for the human eval run).
+Model-free unit tests (deterministic CI):
+- **`_estimate_tokens` over-counts vs a raw tiktoken count** on adversarial samples (long URLs, code,
+  alphanumeric IDs, CJK, emoji, whitespace-heavy) — assert `_estimate_tokens(x) ≥ raw_tiktoken(x)` (the
+  safety factor) so the estimate is a conservative-vs-its-own-tokenizer bound. (Honest caveat: this bounds
+  vs tiktoken, not vs llama — G9. The CUSHION is the backstop for that gap.)
+- **`_fit_chunks`**: fits-as-is = identity (same objects); over-budget = lowest-ranked pages dropped in
+  rank order; single-page-overflow = one prefix-truncated copy with marker, rank-1 never dropped; originals
+  unmutated; truncated copy preserves `item_id`/`source_url`/`verified`; whitespace-snap + no-whitespace
+  hard-cut; degenerate → `[]`.
+- **Full-prompt-within-budget**: build the real `system + user` for a synthetic oversized bundle with long
+  URLs, long section titles, unverified tags, missing `source_url`, duplicate URLs → assert
+  `estimate(system)+estimate(user)+num_predict ≤ num_ctx` after fitting. (This is the invariant SE#2 demanded:
+  measure the rendered prompt, not the bodies.)
+- **No ADDITIONAL SOURCES block** present in any rendered prompt (regression against rev-1).
+- **`compose_from_rows`**: over-budget facts → returns `None` (no truncated facts sent); under-budget → normal.
+- **Mocked overflow guard** (SE#10): mock the assembled-prompt estimate at/over `num_ctx` and assert the fit
+  loop shrinks below it (a test that fails if the loop ever yields an over-budget prompt).
+- **Binding regression (the bug)**: assemble the prompt for the cap-gap query against a synthetic 5×long-page
+  bundle (~9.3k tok) and assert the rendered prompt + num_predict ≤ num_ctx AND the cap-gap first sentence is
+  present in the prompt. Honest scope (SE#12/RAG#8): this pins **no-overflow + evidence-present**, NOT answer
+  correctness — correctness is covered by the manual live check below.
+- **Telemetry test**: the fit step logs included/truncated/dropped doc-ids + estimated tokens (feeds G10).
+- Add the cap-gap question to `eval/questions.txt`.
 
-**Manual verification before merge:** run the real query through `scripts/ask.sh --answer` with Ollama up
-at num_ctx=16384 and confirm a cap-gap answer (never "The"), plus a spot-check that `prompt_eval_count` is
-no longer pinned at the cap. (Evidence-before-claim: show the output.)
+**Manual verification before merge (required evidence):** run the real query via `scripts/ask.sh --answer`
+with Ollama up at num_ctx=16384 → confirm a cap-gap answer (never "The") and that `prompt_eval_count` is no
+longer pinned at the cap. Show the output (evidence-before-claim).
 
 ## 9. Hard lines honored
 
-- **LLM-agnostic:** budget derived from `num_ctx`/`num_predict`; char-based estimate works for any model;
-  no model-specific tokenizer baked in.
-- **use-max-capacity:** 16k window sized to the model's real working capacity on this hardware; budget
-  fills the window rather than an arbitrary small cap.
-- **verbatim / never-withhold:** included/truncated content is verbatim (prefix slice, whitespace-snapped);
-  every source link preserved (included, truncated, or dropped); truncation is explicit + link-backed, the
-  generalization of the approved grid exception.
-- **crawl = mechanical-only:** this is generation-side, no crawl/content rewriting; prefix slicing is
-  mechanical, not editorial.
-- **evidence-before-claim:** binding model-free regression test + manual live verification with shown output.
+- **LLM-agnostic:** budget derived from `num_ctx`/`num_predict`; tiktoken is a provider-isolated counting
+  heuristic (not the gen model's tokenizer); char fallback works for any model; no model-specific constant baked in.
+- **use-max-capacity:** 16k sized to real working capacity on this hardware; tiktoken+cushion fills far more
+  of the window than the old 8k while staying safe. (Stated honestly: the cushion leaves deliberate headroom
+  for estimator error — not "maximal to the last token," but maximal-safe.)
+- **verbatim / never-withhold:** included/truncated content is verbatim (whitespace-snapped slice); the
+  answer's source link is preserved in the reply; truncation is explicit + link-backed + marked. Honest:
+  links = user access, dropped bodies are not model evidence.
+- **crawl = mechanical-only:** generation-side; prefix slicing is mechanical, not editorial.
+- **evidence-before-claim:** model-free invariant tests + required manual live verification with shown output.
 
-## 10. Goals checklist (for the close-out — shipped vs deferred)
+## 10. Goals checklist (close-out — shipped vs deferred)
 
-- G1 — Prompt can never silently overflow `num_ctx` (explicit budgeted packing). **SHIP.**
-- G2 — Cap-gap query answers correctly, never "The"; pinned by a binding regression test. **SHIP.**
-- G3 — `num_ctx` raised to 16384. **SHIP.**
-- G4 — Budget derived (LLM-agnostic), char-based conservative token estimate. **SHIP.**
-- G5 — Verbatim-prefix truncation + all source links preserved (never-withhold). **SHIP.**
-- G6 — Applied to both `generate_answer` and `compose_from_rows`. **SHIP.**
-- G7 — Matched-chunk-aware truncation. **DEFERRED** → rebuild/Phase-3 cutover (needs gate-branch chunk work).
-- G8 — Grid "matched section + link" extraction. **DEFERRED** → same dependency; interim = prefix + link.
-- G9 — `model_descriptor` exact token counting. **DEFERRED** → adopt at rebuild; char-estimate is the interim.
+- G1 — Assembled prompt explicitly budgeted to stay within `num_ctx` (measure-shrink over the full rendered
+  prompt; conservative tiktoken over-count + cushion; no silent truncation). **SHIP.**
+- G2 — Cap-gap query: model-free regression pins no-overflow + cap-gap evidence present; **manual live
+  verification** confirms the answer (never "The") before merge. **SHIP (with honest split).**
+- G3 — `num_ctx` 16384, config/env override. **SHIP.**
+- G4 — Budget derived; tiktoken+factor estimator with char fallback. **SHIP.**
+- G5 — Verbatim-prefix truncation + marker; source link preserved for **user access** in the reply.
+  Matched answer-span preservation **DEFERRED** under G7. **SHIP (scoped).**
+- G6 — Guard on `generate_answer`; `compose_from_rows` over-budget **falls back deterministically** (returns
+  `None`) rather than rephrasing incomplete facts. **SHIP.**
+- G7 — Matched-chunk (answer-span) truncation. **DEFERRED** → rebuild/Phase-3 (needs chunk work).
+- G8 — Grid "matched section + link". **DEFERRED** → same dependency; interim = prefix + link.
+- G9 — Model-exact token counting. **DEFERRED** → rebuild; tiktoken+cushion is the interim.
+- G10 — Quality-oriented context cap. **DEFERRED** → data-driven follow-up; telemetry added now.
 
 ## 11. Reject criteria
 
-- Any assembled prompt whose estimated tokens + num_predict can exceed `num_ctx` → reject.
-- The cap-gap regression test answering "The" / failing the token-bound assertion → reject.
-- Any source link silently lost when its body is trimmed/dropped → reject (never-withhold).
-- Original `RetrievedChunk` objects mutated in place → reject (purity).
+- Any rendered prompt whose estimated tokens + num_predict can exceed `num_ctx` after fitting → reject.
+- The cap-gap regression answering "The" / failing the token-bound assertion (or the manual live check) → reject.
+- ADDITIONAL SOURCES / any bare dropped-URL block reappearing in the model prompt → reject (RAG#3).
+- `compose_from_rows` sending truncated "complete" facts to the model → reject (SE#9/RAG#7).
+- Original `RetrievedChunk` objects mutated in place, or truncated copies losing provenance → reject.
+- Chunks re-sorted (rank order not preserved) without a proven-equivalent test → reject (SE#6).
 
 ## 12. Build sequence (for writing-plans)
 
-1. `num_ctx` 8192→16384 + `_estimate_tokens` + constants (tests).
-2. `_fit_chunks_to_budget` pure fn (tests: all §8 cases).
-3. `_build_context_block` ADDITIONAL SOURCES link surfacing (tests).
-4. Wire into `generate_answer` + `compose_from_rows` (tests + binding regression).
-5. `eval/questions.txt` += cap-gap query.
-6. Manual live verification (Ollama up, show output).
+1. `_estimate_tokens` (tiktoken + factor + char fallback) + constants (`SAFETY_FACTOR`, `CUSHION`,
+   `MAX_HISTORY_TURNS`, `MIN_DOC_TOKENS`) + `num_ctx` 16384/env (tests).
+2. `_fit_chunks` measure-shrink loop: drop-lowest-rank → single-page prefix-truncate + marker → degenerate
+   `[]`; provenance-preserving copy; no re-sort (tests: all §8 cases).
+3. `_build_context_block`: remove ADDITIONAL SOURCES; add truncation marker rendering (tests).
+4. `_build_full_prompt`: history bounding + reorder + wire `_fit_chunks`; `generate_answer` returns `None`
+   on empty fitted context (tests + binding regression + full-prompt-within-budget + mocked-overflow).
+5. `compose_from_rows`: over-budget → `None` (tests).
+6. Telemetry logging of included/truncated/dropped ids + tokens.
+7. `eval/questions.txt` += cap-gap query.
+8. Manual live verification (Ollama up, show output).
 
 ## 13. Cutover (D6)
 
-After both expert reviews fold + owner sign-off on the diff: **merge `feat/context-budget-guard` → main**
-and `bash scripts/restart.sh` (code change → restart required). This piece is prod at end of cycle. The
-gate refit + deferred matched-chunk/grid refinements ship to main later via the DB-rebuild's own cutover.
+After the Codex re-review of rev-2 + owner sign-off on the diff: **merge `feat/context-budget-guard` → main**
+and `bash scripts/restart.sh` (code change → restart). Prod at end of cycle. The gate refit + deferred
+matched-chunk/grid refinements ship to main later via the DB-rebuild's own cutover.
