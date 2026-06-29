@@ -77,6 +77,37 @@ FREE_MODE_SYSTEM_PROMPT = (
 )
 
 
+# Sentence(s) where the model editorialises about which docs it used ("Note that I did not
+# use doc_id 17745 …"). Stripped from BOTH the displayed answer AND the text handed to
+# _source_note_for — otherwise the footer would credit a doc the model explicitly disclaimed.
+# SAFETY: the sentence must actually mention a doc_id (lookahead) — otherwise a legitimate
+# answer like "Students who did not use their meal plan…" would be wrongly deleted (never-withhold).
+_META_DOC_SENTENCE_RX = re.compile(
+    r"(?i)(?:^|\n|(?<=[.!?]\s))"                       # sentence start
+    r"(?=[^.!?\n]*\bdoc_?id\b)"                        # ONLY sentences that mention a doc_id
+    r"[^.!?\n]*\b(?:did not use|note that i|i (?:did not use|chose|used|relied))\b"
+    r"[^.!?\n]*[.!?]\s*")
+
+
+def _strip_meta_doc_sentences(text: str) -> str:
+    """Remove model meta-commentary sentences about document usage. Run BEFORE doc_id
+    harvesting so a 'did not use doc_id N' aside can never credit an unused source."""
+    return _META_DOC_SENTENCE_RX.sub(" ", text or "")
+
+
+def _strip_doc_citations(text: str) -> str:
+    """Strip internal doc_id citation artifacts and model meta-commentary from the
+    user-facing answer.  Called AFTER _source_note_for has already harvested doc_ids."""
+    t = _strip_meta_doc_sentences(text)          # drop "did not use doc_id …" asides first
+    # "According to doc_id N (source): ..." -> keep the sentence content after the connector
+    t = re.sub(r"(?i)according to doc_id\s*\d+\s*(?:\([^)]*\))?\s*[:,-]?\s*", "", t)
+    # bare or parenthesised "doc_id N" tokens
+    t = re.sub(r"(?i)\(?\bdoc_id\s*\d+\b\)?", "", t)
+    # tidy doubled spaces and misplaced punctuation
+    t = re.sub(r"\s{2,}", " ", t).replace(" .", ".").replace(" ,", ",").strip()
+    return t
+
+
 def _source_note_for(answer_text: str, chunks) -> str:
     """Credit the source(s) the answer ACTUALLY cited (its 'doc_id N' references), in
     citation order; fall back to the top-ranked retrieved chunks, in rank order. Avoids the
@@ -803,8 +834,10 @@ class MessageHandler:
                     temperature=temperature,
                 )
                 if ai_resp:
-                    response_text = ai_resp
-                    source_note = _source_note_for(ai_resp, chunks)
+                    # Harvest the footer from a META-STRIPPED copy so a "did not use doc_id N"
+                    # aside can't credit an unused source; then clean the displayed answer.
+                    source_note = _source_note_for(_strip_meta_doc_sentences(ai_resp), chunks)
+                    response_text = _strip_doc_citations(ai_resp)
                     used_ai = True
                 else:
                     best = chunks[0]

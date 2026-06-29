@@ -86,8 +86,9 @@ _ROLE_OF_ORG = re.compile(r"\b(" + _ROLE_HEAD + r")\s+(?:of|at|for|in)\b")
 _ROLE_VOCAB = ["associate dean", "assistant dean", "associate chair", "vice provost",
                "associate provost", "dean of students", "general counsel",
                "chief financial officer", "athletic director", "director of athletics",
-               "chief of staff", "provost", "chancellor", "dean", "chair", "director",
-               "coordinator", "cfo"]
+               "chief of staff", "executive director", "associate director", "assistant director",
+               "provost", "chancellor", "dean", "chair", "director",
+               "coordinator", "registrar", "cfo"]
 _ROLE_VOCAB_RX = re.compile(
     r"\b(" + "|".join(re.escape(r) for r in sorted(_ROLE_VOCAB, key=len, reverse=True)) + r")s?\b",
     re.I)
@@ -269,7 +270,13 @@ def _resolve_person(conn: sqlite3.Connection, q: str, named: list[dict]) -> dict
 def route(conn: sqlite3.Connection, question: str) -> Route | None:
     q = question.strip().lower().rstrip("?").strip()
     org_id, org_phrase = _find_org(conn, q)
-    area = _extract_area(q, org_phrase)
+    # C1: strip the matched org_phrase from the query before area extraction so org-name
+    # tokens (e.g. "studies" in "graduate studies") don't trigger a research-area verb match.
+    # Also clean up any trailing preposition left dangling after the strip (e.g. "graph in").
+    q_for_area = re.sub(r"\b" + re.escape(org_phrase) + r"\b", " ", q).strip() if org_phrase else q
+    area = _extract_area(q_for_area, org_phrase)
+    if area:
+        area = re.sub(r"\s+(?:in|at|within|of)$", "", area).strip() or None
     named = entity.persons_in_query(conn, q)   # people whose FULL name is in the query
 
     # precise "who lists X as a research area" (before the generic area branches)
@@ -366,10 +373,18 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     # shapes ("how to become a dean") fall through to RAG. Empty result → RAG.
     if not _LEADERSHIP_PROCESS.search(q):
         rm = _ROLE_VOCAB_RX.search(q)
-        if rm and (_PERSON_INTENT.search(q) or _ENUM_TRIGGER.search(q)
-                   or _ROLE_OF_ORG.search(q) or org_id is not None):
-            role = _ROLE_SYNONYM.get(rm.group(1).lower(), rm.group(1).lower())
-            return Route("people_by_role", {"role_head": role, "org_id": org_id})
+        if rm:
+            role_word = rm.group(1).lower()
+            explicit = bool(_PERSON_INTENT.search(q) or _ENUM_TRIGGER.search(q)
+                            or _ROLE_OF_ORG.search(q))
+            # The bare org_id fallback over-triggers when the role word merely NAMES the org
+            # (e.g. "registrar office hours": 'registrar' both resolves the office AND matches
+            # _ROLE_VOCAB, but the question is about the office, not a person). In that overlap,
+            # require an explicit person/enum/role-of-org cue; otherwise the bare org match suffices.
+            role_is_org = bool(org_phrase and role_word in org_phrase.lower())
+            if explicit or (org_id is not None and not role_is_org):
+                role = _ROLE_SYNONYM.get(role_word, role_word)
+                return Route("people_by_role", {"role_head": role, "org_id": org_id})
 
     # Faculty roster is MORE SPECIFIC than the generic people list, so it wins first — e.g.
     # "academic staff in biology" is a faculty ask even though it contains 'staff' (which the

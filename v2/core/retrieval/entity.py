@@ -159,7 +159,7 @@ def people_by_role(conn: sqlite3.Connection, role_head: str,
     # A leading SCOPE word ("Department Chair", "Departmental Chair") is not a rank modifier — strip
     # it so "chair" matches "Department Chair", while a RANK modifier (Vice/Associate Chair) still
     # won't match (it isn't a scope word).
-    _scope = re.compile(r"^(?:departmental|department)\s+", re.I)
+    _scope = re.compile(r"^(?:departmental|department|university|interim)\s+", re.I)
     sql = ("SELECT p.name, e.attrs, p.attrs, o.name FROM edges e JOIN nodes p ON p.id=e.src_id "
            "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
            "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1")
