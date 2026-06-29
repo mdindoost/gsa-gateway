@@ -89,25 +89,35 @@ def _count_chunks_without_vectors(conn: sqlite3.Connection) -> int:
     ).fetchone()[0]
 
 
+# ASCII whitespace the chunker strips (chunker.chunk_text does text.strip()): an item
+# whose content trims to empty yields zero chunks, so it is NOT a coverage hole. SQLite's
+# 2-arg TRIM removes any of these chars from both ends, matching str.strip() for the
+# (ASCII-whitespace) crawled content we store.
+_WS_CHARS = " \t\n\r\f\v"
+
+
 def _count_served_items_without_current_chunks(
     conn: sqlite3.Connection, model_id: str, exclude_types: frozenset[str]
 ) -> int:
-    """Count active served items that have no chunk for the active model_id.
+    """Count active served items (with real content) that have no chunk for the active model_id.
 
     'Served' means is_active=1 AND type NOT IN exclude_types — exactly the
-    set the retriever's DEFAULT_EXCLUDE_TYPES definition covers.
+    set the retriever's DEFAULT_EXCLUDE_TYPES definition covers. Items whose
+    content is empty/whitespace-only are excluded: the chunker strips them to
+    zero chunks, so they are covered-by-skip, not a coverage hole.
     """
     placeholders = ",".join("?" * len(exclude_types))
     sql = f"""
         SELECT COUNT(*) FROM knowledge_items i
         WHERE i.is_active = 1
           AND i.type NOT IN ({placeholders})
+          AND TRIM(COALESCE(i.content, ''), ?) <> ''
           AND NOT EXISTS (
               SELECT 1 FROM knowledge_chunks c
               WHERE c.parent_id = i.id AND c.model_id = ?
           )
     """
-    return conn.execute(sql, (*exclude_types, model_id)).fetchone()[0]
+    return conn.execute(sql, (*exclude_types, _WS_CHARS, model_id)).fetchone()[0]
 
 
 def _count_stale_model_chunks(conn: sqlite3.Connection, model_id: str) -> int:

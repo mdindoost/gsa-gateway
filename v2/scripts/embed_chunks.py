@@ -54,9 +54,14 @@ def main() -> None:
 
     # Phase 1 — chunk + insert chunk rows; collect embed work.
     pending = []  # (chunk_id, embed_input, org_id, type, parent_id)
+    skipped_empty = 0  # servable items whose content trims to empty -> 0 chunks (covered-by-skip)
     for r in rows:
         drop_item_chunks(conn, r["id"])
-        for ordinal, ch in enumerate(chunk_text(r["content"] or "", d)):
+        item_chunks = chunk_text(r["content"] or "", d)
+        if not item_chunks:
+            skipped_empty += 1
+            continue
+        for ordinal, ch in enumerate(item_chunks):
             cur = conn.execute(
                 "INSERT INTO knowledge_chunks(parent_id, source_key, ordinal, text, content_hash, model_id) "
                 "VALUES (?,?,?,?,?,?)",
@@ -65,7 +70,7 @@ def main() -> None:
             embed_input = d.doc_prefix + d.truncate_to_tokens(ch, d.context_window)
             pending.append((cur.lastrowid, embed_input, r["org_id"], r["type"], r["id"]))
     conn.commit()
-    print(f"chunked items={len(rows)} chunks={len(pending)}", flush=True)
+    print(f"chunked items={len(rows)} chunks={len(pending)} skipped_empty={skipped_empty}", flush=True)
 
     # Phase 2 — batch embed + write vectors.
     written = 0

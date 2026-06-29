@@ -210,3 +210,39 @@ def test_reconcile_drops_chunks_of_deactivated_item(tmp_path):
         "SELECT COUNT(*) FROM knowledge_chunks WHERE parent_id=?", (aid,)).fetchone()[0] == 0
     assert conn.execute(
         "SELECT COUNT(*) FROM knowledge_chunk_vectors WHERE parent_id=?", (aid,)).fetchone()[0] == 0
+
+
+# ── A3: empty/whitespace content items are skipped, not a coverage hole ────────
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n  \r\n", "\f\v"])
+def test_empty_content_item_skipped_not_invariant_violation(tmp_path, blank):
+    """A servable item with empty/whitespace-only content produces 0 chunks AND
+    is NOT counted as a coverage hole (the chunker strips → no zero-length chunk)."""
+    from v2.core.retrieval.chunk_populate import populate_item_chunks
+
+    conn = create_all(str(tmp_path / "t.db"))
+    _seed_org(conn)
+    conn.execute(
+        "INSERT INTO knowledge_items(id,org_id,type,content,is_active) VALUES (300,1,'policy',?,1)",
+        (blank,),
+    )
+    written = populate_item_chunks(conn, 300, _fake_embed, D)
+    assert written == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM knowledge_chunks WHERE parent_id=300").fetchone()[0] == 0
+    # Must NOT raise: an empty-content item is covered (excluded from the denominator).
+    assert_chunk_invariant(conn, D)
+    assert corpus_build_ready(conn, D) is True
+
+
+def test_empty_content_item_does_not_mask_real_hole(tmp_path):
+    """A real uncovered item (non-blank, no chunks) still fails the invariant
+    even when an empty-content sibling is present (the guard is content-scoped)."""
+    conn = create_all(str(tmp_path / "t.db"))
+    _seed_org(conn)
+    conn.execute(
+        "INSERT INTO knowledge_items(id,org_id,type,content,is_active) VALUES (300,1,'policy','   ',1)")
+    conn.execute(
+        "INSERT INTO knowledge_items(id,org_id,type,content,is_active) VALUES (301,1,'policy','real',1)")
+    with pytest.raises(AssertionError):
+        assert_chunk_invariant(conn, D)
