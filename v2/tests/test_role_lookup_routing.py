@@ -276,3 +276,93 @@ def test_meta_strip_preserves_legit_did_not_use_prose():
     assert _strip_meta_doc_sentences(legit) == legit          # untouched (no doc_id)
     assert "did not use their meal plan" in _strip_doc_citations(legit)
     assert "I-20 forms must be filed" in _strip_doc_citations(legit)
+
+
+# ── Part E: org-hierarchy climbing for role-scope mismatches ──────────────────
+# When a role's required org-type level (dean→college, chair→dept) outranks the
+# resolved org's type, the router must climb parent_id until it finds the right level.
+
+@pytest.fixture()
+def conn_hierarchy(conn):
+    """Extend the base conn fixture with a lone-dept (no college ancestor) and
+    a dean-of-students office org for climb guard tests."""
+    # Lone department: no college parent (parent_id = NULL implicitly)
+    conn.execute(
+        "INSERT INTO organizations(id, name, slug, type) "
+        "VALUES (30, 'Orphan Department', 'orphan-dept', 'department')"
+    )
+    # Dean of Students office
+    conn.execute(
+        "INSERT INTO organizations(id, name, slug, type, metadata) "
+        "VALUES (20, 'Dean of Students Office', 'dean-of-students', 'office', "
+        "        '{\"aliases\": [\"dean of students\"]}')"
+    )
+    conn.commit()
+    return conn
+
+
+def test_dean_of_cs_climbs_to_ywcc(conn_hierarchy):
+    """E1: 'who is the dean of the computer science department' → org_id must be
+    the COLLEGE (YWCC id=4), NOT the department (CS id=5)."""
+    result = route(conn_hierarchy, "who is the dean of the computer science department")
+    assert result is not None, "Expected a structured route, got None (fell to RAG)"
+    assert result.skill == "people_by_role"
+    assert result.args["org_id"] == 4, (
+        f"Expected org_id=4 (YWCC college), got {result.args['org_id']}"
+    )
+
+
+def test_chair_of_cs_stays_at_dept(conn_hierarchy):
+    """E2: 'who is the chair of the computer science department' → org_id must be
+    CS dept (id=5); chair scope == department, no climb."""
+    result = route(conn_hierarchy, "who is the chair of the computer science department")
+    assert result is not None
+    assert result.skill == "people_by_role"
+    assert result.args["org_id"] == 5, (
+        f"Expected org_id=5 (CS dept), got {result.args['org_id']}"
+    )
+
+
+def test_dean_of_ywcc_no_climb(conn_hierarchy):
+    """E3: 'who is the dean of ywcc' → org already college, org_id stays 4."""
+    result = route(conn_hierarchy, "who is the dean of ywcc")
+    assert result is not None
+    assert result.skill == "people_by_role"
+    assert result.args["org_id"] == 4, (
+        f"Expected org_id=4 (YWCC), got {result.args['org_id']}"
+    )
+
+
+def test_provost_no_org_no_crash(conn_hierarchy):
+    """E4: 'who is the provost' — no org in query, org_id=None; must not crash and
+    must return a route (or None for RAG); either is fine as long as it doesn't error."""
+    try:
+        result = route(conn_hierarchy, "who is the provost")
+        # org_id=None means no climb attempted; result may be None (RAG) or a route
+        if result is not None:
+            assert result.skill == "people_by_role"
+            assert result.args.get("org_id") is None
+    except Exception as exc:
+        pytest.fail(f"route() raised unexpectedly: {exc}")
+
+
+def test_dean_lone_dept_no_ancestor_graceful(conn_hierarchy):
+    """E5: 'who is the dean of orphan dept' — orphan has no college ancestor; climb
+    finds nothing; org_id must NOT crash and must fall back to the dept itself."""
+    result = route(conn_hierarchy, "who is the dean of orphan dept")
+    # Either falls to RAG (None) or routes with the dept id (graceful fallback) — no crash.
+    if result is not None and result.skill == "people_by_role":
+        assert result.args["org_id"] == 30, (
+            f"Graceful fallback expected org_id=30, got {result.args['org_id']}"
+        )
+
+
+def test_dean_of_students_does_not_climb(conn_hierarchy):
+    """E6: 'who is the dean of students' — 'dean of students' is level 0 in
+    ROLE_SCOPE_LEVEL; the org must stay at the dean-of-students office (id=20)."""
+    result = route(conn_hierarchy, "who is the dean of students")
+    assert result is not None, "Expected a structured route for dean-of-students"
+    assert result.skill == "people_by_role"
+    assert result.args["org_id"] == 20, (
+        f"dean-of-students must not climb; expected org_id=20, got {result.args['org_id']}"
+    )

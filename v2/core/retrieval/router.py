@@ -93,6 +93,56 @@ _ROLE_VOCAB_RX = re.compile(
     r"\b(" + "|".join(re.escape(r) for r in sorted(_ROLE_VOCAB, key=len, reverse=True)) + r")s?\b",
     re.I)
 _ROLE_SYNONYM = {"cfo": "chief financial officer", "athletic director": "director of athletics"}
+
+# Hierarchical level for org types (everything else defaults to 0 via .get(t, 0)).
+ORG_TYPE_LEVEL: dict[str, int] = {
+    "university": 3,
+    "college": 2,
+    "school": 2,
+    "department": 1,
+}
+
+# Required org-type level for clearly hierarchical roles.
+# NOTE: "dean of students" is deliberately EXCLUDED — it is a specific office role
+# (not the college-level academic dean), so it stays at level 0 and never climbs.
+# Purely administrative titles (director/coordinator/registrar/etc.) also default to 0.
+ROLE_SCOPE_LEVEL: dict[str, int] = {
+    "provost": 3,
+    "vice provost": 3,
+    "associate provost": 3,
+    "chancellor": 3,
+    "dean": 2,
+    "associate dean": 2,
+    "assistant dean": 2,
+    "chair": 1,
+    "associate chair": 1,
+}
+
+
+def _climb_to_scope(
+    conn: sqlite3.Connection, org_id: int, target_level: int
+) -> int | None:
+    """Walk parent_id from org_id; return the first org (self included) whose
+    ORG_TYPE_LEVEL equals target_level.  Returns None when no matching ancestor
+    exists (the caller leaves org_id as-is — graceful degradation).
+    Guards against cycles with a 6-hop cap."""
+    seen: set[int] = set()
+    current: int | None = org_id
+    for _ in range(6):
+        if current is None or current in seen:
+            return None
+        seen.add(current)
+        row = conn.execute(
+            "SELECT type, parent_id FROM organizations WHERE id=?", (current,)
+        ).fetchone()
+        if row is None:
+            return None
+        org_type, parent_id = row
+        if ORG_TYPE_LEVEL.get(org_type, 0) == target_level:
+            return current
+        current = parent_id
+    return None
+
 # Duties/process/eligibility => NOT an identity ask (mirrors _OFFICER_PROCESS).
 _LEADERSHIP_PROCESS = re.compile(
     r"\b(do(?:es)?|responsib|dut(?:y|ies)|how\s+(?:to|do)|become|elect|appoint|"
@@ -384,7 +434,21 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
             role_is_org = bool(org_phrase and role_word in org_phrase.lower())
             if explicit or (org_id is not None and not role_is_org):
                 role = _ROLE_SYNONYM.get(role_word, role_word)
-                return Route("people_by_role", {"role_head": role, "org_id": org_id})
+                # Hierarchy climb: if the role's required org-type level outranks the
+                # resolved org's type, walk up to the nearest ancestor that matches.
+                # Example: "dean of CS dept" → dean needs college-level → climb to YWCC.
+                role_level = ROLE_SCOPE_LEVEL.get(role, 0)
+                target_org = org_id
+                if org_id is not None and role_level > 0:
+                    org_type_row = conn.execute(
+                        "SELECT type FROM organizations WHERE id=?", (org_id,)
+                    ).fetchone()
+                    cur_level = ORG_TYPE_LEVEL.get(org_type_row[0], 0) if org_type_row else 0
+                    if role_level > cur_level:
+                        climbed = _climb_to_scope(conn, org_id, role_level)
+                        if climbed is not None:
+                            target_org = climbed
+                return Route("people_by_role", {"role_head": role, "org_id": target_org})
 
     # Faculty roster is MORE SPECIFIC than the generic people list, so it wins first — e.g.
     # "academic staff in biology" is a faculty ask even though it contains 'staff' (which the
