@@ -53,32 +53,6 @@ def assert_no_orphans(conn: sqlite3.Connection) -> None:
     assert item == 0 and chunk == 0, f"orphan vectors present: item={item} chunk={chunk}"
 
 
-# ── Orphan-chunk helpers (mirror of orphan-chunk-vector helpers above) ─────────
-
-_ORPHAN_CHUNKS = """
-    SELECT c.id FROM knowledge_chunks c
-    LEFT JOIN knowledge_items i ON i.id = c.parent_id AND i.is_active = 1
-    WHERE i.id IS NULL
-"""
-
-
-def count_orphan_chunks(conn: sqlite3.Connection) -> int:
-    """Count knowledge_chunks whose parent item is inactive or missing."""
-    return conn.execute(f"SELECT COUNT(*) FROM ({_ORPHAN_CHUNKS})").fetchone()[0]
-
-
-def sweep_orphan_chunks(conn: sqlite3.Connection) -> int:
-    """Delete knowledge_chunks whose parent item is inactive or missing.
-
-    Mirrors sweep_orphan_chunk_vectors but targets the chunk rows themselves.
-    Reconcile deactivates an item (is_active=0) → its chunks become orphans;
-    this sweep completes the invalidation. Callers own the transaction.
-    """
-    ids = [r[0] for r in conn.execute(_ORPHAN_CHUNKS)]
-    conn.executemany("DELETE FROM knowledge_chunks WHERE id = ?", [(i,) for i in ids])
-    return len(ids)
-
-
 # ── Chunk-invariant helpers ──────────────────────────────────────────────────
 
 def _chunk_vector_schema_dim(conn: sqlite3.Connection) -> int | None:

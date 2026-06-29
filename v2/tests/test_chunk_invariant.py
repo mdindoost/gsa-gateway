@@ -170,3 +170,43 @@ def test_corpus_build_ready_false_when_invariant_fails(tmp_path):
         "VALUES (100,1,'policy','x',1)"
     )
     assert corpus_build_ready(conn, D) is False
+
+
+# ── A2: reconcile drops a deactivated item's chunks (recrawl invalidation) ────
+
+def _fake_embed(_text):
+    """Deterministic offline embedder: a fixed unit vector of descriptor width."""
+    return [1.0] + [0.0] * (D.dim - 1)
+
+
+def _kitem(content, nk):
+    from v2.core.ingestion.entity import KItem
+    return KItem(type="policy", title="T", content=content, natural_key=nk,
+                 metadata={"entity_id": "ent-1"}, source_url="https://x")
+
+
+def test_reconcile_drops_chunks_of_deactivated_item(tmp_path):
+    """When reconcile deactivates an item (it vanished on recrawl), its chunks are gone."""
+    from v2.core.ingestion.reconcile import reconcile_entity
+    from v2.core.retrieval.chunk_populate import populate_item_chunks
+
+    conn = create_all(str(tmp_path / "t.db"))
+    _seed_org(conn)
+    # Crawl v1: entity has one item (natural_key ent:a).
+    res = reconcile_entity(conn, 1, "ent-1", [_kitem("alpha body", "ent:a")],
+                           created_by="college_crawl")
+    aid = res.inserted_ids[0]
+    populate_item_chunks(conn, aid, _fake_embed, D)
+    conn.commit()
+    assert conn.execute(
+        "SELECT COUNT(*) FROM knowledge_chunks WHERE parent_id=?", (aid,)).fetchone()[0] > 0
+
+    # Recrawl: ent:a is gone, a different item arrives → ent:a is DEACTIVATED.
+    res2 = reconcile_entity(conn, 1, "ent-1", [_kitem("beta body", "ent:b")],
+                            created_by="college_crawl")
+    assert aid in res2.deactivated_ids
+    # Its chunks (and their vectors) must be dropped, not orphaned.
+    assert conn.execute(
+        "SELECT COUNT(*) FROM knowledge_chunks WHERE parent_id=?", (aid,)).fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM knowledge_chunk_vectors WHERE parent_id=?", (aid,)).fetchone()[0] == 0

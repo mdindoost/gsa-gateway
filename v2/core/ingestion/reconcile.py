@@ -21,6 +21,7 @@ import json
 from dataclasses import dataclass, field
 
 from v2.core.ingestion.entity import KItem
+from v2.core.retrieval.chunk_populate import drop_item_chunks
 
 
 @dataclass
@@ -130,6 +131,10 @@ def reconcile_entity(conn, org_id: int, entity_id: str, items: list[KItem],
             conn.execute(
                 "UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') WHERE id=?",
                 (row["id"],))
+            # Drop the superseded item's chunks so the next embed pass re-chunks the
+            # new version and no orphan chunks survive the recrawl (mirrors the
+            # whole-doc vectors_to_drop the caller already handles). [Phase A / A2]
+            drop_item_chunks(conn, row["id"])
             new_id = _insert(conn, org_id, item, new_meta, created_by,
                              version=row["version"] + 1, root_id=row["root_id"],
                              parent_id=row["id"])
@@ -148,6 +153,7 @@ def reconcile_entity(conn, org_id: int, entity_id: str, items: list[KItem],
                 conn.execute(
                     "UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') WHERE id=?",
                     (row["id"],))
+                drop_item_chunks(conn, row["id"])   # invalidate chunks of the dropped item [A2]
                 result.deactivated_ids.append(row["id"])
 
         # B1: project the entity into the graph in the SAME transaction, so the
