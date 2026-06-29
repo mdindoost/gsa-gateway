@@ -1,8 +1,13 @@
 # v2/tests/test_deep_fallback_ladder.py
 # Pure unit test of the adopt-if-better decision, extracted as a helper.
+import asyncio
 import struct
+from types import SimpleNamespace
 
-from bot.core.message_handler import _deep_adopt   # to be added in Step 4
+import bot.config as botcfg
+from bot.core.message_handler import (
+    _deep_adopt, MessageHandler, MessageRequest)
+from bot.services.intent_detector import INTENT_QUESTION
 from v2.core.database.schema import create_all, get_connection
 from v2.core.retrieval.model_descriptor import active_descriptor
 from v2.integration.retriever_shim import V2RetrieverShim
@@ -92,3 +97,82 @@ def test_corpus_ready_cached_per_process(tmp_path):
     conn.close()
     # Cheap-but-not-free check is cached per-process (flags only flip at restart).
     assert shim.corpus_ready() is False
+
+
+# ── A1 (handler level): the miss-ladder HONORS corpus_ready() ─────────────────
+# Proves the gate is wired into _rag_pipeline, not just present on the shim.
+
+class _FakeRescueChunk:
+    def __init__(self, text, rel):
+        self.text = text; self.relevance_score = rel; self.item_id = 7
+        self.source_file = "deep__doc"; self.section_title = "Deep"; self.source_url = None
+
+
+class _FakeDeepRetriever:
+    """Primary + office retrieves MISS (→ deep branch reached); retrieve_deep would
+    rescue, but only if the gate lets it run. corpus_ready is configurable and
+    retrieve_deep records whether it was called."""
+    def __init__(self, ready):
+        self._ready = ready
+        self.deep_called = False
+
+    async def retrieve(self, query=None, conversation_history=None,
+                       source_type_filter=None, item_types=None):
+        return []                                       # curated + office miss
+
+    def corpus_ready(self):
+        return self._ready
+
+    async def retrieve_deep(self, query, query_vec=None, item_types=None):
+        self.deep_called = True
+        return [_FakeRescueChunk("Deep policy: the answer is 42.", 0.9)]
+
+    def top_relevance(self, q, chunks):
+        return chunks[0].relevance_score if chunks else None
+
+
+class _FakeOllama:
+    async def generate_answer(self, question, chunks, conversation_history=None, temperature=0.3):
+        return f"{chunks[0].text} (doc_id {chunks[0].item_id})"
+    async def expand_query(self, t):
+        return t
+
+
+class _FakeConv:
+    def get_mode(self, uid): return "gsa"
+    def get_history(self, uid, max_turns=5): return []
+    def add_turn(self, **k): pass
+
+
+def _deep_handler(retriever):
+    return MessageHandler(retriever=retriever, ollama=_FakeOllama(),
+                          conversation_manager=_FakeConv(), intent_detector=None, db=None,
+                          rate_limiter=None, kb=None,
+                          config=SimpleNamespace(conversation_max_turns=5))
+
+
+def test_handler_skips_deep_when_corpus_not_ready(monkeypatch):
+    monkeypatch.setattr(botcfg, "RETRIEVAL_DEEP_FALLBACK", True)
+    monkeypatch.setattr(botcfg, "DEEP_FALLBACK_THRESHOLD", 0.15)
+    monkeypatch.setattr(botcfg, "LIVE_ENABLED", False)   # isolate: no live fallback
+    monkeypatch.setattr(botcfg, "LIVE_THRESHOLD", 0.15)
+    r = _FakeDeepRetriever(ready=False)
+    h = _deep_handler(r)
+    req = MessageRequest(user_id="u", text="deep policy question", platform="discord")
+    resp = asyncio.run(h._rag_pipeline(req, "deep policy question", INTENT_QUESTION))
+    assert r.deep_called is False        # gate skipped the rescue
+    assert resp.is_deep is False
+
+
+def test_handler_runs_deep_when_corpus_ready(monkeypatch):
+    monkeypatch.setattr(botcfg, "RETRIEVAL_DEEP_FALLBACK", True)
+    monkeypatch.setattr(botcfg, "DEEP_FALLBACK_THRESHOLD", 0.15)
+    monkeypatch.setattr(botcfg, "LIVE_ENABLED", False)
+    monkeypatch.setattr(botcfg, "LIVE_THRESHOLD", 0.15)
+    r = _FakeDeepRetriever(ready=True)
+    h = _deep_handler(r)
+    req = MessageRequest(user_id="u", text="deep policy question", platform="discord")
+    resp = asyncio.run(h._rag_pipeline(req, "deep policy question", INTENT_QUESTION))
+    assert r.deep_called is True         # gate allowed the rescue
+    assert resp.is_deep is True
+    assert "42" in resp.text
