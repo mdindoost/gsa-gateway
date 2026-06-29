@@ -671,8 +671,12 @@ class MessageHandler:
                     chunks = office_chunks            # generate from local office prose (KB)
                     used_office = True
             used_deep = False
+            # Gate the deep rescue on corpus readiness: skip it when the chunk corpus
+            # isn't built/coherent for the active model (corpus_ready() is cached + only
+            # evaluated once the flag is on, so it stays inert until RETRIEVAL_DEEP_FALLBACK
+            # flips). Flipping the flag on an un-built DB is then a safe no-op.
             if (primary_miss and not used_office and botcfg.RETRIEVAL_DEEP_FALLBACK
-                    and self.retriever):
+                    and self.retriever and self.retriever.corpus_ready()):
                 _t0 = time.perf_counter()
                 rescue = await self.retriever.retrieve_deep(base_q)   # query_vec reuse: see note
                 elapsed_ms = (time.perf_counter() - _t0) * 1000

@@ -19,6 +19,8 @@ import logging
 from dataclasses import dataclass, field
 
 from v2.core.database.schema import get_connection
+from v2.core.database.vector_gc import corpus_build_ready
+from v2.core.retrieval.model_descriptor import active_descriptor
 from v2.core.retrieval.retriever import V2Retriever
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,27 @@ class V2RetrieverShim:
         self.org_id = org_id  # None = search the whole org tree
         self.reranker = reranker  # shared singleton; passed into each per-call V2Retriever
         self._sem = asyncio.Semaphore(max_concurrency)  # serialize v2 sqlite access
+        self._corpus_ready: bool | None = None  # cached corpus_build_ready (per-process)
+
+    def corpus_ready(self) -> bool:
+        """Whether the chunk corpus is built + coherent for the active model.
+
+        Gates the deep-fallback rescue tier (see message_handler): flipping
+        RETRIEVAL_DEEP_FALLBACK on a DB whose chunks aren't built yet is then a
+        safe no-op rather than an empty/incoherent rescue. Result is cached
+        per-process — the corpus state is fixed at startup (flags only flip at
+        restart), so this cheap-but-not-free invariant check runs once.
+        """
+        if self._corpus_ready is None:
+            conn = get_connection(self.db_path)
+            try:
+                self._corpus_ready = corpus_build_ready(conn, active_descriptor())
+            except Exception:  # noqa: BLE001 - never break the answer path; treat as not ready
+                logger.exception("corpus_build_ready check failed; treating corpus as not ready")
+                self._corpus_ready = False
+            finally:
+                conn.close()
+        return self._corpus_ready
 
     # ── v1 Retriever interface ────────────────────────────────────────────────
     async def retrieve(self, query, conversation_history=None, source_type_filter=None,
