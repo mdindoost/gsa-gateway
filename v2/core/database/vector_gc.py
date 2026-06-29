@@ -89,13 +89,6 @@ def _count_chunks_without_vectors(conn: sqlite3.Connection) -> int:
     ).fetchone()[0]
 
 
-# ASCII whitespace the chunker strips (chunker.chunk_text does text.strip()): an item
-# whose content trims to empty yields zero chunks, so it is NOT a coverage hole. SQLite's
-# 2-arg TRIM removes any of these chars from both ends, matching str.strip() for the
-# (ASCII-whitespace) crawled content we store.
-_WS_CHARS = " \t\n\r\f\v"
-
-
 def _count_served_items_without_current_chunks(
     conn: sqlite3.Connection, model_id: str, exclude_types: frozenset[str]
 ) -> int:
@@ -103,21 +96,27 @@ def _count_served_items_without_current_chunks(
 
     'Served' means is_active=1 AND type NOT IN exclude_types — exactly the
     set the retriever's DEFAULT_EXCLUDE_TYPES definition covers. Items whose
-    content is empty/whitespace-only are excluded: the chunker strips them to
-    zero chunks, so they are covered-by-skip, not a coverage hole.
+    content is empty/whitespace-only are excluded: the chunker yields zero chunks
+    for them, so they are covered-by-skip, not a coverage hole. Blankness is judged
+    with the chunker's OWN predicate (``chunker.is_blank`` → Python ``str.strip``)
+    so "blank" means the same thing here as in the chunker (incl. Unicode whitespace).
+    We fetch the content of the uncovered candidates (normally none/few) and filter
+    blanks in Python rather than approximating ``str.strip`` in SQL.
     """
+    from v2.core.retrieval.chunker import is_blank  # noqa: PLC0415 - avoid import cost at module load
+
     placeholders = ",".join("?" * len(exclude_types))
     sql = f"""
-        SELECT COUNT(*) FROM knowledge_items i
+        SELECT i.content FROM knowledge_items i
         WHERE i.is_active = 1
           AND i.type NOT IN ({placeholders})
-          AND TRIM(COALESCE(i.content, ''), ?) <> ''
           AND NOT EXISTS (
               SELECT 1 FROM knowledge_chunks c
               WHERE c.parent_id = i.id AND c.model_id = ?
           )
     """
-    return conn.execute(sql, (*exclude_types, _WS_CHARS, model_id)).fetchone()[0]
+    rows = conn.execute(sql, (*exclude_types, model_id)).fetchall()
+    return sum(1 for r in rows if not is_blank(r[0] or ""))
 
 
 def _count_stale_model_chunks(conn: sqlite3.Connection, model_id: str) -> int:

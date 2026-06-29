@@ -16,6 +16,16 @@ from v2.core.retrieval.model_descriptor import ModelDescriptor
 _SENT_END = ".!?\n"
 
 
+def is_blank(text: str) -> bool:
+    """True iff `text` has no content the chunker would chunk.
+
+    The single source of truth for "blank" — both ``chunk_text`` (which yields
+    zero chunks) and the chunk invariant's coverage check use it, so an item is
+    considered empty in EXACTLY the same way in both places (Python ``str.strip``,
+    i.e. Unicode whitespace — not just ASCII)."""
+    return not (text or "").strip()
+
+
 def _snap_back(text: str, offsets, start: int, end: int) -> int:
     """Largest token index e in (start, end] whose last char ends a sentence; else `end`.
 
@@ -31,9 +41,9 @@ def _snap_back(text: str, offsets, start: int, end: int) -> int:
 
 
 def chunk_text(text: str, descriptor: ModelDescriptor) -> list[str]:
-    text = text.strip()
-    if not text:
+    if is_blank(text):
         return []
+    text = text.strip()
     enc = descriptor.tokenizer.encode(text, add_special_tokens=False)
     offsets = enc.offsets
     n = len(enc.ids)

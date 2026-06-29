@@ -214,10 +214,14 @@ def test_reconcile_drops_chunks_of_deactivated_item(tmp_path):
 
 # ── A3: empty/whitespace content items are skipped, not a coverage hole ────────
 
-@pytest.mark.parametrize("blank", ["", "   ", "\t\n  \r\n", "\f\v"])
+@pytest.mark.parametrize("blank", [
+    "", "   ", "\t\n  \r\n", "\f\v",
+    " ", "  ", " 　",  # Unicode whitespace str.strip() removes
+])
 def test_empty_content_item_skipped_not_invariant_violation(tmp_path, blank):
     """A servable item with empty/whitespace-only content produces 0 chunks AND
-    is NOT counted as a coverage hole (the chunker strips → no zero-length chunk)."""
+    is NOT counted as a coverage hole. 'Blank' must mean the SAME thing in the
+    invariant as in the chunker (Python str.strip), incl. Unicode whitespace."""
     from v2.core.retrieval.chunk_populate import populate_item_chunks
 
     conn = create_all(str(tmp_path / "t.db"))
