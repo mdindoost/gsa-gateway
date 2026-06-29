@@ -33,6 +33,11 @@ def mock_services():
     retriever = AsyncMock()
     # top_relevance is synchronous — prevent AsyncMock from wrapping it as a coroutine
     retriever.top_relevance = MagicMock(return_value=0.9)
+    # corpus_ready is synchronous; default False so the deep-fallback rescue tier stays
+    # INERT in these handler tests (it has its own suite, test_deep_fallback_ladder.py).
+    # Otherwise AsyncMock makes corpus_ready() truthy and retrieve_deep() returns a mock,
+    # spuriously firing deep-rescue and masking the canned-fallback path.
+    retriever.corpus_ready = MagicMock(return_value=False)
 
     return {
         "retriever": retriever,

@@ -31,9 +31,24 @@ from bot.core.live_fallback import maybe_answer_live
 from v2.integration.njit_search import search as brave_search
 from v2.core.ingestion.explore import http_fetch
 from v2.core.retrieval.route_shadow import log_shadow
+from v2.core.retrieval.answer_gate import (
+    gate1_intent, gate2_prompt, parse_gate2, gate_decision, is_fact_shaped, verify_support,
+)
 import bot.config as botcfg
 
 logger = logging.getLogger(__name__)
+
+# Canned KB-miss deflection — used in three places: the normal no-chunks branch, the
+# gate-2 answerability-deflect branch, and the Gate-1 pre-retrieval deflect. Single
+# constant so the wording can never drift between them.
+_KB_MISS_RESPONSE = (
+    "I wasn't able to find specific information about that "
+    "in the GSA knowledge base.\n\n"
+    "For accurate information, please:\n"
+    "- Visit the GSA office at Campus Center 110A (weekdays 11AM–5PM)\n"
+    "- Email us at gsa-pres@njit.edu\n"
+    "- Use /contact to find the right officer"
+)
 
 _OFFICER_FIRST_NAMES = {
     "fernando", "mohammad", "mohith", "durvish", "nistha", "ritwik",
@@ -168,6 +183,19 @@ class MessageHandler:
         explicit_topic = parse_explicit_live_search(clean_text)
         if explicit_topic is not None:
             return await self._answer_explicit_live(req, explicit_topic)
+
+        # ── Answer-gate Gate-1 (deterministic intent deflect, pre-retrieval) ───
+        # GSA mode only (not free, not judging); gate DEFAULTS OFF (ANSWER_GATE_ENABLED=0).
+        # EXEMPT structured/KG (review BLOCKER): only deflect when Gate-1 fires AND the
+        # deterministic layer cannot answer it — so a personal/live-PHRASED but structured-
+        # answerable query (e.g. a KG role/contact lookup) is never withheld. _try_structured
+        # runs only on the rare Gate-1-fire path (short-circuit); structured-answerable falls
+        # through to the router, which produces the proper response shape.
+        if botcfg.ANSWER_GATE_ENABLED and mode == "gsa":
+            _g1 = gate1_intent(clean_text)
+            if _g1.deflect and await self._try_structured(resolved_query) is None:
+                logger.debug("answer-gate G1 deflect cue=%s q=%r", _g1.cue, clean_text[:80])
+                return MessageResponse(text=_KB_MISS_RESPONSE)
 
         # ── Kavosh v2.1 UnifiedRouter ─────────────────────────────────────────
         # ROUTER_V21 + SHADOW: compute the new decision and only LOG it (answer still comes
@@ -703,9 +731,64 @@ class MessageHandler:
                     used_live = True
                     logger.info("live njit.edu fallback answered from %s", live.source_url)
 
+            # ── Answer-gate Gate-2 (post-retrieval LLM answerability check) ─────────────
+            # Runs ONLY when the flag is on, we have chunks, the live tier did NOT answer
+            # (used_live is False), and the intent is not in the always-answerable exempt set.
+            # `relevance` was computed above at the primary-miss check — reuse that value;
+            # it is the same ce_score the shadow harness used for band calibration (0.70).
+            _gate_deflected = False
+            if (botcfg.ANSWER_GATE_ENABLED and not used_live
+                    and intent not in (INTENT_FOOD, INTENT_SOCIAL) and chunks):
+                _g2_ctx = [(getattr(c, "text", "") or "")[:1200] for c in chunks[:5]]
+                # Recompute on the FINAL chunks: office/deep rescue may have REPLACED `chunks`,
+                # making the primary-miss `relevance` stale for a different context (review MAJOR).
+                _g2_ce = self.retriever.top_relevance(base_q, chunks) if self.retriever else relevance
+                _g2_fact = is_fact_shaped(base_q)
+                _g2_dec = gate_decision(None, _g2_ce, None, botcfg.ANSWER_GATE_BAND,
+                                        fact_shaped=_g2_fact)
+                if _g2_dec.run_gate2 and self.ollama:
+                    _g2_sys, _g2_usr = gate2_prompt(base_q, _g2_ctx)
+                    _g2_raw = await self.ollama.generate(
+                        prompt=_g2_usr, system=_g2_sys,
+                        options={"temperature": 0.0, "num_predict": 256},
+                        fmt="json",
+                    ) or ""
+                    _g2_v = verify_support(parse_gate2(_g2_raw), _g2_ctx)
+                    _g2_dec = gate_decision(None, _g2_ce, _g2_v.label, botcfg.ANSWER_GATE_BAND,
+                                           fact_shaped=_g2_fact)
+                if _g2_dec.outcome in ("deflect", "fallback"):
+                    # NOT-IN-CONTEXT is NEVER terminal while an answering tier is untried
+                    # (fold #5, never-withhold). The shadow scored this verdict as soft/
+                    # downstream — NOT a false-deflect. If live has not run this turn (e.g. a
+                    # deep-rescue set primary_miss=False and skipped it, or retrieval looked
+                    # confident), try live njit.edu BEFORE deflecting; deflect only if it misses.
+                    if (not attempted_live and botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
+                            and self.ollama and self.retriever):
+                        attempted_live = True
+                        live = await self.live_search(base_q)
+                        if live is not None:
+                            response_text = live.text
+                            source_note = live.source_url
+                            used_ai = True
+                            used_live = True
+                            logger.info("answer-gate G2->live answered from %s", live.source_url)
+                    if not used_live:
+                        _gate_deflected = True
+                        logger.debug(
+                            "answer-gate G2 deflect outcome=%s ce=%s fact=%s q=%r",
+                            _g2_dec.outcome, _g2_ce, _g2_fact, base_q[:80],
+                        )
+
             # Generate
             if used_live:
                 pass
+            elif _gate_deflected:
+                # Gate decided this question cannot be answered from the retrieved context AND
+                # every answering tier (office, deep, live) has now been tried and missed — so a
+                # deflect here withholds nothing that any tier could have supplied (never-withhold).
+                response_text = _KB_MISS_RESPONSE
+                is_canned_deflection = True
+                attempted_live = True  # suppress the live-search offer on a gate deflect
             elif chunks and self.ollama:
                 # Compose sees the ORIGINAL wording for fidelity, plus the resolved query (when a
                 # follow-up was rewritten) so the question it answers matches the retrieved chunks
@@ -739,14 +822,7 @@ class MessageHandler:
                 response_text = best.text[:800]
                 source_note = SOURCE_FRIENDLY_NAMES.get(best.source_file, best.source_file)
             else:
-                response_text = (
-                    "I wasn't able to find specific information about that "
-                    "in the GSA knowledge base.\n\n"
-                    "For accurate information, please:\n"
-                    "- Visit the GSA office at Campus Center 110A (weekdays 11AM–5PM)\n"
-                    "- Email us at gsa-pres@njit.edu\n"
-                    "- Use /contact to find the right officer"
-                )
+                response_text = _KB_MISS_RESPONSE
                 is_canned_deflection = True
 
             # Office answers surface the authoritative njit.edu page as the verify-link (RA6),

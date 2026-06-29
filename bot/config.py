@@ -167,6 +167,13 @@ OFFICE_THRESHOLD = float(os.getenv("OFFICE_THRESHOLD", str(LIVE_THRESHOLD)))
 RETRIEVAL_DEEP_FALLBACK = os.getenv("RETRIEVAL_DEEP_FALLBACK", "").strip().lower() in ("1","true","yes","on")
 DEEP_FALLBACK_THRESHOLD = float(os.getenv("DEEP_FALLBACK_THRESHOLD", "0.30"))
 
+# --- Answer-gate (spec §13.6 — hybrid Gate-1 intent + Gate-2 LLM answerability) ---
+# ANSWER_GATE_ENABLED defaults OFF so a commit is inert until an env flip + restart.
+# ANSWER_GATE_BAND: the ce_score threshold below which Gate-2 is invoked. Calibrated at 0.70
+# (shadow: 0 false-deflects on 424 real/fp/held-out Qs, 88.9% abstain-catch at band=0.70).
+ANSWER_GATE_ENABLED = os.getenv("ANSWER_GATE_ENABLED", "0").strip().lower() in ("1","true","yes","on")
+ANSWER_GATE_BAND = float(os.getenv("ANSWER_GATE_BAND", "0.70"))
+
 
 # --- Kavosh v2.1 unified router (Phase 1b) ---
 # ROUTER_V21 master switch (default OFF). When on, the UnifiedRouter is built + consulted.

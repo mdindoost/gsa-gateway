@@ -135,7 +135,7 @@ async def main() -> None:
     from bot.services.moderation import RateLimiter
     from bot.core.assistant import build_assistant
 
-    db = Database(config.database_path); db.connect(); db.init_tables()
+    db = Database(config.database_path, config.operations_db_path); db.connect(); db.init_tables()
     db.migrate_events_columns(); db.migrate_rag_columns()
     kb = KnowledgeBase(data_dir=config.data_dir); kb.load()
     rl = RateLimiter(max_calls=10**9, period_seconds=1)
