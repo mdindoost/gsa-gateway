@@ -232,8 +232,20 @@ def test_empty_content_item_skipped_not_invariant_violation(conn):
 - 🟡 DEFERRED: full clean wipe / "spring cleaning" — optional, only if cruft proves to hurt
 - ❌ DROPPED: split-ops F6 (org ids don't renumber without a wipe); Plan 5 engine (ND1)
 
-## Open questions for the owner
-1. **Re-crawl scope:** refresh ALL colleges/offices/people now, or just add the 104 seeds + PDF and defer a
-   full content refresh? (Full refresh = more change to validate; seeds+PDF only = smaller, faster.)
-2. **`DEEP_FALLBACK_THRESHOLD`:** keep 0.30, or allow C1 to re-freeze it on the rebuilt corpus?
-3. **Whole-doc `[:2000]`:** leave as-is (current decision) — confirm we are NOT touching the common-path embedding.
+## Decisions (LOCKED by owner 2026-06-28)
+1. **Re-crawl scope = SCOPED.** Build chunks on existing content (no crawl) + add the 104 Phase-1 seeds + turn
+   PDF on via a PROSE re-crawl (colleges/offices). **DEFER the `explore.py` people re-crawl** (KG data is fresh;
+   re-running it = KG/reconcile risk for ~zero gain now). Rationale: chunks/deep-fallback need no crawl; PDF
+   discovery requires a prose crawl anyway; people data is days-old.
+2. **`DEEP_FALLBACK_THRESHOLD` = anchor `0.30`, re-confirm with evidence in Phase C** (C1 re-runs the 227-Q A/B;
+   move it only if the corpus shift demands, recording the new value + why). Not kept blindly, not guessed.
+3. **Whole-doc `[:2000]` = LEAVE UNTOUCHED.** It ≈512 tok = nomic's quality sweet spot (ceiling 2048 tok, but a
+   bigger single vector blurs → hurts the common case). Depth is handled by CHUNKS (many 512-tok vectors), not a
+   bigger whole-doc vector. (Separate: llama generation `num_ctx=16384` is already handled — not this limit.)
+
+## Session execution mode (owner grant 2026-06-28)
+Owner put Claude OUT of the loop for this session: drive to the end autonomously; **Codex + self-review replace
+the owner-in-loop EXPERT-REVIEW hard gate**; Claude is the decision-maker; escalate ONLY if genuinely undecided
+or a reject-criterion trips. Safety hard-lines STILL apply (hardened_backup, dev-copy-first, evidence-before-claim).
+**The ONE retained human checkpoint = Phase D live production cutover** (user-facing, hard to fully reverse) —
+Claude pauses there with validated evidence for a one-word go.
