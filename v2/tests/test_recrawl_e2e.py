@@ -110,3 +110,15 @@ def test_recrawl_additive_cycle(tmp_path):
     # The new content is chunked under the new (active) parent.
     assert conn.execute(
         "SELECT COUNT(*) FROM knowledge_chunks WHERE parent_id=?", (new_id,)).fetchone()[0] > 0
+
+    # 5. RETRIEVAL actually finds the new content (not just raw chunk rows): drive
+    # the chunk-rescue path with the fake embedder's query vector. retrieve_deep
+    # serves the PARENT page, so it must return the v2 parent with the changed text.
+    from v2.core.retrieval.retriever import V2Retriever
+    r = V2Retriever(conn, embedder=object())          # query_vec given → no embed needed
+    qv = _fake_embed("office hours transcript")        # matches the chunk doc vectors
+    out = r.retrieve_deep("office hours transcript", query_vec=qv, limit=5)
+    assert out, "deep retrieval should find the recrawled content"
+    assert out[0].item_id == new_id                    # the v2 parent, not the retired v1
+    assert "three business days" in out[0].content
+    assert "two weeks" not in out[0].content
