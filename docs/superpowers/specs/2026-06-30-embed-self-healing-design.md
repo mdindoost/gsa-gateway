@@ -59,53 +59,94 @@ Out of scope (flagged, not dropped):
 
 ## 4. Design
 
-### 4.1 Shared retry helper (`embedder.py`)
-Add to `Embedder`:
+### 4.1 Shared retry-POLICY helper (`embedder.py`)
+A **module-level free function** in `embedder.py` (NOT a method — so `embed_all`, which uses no
+`Embedder` instance, can import it directly). A pure retry/backoff wrapper around any embed callable
+— it does NOT bake in prefix/truncation, so each caller keeps its own embed semantics (resolves the
+C1/S1 truncation mismatch + the S3 embed_all-semantics concern):
 ```
-def embed_document_retry(self, text, attempts=3, backoff=0.5) -> list[float] | None
+def embed_with_retry(call, attempts=3, backoff=0.5) -> list[float] | None
+    # call: () -> list[float] | None   (a RAW embedding call; no normalization)
+    # returns the RAW vector from the first non-None attempt, or None after `attempts`.
+    # Catches per-attempt exceptions (timeout/conn reset), sleeps backoff*attempt, retries.
+    # Never raises. Normalization is the CALLER's job (one write site) — S2.
 ```
-Calls `embed_document(text)`; on `None` or exception, sleeps `backoff * attempt` and retries up
-to `attempts` total; returns the normalized vector or `None` after the last attempt. (Single-text
-path; reused by both scripts for the per-item retry. Batch embedding stays in `embed_chunks` for
-speed; only the *retry of a failed slot* uses this single-text helper.)
+Callers:
+- `embed_chunks` retries the **exact prepared `embed_input`** the batch used:
+  `embed_with_retry(lambda: emb._embed(embed_input))` — same `d.doc_prefix + d.truncate_to_tokens`
+  as the batch, so a retried chunk's vector is identical to its siblings'.
+- `embed_all` keeps its own `embed_document` (incl. the out-of-scope `[:2000]` M2 truncation):
+  `embed_with_retry(lambda: embed_document(row["search_text"]))`. Only the retry/backoff POLICY is
+  shared; embed_all's embed semantics are unchanged.
+Both return a RAW vector; each caller normalizes once at its single write site
+(`Embedder.normalize` / `_store_vector`).
 
 ### 4.2 `embed_chunks.py` — convergent Phase 2 + retry
+- **Fast-fail:** call `emb.health_check()` at the top; abort before touching the DB if Ollama/model
+  is down (mirrors embed_all; avoids grinding ~19.5k chunks against a dead server — G/N1).
 - **Phase 1 unchanged:** chunk items that have no current-model chunk (creates chunk rows).
-- **Phase 2 becomes coverage-driven:** select the embed work-set as **every active-parent chunk
-  that has no row in `knowledge_chunk_vectors`** (this is the union of just-created chunks and any
-  previously-failed ones):
+- **Phase 2 becomes coverage-driven:** the embed work-set is **every active-parent chunk that has
+  no row in `knowledge_chunk_vectors`** — the union of just-created chunks and any previously-failed
+  ones. This `WHERE` is the **exact complement of invariant condition 2**
+  (`_count_chunks_without_vectors`), which is what makes a healthy re-run drive condition 2 → 0
+  (convergence-by-complement). It is intentionally **NOT model_id-scoped**: scoping it would break
+  the complement property; a stale-model chunk that gets a current-model vector is still caught by
+  condition 4 (stale `model_id`) and condition 1 (served item needs a current-model chunk), so
+  `--force` remains the model-change path and nothing is masked (per both reviews).
   ```sql
   SELECT c.id, c.text, i.org_id, i.type, c.parent_id
   FROM knowledge_chunks c JOIN knowledge_items i ON i.id = c.parent_id
   WHERE i.is_active = 1
     AND NOT EXISTS (SELECT 1 FROM knowledge_chunk_vectors cv WHERE cv.chunk_id = c.id)
+  ORDER BY c.id
   ```
-- Embed in batches of `BATCH` via `_embed_batch`. For any slot whose `normalize` is `None`,
-  **retry that one chunk** via `embed_document_retry` (the chunk text gets the same
-  `doc_prefix + truncate_to_tokens` treatment as the batch path). Write the vector if obtained.
-- Track `failed` (chunk ids still `None` after retry). They are **left in place** (no vector row)
-  so the next run retries them.
-- **Reporting/exit:** print `vectors=<written> retried=<n> failed=<n>`. If `failed > 0`, print the
-  count and **exit non-zero** (the run did not reach full coverage) — but only AFTER committing the
-  vectors it *did* write, so progress is durable and a re-run shrinks the gap.
+- Embed in batches of `BATCH`. **Wrap the batch call** so a batch-level exception (connection reset
+  under load — C2) degrades to `vecs = [None] * len(batch)` instead of crashing. For any slot whose
+  raw vector is `None`, **retry that one chunk** via `embed_with_retry(lambda: emb._embed(embed_input))`
+  with the *same* `embed_input` the batch built. Normalize once and write the vector if obtained.
+- Track `failed` (chunk ids still `None` after retry); leave them in place (no vector row) so the
+  next run retries them. **Outage-abort (N1):** if an entire batch is still all-`None` after
+  per-slot retries, treat it as an outage — stop, commit progress, report, and exit non-zero
+  (re-runnable) rather than grinding every remaining batch.
+- **GC + reporting/exit order:** Phase 2 (per-batch commit) → GC sweeps (§4.3) + commit →
+  `if failed > 0:` print the report and **`sys.exit(1)`** (BEFORE the invariant assert, so the cause
+  is legible) `else:` `assert_chunk_invariant`. Report line includes the **starting** active-parent
+  hole count, `vectors=<written> retried=<n> failed=<n>`, and the `sweep_orphan_chunk_rows` count
+  (N3 — visible shrink + auditable GC).
+- **Why exit-non-zero matters (RAG #1):** serving gates the ENTIRE deep-fallback tier on
+  `corpus_ready()` → `assert_chunk_invariant` (`retriever_shim.py`), evaluated ONCE and cached per
+  process. A holed corpus that an operator/wrapper then *restarts* on would flip `corpus_ready` to
+  False → deep-fallback silently OFF → the answer-gate routes `NOT_IN_CONTEXT` to live→deflect
+  (conservative: more deflection, never a wrong/fabricated answer). The non-zero exit is what stops
+  a restart on an incomplete corpus.
 
 ### 4.3 Orphan chunk-row GC (`vector_gc.py`)
 Add:
 ```
 def sweep_orphan_chunk_rows(conn) -> int   # DELETE FROM knowledge_chunks WHERE parent inactive
 ```
-mirroring `_CHUNK_ORPHANS` but on the chunk ROWS (parent `is_active=0` or missing). Caller owns the
-txn (no commit). `embed_chunks` calls it **before** `assert_chunk_invariant`. Fixed order:
+mirroring `_CHUNK_ORPHANS` but on the chunk ROWS (parent `is_active=0` or missing); add a matching
+`count_orphan_chunk_rows` (used by the report). Caller owns the txn (no commit).
+**Bonus honesty (RAG #3):** condition 4 (`_count_stale_model_chunks`) counts `model_id != descriptor`
+over ALL chunks, not just active-parent ones. Today's ~200 orphan rows pass only because they carry
+the current model_id; after a future model change those unservable rows would FALSE-FIRE condition 4.
+Sweeping the rows before the assert removes that false-fire source, so condition 4 reflects only
+servable chunks — the GC makes the invariant strictly more honest. `embed_chunks` calls it **before** `assert_chunk_invariant`. Fixed order:
 `sweep_orphan_chunk_vectors` → `sweep_orphan_item_vectors` (existing) → **then**
 `sweep_orphan_chunk_rows` (new). Sweeping vectors first removes inactive-parent chunk vectors;
 sweeping rows then removes the now-vectorless inactive-parent chunk rows. End state is identical
 to any order, but this one is what the plan and tests assert. (Safe: inactive-parent chunks are
 never served, so deleting their rows removes pure cruft.)
 
-### 4.4 `embed_all.py` — use the shared helper
-Replace the inline `for attempt in (1, 2)` block with `emb.embed_document_retry(...)` (or the
-module's function form). Behavior is equivalent but with the consistent N-attempt + backoff policy.
-`_targets`/self-heal-on-re-run unchanged.
+### 4.4 `embed_all.py` — share the retry POLICY only (decision, not a hedge)
+Replace the inline `for attempt in (1, 2)` block with
+`embed_with_retry(lambda: embed_document(row["search_text"]))`. embed_all keeps its OWN module-level
+`embed_document`/`_post_embed`/`normalize` and its `_store_vector` (which normalizes) — only the
+retry/backoff policy is shared (S3). embed_all instantiates no `Embedder`; it imports the
+`embed_with_retry` function (which lives in `embedder.py` but is a free function taking a callable,
+so no class instance is needed). `embed_with_retry` returns the RAW vector and `_store_vector`
+normalizes once (no double-normalize — S2). The intentionally-retained `[:2000]` truncation stays
+(out of scope, M2). `_targets`/self-heal-on-re-run unchanged.
 
 ## 5. Components & interfaces (isolation)
 - `v2/core/retrieval/embedder.py` — NEW method `embed_document_retry` (additive; existing methods
@@ -121,26 +162,45 @@ territory; built on branch `fix/embed-self-healing`, file-scoped commits, no con
 embed/DB write with other agents.
 
 ## 6. Error handling
-- `embed_document_retry` swallows per-attempt exceptions (timeout/conn) and retries; returns `None`
+- `embed_with_retry` swallows per-attempt exceptions (timeout/conn) and retries; returns `None`
   only after the last attempt. Never raises to the caller.
+- **Batch-level exception (C2):** the `_embed_batch` call is wrapped; a connection reset under load
+  degrades the whole batch to `[None]*len(batch)` → each slot funnels into per-slot retry, so a
+  transient outage produces the designed "report + non-zero exit," never a traceback.
 - A chunk still `None` after retry → left unvectored (row kept), counted, non-zero exit. No silent
   pass: `assert_chunk_invariant` would also fire on the active-parent hole — the explicit
   count+exit makes the cause legible before the assert.
+- Health-check fails / Ollama down at start → exit before any DB write (fast-fail).
 - GC deletes are scoped to inactive/missing parents only; an empty result set is a no-op.
 
 ## 7. Testing (TDD, injected fake embedder — no Ollama)
-1. `embed_document_retry`: success first try; `None` then success on retry; all-`None` → `None`
-   after `attempts`; exception then success; exception every time → `None` (no raise).
-2. **Convergence:** run `embed_chunks` with a fake embedder that returns `None` for K chunks →
-   those K are unvectored, run exits non-zero, `assert_chunk_invariant` raises. Re-run with a
-   healthy fake → the K backfill, exit 0, invariant OK — **without `--force`**.
-3. **Non-silent:** a residual active-parent hole yields a reported `failed>0` + non-zero exit (not
-   "invariant OK").
-4. `sweep_orphan_chunk_rows`: a chunk with an inactive parent is deleted; a chunk with an active
-   parent is untouched; count helper agrees.
-5. `embed_all` path uses the helper and still self-heals on re-run (a dropped item embeds next run).
-6. Regression: existing `embed_chunks`/`vector_gc` tests still pass; a fully-healthy run reports
-   `failed=0`, exit 0, invariant OK.
+1. `embed_with_retry`: success first try (no extra calls); `None` then success on retry; all-`None`
+   → `None` after exactly `attempts`; exception then success; exception every time → `None`
+   (never raises); returns the RAW vector (caller normalizes).
+2. **Convergence (the headline):** run `embed_chunks` with a fake embedder that returns `None` for
+   K chunks **in BOTH the batch AND the single-retry path** (else the retry heals them in-run and
+   the unvectored state never occurs — test-design gap flagged by review). Assert: those K are
+   unvectored, the run exits non-zero, `assert_chunk_invariant` would raise. Re-run with a healthy
+   fake → the K backfill, exit 0, invariant OK — **without `--force`**.
+3. **Batch-exception degrade (C2):** a fake whose `_embed_batch` RAISES (connection reset) does not
+   crash the run — it degrades to per-slot retry; persistent failure → reported `failed>0` +
+   non-zero exit (not a traceback, not a silent skip).
+4. **Retry-input consistency (C1):** assert the string passed to the single-retry embed call is
+   byte-identical to the `embed_input` the batch built (same `doc_prefix` + `truncate_to_tokens`),
+   so a retried chunk's vector matches its siblings'.
+5. **No-masking (condition 4):** a stale-`model_id` chunk gets a current-model vector via the
+   model-blind select, yet `assert_chunk_invariant` STILL raises on condition 4 (proves the model
+   change isn't masked).
+6. `sweep_orphan_chunk_rows`/`count_orphan_chunk_rows`: inactive-parent chunk rows deleted,
+   active-parent untouched; and the GC removes a stale-`model_id` orphan row that would otherwise
+   false-fire condition 4 after a model change.
+7. `embed_all`: uses `embed_with_retry`, `_store_vector` normalizes once (no double-normalize bug),
+   still self-heals on re-run (a dropped item embeds next run).
+8. **Health-check fast-fail:** `embed_chunks` exits early (no DB writes) when the embedder
+   health-check fails.
+9. Regression: existing `test_vector_gc.py`, `test_chunk_invariant.py`, `test_chunk_populate.py`,
+   `test_chunk_vectors.py`, `test_chunk_retrieval.py`, `test_deep_fallback_ladder.py` still pass; a
+   fully-healthy run reports `failed=0`, exit 0, invariant OK.
 
 ## 8. Rollout (gated)
 DB-agnostic code change. Validate on a dev copy:
@@ -154,11 +214,18 @@ active agents** (single SQLite writer; `hardened_backup` rotation) — but this 
 no live data; the next normal embed run simply becomes self-healing.
 
 ## 9. Goals checklist (shipped / deferred — fill at PR)
-- [ ] Self-healing convergence (re-run backfills active-parent holes, no `--force`).
-- [ ] Bounded retry helper, used by both scripts; persistent failure → reported + non-zero exit.
-- [ ] Orphan chunk-row GC.
-- [ ] `embed_all` aligned to the helper.
-- [ ] DEFERRED & FLAGGED: M2 2000-char truncation; runner assert-after-commit sequencing.
+- [ ] Self-healing convergence of **vector holes** (re-run backfills active-parent unvectored chunks,
+      no `--force`). Convergence-by-complement; model changes still need `--force` (condition 4 backstop).
+- [ ] Bounded retry policy (`embed_with_retry`), used by both scripts; persistent failure AND
+      batch-level exception (C2) → reported + non-zero exit (never silent, never a crash).
+- [ ] Retry re-sends the exact batch `embed_input` (C1); normalize once at the write site (S2).
+- [ ] Health-check fast-fail + outage-abort in `embed_chunks`.
+- [ ] Orphan chunk-row GC (+ makes condition 4 more honest).
+- [ ] `embed_all` shares the retry policy only (own embed semantics + `[:2000]` retained).
+- [ ] Report includes starting hole count, vectors/retried/failed, GC count.
+- [ ] DEFERRED & FLAGGED: M2 2000-char truncation; runner assert-after-commit sequencing;
+      `populate_item_chunks` (recrawl path) shares the same silent-skip-on-None pattern — same
+      retry fix should be applied there as a follow-up (out of scope here).
 
 ## 10. Risks
 - **Behavior change on partial failure:** `embed_chunks` now exits non-zero when coverage is
@@ -167,4 +234,7 @@ no live data; the next normal embed run simply becomes self-healing.
 - **GC of chunk rows:** deleting inactive-parent chunk rows is irreversible cruft-removal; bounded
   to inactive parents, covered by a test, and those rows are unreachable by serving.
 - **Batch+single-retry cost:** a fully-failed batch becomes N single retries — slower under a real
-  outage, but correct; backoff keeps it polite.
+  outage, but correct; backoff keeps it polite, and the outage-abort (§4.2) caps the grind.
+- **Early `sys.exit` on `failed>0` defers non-coverage diagnostics (N2):** you won't learn about a
+  concurrent condition-4 (stale model) or condition-5 (dim) violation until coverage is healed.
+  Acceptable — coverage must converge first anyway, and a model/dim change is the `--force` path.
