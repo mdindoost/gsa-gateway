@@ -25,6 +25,11 @@ _CHUNK_ORPHANS = """
     LEFT JOIN knowledge_items i ON i.id = c.parent_id AND i.is_active = 1
     WHERE i.id IS NULL
 """
+_CHUNK_ROW_ORPHANS = """
+    SELECT c.id FROM knowledge_chunks c
+    LEFT JOIN knowledge_items i ON i.id = c.parent_id AND i.is_active = 1
+    WHERE i.id IS NULL
+"""
 
 
 def count_orphan_item_vectors(conn: sqlite3.Connection) -> int:
@@ -34,6 +39,16 @@ def count_orphan_item_vectors(conn: sqlite3.Connection) -> int:
 def sweep_orphan_item_vectors(conn: sqlite3.Connection) -> int:
     ids = [r[0] for r in conn.execute(_ITEM_ORPHANS)]
     conn.executemany("DELETE FROM knowledge_vectors WHERE item_id = ?", [(i,) for i in ids])
+    return len(ids)
+
+
+def count_orphan_chunk_rows(conn: sqlite3.Connection) -> int:
+    return conn.execute(f"SELECT COUNT(*) FROM ({_CHUNK_ROW_ORPHANS})").fetchone()[0]
+
+
+def sweep_orphan_chunk_rows(conn: sqlite3.Connection) -> int:
+    ids = [r[0] for r in conn.execute(_CHUNK_ROW_ORPHANS)]
+    conn.executemany("DELETE FROM knowledge_chunks WHERE id = ?", [(i,) for i in ids])
     return len(ids)
 
 
