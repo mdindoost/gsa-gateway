@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import time
 import urllib.request
 
 DEFAULT_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
@@ -71,3 +72,23 @@ class Embedder:
         except Exception:  # noqa: BLE001
             return False
         return v is not None and len(v) == EMBED_DIM
+
+
+def embed_with_retry(call, attempts: int = 3, backoff: float = 0.5):
+    """Retry/backoff policy wrapper around a RAW embed callable.
+
+    `call` is a zero-arg callable returning ``list[float] | None``. Returns the first
+    non-None result; on None or exception, sleeps ``backoff * attempt`` and retries up to
+    ``attempts`` total. Returns None after the last attempt. Never raises. Does NOT
+    normalize — the caller normalizes once at its write site.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            vec = call()
+            if vec is not None:
+                return vec
+        except Exception:  # noqa: BLE001 - transient timeout/conn reset; retry then give up
+            pass
+        if attempt < attempts and backoff:
+            time.sleep(backoff * attempt)
+    return None
