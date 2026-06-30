@@ -11,7 +11,6 @@ Usage:
 """
 import argparse
 import sys
-import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -98,7 +97,7 @@ def run_chunk_embed(conn, d, emb, *, batch=BATCH, attempts=3, backoff=0.5,
 
     # ── Phase 2: embed all active-parent unvectored chunks (coverage-driven) ──
     holes = _coverage_holes(conn)
-    starting_holes = len(holes)
+    starting_holes = len(holes)  # sampled AFTER Phase 1 — measures the embed work queue, not item coverage
     vectors = retried = failed = 0
     aborted = False
     for i in range(0, len(holes), batch):

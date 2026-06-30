@@ -85,12 +85,7 @@ def test_sweep_orphan_chunk_rows_deletes_inactive_parent_only():
 
 # ── Task 3: run_chunk_embed ───────────────────────────────────────────────────
 
-import sqlite_vec
 import pytest
-
-
-def _norm_bytes():
-    return sqlite_vec.serialize_float32([0.0] * _D.dim)
 
 
 class FakeEmb:
