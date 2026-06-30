@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from v2.core.ingestion.catalog_crawl import catalog_seed_urls, extract_urls, reconcile_sitemap_set
 from v2.core.ingestion.college_crawl import ingest_college, ingest_pdf_pages
@@ -63,35 +65,39 @@ _OFFICES: list[tuple[str, str, str]] = [
     ("sustainability", "eos", "Environmental & Operational Services"),
 ]
 
-# College/dept SUBDOMAINS (host, existing org slug, org name) — verified 2026-06-30 from live rows.
-# Scope expansion (owner 2026-06-30): the sitemap sweep covers EVERY njit host so the subdomains are
-# sitemap-driven too (no DFS budget/depth). The bulk of each subdomain is already held by college_crawl
-# (DFS); this pass ADDS any sitemap page the DFS missed (cross-source dedup → never a duplicate, never a
-# loss — college_crawl rows are a different source, untouched). Subdomains keep classify_type (NOT the
-# webpage marketing bucket). The org already exists → ensure_org early-returns (parent/type irrelevant).
-_SUBDOMAINS: list[tuple[str, str, str]] = [
-    ("appliedengineering.njit.edu", "applied-engineering-technology", "School of Applied Engineering & Technology"),
-    ("biology.njit.edu", "biological-sciences", "Biological Sciences"),
-    ("biomedical.njit.edu", "biomedical-engineering", "Biomedical Engineering"),
-    ("chemistry.njit.edu", "chemistry-environmental-science", "Chemistry & Environmental Science"),
-    ("civil.njit.edu", "civil-environmental-engineering", "Civil & Environmental Engineering"),
-    ("cme.njit.edu", "chemical-materials-engineering", "Chemical & Materials Engineering"),
-    ("computing.njit.edu", "ywcc", "YWCC"),
-    ("cs.njit.edu", "computer-science", "Computer Science"),
-    ("csla.njit.edu", "csla", "College of Science and Liberal Arts"),
-    ("datascience.njit.edu", "data-science", "Data Science"),
-    ("design.njit.edu", "hcad", "Hillier College of Architecture & Design"),
-    ("ece.njit.edu", "electrical-computer-engineering", "Electrical & Computer Engineering"),
-    ("engineering.njit.edu", "nce", "Newark College of Engineering"),
-    ("history.njit.edu", "history", "History"),
-    ("honors.njit.edu", "honors", "Albert Dorman Honors College"),
-    ("hss.njit.edu", "humanities-social-sciences", "Humanities & Social Sciences"),
-    ("informatics.njit.edu", "informatics", "Informatics"),
-    ("management.njit.edu", "mtsm", "Martin Tuchman School of Management (MTSM)"),
-    ("math.njit.edu", "mathematical-sciences", "Mathematical Sciences"),
-    ("mie.njit.edu", "mechanical-industrial-engineering", "Mechanical & Industrial Engineering"),
-    ("physics.njit.edu", "physics", "Physics"),
-    ("theatre.njit.edu", "theater-arts-technology", "Theater Arts & Technology"),
+# College/dept SUBDOMAINS (host, existing org slug, org name, org_type) — verified 2026-06-30 from live
+# rows. Scope expansion (owner 2026-06-30): the sitemap sweep covers EVERY njit host so the subdomains
+# are sitemap-driven too (no DFS budget/depth). The bulk of each subdomain is already held by
+# college_crawl (DFS); this pass ADDS any sitemap page the DFS missed (cross-source dedup → never a
+# duplicate, never a loss — college_crawl rows are a different source, untouched). Subdomains keep
+# classify_type (NOT the webpage marketing bucket). ALL 22 orgs EXIST today → ensure_org early-returns
+# (org_type/parent inert). org_type is carried correctly ('college' vs 'department') so that IF this ever
+# runs before the orgs exist (e.g. the planned DB-wipe rebuild ordering), a college isn't mis-created as
+# a department. (Dept parent should ultimately be its college, not njit — a rebuild-ordering concern, out
+# of scope here; the orgs already exist with correct parents.)
+_SUBDOMAINS: list[tuple[str, str, str, str]] = [
+    ("appliedengineering.njit.edu", "applied-engineering-technology", "School of Applied Engineering & Technology", "department"),
+    ("biology.njit.edu", "biological-sciences", "Biological Sciences", "department"),
+    ("biomedical.njit.edu", "biomedical-engineering", "Biomedical Engineering", "department"),
+    ("chemistry.njit.edu", "chemistry-environmental-science", "Chemistry & Environmental Science", "department"),
+    ("civil.njit.edu", "civil-environmental-engineering", "Civil & Environmental Engineering", "department"),
+    ("cme.njit.edu", "chemical-materials-engineering", "Chemical & Materials Engineering", "department"),
+    ("computing.njit.edu", "ywcc", "YWCC", "college"),
+    ("cs.njit.edu", "computer-science", "Computer Science", "department"),
+    ("csla.njit.edu", "csla", "College of Science and Liberal Arts", "college"),
+    ("datascience.njit.edu", "data-science", "Data Science", "department"),
+    ("design.njit.edu", "hcad", "Hillier College of Architecture & Design", "college"),
+    ("ece.njit.edu", "electrical-computer-engineering", "Electrical & Computer Engineering", "department"),
+    ("engineering.njit.edu", "nce", "Newark College of Engineering", "college"),
+    ("history.njit.edu", "history", "History", "department"),
+    ("honors.njit.edu", "honors", "Albert Dorman Honors College", "college"),
+    ("hss.njit.edu", "humanities-social-sciences", "Humanities & Social Sciences", "department"),
+    ("informatics.njit.edu", "informatics", "Informatics", "department"),
+    ("management.njit.edu", "mtsm", "Martin Tuchman School of Management (MTSM)", "college"),
+    ("math.njit.edu", "mathematical-sciences", "Mathematical Sciences", "department"),
+    ("mie.njit.edu", "mechanical-industrial-engineering", "Mechanical & Industrial Engineering", "department"),
+    ("physics.njit.edu", "physics", "Physics", "department"),
+    ("theatre.njit.edu", "theater-arts-technology", "Theater Arts & Technology", "department"),
 ]
 
 
@@ -117,8 +123,11 @@ _SERVICES: list[tuple[str, str]] = [
 WWW_SUBSITES: list[WwwEntry] = (
     [WwwEntry(_sm(seg), slug, name, "njit", "office") for seg, slug, name in _OFFICES]
     + [WwwEntry(_sm(seg), seg, name, "njit", "office") for seg, name in _SERVICES]
-    + [WwwEntry(f"https://{host}/sitemap.xml", slug, name, "njit", "department")
-       for host, slug, name in _SUBDOMAINS]
+    + [WwwEntry(f"https://{host}/sitemap.xml", slug, name, "njit", otype)
+       for host, slug, name, otype in _SUBDOMAINS]
+    # NOTE: the main-sitemap entry MUST stay LAST — office/subdomain pages (typed via classify_type →
+    # 'policy'/'news') run first, so if the main sitemap also lists one it dedups against the already-
+    # ingested policy row rather than re-typing it 'webpage' (focused-review MINOR-5).
     # main sitemap = academics/marketing landing pages → njit root, typed 'webpage' (downweighted)
     + [WwwEntry(MAIN_SITEMAP, "njit", "New Jersey Institute of Technology", None,
                 "university", page_type="webpage")]
@@ -137,14 +146,37 @@ def _content_hash(content: str) -> str:
     return hashlib.sha1(content.encode("utf-8")).hexdigest()
 
 
+# Extra people-LIST skip beyond college_crawl.is_people_path (which exact-matches only the canonical
+# roster HUB segments). The COMPLETE sitemap sweep reaches compound-segment rosters the budget DFS
+# missed (focused-review MAJOR). Skip genuine name-LISTS (…-faculty/-staff/-people, directory, …) while
+# KEEPING faculty-TOPIC content (faculty-research/-awards/-positions/-handbook, talks, news) — the KG
+# (explore.py) owns faculty, so a name-dump must not enter the prose corpus. Mechanical, URL-only.
+_ROSTER_SUFFIXES = ("-faculty", "-staff", "-people")
+_ROSTER_EXACT = frozenset({"directory", "administration", "emeritus", "personnel",
+                           "our-faculty", "faculty-staff", "faculty-and-staff", "faculty-directory"})
+
+
+def _roster_skip(url: str) -> bool:
+    seg = urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1].lower()
+    seg = re.sub(r"\.(php|html?|aspx)$", "", seg)   # strip a file extension
+    seg = re.sub(r"-\d+$", "", seg)                 # strip a Drupal pager suffix (people-2)
+    return seg in _ROSTER_EXACT or seg.endswith(_ROSTER_SUFFIXES)
+
+
 def crawl_www_entry(entry: WwwEntry, fetch, fetch_bytes, limit=0):
     """Seed one subsite from its sitemap and extract its prose. Returns (EntryResult, sitemap_urls).
-    `extract_urls` (Build A) does verbatim extraction, content-hash alias dedup, is_people_path skip.
-    `limit>0` (dev) crawls only the first N sitemap URLs of the entry."""
+    `extract_urls` (Build A) does verbatim extraction, content-hash alias dedup, is_people_path skip;
+    we then drop compound-segment roster leaks (_roster_skip). `limit>0` (dev) crawls only the first N
+    sitemap URLs of the entry."""
     urls = www_seed_urls(fetch_bytes, entry.sitemap_url)
     if limit:
         urls = urls[:limit]
     res = extract_urls(urls, fetch)
+    kept = [p for p in res.prose if not _roster_skip(p.source_url)]
+    for p in res.prose:
+        if _roster_skip(p.source_url):
+            res.html_by_url.pop(p.source_url, None)
+    res.prose = kept
     return res, urls
 
 

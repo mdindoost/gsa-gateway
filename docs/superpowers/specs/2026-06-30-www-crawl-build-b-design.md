@@ -191,6 +191,21 @@ that take the same 0.8 downweight — still served, just under `policy`/catalog.
 that hurts a real query, those specific paths can keep `classify_type` (a registry refinement); default
 is the simple whole-bucket `webpage`.
 
+### 4.2b People-roster leak skip (focused-review MAJOR)
+
+`college_crawl.is_people_path` exact-matches only the canonical roster HUB segments (`/faculty`,
+`/people`, `/our-people`, `/administration`, `/staff`, `/leadership`, …). The **complete sitemap sweep**
+reaches **compound-segment** roster pages the budget DFS may have missed (`/core-faculty`,
+`/adjunct-faculty`, `/cs-faculty-and-staff`, `/advising-office-staff`, `/directory`, `/emeritus`, …),
+which would ingest as faculty name-dumps and compete with the KG (`explore.py` owns faculty). So
+`www_crawl._roster_skip(url)` drops a kept page whose last segment **ends in `-faculty`/`-staff`/
+`-people`** or **equals** `directory`/`administration`/`emeritus`/`personnel`/`our-faculty`/
+`faculty-staff`/`faculty-and-staff`/`faculty-directory` (file-ext + Drupal pager stripped). It is
+deliberately NARROW — verified against live subdomain sitemaps to **keep** faculty-TOPIC content
+(`/faculty-research`, `/faculty-awards`, `/faculty-positions`, `/faculty-handbook`, talks, news). The
+runner's dry-run prints a **roster-leak audit** (kept pages whose URL still carries a people token) as a
+final human eyeball before the live keep.
+
 ### 4.3 Office overlap — cross-source content dedup (the one genuinely new behavior)
 
 Offices already hold ~half of each office subsite's prose. To reach completeness **without** inserting
@@ -434,3 +449,15 @@ DB-only change → no bot restart. If the gate fails, restore the `hardened_back
 - **More sitemaps under one floor (SE-1 amplified)** → with ~48 sitemaps, a single flaky host more often
   triggers the any-fail→skip-retire guard, so retirement runs only on fully-clean passes. Acceptable:
   retirement is a rollover nicety; the additive ingest always proceeds.
+- **Single-host truncated-but-parseable sitemap (focused-review MINOR-3)** → a host returning a valid but
+  short sitemap isn't an SE-1 "failure", and the global floor can't catch a one-host shrink, so that
+  host's `njit_www_crawl` gap-fill rows could retire (blast radius = its www-only rows; `college_crawl`
+  bulk immune; SE-2 protects renamed content). Documented limitation; a future refinement scopes
+  retirement per-host. Mitigated now by the dry-run per-host count review.
+- **`sitemapindex` not expanded (focused-review MINOR-4)** → if a host serves a sitemap-index, its
+  `<loc>`s are sub-sitemaps that fetch-as-pages and skip → 0 coverage, silently. Verified 2026-06-30 that
+  **none of the 48 are indexes**; the dry-run flags any host reporting ~0 URLs. One-level index expansion
+  is a future add if NJIT changes format.
+- **`dropped_dup` is first-run-meaningful only (focused-review NIT-6)** → on steady-state re-runs a page's
+  own prior row makes it self-dedup, so `dropped_dup` inflates; the row still survives correctly (URL in
+  union + hash in `seen_hashes`). The "dedup fired" acceptance check is read on the FIRST run.

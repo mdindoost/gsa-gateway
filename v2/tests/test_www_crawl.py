@@ -156,6 +156,38 @@ def test_registry_covers_all_college_dept_subdomains():
         assert e.org_slug == slug and e.page_type is None
 
 
+def test_roster_skip_catches_people_lists_keeps_topic_content():
+    # MAJOR (focused review): the COMPLETE sitemap sweep hits compound-segment roster pages that
+    # is_people_path's exact-segment match misses. Skip genuine people-LISTS; keep faculty-TOPIC content.
+    from v2.core.ingestion.www_crawl import _roster_skip
+    for u in ["https://cs.njit.edu/core-faculty", "https://x.njit.edu/adjunct-faculty",
+              "https://x.njit.edu/affiliated-faculty", "https://cs.njit.edu/cs-faculty-and-staff",
+              "https://x.njit.edu/advising-office-staff", "https://x.njit.edu/cpi-our-people",
+              "https://x.njit.edu/directory", "https://x.njit.edu/administration.php",
+              "https://x.njit.edu/emeritus", "https://x.njit.edu/research-faculty-2"]:
+        assert _roster_skip(u), f"should skip roster page {u}"
+    for u in ["https://x.njit.edu/faculty-research", "https://x.njit.edu/faculty-awards",
+              "https://x.njit.edu/faculty-positions", "https://x.njit.edu/faculty-handbook",
+              "https://x.njit.edu/faculty-research-talks-fall-2020",
+              "https://x.njit.edu/2019-faculty-and-student-summer-talks",
+              "https://x.njit.edu/faculty-member-quoted-new-york-times"]:
+        assert not _roster_skip(u), f"should KEEP topic page {u}"
+
+
+def test_crawl_www_entry_drops_roster_leaks():
+    from v2.core.ingestion import www_crawl as W
+    e = _entry(sitemap_url="https://cs.njit.edu/sitemap.xml", org_slug="computer-science",
+               org_name="CS", parent_slug="njit", org_type="department")
+    urls = ["https://cs.njit.edu/core-faculty", "https://cs.njit.edu/phd-program-overview"]
+    sitemaps = {e.sitemap_url: urls}
+    pages = {urls[0]: _MAIN_HTML.format(t="Core Faculty", b="Name One, Name Two, Name Three"),
+             urls[1]: _MAIN_HTML.format(t="PhD Overview", b="program structure and requirements")}
+    fetch, fetch_bytes = _fake_fetchers(sitemaps, pages)
+    res, got = W.crawl_www_entry(e, fetch, fetch_bytes)
+    kept = {p.source_url for p in res.prose}
+    assert kept == {"https://cs.njit.edu/phd-program-overview"}   # roster dropped, program kept
+
+
 def test_www_seed_urls_parses_sitemap():
     from v2.core.ingestion.www_crawl import www_seed_urls
     xml = (b'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'

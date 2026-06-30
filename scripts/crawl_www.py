@@ -36,8 +36,15 @@ from v2.core.ingestion.web_crawler import make_fetcher, make_bytes_fetcher
 def _select_entries(entry: str | None):
     if not entry:
         return list(W.WWW_SUBSITES)
-    sel = [e for e in W.WWW_SUBSITES
-           if e.org_slug == entry or f"/{entry}/" in e.sitemap_url]
+    from urllib.parse import urlsplit
+
+    def _match(e):
+        host = urlsplit(e.sitemap_url).netloc          # e.g. cs.njit.edu or www.njit.edu
+        return (e.org_slug == entry                    # org slug (computer-science)
+                or host == entry                        # full host (cs.njit.edu)
+                or host.startswith(entry + ".")         # subdomain shorthand (cs -> cs.njit.edu)
+                or f"/{entry}/" in e.sitemap_url)        # www path section (/bursar/)
+    sel = [e for e in W.WWW_SUBSITES if _match(e)]
     if not sel:
         print(f"ERROR: --entry {entry!r} matched no subsite. Known slugs/sections:")
         print("  " + ", ".join(sorted({e.org_slug for e in W.WWW_SUBSITES})))
@@ -61,6 +68,18 @@ def _report(conn, source):
             "SELECT title, substr(content,1,160), source_url FROM knowledge_items "
             "WHERE is_active=1 AND created_by=? ORDER BY id DESC LIMIT 5", (source,)).fetchall():
         print(f"  [{title}] {url}\n    {content!r}")
+    # Roster-leak audit (focused-review MAJOR backstop): kept pages whose URL still smells like a
+    # people-list despite _roster_skip + is_people_path — eyeball these before keeping the live write.
+    leaks = conn.execute(
+        "SELECT source_url, title FROM knowledge_items WHERE is_active=1 AND created_by=? AND ("
+        "lower(source_url) LIKE '%faculty%' OR lower(source_url) LIKE '%staff%' OR "
+        "lower(source_url) LIKE '%/people%' OR lower(source_url) LIKE '%directory%' OR "
+        "lower(source_url) LIKE '%personnel%' OR lower(source_url) LIKE '%leadership%')", (source,)).fetchall()
+    print(f"roster-leak audit: {len(leaks)} kept page(s) with people-tokens in URL (eyeball):")
+    for url, title in leaks[:30]:
+        print(f"  ? [{title}] {url}")
+    if len(leaks) > 30:
+        print(f"  … and {len(leaks) - 30} more")
 
 
 def main(argv=None):
