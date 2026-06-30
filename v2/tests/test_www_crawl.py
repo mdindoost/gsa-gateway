@@ -356,3 +356,70 @@ def test_run_limit_truncates_per_entry_and_skips_reconcile():
     assert n == 2                                        # only first 2 of 5 crawled
     assert out["reconcile"]["skipped_reason"] == "limit_partial_frontier"   # partial → never retire
 
+
+
+# --- Task 5: canonical-mode rewiring (global URL-keyed upsert) ----------------------
+
+def test_run_canonical_idempotent_no_dups():
+    from v2.core.ingestion import www_crawl as W
+    conn = _conn()
+    conn.execute("INSERT INTO organizations(id,slug,name,type) VALUES(1,'njit','NJIT','university')")
+    e = _entry()
+    urls = [f"https://www.njit.edu/bursar/p{i}" for i in range(3)]
+    sitemaps = {e.sitemap_url: urls}
+    pages = {u: _MAIN_HTML.format(t=u[-2:], b=f"real body content for {u} " * 5) for u in urls}
+    fetch, fetch_bytes = _fake_fetchers(sitemaps, pages)
+    out1 = W.run(conn, fetch, fetch_bytes, entries=[e], canonical=True)
+    out2 = W.run(conn, fetch, fetch_bytes, entries=[e], canonical=True)
+    n = conn.execute("SELECT COUNT(*) FROM knowledge_items WHERE is_active=1 AND "
+                     "created_by='njit_www_crawl'").fetchone()[0]
+    assert n == 3                                  # one canonical row per url, no dups
+    assert out1["totals"]["prose_inserted"] == 3
+    assert out2["totals"]["prose_inserted"] == 0   # 2nd run: nothing new
+    assert out2["totals"]["prose_unchanged"] == 3
+
+
+def test_run_canonical_webpage_does_not_displace_policy():
+    from v2.core.ingestion import www_crawl as W
+    conn = _conn()
+    conn.execute("INSERT INTO organizations(id,slug,name,type) VALUES(1,'njit','NJIT','university')")
+    shared = "https://www.njit.edu/admissions/graduate-admissions"
+    bursar = _entry(sitemap_url="https://www.njit.edu/registrar/sitemap.xml", org_slug="registrar",
+                    org_name="Reg", parent_slug="njit", org_type="office")
+    main = _entry(sitemap_url=W.MAIN_SITEMAP, org_slug="njit", org_name="NJIT", parent_slug=None,
+                  org_type="university", page_type="webpage")
+    sitemaps = {bursar.sitemap_url: [shared], W.MAIN_SITEMAP: [shared]}
+    pages = {shared: _MAIN_HTML.format(t="Graduate Admissions", b="full policy detail " * 30)}
+    # main page is the THIN marketing capture of the same URL
+    fetch, fetch_bytes = _fake_fetchers(sitemaps, pages)
+    W.run(conn, fetch, fetch_bytes, entries=[bursar, main], canonical=True)
+    rows = conn.execute("SELECT type FROM knowledge_items WHERE is_active=1 AND "
+                        "json_extract(metadata,'$.natural_key')=? AND created_by='njit_www_crawl'",
+                        (shared,)).fetchall()
+    assert len(rows) == 1                  # one canonical row, not a policy+webpage twin
+    assert rows[0][0] == "policy"          # the substantive type survives, webpage never displaces it
+
+
+def test_ingest_pdf_canonical_dedups_same_url_across_orgs():
+    from pathlib import Path
+    from v2.core.ingestion.college_crawl import ingest_pdf_pages
+    REPO = Path(__file__).resolve().parents[2]
+    pdf_bytes = (REPO / "v2" / "tests" / "fixtures" / "pdf" / "calendar.pdf").read_bytes()
+    conn = _conn()
+    conn.execute("INSERT INTO organizations(id,slug,name,type) VALUES(1,'njit','NJIT','university')")
+    from v2.core.graph.orgs import ensure_org
+    ensure_org(conn, "registrar", "Reg", "njit", "office")
+    ensure_org(conn, "bursar", "Bursar", "njit", "office")
+    url = "https://www.njit.edu/registrar/files/calendar.pdf"  # same asset in two subsite sitemaps
+
+    def fetch_bytes(u):
+        return pdf_bytes
+
+    seen = set()
+    ingest_pdf_pages(conn, "registrar", "Reg", "njit", [(url, "Calendar")], fetch_bytes,
+                     created_by="njit_www_crawl", canonical=True, seen_canon=seen)
+    ingest_pdf_pages(conn, "bursar", "Bursar", "njit", [(url, "Calendar")], fetch_bytes,
+                     created_by="njit_www_crawl", canonical=True, seen_canon=seen)
+    n = conn.execute("SELECT COUNT(*) FROM knowledge_items WHERE is_active=1 AND type='pdf' AND "
+                     "json_extract(metadata,'$.natural_key')=?", (url,)).fetchone()[0]
+    assert n == 1                          # one canonical PDF row, not one-per-sitemap

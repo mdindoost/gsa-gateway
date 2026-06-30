@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
+from v2.core.ingestion.canonical_url import canonical_prose_url
 from v2.core.ingestion.catalog_crawl import catalog_seed_urls, extract_urls, reconcile_sitemap_set
 from v2.core.ingestion.college_crawl import ingest_college, ingest_pdf_pages
 
@@ -244,19 +245,25 @@ def _prior_active(conn, source) -> int:
         f"AND type IN ({placeholders})", (source, *_RECONCILE_TYPES)).fetchone()[0]
 
 
-def run(conn, fetch, fetch_bytes, *, entries=None, reconcile=True, source=SOURCE, limit=0) -> dict:
+def run(conn, fetch, fetch_bytes, *, entries=None, reconcile=True, source=SOURCE, limit=0,
+        canonical=False) -> dict:
     """Crawl every WwwEntry, dedup-and-fill into knowledge_items under `source`, then reconcile
     against the UNION of all subsite sitemaps. Does NOT commit (caller owns the transaction).
     `limit>0` (dev) crawls only the first N URLs per entry and forces retirement OFF (partial
-    frontier must never retire — S5)."""
+    frontier must never retire — S5).
+    `canonical` (day-1 rebuild §4.3): when True, key every row on its GLOBAL canonical_prose_url
+    via upsert_prose (one row per URL across ALL orgs/sources, keep-fullest) — drops the legacy
+    content-hash cross-source skip (`filter_existing_content`). The reconcile union is built from
+    canonical_prose_url so the stored source_url and the union use the SAME normalizer."""
     entries = WWW_SUBSITES if entries is None else entries
 
-    existing = {h for (h,) in conn.execute(
+    existing = set() if canonical else {h for (h,) in conn.execute(
         "SELECT json_extract(metadata,'$.content_hash') FROM knowledge_items WHERE is_active=1") if h}
     prior = _prior_active(conn, source)
 
     union: set[str] = set()
     seen_hashes: set[str] = set()
+    seen_canon: set[str] = set()
     any_failed = False
     warnings: list[str] = []
     totals = {"prose_inserted": 0, "prose_updated": 0, "prose_unchanged": 0, "dropped_dup": 0,
@@ -269,18 +276,22 @@ def run(conn, fetch, fetch_bytes, *, entries=None, reconcile=True, source=SOURCE
             logger.warning("www_crawl: empty/failed sitemap for %s — retirement will be skipped",
                            entry.sitemap_url)
             continue
-        union |= set(urls)
-        for p in res.prose:                       # pre-dedup: protect renamed/aliased rows (SE-2)
-            seen_hashes.add(_content_hash(p.content))
-        totals["dropped_dup"] += filter_existing_content(existing, res)
+        union |= {canonical_prose_url(u) for u in urls} if canonical else set(urls)
+        if not canonical:
+            for p in res.prose:                   # pre-dedup: protect renamed/aliased rows (SE-2)
+                seen_hashes.add(_content_hash(p.content))
+            totals["dropped_dup"] += filter_existing_content(existing, res)
         out = ingest_college(conn, entry.org_slug, entry.org_name, entry.parent_slug, res,
                              res.html_by_url, org_type=entry.org_type, created_by=source,
-                             force_type=entry.page_type)
+                             force_type=entry.page_type, canonical=canonical,
+                             seen_canon=seen_canon if canonical else None)
         warnings += detect_stale_dups(conn, out["org_id"], res.prose, source)
         pdf_items = [(u, t) for p in res.prose for u, t in p.files if u.lower().endswith(".pdf")]
         if pdf_items:
             pout = ingest_pdf_pages(conn, entry.org_slug, entry.org_name, entry.parent_slug,
-                                    pdf_items, fetch_bytes, org_type=entry.org_type, created_by=source)
+                                    pdf_items, fetch_bytes, org_type=entry.org_type, created_by=source,
+                                    canonical=canonical,
+                                    seen_canon=seen_canon if canonical else None)
             for k in ("pdf_inserted", "pdf_updated", "pdf_unchanged"):
                 totals[k] += pout[k]
         for k in ("prose_inserted", "prose_updated", "prose_unchanged"):

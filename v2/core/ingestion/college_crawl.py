@@ -21,6 +21,8 @@ from bs4 import BeautifulSoup
 
 from v2.core.graph.orgs import ensure_org, sync_org_nodes
 from v2.core.ingestion import entry_points as _ep
+from v2.core.ingestion.canonical_url import canonical_prose_url, canonical_link
+from v2.core.ingestion.prose_store import upsert_prose
 from v2.core.ingestion.eos_crawl import (
     ProsePage, extract_prose, _url_rank, _strip_recurring_assets, _canon, _in_scope,
 )
@@ -177,7 +179,8 @@ PROSE_SOURCE = "college_crawl"
 
 
 def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
-                   org_type="college", created_by=PROSE_SOURCE, force_type=None) -> dict:
+                   org_type="college", created_by=PROSE_SOURCE, force_type=None,
+                   canonical=False, seen_canon=None) -> dict:
     """Write an EntryResult's prose into knowledge_items under one org:
       type = classify_type(url); dates from extract_dates(raw html); created_by=PROSE_SOURCE.
     Content-hash idempotent (unchanged skipped; changed version-bumps old). NO Person creation.
@@ -188,10 +191,39 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
     PROSE_SOURCE so all existing callers are byte-for-byte unchanged.
     ``force_type`` (mechanical, URL-derived label set by the caller) replaces the per-page
     classify_type when given; defaults to None so existing callers are byte-for-byte unchanged
-    (used by www_crawl to type the marketing/landing bucket as 'webpage')."""
+    (used by www_crawl to type the marketing/landing bucket as 'webpage').
+    ``canonical`` (day-1 rebuild §4.3): when True, key each row on its GLOBAL canonical_prose_url
+    (resolving node/<id> aliases via the page's <link rel=canonical>) through upsert_prose — one row
+    per URL across ALL orgs/sources, keep-fullest on change. Default False = legacy org-scoped path
+    (existing callers byte-for-byte unchanged). ``seen_canon`` (optional set): canonical URLs already
+    handled this run — a within-run duplicate (same page in two sitemaps) is skipped."""
     org_id = ensure_org(conn, org_slug, org_name, parent_slug=parent_slug, type=org_type)
     sync_org_nodes(conn)
     inserted = updated = unchanged = 0
+    if canonical:
+        skipped_dup = 0
+        for p in result.prose:
+            html = html_by_url.get(p.source_url, "")
+            canon = canonical_prose_url(canonical_link(html) or p.source_url)
+            if seen_canon is not None and canon in seen_canon:
+                skipped_dup += 1
+                continue
+            ptype = force_type or classify_type(p.source_url)
+            meta = {"images": [list(i) for i in p.images], "files": [list(f) for f in p.files]}
+            meta.update(extract_dates(html))
+            status = upsert_prose(conn, org_id=org_id, ptype=ptype, title=p.title,
+                                  content=p.content, meta=meta, canonical=canon,
+                                  created_by=created_by)
+            if seen_canon is not None:
+                seen_canon.add(canon)
+            if status == "inserted":
+                inserted += 1
+            elif status == "updated":
+                updated += 1
+            else:                                # 'unchanged' or 'skipped_worse'
+                unchanged += 1
+        return {"org_id": org_id, "prose_inserted": inserted, "prose_updated": updated,
+                "prose_unchanged": unchanged, "skipped": len(result.skipped)}
     for p in result.prose:
         ch = hashlib.sha1(p.content.encode("utf-8")).hexdigest()
         meta = {
@@ -225,7 +257,8 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
 
 
 def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_bytes,
-                     org_type="college", created_by=PROSE_SOURCE) -> dict:
+                     org_type="college", created_by=PROSE_SOURCE,
+                     canonical=False, seen_canon=None) -> dict:
     """Ingest discovered PDF links as type='pdf' knowledge_items rows.
 
     pdf_items   -- iterable of (url, label) tuples; deduplicated by url inside this function.
@@ -258,6 +291,10 @@ def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_byt
             continue
         seen_urls.add(url)
 
+        canon = canonical_prose_url(url) if canonical else url
+        if canonical and seen_canon is not None and canon in seen_canon:
+            continue                         # same PDF asset already handled this run (two sitemaps)
+
         data = fetch_bytes(url)
         if data is None:
             skipped.append({"url": url, "status": "fetch_failed",
@@ -287,6 +324,21 @@ def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_byt
             "status": res.status,
             "source": created_by,
         }
+
+        if canonical:
+            meta.pop("natural_key", None)        # upsert_prose sets natural_key=canon
+            meta.pop("content_hash", None)
+            status = upsert_prose(conn, org_id=org_id, ptype="pdf", title=title, content=text,
+                                  meta=meta, canonical=canon, created_by=created_by)
+            if seen_canon is not None:
+                seen_canon.add(canon)
+            if status == "inserted":
+                inserted += 1
+            elif status == "updated":
+                updated += 1
+            else:                                # 'unchanged' or 'skipped_worse'
+                unchanged += 1
+            continue
 
         row = conn.execute(
             "SELECT id, json_extract(metadata,'$.content_hash') FROM knowledge_items "
