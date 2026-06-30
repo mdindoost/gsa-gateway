@@ -99,8 +99,12 @@ def main(argv=None):
         conn.commit()
         print("COMMITTED")
         if args.embed:
-            subprocess.run([sys.executable, str(REPO / "v2/scripts/embed_all.py")], check=True)
-            subprocess.run([sys.executable, str(REPO / "v2/scripts/embed_chunks.py")], check=True)
+            # Pass the SAME --db through so --embed targets the DB we just wrote (else the embed
+            # scripts default to the live gsa_gateway.db — wrong for a dev-copy run).
+            subprocess.run([sys.executable, str(REPO / "v2/scripts/embed_all.py"), args.db],
+                           check=True)
+            subprocess.run([sys.executable, str(REPO / "v2/scripts/embed_chunks.py"),
+                            "--db", args.db], check=True)
     else:
         print("DRY RUN — no commit (use --commit to write)")
     return totals
