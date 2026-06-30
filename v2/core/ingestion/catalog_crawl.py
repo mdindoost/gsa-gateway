@@ -8,6 +8,7 @@ Spec: docs/superpowers/specs/2026-06-29-catalog-crawl-build-a-design.md
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import xml.etree.ElementTree as ET
 from urllib.parse import urlsplit, urlunsplit
@@ -80,3 +81,35 @@ def catalog_seed_urls(fetch_bytes, sitemap_url: str = DEFAULT_SITEMAP) -> list[s
             seen.add(u)
             out.append(u)
     return out
+
+
+def extract_urls(urls, fetch) -> EntryResult:
+    """Extract prose from an EXPLICIT url list (no DFS). Skips people pages (explore.py owns
+    people), dedups by content hash keeping the cleanest alias, stashes raw HTML for date
+    extraction. Brings data only; no DB writes."""
+    res = EntryResult(seed="catalog", prose=[], skipped=[])
+    by_hash: dict[str, object] = {}
+    order: list[str] = []
+    for url in urls:
+        if is_people_path(url):
+            continue
+        html = fetch(url)
+        if not html:
+            res.skipped.append(url)
+            continue
+        page = extract_prose(url, html)
+        if page is None:
+            res.skipped.append(url)
+            continue
+        h = hashlib.sha1(page.content.encode("utf-8")).hexdigest()
+        if h not in by_hash:
+            by_hash[h] = page
+            order.append(h)
+            res.html_by_url[url] = html
+        elif _url_rank(page.source_url) < _url_rank(by_hash[h].source_url):
+            res.html_by_url.pop(by_hash[h].source_url, None)
+            by_hash[h] = page
+            res.html_by_url[url] = html
+    res.prose = [by_hash[h] for h in order]
+    _strip_recurring_assets(res.prose)
+    return res

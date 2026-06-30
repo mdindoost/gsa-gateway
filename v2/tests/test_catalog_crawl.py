@@ -99,3 +99,18 @@ def test_catalog_seed_urls_empty_on_fetch_or_parse_failure():
     from v2.core.ingestion.catalog_crawl import catalog_seed_urls
     assert catalog_seed_urls(lambda u: None) == []          # fetch failed
     assert catalog_seed_urls(lambda u: b"<not xml") == []    # parse failed
+
+
+def test_extract_urls_skips_people_dedups_and_stashes_html():
+    from v2.core.ingestion.catalog_crawl import extract_urls
+    pages = {
+        "https://catalog.njit.edu/a": "<html><body><div role='main'><h1>A</h1><p>Alpha body text here.</p></div></body></html>",
+        "https://catalog.njit.edu/b": "<html><body><div role='main'><h1>B</h1><p>Beta body text here.</p></div></body></html>",
+        "https://catalog.njit.edu/about-university/directory/faculty": "<html><body><div role='main'><h1>F</h1><p>roster names</p></div></body></html>",
+        "https://catalog.njit.edu/c": None,  # fetch failure → skipped
+    }
+    res = extract_urls(list(pages), lambda u: pages[u])
+    kept = {p.source_url for p in res.prose}
+    assert kept == {"https://catalog.njit.edu/a", "https://catalog.njit.edu/b"}  # faculty skipped, c failed
+    assert "https://catalog.njit.edu/c" in res.skipped
+    assert set(res.html_by_url) == kept
