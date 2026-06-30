@@ -1,9 +1,13 @@
 """Batch chunk-embed pass: chunk every active served item, embed via Ollama (batched),
 write knowledge_chunks + knowledge_chunk_vectors, then GC orphans and assert the invariant.
 
-Parallels embed_all.py but for the parent-document chunk tables. Resumable: without
---force, only items that have no chunks yet are processed. The embed step batches chunk
-texts into one Ollama /api/embed call (list input) to cut wall-clock.
+Parallels embed_all.py but for the parent-document chunk tables. SELF-HEALING: Phase 1
+chunks items that have no chunks yet (without --force); Phase 2 then embeds EVERY active-parent
+chunk that still lacks a vector (newly-created + any previously-failed) — the exact complement
+of invariant condition 2 — so a plain re-run converges to full coverage with no --force.
+Transient Ollama drops are retried per-slot (embed_with_retry) and a batch-level exception
+degrades to per-slot retry; persistent failures / an outage are reported with a non-zero exit
+(never a silent skip). The batch embed step uses one Ollama /api/embed call (list input).
 
 Usage:
     python3 v2/scripts/embed_chunks.py --db /tmp/copy.db --limit 50   # validate on a copy
@@ -160,7 +164,7 @@ def main(argv=None, emb=None) -> int:
         return 1
 
     vector_gc.assert_chunk_invariant(conn, d)
-    print(f"DONE; invariant OK")
+    print("DONE; invariant OK")
     return 0
 
 

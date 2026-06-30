@@ -47,15 +47,10 @@ def test_embed_with_retry_exception_every_time_returns_none():
 
 # ── Task 2: orphan chunk-ROW GC ──────────────────────────────────────────────
 
-import struct
 from v2.core.database.schema import create_all
 from v2.core.retrieval.model_descriptor import active_descriptor
 
 _D = active_descriptor()
-
-
-def _vec_bytes():
-    return struct.pack(f"{_D.dim}f", *([0.0] * _D.dim))
 
 
 def _conn_with_chunks():
@@ -190,3 +185,36 @@ def test_embed_all_uses_retry_then_succeeds(monkeypatch):
     assert succeeded == 1 and failed == []
     assert calls["n"] == 2  # first None, retried once → success
     assert conn.execute("SELECT COUNT(*) FROM knowledge_vectors WHERE item_id=1").fetchone()[0] == 1
+
+
+def test_main_health_check_fast_fail_exits_2(monkeypatch, tmp_path):
+    """Spec §7.8: a failed embedder health-check exits 2 BEFORE any DB write."""
+    import v2.scripts.embed_chunks as ec
+
+    class DeadEmb:
+        def __init__(self, *a, **k):
+            pass
+
+        def health_check(self):
+            return False
+
+    monkeypatch.setattr(ec, "Embedder", DeadEmb)
+    db = tmp_path / "nonexistent.db"
+    rc = ec.main(["--db", str(db)])
+    assert rc == 2
+    assert not db.exists()  # returned before get_connection → no DB created
+
+
+def test_gc_removes_stale_model_orphan_so_condition4_not_false_fired():
+    """Spec §7.6 (2nd clause): sweeping an inactive-parent chunk row that carries a stale
+    model_id removes a future condition-4 false-fire source (makes the invariant more honest)."""
+    from v2.core.database.vector_gc import sweep_orphan_chunk_rows, _count_stale_model_chunks
+    conn = create_all(":memory:")
+    conn.execute("INSERT OR IGNORE INTO organizations(id,name,slug,type) VALUES (1,'A','a','office')")
+    conn.execute("INSERT INTO knowledge_items(id,org_id,type,content,is_active) VALUES (11,1,'policy','y',0)")
+    conn.execute("INSERT INTO knowledge_chunks(id,parent_id,source_key,ordinal,text,content_hash,model_id) "
+                 "VALUES (101,11,'item:11',0,'y','h','OLD-MODEL')")
+    conn.commit()
+    assert _count_stale_model_chunks(conn, _D.id) == 1   # stale orphan would false-fire condition 4
+    sweep_orphan_chunk_rows(conn)
+    assert _count_stale_model_chunks(conn, _D.id) == 0   # swept → no false-fire
