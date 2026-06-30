@@ -114,3 +114,18 @@ def test_extract_urls_skips_people_dedups_and_stashes_html():
     assert kept == {"https://catalog.njit.edu/a", "https://catalog.njit.edu/b"}  # faculty skipped, c failed
     assert "https://catalog.njit.edu/c" in res.skipped
     assert set(res.html_by_url) == kept
+
+
+def test_iter_catalog_groups_groups_by_org():
+    from v2.core.ingestion.catalog_crawl import iter_catalog_groups
+    urls = [
+        "https://catalog.njit.edu/graduate/computing-sciences/x",
+        "https://catalog.njit.edu/graduate/computing-sciences/y",
+        "https://catalog.njit.edu/graduate/management/z",
+        "https://catalog.njit.edu/programs",
+    ]
+    html = "<html><body><div role='main'><h1>T</h1><p>Body content here.</p></div></body></html>"
+    groups = {g[0]: g for g in iter_catalog_groups(urls, lambda u: html)}
+    assert set(groups) == {"ywcc", "mtsm", "njit"}
+    assert len(groups["ywcc"][4].prose) == 1  # x and y share identical content → deduped to 1
+    assert groups["njit"][1] == "New Jersey Institute of Technology"

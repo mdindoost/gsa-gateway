@@ -113,3 +113,14 @@ def extract_urls(urls, fetch) -> EntryResult:
     res.prose = [by_hash[h] for h in order]
     _strip_recurring_assets(res.prose)
     return res
+
+
+def iter_catalog_groups(urls, fetch):
+    """Group urls by org_for, then extract each group. Yields one tuple per org group so the
+    runner can ingest + release each group's HTML before the next (bounded peak memory, N1)."""
+    groups: dict[tuple, list[str]] = {}
+    for u in urls:
+        groups.setdefault(org_for(u), []).append(u)
+    for (slug, name, parent, otype), group_urls in groups.items():
+        res = extract_urls(group_urls, fetch)
+        yield slug, name, parent, otype, res
