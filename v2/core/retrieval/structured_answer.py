@@ -42,11 +42,13 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
                 "rows": entity.people_by_name(conn, a["name"])}
     if skill == "research_of_person":
         return {"skill": skill, "research": entity.research_of_person(conn, a["entity_id"]),
-                "metrics": profile_fields.render_metrics(_person_attrs(conn, a["entity_id"]))}
+                "metrics": profile_fields.render_metrics(_person_attrs(conn, a["entity_id"])),
+                "scholar_push": _push_research_lines(conn, a["entity_id"])}
     if skill == "entity_card":
         return {"skill": skill, "name": a.get("name"),
                 "card": entity.entity_card(conn, a["entity_id"]),
-                "links": profile_fields.render_links(_person_attrs(conn, a["entity_id"]))}
+                "links": profile_fields.render_links(_person_attrs(conn, a["entity_id"])),
+                "scholar_push": _push_paper_lines(conn, a["entity_id"])}
     if skill == "metric_of_person":
         r = entity.metric_of_person(conn, a["entity_id"], a["field_key"], a.get("metric_key"))
         return {"skill": skill, "field_key": a["field_key"], "metric_key": a.get("metric_key"), **r}
@@ -127,6 +129,33 @@ def _fmt_metrics(field_key: str, present: dict) -> str:
 
 def _metric_noun(metric_key: str) -> str:
     return metric_key.replace("_", "-")   # citations / h-index / i10-index
+
+
+def _push_paper_lines(conn, entity_id: str) -> list:
+    """Compact PUSH lines for the identity card: most-cited + newest paper (each if present)."""
+    lines = []
+    mc = entity.papers_of_person(conn, entity_id, "most_cited")["papers"]
+    if mc:
+        lines.append(f"Most-cited paper: {_fmt_paper(mc[0])}")
+    nw = entity.papers_of_person(conn, entity_id, "newest")["papers"]
+    if nw:
+        lines.append(f"Newest paper: {_fmt_paper(nw[0])}")
+    return lines
+
+
+def _push_research_lines(conn, entity_id: str) -> list:
+    """Compact PUSH lines for the research answer: peak year (honest guard) + most-cited paper."""
+    lines = []
+    t = entity.citation_trend_of_person(conn, entity_id)
+    peak = t.get("peak")
+    if peak:
+        py, pv, all_time = peak
+        scope = "all-time" if all_time else f"since {min(t['cites_per_year'])}"
+        lines.append(f"Most-cited year: {py} ({pv:,}, {scope}).")
+    mc = entity.papers_of_person(conn, entity_id, "most_cited")["papers"]
+    if mc:
+        lines.append(f"Most-cited paper: {_fmt_paper(mc[0])}")
+    return lines
 
 
 def _fmt_paper(p: dict) -> str:
@@ -390,9 +419,13 @@ def deterministic_suffix(result: dict) -> str | None:
     nothing. Roster/list skills add nothing."""
     skill = result.get("skill")
     if skill == "entity_card" and result.get("card"):
-        return result.get("links")
-    if skill == "research_of_person":
+        parts = [result.get("links"), *(result.get("scholar_push") or [])]
+    elif skill == "research_of_person":
         rp = result.get("research") or {}
-        if rp.get("areas") or rp.get("statement"):
-            return result.get("metrics")
-    return None
+        if not (rp.get("areas") or rp.get("statement")):
+            return None
+        parts = [result.get("metrics"), *(result.get("scholar_push") or [])]
+    else:
+        return None
+    parts = [p for p in parts if p]                # omit a missing line (links/metrics/each push)
+    return "\n".join(parts) if parts else None

@@ -20,7 +20,8 @@ from v2.core.graph.orgs import ensure_org, sync_org_nodes
 from v2.core.graph.project import project_appointment
 from v2.core.retrieval import entity, router
 from v2.core.retrieval.router import Route
-from v2.core.retrieval.structured_answer import run, format_answer, is_deterministic
+from v2.core.retrieval.structured_answer import (
+    run, format_answer, is_deterministic, deterministic_suffix)
 
 SCHOLAR = {
     "citations": 2791, "h_index": 26, "i10_index": 35,
@@ -224,3 +225,45 @@ def test_noregression_citations_metric():
 def test_noregression_most_cited_professor():
     rt = router.route(_kg(), "most cited professor in cs")
     assert rt.skill == "top_people_by_metric"
+
+
+# ── push: multi-line deterministic suffix ──────────────────────────────────
+
+def test_suffix_entity_card_composes_links_and_papers():
+    res = {"skill": "entity_card", "card": "card text", "links": "🎓 [Scholar](u)",
+           "scholar_push": ['Most-cited paper: "X" (2010) — 390 citations. u1',
+                            'Newest paper: "Y" (2026). u2']}
+    s = deterministic_suffix(res)
+    assert "Scholar" in s and "Most-cited paper" in s and "Newest paper" in s
+
+
+def test_suffix_research_composes_metrics_peak_paper():
+    res = {"skill": "research_of_person", "research": {"areas": ["graphs"]},
+           "metrics": "Google Scholar: 2,791 citations",
+           "scholar_push": ["Most-cited year: 2025 (251, all-time).", 'Most-cited paper: "X".']}
+    s = deterministic_suffix(res)
+    assert "citations" in s and "Most-cited year" in s and "Most-cited paper" in s
+
+
+def test_suffix_omits_empty_push_unchanged():
+    res = {"skill": "entity_card", "card": "c", "links": "🎓 [Scholar](u)", "scholar_push": []}
+    assert deterministic_suffix(res) == "🎓 [Scholar](u)"   # existing behavior preserved
+
+
+def test_suffix_none_when_no_links_and_no_push():
+    res = {"skill": "entity_card", "card": "c", "links": None, "scholar_push": []}
+    assert deterministic_suffix(res) is None
+
+
+def test_run_entity_card_populates_scholar_push():
+    res = run(_conn(), Route("entity_card", {"entity_id": "p/k", "name": "Ioannis Koutis"}))
+    push = res.get("scholar_push") or []
+    assert any("Most-cited paper" in l for l in push)
+    assert any("Newest paper" in l for l in push)
+
+
+def test_run_research_populates_peak_and_paper_push():
+    res = run(_conn(), Route("research_of_person", {"entity_id": "p/k", "name": "Ioannis Koutis"}))
+    push = res.get("scholar_push") or []
+    assert any("Most-cited year" in l for l in push)
+    assert any("Most-cited paper" in l for l in push)
