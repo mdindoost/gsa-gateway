@@ -1,7 +1,11 @@
-# Design rev2 — Day-1 scoped PROSE rebuild (Crawling 2.1 airtight, single-canonical)
+# Design rev3 — Day-1 scoped PROSE rebuild (Crawling 2.1 airtight, single-canonical)
 
-**Status:** rev2, supersedes `2026-06-30-www-crawl-canonical-prose-owner-design.md` (rev1 = NO-GO).
-For Codex re-review, then owner sign-off, then TDD build. HARD GATE.
+**Status:** rev3 — folds the rev2 RE-REVIEW (senior-eng GO-WITH-CHANGES + RAG GO-WITH-CHANGES; both "no
+architecture remains, all spec-precision"). Supersedes rev1 (`…canonical-prose-owner-design.md`, NO-GO).
+**rev3 changes:** §4.4 density = boilerplate-stripped LENGTH (not unique-token ratio — was backwards);
+§5.1 coverage gate now CONTENT-AWARE + canonicalizes the BACKUP side (the wipe-window under-capture guard);
+§5.4 rank-preservation baseline = backup DB over eval+office query set; §5.5 GUARD widened to ~10 general Qs.
+Ready for owner sign-off → TDD build. HARD GATE.
 **Author:** Claude (Opus 4.8), 2026-06-30. **Owner:** Mohammad (approved this direction).
 **Branch/worktree:** `feat/www-crawl-buildb` @ `f679cc1` (`.claude/worktrees/buildb-www-crawl`).
 
@@ -74,14 +78,18 @@ created_by)` — that lets the same URL land as `policy@bursar` + `webpage@njit`
 (org,type) assignment, **first-typed wins**; the main-sitemap marketing/`webpage` bucket only fills URLs no
 typed entry claimed (kills the webpage-vs-policy twin that caused the regression).
 
-### 4.4 Keep-fullest/densest on collision AND on update (RAG#1 BLOCKER, SE#2/#4)
+### 4.4 Keep-fullest on collision AND on update (RAG#1 BLOCKER, SE#2/#4, rev2-RAG#1)
 When two captures resolve to the same canonical URL (within-run, or a recrawl update): **keep the
-higher-quality** row, do NOT blindly adopt the latest. "Quality" = **content density** (unique-content-token
-ratio / boilerplate-signature penalty), NOT raw length (RAG#2: raw-longest can be more nav/boilerplate, and the
-CE truncates @512 + bm25 length-penalty make longest rank worse). Tie → most-recent. **Never let a
+higher-quality** row, do NOT blindly adopt the latest. **Quality metric = BOILERPLATE-STRIPPED CONTENT LENGTH**
+(token count AFTER `_strip_recurring_assets` + boilerplate-signature pass) — i.e. "fullest of *real* content."
+**NOT type-token / unique-token ratio** (rev2-RAG#1: TTR is length-biased toward the SHORTER capture — the
+opposite of the goal). **NOT raw length** either (RAG#2: raw-longest can be more nav/boilerplate; CE truncates
+@512 + bm25 length-penalty make raw-longest rank worse). **Tiebreak:** lower boilerplate fraction (leading-nav
+penalty — proxy for "answer not pushed past the CE 512-token window"), then most-recent. **Never let a
 `type='webpage'` row supersede a `policy/news/event` row** (SE#2/#4: the live `graduate-admissions` trap). A
-shorter/thinner re-fetch (e.g. truncated under the fetch deadline) does NOT overwrite a denser row — guard +
-logged warning.
+shorter/thinner re-fetch (e.g. truncated under the fetch deadline) does NOT overwrite a fuller row — guard +
+logged warning. (NOTE: in rev2 all engines re-crawl through the SAME `extract_prose`/`_strip_recurring_assets`,
+so within-run same-URL captures are near-identical; this rule only bites on genuinely-different content.)
 
 ### 4.5 PDF dedup (SE#3 BLOCKER, RAG/Codex)
 PDFs currently key `(org_id,url)` and `reconcile` EXCLUDES `'pdf'` → the 32 self-dups are structural. Fix:
@@ -96,19 +104,31 @@ identity is the global canonical URL, not the source.
 
 ## 5. Validate on the dev copy → atomic swap (the safety gate)
 Build the rebuilt DB on a copy; **prove before swapping**:
-1. **Coverage (lose-nothing) gate:** the set of canonical prose URLs in the rebuilt DB **⊇** the set in the
-   backup (the pre-wipe live DB), modulo a reviewed, logged drop-list (e.g. proven soft-404s). Any legacy prose
-   URL absent from the rebuild and not on the drop-list = FAIL (fail-closed).
+1. **Coverage (lose-nothing) gate — CONTENT-AWARE, both sides canonicalized** (rev2-SE#1/#2, rev2-RAG#2):
+   - **Canonicalize BOTH sides first:** run the BACKUP rows' stored `natural_key`s through the NEW
+     `canonical_prose_url` + the §4.2 alias map before comparing (backup keys were written under the OLD
+     non-uniform normalizers — catalog strips slash, college keeps it — so a raw compare false-FAILs en masse
+     OR masks loss). Compare canonical-vs-canonical.
+   - **URL coverage:** rebuilt canonical-prose-URL set **⊇** backup canonical set, modulo a reviewed, logged
+     drop-list (proven soft-404s). Any backup prose URL absent from the rebuild and not on the drop-list = FAIL.
+   - **CONTENT coverage (the wipe-window guard, rev2-SE#1):** for every covered backup URL, the rebuilt row's
+     **boilerplate-stripped content length ≥ the backup row's** (within a small tolerance), minus the drop-list.
+     A thinner rebuilt row (truncated/under-capture — deadline-cap, transient 404, host-down) = FAIL. This is the
+     ONLY defense against silent content loss the URL-set gate can't see (post-wipe there is no within-run
+     baseline; the backup IS the baseline). Log every URL where rebuilt < backup with both lengths.
 2. **People/KG/manual untouched:** §2 invariant counts byte-identical vs backup.
 3. **Single-canonical invariant:** ≤1 active prose row per `canonical_prose_url` across ALL sources (incl PDFs).
 4. **Anti-corank + regression probes (RAG#6):**
    - anti-corank: for the formerly-dup URLs, exactly one active row, and it is the canonical/densest one;
    - grad-admissions serving probe: "which office handles graduate admission questions" → real Admissions
      office page rank-1/2, no `Graduate Admissions` dup anywhere in top-k;
-   - rank-preservation diff: queries that retrieved a retired/merged row at rank R now retrieve the surviving
-     row at ≤ R+tolerance (proves "fuller didn't rank worse").
-5. **office-routing gold ≥ baseline (10/12), GUARD 3/3; eval.sh no-regression; verify_kg clean; embed coverage
-   100%; 0 orphan chunk vectors.**
+   - rank-preservation diff (rev2-RAG#3): baseline = the **BACKUP DB** over the **eval.sh + office-gold query
+     set** (NOT "formerly-dup rows" — no stable row identity post-wipe). Capture each query's answer-bearing-
+     content rank R against the backup PRE-swap; re-run against the rebuilt DB; assert ≤ R+tolerance. Proves
+     "fuller/consolidated didn't rank worse" and that the marketing `webpage` bucket didn't dilute.
+5. **office-routing gold ≥ baseline (10/12); GUARD ≥ baseline — widen GUARD to ~10 general (non-office) queries**
+   (rev2-RAG#4) so a per-query dilution swap can't hide inside the eval.sh aggregate; **eval.sh no-regression;
+   verify_kg clean; embed coverage 100%; 0 orphan chunk vectors.**
 6. **Idempotence double-run (SE#7, Codex#4):** re-run the full rebuild on the rebuilt DB → 0 inserts / 0 retires
    / 0 dups; test fixtures MUST include a PDF-in-two-sitemaps and a URL-in-two-sitemaps case.
 7. **Answer-gate note (RAG#7):** the parked answer-gate band must be re-checked/refit on the consolidated
