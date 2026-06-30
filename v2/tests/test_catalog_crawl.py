@@ -129,3 +129,35 @@ def test_iter_catalog_groups_groups_by_org():
     assert set(groups) == {"ywcc", "mtsm", "njit"}
     assert len(groups["ywcc"][4].prose) == 1  # x and y share identical content → deduped to 1
     assert groups["njit"][1] == "New Jersey Institute of Technology"
+
+
+def test_reconcile_catalog_retires_policy_keeps_pdf_and_guards():
+    from v2.core.ingestion.catalog_crawl import reconcile_catalog
+    conn = _conn()
+    def ins(url, typ):
+        conn.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
+                     "version,is_active,created_by) VALUES(1,?,?,?, '{}', ?,1,1,'catalog_crawl')",
+                     (typ, "t", "c", url))
+    conn.execute("INSERT INTO organizations(id,slug,name,type) VALUES(1,'njit','NJIT','university')")
+    ins("https://catalog.njit.edu/keep", "policy")        # stays in sitemap
+    ins("https://catalog.njit.edu/gone", "policy")         # left sitemap → retire
+    ins("https://catalog.njit.edu/file.pdf", "pdf")        # pdf → never retire (B2)
+    sitemap = ["https://catalog.njit.edu/keep"] + [f"https://catalog.njit.edu/p{i}" for i in range(400)]
+    out = reconcile_catalog(conn, sitemap, prior_active_count=2)
+    assert out["retired"] == 1
+    assert conn.execute("SELECT is_active FROM knowledge_items WHERE source_url=?",
+                        ("https://catalog.njit.edu/gone",)).fetchone()[0] == 0
+    assert conn.execute("SELECT is_active FROM knowledge_items WHERE source_url=?",
+                        ("https://catalog.njit.edu/file.pdf",)).fetchone()[0] == 1  # pdf kept
+
+
+def test_reconcile_catalog_floor_and_empty_guards():
+    from v2.core.ingestion.catalog_crawl import reconcile_catalog
+    conn = _conn()
+    conn.execute("INSERT INTO organizations(id,slug,name,type) VALUES(1,'njit','NJIT','university')")
+    conn.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
+                 "version,is_active,created_by) VALUES(1,'policy','t','c','{}',"
+                 "'https://catalog.njit.edu/x',1,1,'catalog_crawl')")
+    assert reconcile_catalog(conn, [], prior_active_count=446)["retired"] == 0          # empty → skip
+    assert reconcile_catalog(conn, [f"u{i}" for i in range(50)], prior_active_count=446)["retired"] == 0  # 50 < floor → skip
+    assert conn.execute("SELECT is_active FROM knowledge_items WHERE source_url='https://catalog.njit.edu/x'").fetchone()[0] == 1

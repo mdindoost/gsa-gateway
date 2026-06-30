@@ -124,3 +124,28 @@ def iter_catalog_groups(urls, fetch):
     for (slug, name, parent, otype), group_urls in groups.items():
         res = extract_urls(group_urls, fetch)
         yield slug, name, parent, otype, res
+
+
+def reconcile_catalog(conn, sitemap_urls, prior_active_count, *, min_floor=300, ratio=0.8) -> dict:
+    """Retire active catalog_crawl POLICY rows whose source_url left the sitemap. PDFs excluded
+    (their natural_key is never a <loc> — B2). Guarded: skip on empty or below-floor frontier so a
+    partial sitemap fetch never mass-retires (S1). `prior_active_count` is the catalog_crawl/policy
+    active count sampled BEFORE this run's ingest (caller passes it)."""
+    sitemap = set(sitemap_urls)
+    if not sitemap:
+        return {"retired": 0, "skipped_reason": "empty_sitemap"}
+    floor = max(min_floor, int(ratio * prior_active_count))
+    if len(sitemap) < floor:
+        logger.warning("reconcile_catalog: frontier %d < floor %d — skipping retirement",
+                       len(sitemap), floor)
+        return {"retired": 0, "skipped_reason": f"below_floor({len(sitemap)}<{floor})"}
+    rows = conn.execute(
+        "SELECT id, source_url FROM knowledge_items "
+        "WHERE is_active=1 AND created_by=? AND type='policy'", (CATALOG_SOURCE,)).fetchall()
+    retired = 0
+    for rid, src in rows:
+        if src not in sitemap:
+            conn.execute("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
+                         "WHERE id=?", (rid,))
+            retired += 1
+    return {"retired": retired, "skipped_reason": None}
