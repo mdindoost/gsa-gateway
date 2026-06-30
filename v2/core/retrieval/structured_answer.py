@@ -62,6 +62,9 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
     if skill == "link_of_person":
         r = entity.link_of_person(conn, a["entity_id"], a["field_key"])
         return {"skill": skill, "field_key": a["field_key"], **r}
+    if skill == "papers_of_person":
+        r = entity.papers_of_person(conn, a["entity_id"], a["mode"])
+        return {"skill": skill, "n": a.get("n", 1), **r}
     if skill == "person_disambig":
         return {"skill": skill, "candidates": a["candidates"]}
     if skill == "faculty_areas_in_department":
@@ -99,7 +102,8 @@ def _join(names: list[str]) -> str:
 # Deterministic answers whose NUMBERS must never be reworded by the LLM — the caller skips
 # compose_from_rows for these (their format_answer output IS the final answer).
 _DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric", "link_of_person",
-                                   "metric_descending_unsupported"})
+                                   "metric_descending_unsupported", "papers_of_person",
+                                   "citation_trend_of_person"})
 
 
 def is_deterministic(result: dict) -> bool:
@@ -118,6 +122,18 @@ def _fmt_metrics(field_key: str, present: dict) -> str:
 
 def _metric_noun(metric_key: str) -> str:
     return metric_key.replace("_", "-")   # citations / h-index / i10-index
+
+
+def _fmt_paper(p: dict) -> str:
+    """One captured paper, rendered verbatim: '"Title" (year, venue) — N citations. url'.
+    Citation clause omitted for an uncited paper; url/meta omitted when absent."""
+    title = (p.get("title") or "").strip()
+    meta = ", ".join(x for x in (p.get("year"), p.get("venue")) if x)
+    head = f'"{title}"' + (f" ({meta})" if meta else "")
+    cb = p.get("cited_by")
+    cite = f" — {cb:,} citations" if cb else ""
+    url = p.get("url")
+    return f"{head}{cite}" + (f". {url}" if url else ".")
 
 
 def _top_with_ties(ranked: list, n: int) -> list:
@@ -231,6 +247,25 @@ def format_answer(result: dict) -> str:
         if result.get("url"):
             return f"{result['name']}'s {result['field_label']}: {result['url']}"
         return f"I don't have a {result['field_label']} on file for {result['name']}."
+
+    if skill == "papers_of_person":
+        # Deterministic: titles/years/venues/citation-counts/links are emitted VERBATIM from the
+        # captured highlight set. Empty → "" so _try_structured falls through to RAG (honest: we only
+        # track the most-cited / newest / this-year papers, not the full bibliography).
+        papers = result["papers"]
+        if not papers:
+            return ""
+        name, mode, n = result["name"], result["mode"], result.get("n", 1)
+        if mode == "current_year":
+            yr = papers[0].get("year", "this year")
+            listed = "; ".join(_fmt_paper(p) for p in papers[:max(n, 1)])
+            return f"{name} published {len(papers)} paper(s) in {yr}: {listed}"
+        label = "most-cited" if mode == "most_cited" else "newest"
+        if n and n > 1:
+            top = papers[:n]
+            listed = " ".join(f"{i}. {_fmt_paper(p)}" for i, p in enumerate(top, 1))
+            return f"{name}'s top {len(top)} {label} papers: {listed}"
+        return f"{name}'s {label} paper: {_fmt_paper(papers[0])}"
 
     if skill == "entity_card":
         return result["card"] or ""        # the card is the grounding + offline fallback

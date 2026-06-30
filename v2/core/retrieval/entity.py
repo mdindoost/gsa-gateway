@@ -289,6 +289,26 @@ def metric_of_person(conn: sqlite3.Connection, entity_id: str, field_key: str,
             "updated_at": entry.get("updated_at")}
 
 
+_PAPER_MODE_FIELD = {"most_cited": "top_cited", "newest": "newest", "current_year": "current_year"}
+
+
+def papers_of_person(conn: sqlite3.Connection, entity_id: str, mode: str) -> dict:
+    """{name, mode, papers} for one person's captured Scholar papers in ``mode`` —
+    most_cited→top_cited, newest→newest, current_year→current_year — read from
+    ``attrs.profiles.scholar``. papers=[] (honest-empty) when the person has no Scholar capture or
+    no papers in that slice. Each paper is the verbatim captured record
+    {title, year, venue, authors, cited_by, url}. Never fabricated; the captured highlight set only
+    (not the full bibliography)."""
+    attrs = person_attrs(conn, entity_id)
+    row = conn.execute(
+        "SELECT name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+        (entity_id,)).fetchone()
+    name = normalize_person_name(row[0]) if row else entity_id
+    scholar = ((attrs.get("profiles") or {}).get("scholar")) or {}
+    papers = list(scholar.get(_PAPER_MODE_FIELD.get(mode, ""), []) or [])
+    return {"name": name, "mode": mode, "papers": papers}
+
+
 def link_of_person(conn: sqlite3.Connection, entity_id: str, field_key: str) -> dict:
     """{name, field_label, url} for one person's external-profile LINK (linkedin/scholar/github/
     orcid/website). Reads via the registry's `_field_url` so the website `attrs_fallback` is honored.
