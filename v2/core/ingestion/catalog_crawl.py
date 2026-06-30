@@ -11,11 +11,14 @@ from __future__ import annotations
 import hashlib
 import logging
 import xml.etree.ElementTree as ET
+from dataclasses import replace
 from urllib.parse import urlsplit, urlunsplit
+
+from bs4 import BeautifulSoup
 
 from v2.core.ingestion.college_crawl import EntryResult, is_people_path
 from v2.core.ingestion.eos_crawl import (
-    extract_prose, _url_rank, _strip_recurring_assets, _canon,
+    extract_prose, _url_rank, _strip_recurring_assets, _canon, _main_region,
 )
 from v2.core.ingestion.web_crawler import normalize_url
 
@@ -83,6 +86,22 @@ def catalog_seed_urls(fetch_bytes, sitemap_url: str = DEFAULT_SITEMAP) -> list[s
     return out
 
 
+def _catalog_title(html: str) -> str | None:
+    """Program-specific title for a CourseLeaf catalog page: the <h1> INSIDE the main content
+    region (the site banner h1 'University Catalog 2025-2026' sits outside it), else the <title>
+    tag's program part (CourseLeaf format 'Program < New Jersey Institute of Technology').
+    Mechanical SELECTION of an existing heading — never rewrites. Returns None if neither exists
+    (caller keeps extract_prose's title)."""
+    soup = BeautifulSoup(html, "html.parser")
+    region = _main_region(soup)
+    h1 = region.find("h1") if region is not None else None
+    if h1 and h1.get_text(" ", strip=True):
+        return h1.get_text(" ", strip=True).rstrip(":").strip()
+    if soup.title and soup.title.get_text(strip=True):
+        return soup.title.get_text(strip=True).split(" < ")[0].split(" | ")[0].strip()
+    return None
+
+
 def extract_urls(urls, fetch) -> EntryResult:
     """Extract prose from an EXPLICIT url list (no DFS). Skips people pages (explore.py owns
     people), dedups by content hash keeping the cleanest alias, stashes raw HTML for date
@@ -101,6 +120,9 @@ def extract_urls(urls, fetch) -> EntryResult:
         if page is None:
             res.skipped.append(url)
             continue
+        title = _catalog_title(html)
+        if title:
+            page = replace(page, title=title)
         h = hashlib.sha1(page.content.encode("utf-8")).hexdigest()
         if h not in by_hash:
             by_hash[h] = page

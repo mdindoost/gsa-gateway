@@ -161,3 +161,31 @@ def test_reconcile_catalog_floor_and_empty_guards():
     assert reconcile_catalog(conn, [], prior_active_count=446)["retired"] == 0          # empty → skip
     assert reconcile_catalog(conn, [f"u{i}" for i in range(50)], prior_active_count=446)["retired"] == 0  # 50 < floor → skip
     assert conn.execute("SELECT is_active FROM knowledge_items WHERE source_url='https://catalog.njit.edu/x'").fetchone()[0] == 1
+
+
+def test_extract_urls_uses_program_title_not_site_banner():
+    from v2.core.ingestion.catalog_crawl import extract_urls
+    # CourseLeaf shape: a site-banner <h1> OUTSIDE role=main, a program <h1> INSIDE it.
+    html = (
+        "<html><head><title>Ph.D. in Data Science - Computing Track: "
+        "&lt; New Jersey Institute of Technology</title></head><body>"
+        "<header><h1><a href='/'>University Catalog 2025-2026</a></h1></header>"
+        "<div id='content' role='main'><h1>Ph.D. in Data Science - Computing Track:</h1>"
+        "<p>Admission requirements and qualifying exam rules here.</p></div>"
+        "</body></html>"
+    )
+    url = "https://catalog.njit.edu/graduate/computing-sciences/data-science/data-science-phd"
+    res = extract_urls([url], lambda u: html)
+    assert len(res.prose) == 1
+    # program title from the in-region <h1>, trailing colon stripped — NOT the site banner
+    assert res.prose[0].title == "Ph.D. in Data Science - Computing Track"
+
+
+def test_catalog_title_falls_back_to_title_tag_then_none():
+    from v2.core.ingestion.catalog_crawl import _catalog_title
+    # no in-region h1 → use the <title> tag's program part (split on ' < ')
+    html_no_h1 = ("<html><head><title>Applied Physics, M.S. &lt; New Jersey Institute of "
+                  "Technology</title></head><body><div role='main'><p>body</p></div></body></html>")
+    assert _catalog_title(html_no_h1) == "Applied Physics, M.S."
+    # no h1 and no title → None (caller keeps extract_prose's title)
+    assert _catalog_title("<html><body><div role='main'><p>x</p></div></body></html>") is None
