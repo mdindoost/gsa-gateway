@@ -52,3 +52,38 @@ def test_drop_item_chunks_clears_both_tables(tmp_path):
     assert dropped > 1
     assert conn.execute("SELECT COUNT(*) FROM knowledge_chunks WHERE parent_id=1").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM knowledge_chunk_vectors WHERE parent_id=1").fetchone()[0] == 0
+
+
+# ── retry/exception robustness (shares embed_with_retry with the batch scripts) ──
+
+SHORT = "Short policy text for a single chunk."
+
+
+def test_populate_retries_transient_none(tmp_path):
+    """A transient None embedding is retried, not silently skipped → the chunk gets a vector."""
+    conn = create_all(str(tmp_path / "t.db")); _seed(conn, SHORT)
+    calls = {"n": 0}
+    def flaky(_text):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else [0.1] * 768   # first drop, then succeed
+    written = populate_item_chunks(conn, 1, flaky, D)
+    n_chunks = conn.execute("SELECT COUNT(*) FROM knowledge_chunks WHERE parent_id=1").fetchone()[0]
+    n_vecs = conn.execute("SELECT COUNT(*) FROM knowledge_chunk_vectors WHERE parent_id=1").fetchone()[0]
+    assert n_chunks == 1
+    assert written == n_vecs == 1   # the retry healed the hole (old code → 0)
+    assert calls["n"] == 2          # first None, retried once → success
+
+
+def test_populate_tolerates_embed_exception(tmp_path):
+    """An exception from embed_fn (conn reset) is retried, not propagated — the writer's
+    transaction is not aborted, and the chunk still gets a vector."""
+    conn = create_all(str(tmp_path / "t.db")); _seed(conn, SHORT)
+    seq = [RuntimeError("ollama dropped"), [0.1] * 768]
+    def raises_then_ok(_text):
+        x = seq.pop(0)
+        if isinstance(x, Exception):
+            raise x
+        return x
+    written = populate_item_chunks(conn, 1, raises_then_ok, D)   # must NOT raise
+    n_vecs = conn.execute("SELECT COUNT(*) FROM knowledge_chunk_vectors WHERE parent_id=1").fetchone()[0]
+    assert written == n_vecs == 1

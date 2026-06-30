@@ -17,6 +17,7 @@ from typing import Callable, Optional
 import sqlite_vec
 
 from v2.core.retrieval.chunker import chunk_text
+from v2.core.retrieval.embedder import embed_with_retry
 from v2.core.retrieval.model_descriptor import ModelDescriptor
 
 # text -> raw (un-normalized) embedding, or None on failure
@@ -62,7 +63,9 @@ def populate_item_chunks(conn: sqlite3.Connection, item_id: int,
         )
         chunk_id = cur.lastrowid
         embed_input = descriptor.doc_prefix + descriptor.truncate_to_tokens(chunk, descriptor.context_window)
-        norm = _normalize(embed_fn(embed_input) or [])
+        # Retry transient drops (None) and tolerate exceptions (conn reset) instead of silently
+        # skipping or aborting the writer's txn — same retry policy as the batch embed scripts.
+        norm = _normalize(embed_with_retry(lambda inp=embed_input: embed_fn(inp)) or [])
         if norm is None:
             continue
         conn.execute(
