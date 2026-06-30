@@ -309,6 +309,27 @@ def papers_of_person(conn: sqlite3.Connection, entity_id: str, mode: str) -> dic
     return {"name": name, "mode": mode, "papers": papers}
 
 
+def citation_trend_of_person(conn: sqlite3.Connection, entity_id: str,
+                             year: int | None = None) -> dict:
+    """{name, cites_per_year, citations, peak, year, year_count} for one person's citation trend,
+    read from ``attrs.profiles.scholar``. ``peak`` is the shared ``scholar.all_time_peak`` guard's
+    ``(peak_year, peak_value, is_all_time)`` (or None) — IMPORTED, never reimplemented, so the
+    all-time honesty check can't drift. ``year_count`` is that year's bar (or None if outside the
+    window). Honest-empty when no chart. Never fabricated."""
+    from v2.core.ingestion.scholar import all_time_peak
+    attrs = person_attrs(conn, entity_id)
+    row = conn.execute(
+        "SELECT name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+        (entity_id,)).fetchone()
+    name = normalize_person_name(row[0]) if row else entity_id
+    scholar = ((attrs.get("profiles") or {}).get("scholar")) or {}
+    cpy = scholar.get("cites_per_year") or {}
+    citations = scholar.get("citations")
+    return {"name": name, "cites_per_year": cpy, "citations": citations,
+            "peak": all_time_peak(citations, cpy),
+            "year": year, "year_count": cpy.get(str(year)) if year is not None else None}
+
+
 def link_of_person(conn: sqlite3.Connection, entity_id: str, field_key: str) -> dict:
     """{name, field_label, url} for one person's external-profile LINK (linkedin/scholar/github/
     orcid/website). Reads via the registry's `_field_url` so the website `attrs_fallback` is honored.

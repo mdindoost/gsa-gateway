@@ -106,3 +106,55 @@ def test_papers_render_empty_falls_through_to_rag():
     res = run(_conn(scholar=None), Route("papers_of_person",
                                          {"entity_id": "p/k", "name": "Koutis", "mode": "most_cited", "n": 1}))
     assert format_answer(res) == ""                    # "" → _try_structured falls back to RAG
+
+
+# ── citation_trend_of_person ───────────────────────────────────────────────
+
+# all-time-provable: chart sum ≈ citations (hidden < peak)
+_ALLTIME = {"citations": 880,
+            "cites_per_year": {"2010": 62, "2019": 208, "2024": 194, "2025": 251, "2026": 152,
+                               "2007": 8}}  # sum 875, hidden 5 < 251
+
+
+def test_trend_year_count():
+    res = run(_conn(), Route("citation_trend_of_person",
+                             {"entity_id": "p/k", "name": "Ioannis Koutis", "mode": "year", "year": 2019}))
+    assert is_deterministic(res)
+    assert "208" in format_answer(res) and "2019" in format_answer(res)
+
+
+def test_trend_year_absent_is_honest():
+    res = run(_conn(), Route("citation_trend_of_person",
+                             {"entity_id": "p/k", "name": "Ioannis Koutis", "mode": "year", "year": 1990}))
+    out = format_answer(res)
+    assert "1990" in out and "don't have" in out.lower()
+
+
+def test_trend_peak_windowed_when_not_provable_all_time():
+    # main SCHOLAR fixture: sparse chart (sum 875) << citations 2791 -> NOT all-time
+    res = run(_conn(), Route("citation_trend_of_person",
+                             {"entity_id": "p/k", "name": "Ioannis Koutis", "mode": "peak", "year": None}))
+    out = format_answer(res)
+    assert "2025" in out and "251" in out
+    assert "since 2007" in out and "all-time" not in out.lower()
+
+
+def test_trend_peak_all_time_when_provable():
+    res = run(_conn(scholar=_ALLTIME, name="Ioannis Koutis"),
+              Route("citation_trend_of_person",
+                    {"entity_id": "p/k", "name": "Ioannis Koutis", "mode": "peak", "year": None}))
+    out = format_answer(res)
+    assert "2025" in out and "all-time" in out.lower()
+
+
+def test_trend_growth_describes_direction():
+    res = run(_conn(), Route("citation_trend_of_person",
+                             {"entity_id": "p/k", "name": "Ioannis Koutis", "mode": "growth", "year": None}))
+    out = format_answer(res)
+    assert "Ioannis Koutis" in out and ("2025" in out or "2024" in out)
+
+
+def test_trend_empty_no_chart_falls_through():
+    res = run(_conn(scholar={"citations": 5}), Route("citation_trend_of_person",
+              {"entity_id": "p/k", "name": "Koutis", "mode": "peak", "year": None}))
+    assert format_answer(res) == ""

@@ -65,6 +65,9 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
     if skill == "papers_of_person":
         r = entity.papers_of_person(conn, a["entity_id"], a["mode"])
         return {"skill": skill, "n": a.get("n", 1), **r}
+    if skill == "citation_trend_of_person":
+        r = entity.citation_trend_of_person(conn, a["entity_id"], a.get("year"))
+        return {"skill": skill, "mode": a.get("mode", "peak"), **r}
     if skill == "person_disambig":
         return {"skill": skill, "candidates": a["candidates"]}
     if skill == "faculty_areas_in_department":
@@ -266,6 +269,29 @@ def format_answer(result: dict) -> str:
             listed = " ".join(f"{i}. {_fmt_paper(p)}" for i, p in enumerate(top, 1))
             return f"{name}'s top {len(top)} {label} papers: {listed}"
         return f"{name}'s {label} paper: {_fmt_paper(papers[0])}"
+
+    if skill == "citation_trend_of_person":
+        # Deterministic, from the per-year chart. Empty chart → "" (RAG fallthrough).
+        cpy = result["cites_per_year"]
+        if not cpy:
+            return ""
+        name, mode = result["name"], result.get("mode", "peak")
+        if mode == "year":
+            y, yc = result.get("year"), result.get("year_count")
+            if yc is None:
+                return f"I don't have {y} citation data for {name}."
+            return f"{name} received {yc:,} citations in {y}."
+        if mode == "growth":
+            yrs = sorted(cpy)                       # 'YYYY' strings sort correctly
+            listed = "; ".join(f"{y}: {cpy[y]:,}" for y in yrs[-3:])
+            return f"{name}'s recent annual citations — {listed}."
+        peak = result.get("peak")                  # mode == 'peak'
+        if not peak:
+            return ""
+        py, pv, all_time = peak
+        scope = ("their all-time most-cited year" if all_time
+                 else f"their most-cited year since {min(cpy)}")   # honest window, not "all-time"
+        return f"{name}'s most-cited year is {py} ({pv:,} citations) — {scope}."
 
     if skill == "entity_card":
         return result["card"] or ""        # the card is the grounding + offline fallback
