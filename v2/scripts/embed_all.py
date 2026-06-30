@@ -45,6 +45,7 @@ except ImportError:
     pass
 
 from v2.core.database.schema import get_connection  # noqa: E402
+from v2.core.retrieval.embedder import embed_with_retry  # noqa: E402
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 EMBED_MODEL = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
@@ -171,14 +172,7 @@ def run_embedding(conn, force: bool, single: int | None) -> tuple[int, int, list
     for i, row in enumerate(targets, 1):
         title = (row["title"] or row["search_text"] or "").strip().replace("\n", " ")
         label = f"{DIM}[{i:>3}/{n}]{RESET} {row['type']}: {title[:48]}"
-        vec = None
-        for attempt in (1, 2):  # try once, retry once
-            try:
-                vec = embed_document(row["search_text"])
-                if vec is not None:
-                    break
-            except Exception:  # noqa: BLE001 - timeout/conn; retry then skip
-                time.sleep(0.3)
+        vec = embed_with_retry(lambda r=row: embed_document(r["search_text"]))
         if vec is not None and _store_vector(conn, row["id"], vec):
             succeeded += 1
             print(f"{label} {GREEN}✅{RESET}")

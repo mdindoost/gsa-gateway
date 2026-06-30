@@ -174,3 +174,24 @@ def test_run_chunk_embed_no_masking_of_stale_model():
     run_chunk_embed(conn, _D, FakeEmb(), batch=8, backoff=0)  # writes a current-model vector for chunk 500
     with pytest.raises(AssertionError):   # condition 4 still fires on the stale model_id
         assert_chunk_invariant(conn, _D)
+
+
+# ── Task 4: embed_all uses embed_with_retry ───────────────────────────────────
+
+def test_embed_all_uses_retry_then_succeeds(monkeypatch):
+    import v2.scripts.embed_all as ea
+    from v2.core.database.schema import create_all
+    conn = create_all(":memory:")
+    conn.execute("INSERT OR IGNORE INTO organizations(id,name,slug,type) VALUES (1,'A','a','office')")
+    conn.execute("INSERT INTO knowledge_items(id,org_id,type,title,content,is_active) "
+                 "VALUES (1,1,'policy','t','zeta content',1)")
+    conn.commit()
+    calls = {"n": 0}
+    def flaky(text, timeout=30):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else [1.0] * 768
+    monkeypatch.setattr(ea, "embed_document", flaky)
+    succeeded, failed, total = ea.run_embedding(conn, force=False, single=None)
+    assert succeeded == 1 and failed == []
+    assert calls["n"] == 2  # first None, retried once → success
+    assert conn.execute("SELECT COUNT(*) FROM knowledge_vectors WHERE item_id=1").fetchone()[0] == 1
