@@ -61,7 +61,8 @@ def test_people_with_scholar_finds_only_those_with_url(conn):
 def test_refresh_scholar_updates_metrics_keeping_url(conn):
     out = refresh_scholar(conn, fetch=lambda u: (SCHOLAR_HTML, "ok"), delay=0, today="2026-06")
     conn.commit()
-    assert out == {"people": 1, "updated": 1, "areas_updated": 0, "failed": 0, "errors": []}
+    assert out == {"people": 1, "updated": 1, "areas_updated": 0, "failed": 0, "errors": [],
+                   "aborted": False}
     sch = json.loads(conn.execute("SELECT attrs FROM nodes WHERE key='p/k'").fetchone()[0]
                      )["profiles"]["scholar"]
     assert sch["citations"] == 2774 and sch["h_index"] == 26 and sch["i10_index"] == 35
@@ -77,7 +78,9 @@ def test_refresh_scholar_only_keys_limits_fetch(conn):
     def fetch(u):
         fetched.append(u); return (SCHOLAR_HTML, "ok")
     out = refresh_scholar(conn, fetch=fetch, delay=0, only_keys={"p/k"})
-    assert fetched == ["https://scholar.google.com/k"]
+    # 2 fetches per person (default + pubdate page); scoped to p/k only — k2 never fetched.
+    assert all(u.startswith("https://scholar.google.com/k") for u in fetched)
+    assert not any("/k2" in u for u in fetched)
     assert out["people"] == 1 and out["updated"] == 1
 
 

@@ -60,6 +60,22 @@ def test_dryrun_no_scope_lists_all(tmp_path, capsys):
     assert "p/cs1" in out and "p/nce1" in out
 
 
+def test_commit_passes_anti_block_dials(tmp_path, monkeypatch):
+    p = _make_db(tmp_path)
+    captured = {}
+    def fake_refresh(conn, **kw):
+        captured.update(kw)
+        return {"people": 0, "updated": 0, "areas_updated": 0, "failed": 0,
+                "errors": [], "aborted": False}
+    monkeypatch.setattr(cli.scholar, "refresh_scholar", fake_refresh)
+    monkeypatch.setattr(cli, "hardened_backup", lambda *a, **k: "backup-x")
+    cli.main(["--db", p, "--org", "ywcc", "--commit",
+              "--jitter-min", "60", "--jitter-max", "120", "--fetch-gap", "4", "--block-abort", "5"])
+    assert captured["jitter"] == (60, 120)
+    assert captured["fetch_gap"] == 4.0
+    assert captured["block_abort"] == 5
+
+
 def test_embed_cmd_passes_db_path_positionally_not_flag(tmp_path):
     # regression: embed_all.py takes db_path POSITIONALLY; '--db' makes it argparse-error.
     cmd = cli._embed_cmd("/some/g.db")

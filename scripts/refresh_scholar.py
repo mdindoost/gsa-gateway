@@ -48,10 +48,18 @@ def main(argv=None):
     ap.add_argument("--org", "--department", dest="org", help="scope to an org slug (college or department; includes its subtree)")
     ap.add_argument("--older-than", dest="older_than", type=int, default=None,
                     help="only refresh profiles whose scholar.updated_at is older than N days")
-    ap.add_argument("--delay", type=float, default=3.0, help="seconds between fetches (be polite)")
+    ap.add_argument("--delay", type=float, default=3.0, help="fixed seconds between people (when no jitter)")
+    ap.add_argument("--jitter-min", type=int, default=None, help="anti-block: min seconds between people (random jitter-min..jitter-max; overrides --delay)")
+    ap.add_argument("--jitter-max", type=int, default=None, help="anti-block: max seconds between people")
+    ap.add_argument("--fetch-gap", type=float, default=0.0, help="anti-block: seconds between a person's 2 fetches")
+    ap.add_argument("--block-abort", type=int, default=0, help="anti-block: stop after N consecutive blocked people (0=never)")
     ap.add_argument("--embed", action="store_true", help="embed new research-area items after a successful commit")
     ap.add_argument("--commit", action="store_true", help="actually fetch + write (else dry-run)")
     args = ap.parse_args(argv)
+    if (args.jitter_min is None) != (args.jitter_max is None):
+        ap.error("--jitter-min and --jitter-max must be given together (a half-set range would "
+                 "silently fall back to the aggressive fixed --delay).")
+    jitter = (args.jitter_min, args.jitter_max) if args.jitter_min is not None else None
 
     conn = get_connection(args.db)
     keys = scholar.select_scholar_targets(conn, org_scope=args.org, older_than_days=args.older_than)
@@ -73,9 +81,13 @@ def main(argv=None):
         return 0
 
     print(f"\nBackup: {hardened_backup(args.db, 'pre-scholar-refresh')}")
-    out = scholar.refresh_scholar(conn, only_keys=set(keys), delay=args.delay)
+    out = scholar.refresh_scholar(conn, only_keys=set(keys), delay=args.delay, jitter=jitter,
+                                  fetch_gap=args.fetch_gap, block_abort=args.block_abort)
     conn.commit()
     # Recognized completion line for the dashboard job summarizer (jobs._summarize).
+    if out.get("aborted"):
+        print("\n⚠️ ABORTED early after consecutive Scholar blocks — partial run committed; "
+              "re-run later (e.g. --older-than 1) to resume the rest.")
     print(f"\nScholar refresh complete: {out['updated']} updated, {out['areas_updated']} areas, "
           f"{out['failed']} failed of {out['people']}.")
     for key, why in out["errors"][:20]:
