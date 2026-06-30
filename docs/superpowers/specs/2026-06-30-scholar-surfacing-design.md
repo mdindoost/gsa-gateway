@@ -182,12 +182,13 @@ lines AND assert the prior link/metric lines still appear.
 
 | Goal | Status |
 |---|---|
-| Recent metrics (pull + push) | ship |
+| Recent metrics (pull + push) | **DEFERRED → fast-follow** (needs a registry `default_render=False` flag so recent values don't pollute the default render + per-person dynamic since-year; punted to do it right vs. a rushed inaccurate render — loudly flagged, not silently dropped) |
+| Recent routing via router qualifier (NOT aliases) | deferred with recent metrics |
+| Since-last-refresh delta route | deferred with recent metrics (also needs ≥2 snapshots) |
 | Papers most-cited/newest/this-year (pull) | ship |
 | Papers compact push (most-cited + newest) | ship |
 | Trend / peak-year (pull) + honest guard | ship |
 | Peak-year compact push | ship |
-| Since-last-refresh delta route (graceful 1-snapshot) | ship |
 | Disambiguation rules + no-regression gate | ship |
 | Cross-person rankings (most-cited paper in org, fastest-growing, dept feed) | fast-follow |
 | Co-authors (pull) — captured, not surfaced this build | fast-follow |

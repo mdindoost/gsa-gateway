@@ -170,6 +170,25 @@ _PERSON_ATTR = re.compile(r"\b(e-?mail|office|phone|number|title|position|bio)\b
 # Looser "more about this person" cues that FOLLOW a bare surname ("koutis info",
 # "koutis all info", "koutis details") — distinct from _PERSON_INTENT's "info ON <name>".
 _INFO_CUE = re.compile(r"\b(info|information|details|profile|bio|background|everything)\b")
+# Scholar PAPERS: a paper noun (so "most cited PAPER" routes to papers, not the citations metric or a
+# professor ranking). Selectors pick the captured slice; default = most-cited.
+_PAPER_NOUN = re.compile(r"\b(papers?|publications?|articles?)\b")
+_PAPER_NEW = re.compile(r"\b(newest|latest|recent|new)\b")
+_THIS_YEAR = re.compile(r"\bthis year\b")
+# Scholar TREND: the per-year citation chart. peak ("most-cited YEAR"), a specific year ("in 2019"),
+# or growth ("growing / accelerating / trend"). Citation context gates the year branch.
+_PEAK_WORD = re.compile(r"\b(most|best|peak|highest|biggest)\b")
+_GROWTH_CUE = re.compile(r"\b(grow\w*|accelerat\w*|rising|trend\w*|momentum|trajector\w*)\b")
+_YEAR_IN = re.compile(r"\bin\s+((?:19|20)\d{2})\b")
+_CITE_CTX = re.compile(r"\bcit(?:e|ed|es|ation|ations)\b")
+
+
+def _paper_mode(q: str) -> str:
+    if _PAPER_NEW.search(q):
+        return "newest"
+    if _THIS_YEAR.search(q):
+        return "current_year"
+    return "most_cited"
 _NAME_PREFIX = re.compile(r"\b(?:professor|prof\.?|dr\.?|mr\.?|ms\.?|mrs\.?)\b")
 _STOP_FOR_ENUM = {
     "list", "name", "names", "show", "all", "every", "any", "are", "there", "is",
@@ -328,6 +347,39 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     if area:
         area = re.sub(r"\s+(?:in|at|within|of)$", "", area).strip() or None
     named = entity.persons_in_query(conn, q)   # people whose FULL name is in the query
+
+    # ── Scholar PAPERS (a paper noun) — BEFORE area/metric so "most cited paper" can't be mined as a
+    # research area or routed as the citations metric / a professor ranking. ────────────────────────
+    if _PAPER_NOUN.search(q):
+        person = _resolve_person(conn, q, named)
+        if isinstance(person, Route):
+            return person
+        if isinstance(person, dict):
+            return Route("papers_of_person",
+                         {"entity_id": person["entity_id"], "name": person["name"],
+                          "mode": _paper_mode(q), "n": _parse_topn(q)})
+        # paper noun but no resolvable person: an org-scoped paper ask ("most cited paper in CS") is
+        # cross-person ranking = fast-follow → honest decline (NOT a professor ranking). Bare "most
+        # cited paper" (no org, no person) falls through to RAG.
+        if org_id is not None:
+            return Route("papers_cross_unsupported", {})
+
+    # ── Scholar TREND (per-year chart): peak year / citations-in-year / growth — BEFORE the metric
+    # block so "most cited YEAR" isn't caught as the citations metric. Needs a resolvable person. ────
+    _peak_cue = bool(_PEAK_WORD.search(q) and "year" in q)
+    _year_in = _YEAR_IN.search(q)
+    _year_cue = bool(_year_in and _CITE_CTX.search(q) and "since" not in q)
+    _growth_cue = bool(_GROWTH_CUE.search(q))
+    if _peak_cue or _year_cue or _growth_cue:
+        person = _resolve_person(conn, q, named)
+        if isinstance(person, Route):
+            return person
+        if isinstance(person, dict):
+            mode = "peak" if _peak_cue else ("growth" if _growth_cue else "year")
+            year = int(_year_in.group(1)) if (mode == "year" and _year_in) else None
+            return Route("citation_trend_of_person",
+                         {"entity_id": person["entity_id"], "name": person["name"],
+                          "mode": mode, "year": year})
 
     # precise "who lists X as a research area" (before the generic area branches)
     m = _LISTS_AREA.search(q)

@@ -16,7 +16,9 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from v2.core.database.schema import create_all
-from v2.core.retrieval import entity
+from v2.core.graph.orgs import ensure_org, sync_org_nodes
+from v2.core.graph.project import project_appointment
+from v2.core.retrieval import entity, router
 from v2.core.retrieval.router import Route
 from v2.core.retrieval.structured_answer import run, format_answer, is_deterministic
 
@@ -158,3 +160,67 @@ def test_trend_empty_no_chart_falls_through():
     res = run(_conn(scholar={"citations": 5}), Route("citation_trend_of_person",
               {"entity_id": "p/k", "name": "Koutis", "mode": "peak", "year": None}))
     assert format_answer(res) == ""
+
+
+# ── router wiring: papers + trend disambiguation + no-regression ───────────
+
+def _kg():
+    c = create_all(":memory:")
+    c.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'NJIT','njit','university')")
+    cs = ensure_org(c, "cs", "Computer Science", parent_slug="njit", type="department")
+    sync_org_nodes(c)
+    project_appointment(c, person_key="p/k", name="Ioannis Koutis", org_id=cs,
+                        category="faculty", titles=["Professor"], source_section="manual",
+                        source="dashboard")
+    c.execute("UPDATE nodes SET attrs=? WHERE key='p/k'",
+              (json.dumps({"profiles": {"scholar": SCHOLAR}}),))
+    c.commit()
+    return c
+
+
+def test_route_most_cited_paper_named_person():
+    rt = router.route(_kg(), "Ioannis Koutis most cited paper")
+    assert rt.skill == "papers_of_person" and rt.args["mode"] == "most_cited"
+    assert rt.args["entity_id"] == "p/k"
+
+
+def test_route_newest_paper():
+    rt = router.route(_kg(), "Koutis newest paper")
+    assert rt.skill == "papers_of_person" and rt.args["mode"] == "newest"
+
+
+def test_route_papers_this_year():
+    rt = router.route(_kg(), "Koutis papers this year")
+    assert rt.skill == "papers_of_person" and rt.args["mode"] == "current_year"
+
+
+def test_route_most_cited_year_is_trend_not_metric():
+    rt = router.route(_kg(), "Koutis most cited year")
+    assert rt.skill == "citation_trend_of_person" and rt.args["mode"] == "peak"
+
+
+def test_route_citations_in_year_is_trend():
+    rt = router.route(_kg(), "Koutis citations in 2019")
+    assert rt.skill == "citation_trend_of_person" and rt.args["mode"] == "year"
+    assert rt.args["year"] == 2019
+
+
+def test_route_growth_is_trend():
+    rt = router.route(_kg(), "is Koutis research growing")
+    assert rt.skill == "citation_trend_of_person" and rt.args["mode"] == "growth"
+
+
+def test_route_paper_in_org_honest_decline():
+    rt = router.route(_kg(), "most cited paper in cs")
+    assert rt.skill == "papers_cross_unsupported"
+
+
+# no-regression: existing metric/person-ranking routing must be UNCHANGED
+def test_noregression_citations_metric():
+    rt = router.route(_kg(), "Koutis citations")
+    assert rt.skill == "metric_of_person"
+
+
+def test_noregression_most_cited_professor():
+    rt = router.route(_kg(), "most cited professor in cs")
+    assert rt.skill == "top_people_by_metric"

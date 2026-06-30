@@ -68,6 +68,8 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
     if skill == "citation_trend_of_person":
         r = entity.citation_trend_of_person(conn, a["entity_id"], a.get("year"))
         return {"skill": skill, "mode": a.get("mode", "peak"), **r}
+    if skill == "papers_cross_unsupported":
+        return {"skill": skill}    # deterministic decline; no DB query
     if skill == "person_disambig":
         return {"skill": skill, "candidates": a["candidates"]}
     if skill == "faculty_areas_in_department":
@@ -106,7 +108,7 @@ def _join(names: list[str]) -> str:
 # compose_from_rows for these (their format_answer output IS the final answer).
 _DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric", "link_of_person",
                                    "metric_descending_unsupported", "papers_of_person",
-                                   "citation_trend_of_person"})
+                                   "citation_trend_of_person", "papers_cross_unsupported"})
 
 
 def is_deterministic(result: dict) -> bool:
@@ -292,6 +294,12 @@ def format_answer(result: dict) -> str:
         scope = ("their all-time most-cited year" if all_time
                  else f"their most-cited year since {min(cpy)}")   # honest window, not "all-time"
         return f"{name}'s most-cited year is {py} ({pv:,} citations) — {scope}."
+
+    if skill == "papers_cross_unsupported":
+        # Deterministic decline: cross-person paper ranking isn't built (fast-follow). Honest, and
+        # points to what IS available (a specific professor's most-cited paper).
+        return ("I can give a specific professor's most-cited or newest paper, but ranking papers "
+                "across a whole department isn't something I can do yet.")
 
     if skill == "entity_card":
         return result["card"] or ""        # the card is the grounding + offline fallback
