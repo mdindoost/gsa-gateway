@@ -106,8 +106,11 @@ Both return a RAW vector; each caller normalizes once at its single write site
   with the *same* `embed_input` the batch built. Normalize once and write the vector if obtained.
 - Track `failed` (chunk ids still `None` after retry); leave them in place (no vector row) so the
   next run retries them. **Outage-abort (N1):** if an entire batch is still all-`None` after
-  per-slot retries, treat it as an outage — stop, commit progress, report, and exit non-zero
-  (re-runnable) rather than grinding every remaining batch.
+  per-slot retries, treat it as an outage — stop, commit the vectors already written, report, and
+  exit non-zero (re-runnable) rather than grinding every remaining batch. On the abort path the GC
+  sweeps + `assert_chunk_invariant` are SKIPPED (cleanup and the coverage gate belong to a run that
+  actually reached the end; orphans harmlessly persist to the next run). The timeout for a per-slot
+  retry is `_embed`'s default (30s) vs the batch's 60s — immaterial for single texts.
 - **GC + reporting/exit order:** Phase 2 (per-batch commit) → GC sweeps (§4.3) + commit →
   `if failed > 0:` print the report and **`sys.exit(1)`** (BEFORE the invariant assert, so the cause
   is legible) `else:` `assert_chunk_invariant`. Report line includes the **starting** active-parent
@@ -149,8 +152,9 @@ normalizes once (no double-normalize — S2). The intentionally-retained `[:2000
 (out of scope, M2). `_targets`/self-heal-on-re-run unchanged.
 
 ## 5. Components & interfaces (isolation)
-- `v2/core/retrieval/embedder.py` — NEW method `embed_document_retry` (additive; existing methods
-  unchanged).
+- `v2/core/retrieval/embedder.py` — NEW module-level free function `embed_with_retry(call, attempts,
+  backoff)` (a retry-policy wrapper around any raw embed callable; additive; existing `Embedder`
+  methods unchanged).
 - `v2/core/database/vector_gc.py` — NEW `sweep_orphan_chunk_rows` + a `count_orphan_chunk_rows`
   (additive; existing functions/invariant unchanged).
 - `v2/scripts/embed_chunks.py` — Phase 2 rework + retry + GC call + reporting/exit.
