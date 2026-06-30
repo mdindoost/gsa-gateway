@@ -130,12 +130,30 @@ def test_registry_well_formed_office_and_service_and_main():
     svc = [e for e in W.WWW_SUBSITES if e.org_slug in
            ("policies", "finance", "president", "provost", "reslife", "publicsafety")]
     assert svc and all(e.org_type == "office" and e.parent_slug == "njit" for e in svc)
-    # every entry has a real subsite sitemap URL
-    assert all(e.sitemap_url.startswith("https://www.njit.edu/") and
-               e.sitemap_url.endswith("sitemap.xml") for e in W.WWW_SUBSITES)
+    # every entry is a real njit.edu sitemap (www subsites + college/dept subdomains + main)
+    assert all(e.sitemap_url.startswith("https://") and ".njit.edu/" in e.sitemap_url and
+               e.sitemap_url.endswith("/sitemap.xml") for e in W.WWW_SUBSITES)
     # exactly the main-sitemap entry carries page_type='webpage'
     webentries = [e for e in W.WWW_SUBSITES if e.page_type == "webpage"]
     assert len(webentries) == 1 and webentries[0].sitemap_url == W.MAIN_SITEMAP
+
+
+def test_registry_covers_all_college_dept_subdomains():
+    # Scope expansion (owner 2026-06-30): the ONE sitemap sweep covers EVERY njit host, so the
+    # college/dept subdomains are sitemap-driven too (no DFS budget/depth). Each maps to its
+    # EXISTING org and keeps classify_type (page_type=None — NOT the webpage marketing bucket).
+    from v2.core.ingestion import www_crawl as W
+    by_host = {e.sitemap_url: e for e in W.WWW_SUBSITES}
+    for host, slug in [
+        ("cs.njit.edu", "computer-science"), ("computing.njit.edu", "ywcc"),
+        ("math.njit.edu", "mathematical-sciences"), ("management.njit.edu", "mtsm"),
+        ("design.njit.edu", "hcad"), ("biomedical.njit.edu", "biomedical-engineering"),
+        ("informatics.njit.edu", "informatics"), ("datascience.njit.edu", "data-science"),
+        ("engineering.njit.edu", "nce"), ("theatre.njit.edu", "theater-arts-technology"),
+    ]:
+        e = by_host.get(f"https://{host}/sitemap.xml")
+        assert e is not None, f"{host} subdomain missing from registry"
+        assert e.org_slug == slug and e.page_type is None
 
 
 def test_www_seed_urls_parses_sitemap():

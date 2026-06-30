@@ -10,11 +10,18 @@
 ## 1. Goal (owner, 2026-06-30)
 
 > "Whatever is on the NJIT site, we should have it in the DB — captured **once**, and every recrawl
-> after that is **complete by construction**." Build A did this for `catalog.njit.edu`. Build B does
-> it for the one remaining uncovered host, `www.njit.edu`.
+> after that is **complete by construction**, with **no budget/depth limit on any host**. At the end
+> of this session the crawling project is **done**." Build A did this for `catalog.njit.edu`. Build B
+> finishes **every remaining NJIT host**, sitemap-driven.
 
-The other NJIT hosts are already complete: catalog (Build A), college/dept subdomains
-(`college_crawl`), people (`explore.py`). Build B owns `www.njit.edu` prose.
+**Scope expansion (owner, 2026-06-30, mid-session):** originally Build B targeted only `www.njit.edu`.
+The owner then set the finish line as the **whole crawling project**: every NJIT page in the DB,
+sitemap-driven, no budget/depth limit, recrawl-perfect. So Build B is now **one sitemap sweep over
+ALL NJIT prose hosts** — `www.njit.edu` **and** every college/dept **subdomain** (cs / computing /
+math / management / … — 22 hosts), which were previously crawled by `college_crawl`'s budget-limited
+DFS (budget 400, depth-bounded) and are therefore not guaranteed-complete or deterministic-on-recrawl.
+`catalog.njit.edu` (Build A) and `people.njit.edu` (`explore.py`, KG people) are already done and out
+of scope.
 
 ## 2. Why the current state is incomplete (DB-verified 2026-06-30, not assumed)
 
@@ -68,9 +75,22 @@ guess** → it is complete and deterministic, so "recrawl is perfect" falls out 
 
 ## 3. Scope
 
-**In scope:** ALL of `www.njit.edu` prose, driven by sitemaps — every subsite's own `sitemap.xml`
-(offices + service subsites) **and** the main `www.njit.edu/sitemap.xml` (academics/marketing). One
-host, captured completely, as `knowledge_items` prose under a new isolated source.
+**In scope:** ALL NJIT prose hosts, driven by sitemaps, as `knowledge_items` prose under one isolated
+source:
+- **`www.njit.edu`** — every subsite's own `sitemap.xml` (offices + service subsites) **and** the main
+  `www.njit.edu/sitemap.xml` (academics/marketing).
+- **Every college/dept subdomain** (22 hosts: cs, computing, math, mie, management, design, biomedical,
+  informatics, datascience, engineering, theatre, …) — each crawled from its own `https://<host>/
+  sitemap.xml`, mapped to its **existing** college/dept org (verified from live `college_crawl` rows,
+  2026-06-30). Subdomains keep `classify_type` (NOT the `webpage` marketing override).
+
+**Additive to `college_crawl` (the key safety property):** the subdomains already hold ~3,337
+`college_crawl` (DFS) rows. The sweep is **dedup-fill**: it ADDS any sitemap page the DFS missed and,
+via cross-source content dedup (§4.3), **skips everything already present** and **never retires a
+`college_crawl` row** (reconcile is source-scoped — §4.4). Where the DFS found MORE than the sitemap
+lists (orphan pages, e.g. math 1,286 rows vs a 239-URL sitemap), those rows are kept untouched. So the
+sweep can only ADD coverage, never remove it. (Frontier ≈ 3,518 URLs total; most subdomain pages dedup
+away, so net-new rows are modest. Single-source consolidation → rebuild, §3 deferred.)
 
 **Out of scope (deferred, flagged — not dropped):**
 - **People (KG).** Office crawlers also create `Person` nodes + roles (KG layer). Build B is
@@ -115,6 +135,12 @@ New, isolated pieces:
    - Service subsites get a **lightweight org under `njit`** (`type='office'`): `policies`, `finance`,
      `president`, `provost`, `reslife`, `publicsafety`, `studentinvolvement`, `writingcenter`, `eop`,
      `studyabroad`, `persistence`, `accessibility`.
+   - **College/dept subdomains** (22, from `_SUBDOMAINS`) → their **existing** college/dept org by slug
+     (e.g. `cs.njit.edu`→`computer-science`, `computing.njit.edu`→`ywcc`, `math.njit.edu`→
+     `mathematical-sciences`, `management.njit.edu`→`mtsm`, `design.njit.edu`→`hcad`,
+     `theatre.njit.edu`→`theater-arts-technology`). Mapping verified from live `college_crawl` rows.
+     `page_type=None` → `classify_type` (these are dept policy/news/event pages, not the marketing
+     bucket). `ensure_org` early-returns (orgs exist) → no new orgs, no tier changes.
    - The **main `www.njit.edu/sitemap.xml`** entry maps to `njit` root (academics/marketing is
      provenance-only; per Build A RAG-N4 the org map is not a ranking lever, so a single bucket is fine)
      and is the one entry that sets **`page_type='webpage'`** (§4.2 / RAG-1): its 209 `/academics/degree`
@@ -365,9 +391,11 @@ DB-only change → no bot restart. If the gate fails, restore the `hardened_back
 
 ## 9. Goals checklist (shipped / deferred — fill at PR)
 
-- [ ] ALL `www.njit.edu` prose ingested as `njit_www_crawl` (every subsite sitemap + main sitemap).
-- [ ] Sitemap-driven → complete + deterministic; office DFS page-gaps filled (`/bursar/payment-information`
-      et al. present).
+- [ ] ALL NJIT prose hosts ingested as `njit_www_crawl`: every `www.njit.edu` subsite + main sitemap
+      **+ all 22 college/dept subdomain sitemaps** (the whole crawling project — no host left on DFS).
+- [ ] Sitemap-driven → complete + deterministic everywhere (no budget/depth limit on any host); office
+      DFS page-gaps filled (`/bursar/payment-information` et al.); subdomain sweep is additive dedup-fill
+      (adds DFS-missed sitemap pages, never retires/loses a `college_crawl` row).
 - [ ] Office overlap handled by cross-source content dedup (prefetched hash set, SE-3; fill gaps, skip
       dups; dropped-as-dup count reported, SE-6).
 - [ ] Source isolation: `created_by='njit_www_crawl'`; reconcile never cross-wipes other sources or KG people.
@@ -395,5 +423,14 @@ DB-only change → no bot restart. If the gate fails, restore the `hardened_back
   silent (§4.1). A future enhancement could auto-discover subsites from the main-site nav.
 - **Cross-source hash mismatch** (extractor drift) → at worst a benign duplicate, never a wrong answer;
   rebuild consolidates. The shared `extract_prose` makes this unlikely.
-- **Volume** (~1,800 sitemap URLs, ~1,000–1,300 net-new after dedup) → one-time ~10-min crawl at the
-  default delay; single sequential pass, courteous.
+- **Volume** (~3,518 sitemap URLs across all hosts; subdomain pages mostly dedup against existing
+  `college_crawl` rows, so net-new is modest) → one-time ~18-min crawl at the default delay; single
+  sequential pass, courteous.
+- **Subdomain dual-source (www_crawl gap-fills + college_crawl bulk on the same host)** → benign:
+  cross-source dedup prevents duplicate rows; reconcile is source-scoped so neither retires the other;
+  full single-source consolidation is the rebuild's job. A subdomain whose org has a tiny minority of
+  cross-linked rows under a *different* dept org (DFS following an inter-dept link) is unaffected — the
+  registry binds each subdomain to its dominant/home org, exactly as `college_crawl` did.
+- **More sitemaps under one floor (SE-1 amplified)** → with ~48 sitemaps, a single flaky host more often
+  triggers the any-fail→skip-retire guard, so retirement runs only on fully-clean passes. Acceptable:
+  retirement is a rollover nicety; the additive ingest always proceeds.

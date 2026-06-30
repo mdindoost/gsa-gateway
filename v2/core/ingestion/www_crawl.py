@@ -63,6 +63,38 @@ _OFFICES: list[tuple[str, str, str]] = [
     ("sustainability", "eos", "Environmental & Operational Services"),
 ]
 
+# College/dept SUBDOMAINS (host, existing org slug, org name) — verified 2026-06-30 from live rows.
+# Scope expansion (owner 2026-06-30): the sitemap sweep covers EVERY njit host so the subdomains are
+# sitemap-driven too (no DFS budget/depth). The bulk of each subdomain is already held by college_crawl
+# (DFS); this pass ADDS any sitemap page the DFS missed (cross-source dedup → never a duplicate, never a
+# loss — college_crawl rows are a different source, untouched). Subdomains keep classify_type (NOT the
+# webpage marketing bucket). The org already exists → ensure_org early-returns (parent/type irrelevant).
+_SUBDOMAINS: list[tuple[str, str, str]] = [
+    ("appliedengineering.njit.edu", "applied-engineering-technology", "School of Applied Engineering & Technology"),
+    ("biology.njit.edu", "biological-sciences", "Biological Sciences"),
+    ("biomedical.njit.edu", "biomedical-engineering", "Biomedical Engineering"),
+    ("chemistry.njit.edu", "chemistry-environmental-science", "Chemistry & Environmental Science"),
+    ("civil.njit.edu", "civil-environmental-engineering", "Civil & Environmental Engineering"),
+    ("cme.njit.edu", "chemical-materials-engineering", "Chemical & Materials Engineering"),
+    ("computing.njit.edu", "ywcc", "YWCC"),
+    ("cs.njit.edu", "computer-science", "Computer Science"),
+    ("csla.njit.edu", "csla", "College of Science and Liberal Arts"),
+    ("datascience.njit.edu", "data-science", "Data Science"),
+    ("design.njit.edu", "hcad", "Hillier College of Architecture & Design"),
+    ("ece.njit.edu", "electrical-computer-engineering", "Electrical & Computer Engineering"),
+    ("engineering.njit.edu", "nce", "Newark College of Engineering"),
+    ("history.njit.edu", "history", "History"),
+    ("honors.njit.edu", "honors", "Albert Dorman Honors College"),
+    ("hss.njit.edu", "humanities-social-sciences", "Humanities & Social Sciences"),
+    ("informatics.njit.edu", "informatics", "Informatics"),
+    ("management.njit.edu", "mtsm", "Martin Tuchman School of Management (MTSM)"),
+    ("math.njit.edu", "mathematical-sciences", "Mathematical Sciences"),
+    ("mie.njit.edu", "mechanical-industrial-engineering", "Mechanical & Industrial Engineering"),
+    ("physics.njit.edu", "physics", "Physics"),
+    ("theatre.njit.edu", "theater-arts-technology", "Theater Arts & Technology"),
+]
+
+
 # Genuinely-uncovered service subsites → a lightweight org under njit (type='office').
 _SERVICES: list[tuple[str, str]] = [
     ("policies", "Policies"),
@@ -79,9 +111,14 @@ _SERVICES: list[tuple[str, str]] = [
     ("accessibility", "Office of Accessibility Resources & Services"),
 ]
 
+# The ONE NJIT sitemap sweep: every www.njit.edu subsite + every college/dept subdomain + the main
+# sitemap. Each entry is a sitemap bound to an existing-or-new org. Subdomains keep classify_type;
+# only the main www marketing bucket is forced to 'webpage'.
 WWW_SUBSITES: list[WwwEntry] = (
     [WwwEntry(_sm(seg), slug, name, "njit", "office") for seg, slug, name in _OFFICES]
     + [WwwEntry(_sm(seg), seg, name, "njit", "office") for seg, name in _SERVICES]
+    + [WwwEntry(f"https://{host}/sitemap.xml", slug, name, "njit", "department")
+       for host, slug, name in _SUBDOMAINS]
     # main sitemap = academics/marketing landing pages → njit root, typed 'webpage' (downweighted)
     + [WwwEntry(MAIN_SITEMAP, "njit", "New Jersey Institute of Technology", None,
                 "university", page_type="webpage")]
