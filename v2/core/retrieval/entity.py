@@ -292,6 +292,14 @@ def metric_of_person(conn: sqlite3.Connection, entity_id: str, field_key: str,
 _PAPER_MODE_FIELD = {"most_cited": "top_cited", "newest": "newest", "current_year": "current_year"}
 
 
+def _scholar_bag(attrs: dict) -> dict:
+    """The ``attrs.profiles.scholar`` dict, or {} — tolerant of malformed (non-dict) attrs so a
+    hand-edited/corrupt node degrades to honest-empty instead of crashing the structured path."""
+    profiles = attrs.get("profiles") if isinstance(attrs, dict) else None
+    scholar = profiles.get("scholar") if isinstance(profiles, dict) else None
+    return scholar if isinstance(scholar, dict) else {}
+
+
 def papers_of_person(conn: sqlite3.Connection, entity_id: str, mode: str) -> dict:
     """{name, mode, papers} for one person's captured Scholar papers in ``mode`` —
     most_cited→top_cited, newest→newest, current_year→current_year — read from
@@ -304,7 +312,7 @@ def papers_of_person(conn: sqlite3.Connection, entity_id: str, mode: str) -> dic
         "SELECT name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
         (entity_id,)).fetchone()
     name = normalize_person_name(row[0]) if row else entity_id
-    scholar = ((attrs.get("profiles") or {}).get("scholar")) or {}
+    scholar = _scholar_bag(attrs)
     papers = list(scholar.get(_PAPER_MODE_FIELD.get(mode, ""), []) or [])
     return {"name": name, "mode": mode, "papers": papers}
 
@@ -322,7 +330,7 @@ def citation_trend_of_person(conn: sqlite3.Connection, entity_id: str,
         "SELECT name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
         (entity_id,)).fetchone()
     name = normalize_person_name(row[0]) if row else entity_id
-    scholar = ((attrs.get("profiles") or {}).get("scholar")) or {}
+    scholar = _scholar_bag(attrs)
     cpy = scholar.get("cites_per_year") or {}
     citations = scholar.get("citations")
     return {"name": name, "cites_per_year": cpy, "citations": citations,

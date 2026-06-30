@@ -184,10 +184,12 @@ _CITE_CTX = re.compile(r"\bcit(?:e|ed|es|ation|ations)\b")
 
 
 def _paper_mode(q: str) -> str:
-    if _PAPER_NEW.search(q):
-        return "newest"
+    # "this year" is the most specific slice — check it before the looser newest/latest/recent cue
+    # so "latest papers this year" resolves to current_year, not newest.
     if _THIS_YEAR.search(q):
         return "current_year"
+    if _PAPER_NEW.search(q):
+        return "newest"
     return "most_cited"
 _NAME_PREFIX = re.compile(r"\b(?:professor|prof\.?|dr\.?|mr\.?|ms\.?|mrs\.?)\b")
 _STOP_FOR_ENUM = {

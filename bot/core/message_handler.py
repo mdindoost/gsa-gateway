@@ -137,6 +137,30 @@ def _deep_adopt(current_rel, rescue_rel, threshold) -> bool:
     return current_rel is None or rescue_rel > current_rel
 
 
+# Substrings that mark a message as structured-/person-looking enough to attempt the router.
+# Includes the Scholar surfacing PULL cues (paper / citation-trend) so those queries are not
+# dropped before routing — without them, "X most cited paper" (>4 words, no other cue) would
+# never reach the deterministic papers/trend skills and would be reworded by the LLM.
+_STRUCTURED_CUES = (
+    "who ", "who'", "which ", "list ", " all ", "how many", "department",
+    "faculty", "professor", "prof", "works on", "work on", "working on",
+    "research", "area", "studies", "studying", "specializ", "expert",
+    "tell me about", "about ", "e-mail", "email", "office", "phone",
+    "title", "dean", "chair", "director", "head of", "name", "show",
+    "every", "any ", "contact", "reach",
+    # Scholar surfacing pull path (papers + citation trend):
+    "paper", "publication", "article", "cited", "citation", "newest",
+    "latest", "peak", "trend", "grow", "h-index", "h index", "i10")
+
+
+def _structured_pregate(text: str) -> bool:
+    """True when a message looks structured/person-directed enough to open a DB connection and
+    attempt ``router.route``. Short messages (<=4 words, likely a bare name like "Guiling Wang")
+    always pass so the entity layer can resolve them; longer ones need a cue substring."""
+    low = text.lower()
+    return any(c in low for c in _STRUCTURED_CUES) or len(low.split()) <= 4
+
+
 @dataclass
 class MessageRequest:
     user_id: str
@@ -411,17 +435,7 @@ class MessageHandler:
         if not db_path:
             return None
         # cheap pre-gate: open a connection only for structured-/person-looking questions.
-        # Long messages with none of these cues skip it; short ones (<=4 words, likely a
-        # name like "Guiling Wang") always pass so the entity layer can resolve them.
-        low = text.lower()
-        cues = (
-            "who ", "who'", "which ", "list ", " all ", "how many", "department",
-            "faculty", "professor", "prof", "works on", "work on", "working on",
-            "research", "area", "studies", "studying", "specializ", "expert",
-            "tell me about", "about ", "e-mail", "email", "office", "phone",
-            "title", "dean", "chair", "director", "head of", "name", "show",
-            "every", "any ", "contact", "reach")
-        if not any(c in low for c in cues) and len(low.split()) > 4:
+        if not _structured_pregate(text):
             return None
 
         def _run() -> Optional[str]:

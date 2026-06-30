@@ -291,8 +291,10 @@ def format_answer(result: dict) -> str:
             return ""
         name, mode, n = result["name"], result["mode"], result.get("n", 1)
         if mode == "current_year":
+            # List ALL captured current-year papers (the slice is already bounded at capture) so the
+            # stated count always matches the list — never "published 3" then show 1.
             yr = papers[0].get("year", "this year")
-            listed = "; ".join(_fmt_paper(p) for p in papers[:max(n, 1)])
+            listed = "; ".join(_fmt_paper(p) for p in papers)
             return f"{name} published {len(papers)} paper(s) in {yr}: {listed}"
         label = "most-cited" if mode == "most_cited" else "newest"
         if n and n > 1:

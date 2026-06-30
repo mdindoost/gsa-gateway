@@ -267,3 +267,71 @@ def test_run_research_populates_peak_and_paper_push():
     push = res.get("scholar_push") or []
     assert any("Most-cited year" in l for l in push)
     assert any("Most-cited paper" in l for l in push)
+
+
+# ── review fixes (Codex) ───────────────────────────────────────────────────
+
+# HIGH: the message-handler pre-gate must let the new Scholar pull queries reach router.route()
+from bot.core.message_handler import _structured_pregate
+
+
+@pytest.mark.parametrize("q", [
+    "Ioannis Koutis most cited paper",
+    "what is Koutis newest publication",
+    "is Koutis research growing over the years",
+    "Koutis most cited year of all time",
+])
+def test_pregate_passes_scholar_surfacing_queries(q):
+    assert _structured_pregate(q) is True
+
+
+def test_pregate_still_rejects_long_nonstructured():
+    assert _structured_pregate("i went to the store yesterday and bought some warm milk") is False
+
+
+def test_pregate_short_query_always_passes():
+    assert _structured_pregate("Guiling Wang") is True   # <=4 words → entity resolution
+
+
+# MED: current_year must LIST ALL captured papers, not just n — the count must match the list
+def test_papers_current_year_lists_all_not_just_n():
+    sch = dict(SCHOLAR)
+    sch["current_year"] = [
+        {"title": "Paper One", "year": "2026", "venue": "A", "cited_by": 0, "url": "u1"},
+        {"title": "Paper Two", "year": "2026", "venue": "B", "cited_by": 1, "url": "u2"},
+        {"title": "Paper Three", "year": "2026", "venue": "C", "cited_by": 2, "url": "u3"},
+    ]
+    res = run(_conn(scholar=sch), Route("papers_of_person",
+              {"entity_id": "p/k", "name": "Ioannis Koutis", "mode": "current_year", "n": 1}))
+    out = format_answer(res)
+    assert "3 paper(s)" in out
+    assert "Paper One" in out and "Paper Two" in out and "Paper Three" in out
+
+
+# LOW: "this year" is more specific than "newest/latest" — current_year must win.
+# (Full name so the >4-token surname guard doesn't gate person resolution.)
+def test_route_this_year_beats_newest():
+    rt = router.route(_kg(), "Ioannis Koutis latest papers this year")
+    assert rt.skill == "papers_of_person" and rt.args["mode"] == "current_year"
+
+
+# LOW: malformed attrs (profiles / scholar not a dict) must degrade to honest-empty, never crash
+def _conn_malformed(profiles):
+    c = create_all(":memory:")
+    c.execute("INSERT INTO organizations(id,name,slug,type) VALUES(1,'CS','cs','department')")
+    c.execute("INSERT INTO nodes(type,key,name,attrs,source) VALUES('Person','p/k','X',?,'crawler')",
+              (json.dumps({"profiles": profiles}),))
+    c.commit()
+    return c
+
+
+@pytest.mark.parametrize("profiles", [[1, 2], {"scholar": [1, 2]}, "junk"])
+def test_papers_tolerates_nondict_attrs(profiles):
+    r = entity.papers_of_person(_conn_malformed(profiles), "p/k", "most_cited")
+    assert r["papers"] == []
+
+
+@pytest.mark.parametrize("profiles", [[1, 2], {"scholar": [1, 2]}, "junk"])
+def test_trend_tolerates_nondict_attrs(profiles):
+    r = entity.citation_trend_of_person(_conn_malformed(profiles), "p/k")
+    assert r["cites_per_year"] == {} and r["peak"] is None
