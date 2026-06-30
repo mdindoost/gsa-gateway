@@ -74,3 +74,28 @@ def test_org_for_maps_college_segments_else_njit():
     assert org_for("https://catalog.njit.edu/programs")[0] == "njit"
     # njit tuple shape
     assert org_for("https://catalog.njit.edu/programs") == ("njit", "New Jersey Institute of Technology", None, "university")
+
+
+def test_catalog_seed_urls_parses_excludes_archive_normalizes():
+    from v2.core.ingestion.catalog_crawl import catalog_seed_urls
+    xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url><loc>https://catalog.njit.edu/graduate/computing-sciences/data-science/data-science-phd/</loc></url>
+      <url><loc>http://catalog.njit.edu/undergraduate/management/x/</loc></url>
+      <url><loc>https://catalog.njit.edu/archive/2019/old-program/</loc></url>
+      <url><loc>   </loc></url>
+      <url><loc>https://catalog.njit.edu/programs/</loc></url>
+      <url><loc>https://catalog.njit.edu/programs/</loc></url>
+    </urlset>"""
+    out = catalog_seed_urls(lambda u: xml)
+    assert out == [
+        "https://catalog.njit.edu/graduate/computing-sciences/data-science/data-science-phd",
+        "https://catalog.njit.edu/undergraduate/management/x",   # http→https
+        "https://catalog.njit.edu/programs",                      # deduped, slash stripped
+    ]
+
+
+def test_catalog_seed_urls_empty_on_fetch_or_parse_failure():
+    from v2.core.ingestion.catalog_crawl import catalog_seed_urls
+    assert catalog_seed_urls(lambda u: None) == []          # fetch failed
+    assert catalog_seed_urls(lambda u: b"<not xml") == []    # parse failed

@@ -44,3 +44,39 @@ def org_for(url: str) -> tuple[str, str, str | None, str]:
     if len(segs) >= 2 and segs[0] in ("graduate", "undergraduate") and segs[1] in CATALOG_ORG_MAP:
         return CATALOG_ORG_MAP[segs[1]]
     return _NJIT
+
+
+def _norm(url: str) -> str:
+    """Normalize ONCE: scheme→https + lowercased host (via normalize_url/_canon), then strip the
+    trailing slash uniformly. This string is stored as source_url AND compared in retirement —
+    nothing re-normalizes downstream (the S6 invariant)."""
+    u = _canon(normalize_url(url, url))
+    p = urlsplit(u)
+    path = p.path.rstrip("/") or "/"
+    return urlunsplit((p.scheme, p.netloc, path, "", ""))
+
+
+def catalog_seed_urls(fetch_bytes, sitemap_url: str = DEFAULT_SITEMAP) -> list[str]:
+    """The current canonical catalog frontier from sitemap.xml. Fetched with fetch_bytes
+    (make_bytes_fetcher) because make_fetcher rejects application/xml (B1). Drops empties +
+    /archive/ (past years); normalizes + dedupes; preserves order."""
+    data = fetch_bytes(sitemap_url)
+    if not data:
+        return []
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for loc in root.iter(_SITEMAP_LOC):
+        raw = (loc.text or "").strip()
+        if not raw:
+            continue
+        if any(urlsplit(raw).path.startswith(pre) for pre in _DISALLOW_PREFIXES):
+            continue
+        u = _norm(raw)
+        if u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
