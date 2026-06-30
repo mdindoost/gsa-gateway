@@ -98,8 +98,12 @@ New, isolated pieces:
 1. **`WWW_SUBSITES` registry** — the curated list of `www.njit.edu` subsites + the main sitemap. One
    entry per crawl unit:
    ```
-   WwwEntry(sitemap_url, org_slug, org_name, parent_slug, org_type)
+   WwwEntry(sitemap_url, org_slug, org_name, parent_slug, org_type, page_type=None)
    ```
+   `page_type` is an optional **mechanical** type override for the whole entry (default `None` →
+   per-page `classify_type(url)` as today). It exists for the main-sitemap marketing bucket (§4.2,
+   RAG-1) — a registry-driven, URL-derived label, NOT a content judgment, so it stays inside the
+   data-bringing-only line (the *weight* of each type still lives in the retriever, not the crawler).
    - Office subsites map to their **existing** org by slug (verified 2026-06-30): `/bursar`→`bursar`
      (17), `/registrar`→`registrar` (24), `/financialaid`→`financialaid` (28), `/careerservices`→
      `career-development` (18), `/counseling`→`counseling` (19), `/dos`→`dean-of-students` (20),
@@ -112,7 +116,12 @@ New, isolated pieces:
      `president`, `provost`, `reslife`, `publicsafety`, `studentinvolvement`, `writingcenter`, `eop`,
      `studyabroad`, `persistence`, `accessibility`.
    - The **main `www.njit.edu/sitemap.xml`** entry maps to `njit` root (academics/marketing is
-     provenance-only; per Build A RAG-N4 the org map is not a ranking lever, so a single bucket is fine).
+     provenance-only; per Build A RAG-N4 the org map is not a ranking lever, so a single bucket is fine)
+     and is the one entry that sets **`page_type='webpage'`** (§4.2 / RAG-1): its 209 `/academics/degree`
+     + 68 `/academics/major` + marketing landing pages are program *overviews* (career/salary/faculty/
+     testimonials; requirements link OUT to catalog), so they must not compete at the `policy` 1.0 prior
+     with the authoritative catalog requirement pages and office policy. `webpage` already exists and the
+     retriever serves it at a 0.8 prior (downweighted, never excluded — honors verbatim/never-withheld).
    **Adding/refreshing a subsite = one registry line + a recrawl** (no new code) — the repeatable-refresh
    property Build A established, generalized to many sitemaps.
 
@@ -135,12 +144,26 @@ New, isolated pieces:
    `ingest_pdf_pages(..., created_by=SOURCE)` for `.pdf` files → accumulate that subsite's sitemap URLs
    into a union set for reconcile.
 
-### 4.2 Title handling
+### 4.2 Title & type handling
 
-`www.njit.edu` Drupal pages already have a clean page `<h1>`/`<title>` (unlike CourseLeaf's generic
-banner), and `eos_crawl.extract_prose` already takes the `<h1>` then the de-suffixed `<title>`. So Build
-B uses `extract_prose`'s title **as-is** — it does NOT need Build A's `_catalog_title` override. (Spot-
-checked in the dev dry-run, §7.)
+**Title:** `www.njit.edu` Drupal pages already have a clean page `<h1>`/`<title>` (unlike CourseLeaf's
+generic banner), and `eos_crawl.extract_prose` already takes the `<h1>` then the de-suffixed `<title>`.
+So Build B uses `extract_prose`'s title **as-is** — it does NOT need Build A's `_catalog_title` override.
+(Spot-checked in the dev dry-run, §7 — incl. 2–3 `/academics/degree/*` + a marketing landing page, since
+those use a different template than the office pages `_main_region` was tuned for — SE-5.)
+
+**Type (one additive seam in `college_crawl`):** `ingest_college` gains a `force_type: str | None = None`
+param — when set, it replaces the internal `classify_type(url)`; default `None` keeps every existing
+caller byte-identical. `www_crawl` passes `force_type=entry.page_type` so the main-sitemap bucket lands
+as `webpage` (§4.1) while every subsite keeps `classify_type` (so a subsite's `/news`//`/event(s)` pages
+type correctly — SE-4 / RAG-4). `ingest_pdf_pages` is untouched (always `type='pdf'`). Verified: the
+retriever excludes ONLY `publication` (`DEFAULT_EXCLUDE_TYPES={'publication'}`, retriever.py:143) and
+serves `webpage` at `WEBPAGE_PRIOR=0.8` — so this **downweights, never hides** (honors never-withheld).
+*Nuance:* the main sitemap also carries a few **substantive** cited pages (`/international-students`,
+`/graduate-international-admissions-process`, `/about/senior-administration|maps-directions|history-njit`)
+that take the same 0.8 downweight — still served, just under `policy`/catalog. If the dry-run audit shows
+that hurts a real query, those specific paths can keep `classify_type` (a registry refinement); default
+is the simple whole-bucket `webpage`.
 
 ### 4.3 Office overlap — cross-source content dedup (the one genuinely new behavior)
 
@@ -148,10 +171,27 @@ Offices already hold ~half of each office subsite's prose. To reach completeness
 duplicate near-identical rows, Build B ingests a page **only if its content is not already active in the
 corpus under any source**:
 
-- `filter_existing_content(conn, res)` — for each extracted `ProsePage`, compute
-  `sha1(page.content)` **with the same formula `ingest_college` uses** (`metadata.content_hash`), and
-  drop the page if a row exists with `is_active=1 AND json_extract(metadata,'$.content_hash')=?`. Runs
-  per subsite, **before** ingest, so `ingest_college` only ever sees genuinely-new-or-changed content.
+- **Prefetch the hash set ONCE (SE-3 — perf).** A per-page `WHERE json_extract(metadata,'$.content_hash')=?`
+  is an **unindexed full scan** of ~24k rows × ~1,800 pages (no `content_hash` index — only
+  `$.natural_key` is indexed). Instead, `run()` does ONE pass at start:
+  `existing = { h for (h,) in conn.execute("SELECT json_extract(metadata,'$.content_hash') FROM
+  knowledge_items WHERE is_active=1") if h }` → a Python `set`. `filter_existing_content(existing, res)`
+  is then pure in-memory O(1)/page; **newly-ingested hashes are added to `existing` as the run proceeds**
+  so within-run dupes across subsites are also caught.
+- For each extracted `ProsePage`, compute `sha1(page.content)` **with the exact formula `ingest_college`
+  uses** (verified identical across `ingest_college`/`eos_crawl`/`ingest_pdf_pages`; `content =
+  clean_text(str(_main_region(soup)))`, and `_strip_recurring_assets` never touches `content` → the hash
+  is batch- and alias-independent). Drop the page if its hash ∈ `existing`. Runs **before** ingest, so
+  `ingest_college` only ever sees genuinely-new-or-changed content.
+- **Stale-divergent detection (RAG-2).** Dedup catches only byte-identical content. If an office holds a
+  *stale* version of a page (different hash — e.g. an old "$200 late fee" vs the current "$250"),
+  `www_crawl` will ingest the current page and the stale office row is NOT auto-retired (office crawlers
+  are change-detection-only, ND6) → both could co-rank. So `run()` **detects and reports** (does not act
+  on — that would touch another source, breaking isolation) pairs where a www page's canonical-path
+  identity matches an existing **other-source row in the same org with a different content hash**. The
+  run summary lists these as "⚠ possible stale duplicate — review for gated retirement", a **manual gated
+  follow-up** for high-value fee/deadline pages (the rebuild consolidates the rest). The run summary also
+  reports the **count of pages dropped-as-dup** (SE-6) so the office-overlap dedup is observably firing.
 - This is correct because every www source (offices, college_crawl, catalog, www_crawl) extracts via the
   **same** `eos_crawl.extract_prose` → identical bytes → identical hash for the same page, regardless of
   which URL alias it was reached by. So a page the office already captured (even under a `node/<id>` URL)
@@ -171,38 +211,55 @@ corpus under any source**:
   crawlers are change-detection-only, ND6) → a transient duplicate until the rebuild. This is the
   pre-existing office-staleness limitation, not worsened by Build B. Logged in the run summary.
 
-### 4.4 Reconcile (generalized from Build A)
+### 4.4 Reconcile (generalized from Build A — with two correctness fixes)
 
-`reconcile_catalog` is generalized to `reconcile_sitemap_set(conn, sitemap_urls, prior_active_count, *,
-created_by, min_floor=300, ratio=0.8)` — identical logic, but the `created_by` is a **parameter**
-(Build A passes `CATALOG_SOURCE`; Build B passes `njit_www_crawl`). For Build B, `sitemap_urls` is the
-**union of ALL subsite sitemaps + the main sitemap** gathered during the run, and `prior_active_count`
-is the `njit_www_crawl`/`type='policy'` active count sampled **before** ingest. All of Build A's S1
-guards carry over verbatim:
-- empty union (all sitemap fetches failed) → skip retirement;
-- `len(union) < max(300, 0.8 × prior)` → skip retirement (a partial/failed sitemap batch never
-  mass-retires), logged loudly;
-- `type='pdf'` excluded (B2 — PDF natural_keys are asset URLs, never sitemap `<loc>`s);
-- `--limit`/`--no-reconcile` forces skip (S5).
+`reconcile_catalog` is generalized to:
+```
+reconcile_sitemap_set(conn, sitemap_urls, prior_active_count, *, created_by,
+                      seen_hashes=frozenset(), types=("policy",), min_floor=300, ratio=0.8)
+```
+identical core logic, but `created_by` and `types` are **parameters**. `reconcile_catalog` delegates with
+`created_by=CATALOG_SOURCE, types=("policy",)` → **Build A byte-for-byte unchanged** (its test suite is
+the regression guard). Build B passes `created_by='njit_www_crawl'`, `types=("policy","news","event")`
+(SE-4 / RAG-4 — www subsites DO have `/news`//`/event` pages, so those rows must also be reconciled, not
+silently immortal; `type='pdf'` stays excluded — B2). `sitemap_urls` is the **union of all subsite
+sitemaps + the main sitemap** gathered during the run; `prior_active_count` is the
+`njit_www_crawl`/`types` active count sampled **before** ingest.
 
-This refactor is **additive**: `reconcile_catalog` becomes a thin wrapper calling
-`reconcile_sitemap_set(..., created_by=CATALOG_SOURCE)`, so Build A is byte-for-byte unchanged in
-behavior. (Build A's test suite is the regression guard.)
+Build A's S1 floor guards carry over, **plus two new guards Build B needs** because the single-sitemap
+failure model becomes a many-sitemap one:
 
-> **Reconcile + dedup interaction (explicit):** a page `www_crawl` **skips** via §4.3 is never inserted
-> as `njit_www_crawl`, so it is outside the `njit_www_crawl` reconcile scope — `reconcile_sitemap_set`
-> only ever retires `njit_www_crawl` rows. A skipped page therefore can't be wrongly retired, and a page
-> present in the union but content-deduped simply stays owned by its original source. No interaction
-> hazard.
+- **SE-1 — any-subsite-failure → skip ALL retirement.** With ~30 sitemaps under one global floor, a
+  *single* subsite's sitemap 404ing (rename/blip) while the other 29 fill the union above the floor would
+  let reconcile run and **mass-retire that whole subsite** (its URLs are now ∉ union, yet the floor
+  "passed"). So `run()` tracks per-entry sitemap-fetch success and **skips the retirement pass entirely
+  if ANY registry subsite returned an empty/failed sitemap** (logged loudly per subsite). Retirement is a
+  yearly-rollover nicety; blocking it on any glitch is the correct "never mass-retire on a partial fetch"
+  trade. (A future refinement could scope retirement per-successfully-fetched-subsite; the all-or-nothing
+  skip is the minimal safe version.)
+- **SE-2 — never retire a row whose content survives this run (dedup × rename content-loss).** Walk a CMS
+  slug rename: content `C` moves from old `<loc>` `Ua` to new `Ub`. `Ua` left the sitemap (never
+  crawled this run); `extract_urls` sees only `Ub`; `filter_existing_content` finds `sha1(C)` already
+  active (the run-N row under `Ua`) → **drops `Ub`** (no insert); then naive reconcile sees `Ua ∉ union`
+  → retires the `Ua` row → **`C` is now in NO active row. Lost.** Fix: `run()` collects the set of
+  content-hashes seen in **this run's crawl** (every extracted page, pre-dedup) and passes it as
+  `seen_hashes`; `reconcile_sitemap_set` **never retires a row whose `content_hash ∈ seen_hashes`** (its
+  content is still present this run, just under an aliased/renamed URL). This is the invariant the old
+  "no interaction hazard" note got wrong.
+
+Other carried-over guards: empty union → skip; `len(union) < max(300, 0.8 × prior)` → skip (logged);
+`--limit`/`--no-reconcile`/`--entry` force skip (S5 — a partial frontier never retires).
 
 ### 4.5 Isolation & invariants (all from Build A, restated for the reviewer)
 
 - `created_by='njit_www_crawl'` — source-scoped reconcile; never cross-wipes other sources or KG people.
 - **Crawl = data-bringing only**: mechanical clean + verbatim text; no serving/gating/decline. Prose-only.
 - **Never insert `search_text`** (generated). Embeddings via `embed_all.py` + `embed_chunks.py`.
-- Gated live write: dev-copy → dry-run → `--commit` with `hardened_backup` → embed.
-- Concurrency: serialize any live `--commit`/embed with the Scholar agent (single SQLite writer; shared
-  `.backups/` rotation). Build B runs on its own branch + own dev DB copy (`/tmp/dev_buildb.db`).
+- Gated live write: **read-only dry-run (no copy) → `hardened_backup` → `--commit` → embed** (§8 — owner
+  2026-06-30: no dev-copy cycle; the non-writing dry-run is the inspection and the backup is the rollback).
+- Concurrency: the live `--commit`/embed runs only **after the owner has quiesced the Scholar agent and
+  all other live writers** (owner 2026-06-30) — single SQLite writer, shared `.backups/` rotation, and a
+  clean rollback point (nothing else to clobber). Build B is developed on its own branch.
 
 ## 5. Components & interfaces
 
@@ -211,19 +268,25 @@ behavior. (Build A's test suite is the regression guard.)
   Pure where possible (registry, dedup-filter take an injected `conn`) for unit testing without network.
 - `v2/core/ingestion/catalog_crawl.py` — ONE additive change: extract `reconcile_sitemap_set` (generic
   `created_by`); `reconcile_catalog` delegates to it. No behavior change for Build A.
-- `scripts/crawl_www.py` — NEW gated runner, mirrors `scripts/crawl_catalog.py` exactly. Flags: `--db`,
+- `scripts/crawl_www.py` — NEW gated runner, mirrors `scripts/crawl_catalog.py`. Flags: `--db`,
   `--commit`, `--embed` (runs `embed_all.py` then `embed_chunks.py`, passing `--db` through),
   `--delay`, `--entry <slug>` (crawl ONE subsite — dev/targeted; forces `--no-reconcile` since the
   frontier is partial), `--no-reconcile`, `--limit N` (dev: first N urls per entry; forces
   `--no-reconcile`). Sitemaps via `make_bytes_fetcher`; pages via `make_fetcher`. `hardened_backup`
-  before any commit; dry-run default.
+  before any commit; **dry-run default writes nothing** (uncommitted transaction discarded). The
+  **dry-run is the inspection instrument** (since there's no dev copy now): it prints, per subsite, the
+  kept/skipped/dropped-as-dup counts, the **`type` distribution** (so the recency-typing audit — RAG-4 /
+  SE-4 — is done before any write), the **stale-dup ⚠ list** (§4.3), and a few **sample titles + first
+  ~200 chars** (the nav-chrome spot-check — SE-5). `ingest_college` is called with `force_type=
+  entry.page_type`.
 - `entry_points.py` — NOT modified (the registry lives in `www_crawl.py`, same call Build A made for
   the catalog).
 
 ## 6. Error handling (all inherited from Build A)
 
 - A subsite's sitemap fetch fails / parses empty → that subsite contributes 0 URLs to the union; other
-  subsites proceed; the §4.4 floor blocks retirement if the union collapses. Logged per subsite.
+  subsites' ingest proceeds (additive, non-destructive), but the **retirement pass is skipped for the
+  whole run** (SE-1), so a single failed subsite never mass-retires its rows. Logged per subsite.
 - A page fetch returns no HTML / `extract_prose` returns `None` → skipped + flagged, never stored.
 - A PDF empty/image-only → manifest skip, no row (existing `ingest_pdf_pages`).
 - `filter_existing_content` is read-only and order-independent; a DB hiccup surfaces as an exception
@@ -238,63 +301,96 @@ Unit (no network; injected `fetch`/`fetch_bytes`; `:memory:` DB for dedup/reconc
    existing orgs; service slugs are `type='office'` under `njit`.
 3. `crawl_www_entry`: one subsite → one org group; `is_people_path` skip; content-hash alias dedup;
    `EntryResult` carries that subsite's sitemap set.
-4. **`filter_existing_content`**: a page whose `sha1(content)` already exists active (under a *different*
-   `created_by`, e.g. simulated office row) is dropped; a genuinely-new page passes; hash formula matches
-   `ingest_college` (a round-trip test: ingest a page as office source, then the same page is deduped).
-5. Ingest writes `created_by='njit_www_crawl'`, `metadata.source='njit_www_crawl'`, `type='policy'`,
-   correct `org_id`; idempotent re-run (no dup insert); changed content version-bumps. (Mirrors Build A
-   test 4 under the new source.)
-6. **`reconcile_sitemap_set`**: retires a `njit_www_crawl` policy row whose URL left the union; does NOT
-   retire `type='pdf'`; empty union → retires nothing; below-floor union → retires nothing; **does NOT
-   touch rows of other `created_by`** (the isolation test). Plus the regression: `reconcile_catalog`
-   still behaves identically (delegation wrapper).
+4. **`filter_existing_content` (prefetched set)**: a page whose `sha1(content)` is in the prefetched
+   `existing` set (seeded from a *different* `created_by`, e.g. a simulated office row) is dropped; a
+   genuinely-new page passes; a within-run dup (same content, two subsites) is caught via the
+   incrementally-grown set; hash formula matches `ingest_college` (round-trip: ingest a page as office
+   source, then the same page is deduped). **Assert the existence check is ONE prefetch scan, not N
+   per-page queries** (SE-3).
+5. Ingest writes `created_by='njit_www_crawl'`, `metadata.source='njit_www_crawl'`, correct `org_id`,
+   `type` from `classify_type` for subsites **and `type='webpage'` when `force_type` is set** (the
+   main-sitemap bucket, RAG-1); idempotent re-run (no dup insert); changed content version-bumps.
+6. **`reconcile_sitemap_set`**: retires a `njit_www_crawl` row (policy/news/event) whose URL left the
+   union; does NOT retire `type='pdf'`; empty union / below-floor union → retires nothing; **does NOT
+   touch rows of other `created_by`** (isolation). **SE-1:** with a multi-subsite union, if one subsite's
+   sitemap came back empty the pass is skipped (no mass-retire of that subsite). **SE-2:** a row whose
+   `content_hash ∈ seen_hashes` is NOT retired even when its `source_url ∉ union` (rename content-loss
+   guard). Regression: `reconcile_catalog` delegates and behaves identically.
 7. PDF skip-flag path + a PDF row survives a reconcile pass (B2 regression, reused).
-8. Regression: Build A's full `test_catalog_crawl.py` still green (the reconcile refactor is additive).
+8. **`force_type` is additive**: `ingest_college` with `force_type=None` types via `classify_type`
+   exactly as before (Build A callers unchanged); with `force_type='webpage'` overrides. Build A's full
+   `test_catalog_crawl.py` still green (reconcile refactor + `force_type` are additive).
 
-Integration (gated, manual):
-- Dev-copy (`cp gsa_gateway.db /tmp/dev_buildb.db`) dry-run, then `--commit` on the copy; inspect per-
-  subsite counts; spot-check 2–3 page texts for nav/chrome pollution and that `/bursar/payment-information`
-  now ingests with its real figures; confirm office overlap was deduped (no dup rows for already-held
-  pages); `verify_kg`.
-- Live `--commit` → **`embed_all.py` AND `embed_chunks.py`** (chunk vectors are load-bearing for the
-  deep-fallback + answer-gate; whole-doc embed truncates long pages). If the embed invariant asserts on
-  the pre-existing 16 vectorless chunks, **backfill those chunks** (do NOT `--force` the whole corpus) —
-  see `project_catalog_scoping_followup`.
-- **No-regression gate, pre vs post, required GO:** (a) `test_office_routing_gold` — no new office
-  dilution; (b) `scripts/eval.sh` pre/post — coverage/accuracy not worse; (c) acceptance probes:
-  `/bursar/payment-information` content (payment plan, $250 penalty), `/registrar/transcript`,
-  `/financialaid/dates-and-deadlines` answer from the now-present pages.
+Integration (gated, manual — NO dev copy; read-only dry-run + backup, §8):
+- **Read-only full dry-run on the live DB** (writes nothing): inspect per-subsite kept/skipped/dup
+  counts; the **`type` distribution audit** (RAG-4/SE-4 — if a subsite like `president`/`studentinvolvement`
+  carries dated news/events under a `policy` URL segment, add that segment to
+  `classify_type`'s `_NEWS_SEGMENTS`/`_EVENT_SEGMENTS` **before** the live write, because re-crawl won't
+  re-type unchanged content); **nav-chrome spot-check** of 2–3 office pages + 2–3 `/academics/degree/*`
+  + a marketing landing page (SE-5); confirm `/bursar/payment-information` would ingest with its real
+  figures; confirm the office-overlap **dedup is firing** (non-zero dropped-as-dup count, SE-6); review
+  the **stale-dup ⚠ list** (RAG-2) for any high-value fee/deadline page needing a manual gated retire.
+- `hardened_backup` → live `--commit` → `verify_kg` → **`embed_all.py` AND `embed_chunks.py`** (chunk
+  vectors are load-bearing for the deep-fallback + answer-gate). If the embed invariant asserts on the
+  pre-existing 16 vectorless chunks, **backfill those chunks** (do NOT `--force` the whole corpus) — see
+  `project_catalog_scoping_followup`.
+- **No-regression gate, pre vs post, required GO** (answer-gate ON): (a) `test_office_routing_gold` — no
+  new office dilution; (b) `scripts/eval.sh` pre/post — coverage/accuracy not worse; (c) **underspecified-
+  sibling probe set** (re-added from Build A §7c — RAG-3): "data science qualifying exam" (no level),
+  "data science courses", DS-PhD vs CS-PhD vs Math-DS-MS — record the wrong-program rate, require **not
+  worse than Build-A-post** (this build adds the most sibling-confusing surfaces, so this is the
+  measurement that proves the §4.2 `webpage` demotion helped); (d) acceptance probes:
+  `/bursar/payment-information` ($250 penalty, payment plan), `/registrar/transcript`,
+  `/financialaid/dates-and-deadlines` answer from the now-present pages, and **only the current figure
+  surfaces — no stale office duplicate co-ranks the top-k** (RAG-2).
 
-## 8. Gated rollout
+## 8. Gated rollout (owner 2026-06-30: no dev-copy cycle — dry-run + backup)
+
+The owner will **quiesce the Scholar agent + all other live writers before the live write**, so the live
+DB is single-writer with a clean rollback point. No dev DB copy; the non-writing dry-run is the
+inspection and `hardened_backup` is the rollback.
 
 ```
-cp gsa_gateway.db /tmp/dev_buildb.db
-python scripts/crawl_www.py --db /tmp/dev_buildb.db --entry bursar          # one-subsite dry-run
-python scripts/crawl_www.py --db /tmp/dev_buildb.db                          # full dry-run
-python scripts/crawl_www.py --db /tmp/dev_buildb.db --commit                 # dev write, inspect + verify_kg
-python scripts/crawl_www.py --commit --embed                                 # live (hardened_backup; embed both)
-bash scripts/ask.sh "njit payment plan late fee"                             # spot-check
+python scripts/crawl_www.py --entry bursar               # one-subsite dry-run (writes nothing) — sanity
+python scripts/crawl_www.py                               # FULL read-only dry-run on live: inspect counts,
+                                                          #   type distribution, dedup-drops, stale-dup ⚠,
+                                                          #   nav-chrome samples (the §7 audit) — fix
+                                                          #   classify_type/page_type if needed, re-run
+# (owner confirms all other live writers stopped)
+python scripts/crawl_www.py --commit --embed              # hardened_backup → live write → embed both
+bash scripts/ask.sh "njit payment plan late fee"          # acceptance spot-check
+# run the §7 no-regression gate (office gold + eval.sh + sibling probe + acceptance probes); GO/rollback
 ```
-DB-only change → no bot restart. Serialize the live `--commit`/embed with the Scholar agent.
+DB-only change → no bot restart. If the gate fails, restore the `hardened_backup` snapshot.
 
 ## 9. Goals checklist (shipped / deferred — fill at PR)
 
 - [ ] ALL `www.njit.edu` prose ingested as `njit_www_crawl` (every subsite sitemap + main sitemap).
 - [ ] Sitemap-driven → complete + deterministic; office DFS page-gaps filled (`/bursar/payment-information`
       et al. present).
-- [ ] Office overlap handled by cross-source content dedup (fill gaps, skip dups; no near-dup spam).
+- [ ] Office overlap handled by cross-source content dedup (prefetched hash set, SE-3; fill gaps, skip
+      dups; dropped-as-dup count reported, SE-6).
 - [ ] Source isolation: `created_by='njit_www_crawl'`; reconcile never cross-wipes other sources or KG people.
-- [ ] Repeatable refresh + retirement with Build A's S1 floor guards (partial sitemap never mass-retires).
+- [ ] Repeatable refresh + retirement with the floor guards **plus SE-1 (any-subsite-fail → skip) and
+      SE-2 (content-survives-this-run → never retire)** — partial sitemap / rename never loses content.
+- [ ] Marketing bucket typed `webpage` (RAG-1); `type` distribution audited in the dry-run, news/event
+      segments added where dated content hides under a `policy` URL (RAG-4/SE-4).
 - [ ] Chunk-embedded (`embed_chunks.py`) so deep-fallback + answer-gate see www content.
-- [ ] No-regression gate GREEN (office gold + `eval.sh` + acceptance probes).
-- [ ] Build A unchanged (reconcile refactor additive; its test suite green).
+- [ ] No-regression gate GREEN: office gold + `eval.sh` + **underspecified-sibling probe (RAG-3)** +
+      acceptance probes incl. **no stale-dup co-rank (RAG-2)**.
+- [ ] Build A unchanged (reconcile refactor + `force_type` additive; its test suite green).
 - [ ] **DEFERRED & FLAGGED** — KG people unchanged (prose-only); single-source consolidation → rebuild;
-      orphan pages not in any sitemap → live-fallback; office-staleness transient dups → rebuild.
+      orphan pages not in any sitemap → live-fallback; office-staleness divergent-hash dups → detected +
+      reported for manual gated retire (RAG-2), full consolidation → rebuild; provenance link may be the
+      office alias not the clean URL on deduped pages (owner-accepted content-completeness, §4.3).
 
 ## 10. Risks
 
-- **Sitemap drift / a subsite renamed** → its sitemap 404s → that subsite contributes 0 URLs; floor
-  blocks retirement; clear per-subsite error. Re-point the registry line.
+- **Sitemap drift / a subsite renamed** → its sitemap 404s → that subsite contributes 0 URLs; **the whole
+  retirement pass is skipped (SE-1)**, never mass-retiring the failed subsite; clear per-subsite error.
+  Re-point the registry line.
+- **Page slug rename within a subsite** → content moves to a new URL; the SE-2 `seen_hashes` guard keeps
+  the old row alive (content still present this run), so no content is lost between runs.
 - **Curated registry misses a brand-new subsite** → one-line add when discovered; documented limit, not
   silent (§4.1). A future enhancement could auto-discover subsites from the main-site nav.
 - **Cross-source hash mismatch** (extractor drift) → at worst a benign duplicate, never a wrong answer;
