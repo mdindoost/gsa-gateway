@@ -125,7 +125,11 @@ def test_registry_well_formed_office_and_service_and_main():
     slugs = {e.org_slug for e in W.WWW_SUBSITES}
     # offices map to their real existing slugs
     assert {"bursar", "registrar", "career-development", "dean-of-students",
-            "graduate-studies", "ogi", "graduate-admissions", "eos"} <= slugs
+            "graduate-studies", "ogi", "eos"} <= slugs
+    # admissions is DELIBERATELY excluded: www.njit.edu/admissions/sitemap.xml is a permanent 404
+    # (a dead entry would trip SE-1 and disable reconcile retirement on every recrawl). Admissions
+    # prose is already covered by the main sitemap (46 /admissions/* pages) + the office DFS crawl.
+    assert all("/admissions/sitemap.xml" not in e.sitemap_url for e in W.WWW_SUBSITES)
     # service subsites are type='office' under njit
     svc = [e for e in W.WWW_SUBSITES if e.org_slug in
            ("policies", "finance", "president", "provost", "reslife", "publicsafety")]
@@ -186,6 +190,33 @@ def test_crawl_www_entry_drops_roster_leaks():
     res, got = W.crawl_www_entry(e, fetch, fetch_bytes)
     kept = {p.source_url for p in res.prose}
     assert kept == {"https://cs.njit.edu/phd-program-overview"}   # roster dropped, program kept
+
+
+def test_is_error_page_detects_soft_404():
+    # Drupal subsites LIST their own /error-404 page in sitemap.xml; it serves HTTP 200 with a
+    # boilerplate "Error 404 - Document Not Found" body. That is junk, not prose — drop by signature.
+    from v2.core.ingestion.www_crawl import _is_error_page
+    assert _is_error_page("Error 404 - Document Not Found", "Error 404 - Document Not Found The page…")
+    assert _is_error_page("Page Not Found", "The page you requested could not be found.")
+    assert _is_error_page("404 Error", "404 error - document not found")
+    # real prose with an incidental mention is KEPT
+    assert not _is_error_page("Handling 404s in Flask", "This tutorial covers error pages and 404 routes.")
+    assert not _is_error_page("PhD Program Overview", "Program structure, requirements, and advising.")
+
+
+def test_crawl_www_entry_drops_soft_404():
+    from v2.core.ingestion import www_crawl as W
+    e = _entry(sitemap_url="https://cs.njit.edu/sitemap.xml", org_slug="computer-science",
+               org_name="CS", parent_slug="njit", org_type="department")
+    urls = ["https://cs.njit.edu/error-404-document-not-found", "https://cs.njit.edu/phd-overview"]
+    sitemaps = {e.sitemap_url: urls}
+    pages = {urls[0]: _MAIN_HTML.format(t="Error 404 - Document Not Found",
+                                        b="Error 404 - Document Not Found The page you requested…"),
+             urls[1]: _MAIN_HTML.format(t="PhD Overview", b="program structure and requirements")}
+    fetch, fetch_bytes = _fake_fetchers(sitemaps, pages)
+    res, got = W.crawl_www_entry(e, fetch, fetch_bytes)
+    kept = {p.source_url for p in res.prose}
+    assert kept == {"https://cs.njit.edu/phd-overview"}   # soft-404 dropped, program kept
 
 
 def test_www_seed_urls_parses_sitemap():

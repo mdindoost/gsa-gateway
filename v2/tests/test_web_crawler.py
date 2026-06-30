@@ -13,6 +13,46 @@ from v2.core.ingestion.web_crawler import (clean_text, crawl_site, is_non_html, 
                                            same_site, scope_prefix, select_links)
 
 
+def test_read_capped_returns_full_body_when_fast():
+    # read1 yields chunks then EOF, well under the deadline -> full body, in order
+    from v2.core.ingestion.web_crawler import _read_capped
+    chunks = [b"hello ", b"world", b""]
+
+    class R:
+        def read1(self, n):
+            return chunks.pop(0)
+
+    assert _read_capped(R(), max_bytes=1000, deadline_s=60, now=lambda: 0.0) == b"hello world"
+
+
+def test_read_capped_caps_at_max_bytes():
+    # an endless stream is truncated at max_bytes (no unbounded read)
+    from v2.core.ingestion.web_crawler import _read_capped
+
+    class R:
+        def read1(self, n):
+            return b"x" * n
+
+    assert _read_capped(R(), max_bytes=10, deadline_s=60, now=lambda: 0.0) == b"x" * 10
+
+
+def test_read_capped_aborts_on_wallclock_deadline():
+    # a slow-drip stream that never EOFs: the TOTAL wall-clock deadline must trip, even though each
+    # read1 returns promptly. This is the slow-drip hang guard (the per-recv socket timeout alone
+    # never fires when a server dribbles bytes within each window).
+    import itertools
+    import pytest
+    from v2.core.ingestion.web_crawler import _read_capped
+    clock = itertools.count(0, 30)  # now() advances 30s per call
+
+    class R:
+        def read1(self, n):
+            return b"a"  # one byte forever, never EOF
+
+    with pytest.raises(TimeoutError):
+        _read_capped(R(), max_bytes=10_000_000, deadline_s=60, now=lambda: next(clock))
+
+
 def test_ssrf_guard_blocks_internal_and_nonhttp():
     # public hosts ok; internal/loopback/link-local/metadata + non-http rejected
     assert is_safe_url("https://example.com/")

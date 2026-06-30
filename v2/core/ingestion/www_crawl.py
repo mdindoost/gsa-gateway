@@ -58,7 +58,10 @@ _OFFICES: list[tuple[str, str, str]] = [
     ("dos", "dean-of-students", "Dean of Students"),
     ("graduatestudies", "graduate-studies", "Graduate Studies"),
     ("global", "ogi", "Office of Global Initiatives"),
-    ("admissions", "graduate-admissions", "Office of University Admissions"),
+    # NOTE: no "admissions" entry — www.njit.edu/admissions/sitemap.xml is a permanent 404 (the
+    # section has no per-subsite Drupal sitemap). A dead entry would trip SE-1 every recrawl and
+    # disable the whole retirement pass. The 46 /admissions/* pages are covered by the MAIN sitemap
+    # (typed 'webpage') and the admissions office DFS crawl, so nothing is lost by omitting it.
     ("environmentalsafety", "eos", "Environmental & Operational Services"),
     ("parking", "eos", "Environmental & Operational Services"),
     ("mailroom", "eos", "Environmental & Operational Services"),
@@ -163,6 +166,20 @@ def _roster_skip(url: str) -> bool:
     return seg in _ROSTER_EXACT or seg.endswith(_ROSTER_SUFFIXES)
 
 
+# Soft-404 guard: Drupal subsites list their own /error-404 page in sitemap.xml, served as HTTP 200
+# with a boilerplate "Error 404 - Document Not Found" body — junk, not prose. Drop by CONTENT/title
+# signature (not URL: the page can sit at /error-404-document-not-found OR /errordocs/404.php). Tight
+# prefix match so a real page that merely MENTIONS "404" (e.g. "Handling 404s in Flask") is kept.
+_ERROR_PAGE_PREFIXES = ("error 404", "404 error", "404 - ", "404 not found", "404 page not found",
+                        "page not found")
+
+
+def _is_error_page(title: str, content: str) -> bool:
+    t = (title or "").strip().lower()
+    head = (content or "").strip()[:60].lower()
+    return t.startswith(_ERROR_PAGE_PREFIXES) or head.startswith(_ERROR_PAGE_PREFIXES)
+
+
 def crawl_www_entry(entry: WwwEntry, fetch, fetch_bytes, limit=0):
     """Seed one subsite from its sitemap and extract its prose. Returns (EntryResult, sitemap_urls).
     `extract_urls` (Build A) does verbatim extraction, content-hash alias dedup, is_people_path skip;
@@ -172,9 +189,13 @@ def crawl_www_entry(entry: WwwEntry, fetch, fetch_bytes, limit=0):
     if limit:
         urls = urls[:limit]
     res = extract_urls(urls, fetch)
-    kept = [p for p in res.prose if not _roster_skip(p.source_url)]
+
+    def _drop(p):                       # name-LIST roster leak OR a soft-404 boilerplate page
+        return _roster_skip(p.source_url) or _is_error_page(p.title, p.content)
+
+    kept = [p for p in res.prose if not _drop(p)]
     for p in res.prose:
-        if _roster_skip(p.source_url):
+        if _drop(p):
             res.html_by_url.pop(p.source_url, None)
     res.prose = kept
     return res, urls

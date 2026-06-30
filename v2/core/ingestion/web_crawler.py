@@ -40,6 +40,7 @@ DEFAULT_BUDGET = 15
 TIMEOUT = 20
 DELAY = 1.0  # seconds between fetches (politeness)
 MAX_FETCH_BYTES = 5_000_000  # cap the raw body read (defense vs huge/streamed responses)
+FETCH_DEADLINE = 60  # total wall-clock seconds for one response body (slow-drip hang guard)
 
 
 def is_safe_url(url: str) -> bool:
@@ -270,6 +271,26 @@ def _make_opener_and_allowed():
     return opener, _allowed
 
 
+def _read_capped(resp, max_bytes=MAX_FETCH_BYTES, deadline_s=FETCH_DEADLINE, *, now=time.monotonic):
+    """Read up to ``max_bytes`` from an HTTP response, but abort after ``deadline_s`` total
+    wall-clock seconds. The per-recv socket timeout (TIMEOUT) only fires on a fully-silent gap;
+    a server that DRIBBLES a few bytes within each window keeps a plain ``resp.read(max_bytes)``
+    going indefinitely (observed: a 12-minute stall, socket ESTABLISHED but no progress). Reading
+    one recv at a time via ``read1`` lets us check the wall-clock between chunks, so the total read
+    is bounded regardless of the drip. Raises ``TimeoutError`` on overrun — callers already map any
+    read exception to a fetch-miss (None)."""
+    start = now()
+    buf = bytearray()
+    while len(buf) < max_bytes:
+        if now() - start > deadline_s:
+            raise TimeoutError(f"body read exceeded {deadline_s}s deadline")
+        part = resp.read1(max_bytes - len(buf))
+        if not part:                       # EOF
+            break
+        buf.extend(part)
+    return bytes(buf)
+
+
 def fetch_with_status(timeout: int = TIMEOUT):
     """Like make_fetcher but returns (html|None, status|None). status is the HTTP code
     (200/404/410/…) or None on a transport error (timeout/DNS/SSRF-block), so a transient
@@ -288,7 +309,7 @@ def fetch_with_status(timeout: int = TIMEOUT):
                 status = getattr(r, "status", None) or r.getcode()
                 if "html" not in ctype.lower():
                     return None, status
-                return r.read(MAX_FETCH_BYTES).decode("utf-8", "ignore"), status
+                return _read_capped(r).decode("utf-8", "ignore"), status
         except urllib.error.HTTPError as e:       # 404/410/5xx carry a real status
             return None, e.code
         except Exception:  # noqa: BLE001 - transport error: status unknown
@@ -311,7 +332,7 @@ def make_bytes_fetcher(timeout: int = TIMEOUT):
         try:
             req = Request(url, headers={"User-Agent": UA})
             with opener.open(req, timeout=timeout) as r:
-                return r.read(MAX_FETCH_BYTES)
+                return _read_capped(r)
         except Exception:  # noqa: BLE001
             return None
 
