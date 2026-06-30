@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-30
 **Author:** Claude (brainstormed with Mohammad)
-**Status:** Design — pending owner review + expert review (HARD GATE), build deferred to a later session
+**Status:** BUILT on branch `worktree-scholar-surfacing` (Codex-reviewed, fixes folded) — pending owner sign-off + merge + restart (live answer-path change)
 **Depends on:** the maximal Scholar capture (live in the KG for all 211 faculty as of 2026-06-30,
 `2026-06-29-scholar-fetcher-maximal-capture-design.md`)
 **Related:** [[project_faculty_page_builder]] (Folio), [[project_find_your_advisor]]
@@ -193,7 +193,14 @@ lines AND assert the prior link/metric lines still appear.
 | Cross-person rankings (most-cited paper in org, fastest-growing, dept feed) | fast-follow |
 | Co-authors (pull) — captured, not surfaced this build | fast-follow |
 | New skills registered in `_DETERMINISTIC_SKILLS` (anti-fab) | ship |
-| Recent routing via router qualifier (NOT aliases) | ship |
 | Paper-noun precedence + org-paper honest decline | ship |
 | Multi-line push suffix, existing lines preserved | ship |
+| Message-handler pre-gate passes paper/citation cues (else the pull path never reaches the router) | **ship** (Codex-review fix) |
 | X-vs-Y comparison; advisor area+metric combo | fast-follow |
+
+**Codex code review (folded, commit `f679716`):** HIGH — extended the `_try_structured` pre-gate
+(`_structured_pregate`) with paper/citation/trend cues so the new pull queries reach the router
+instead of falling to the LLM. MED — `current_year` now lists ALL captured papers (count matched the
+list). LOW — "this year" beats "newest/latest" in `_paper_mode`; malformed (non-dict) `attrs.profiles`
+degrades to honest-empty. All 43 surfacing tests + 26 handler tests green; no-regression cluster clean
+(one PRE-EXISTING unrelated failure, present on main).
