@@ -177,13 +177,15 @@ PROSE_SOURCE = "college_crawl"
 
 
 def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
-                   org_type="college") -> dict:
+                   org_type="college", created_by=PROSE_SOURCE) -> dict:
     """Write an EntryResult's prose into knowledge_items under one org:
       type = classify_type(url); dates from extract_dates(raw html); created_by=PROSE_SOURCE.
     Content-hash idempotent (unchanged skipped; changed version-bumps old). NO Person creation.
     Does NOT commit (caller owns the transaction).
     ``org_type`` is the ORG tier for ensure_org when the org does not yet exist (college vs
-    department); existing orgs keep their type (ensure_org early-returns)."""
+    department); existing orgs keep their type (ensure_org early-returns).
+    ``created_by`` scopes the idempotency check and the row provenance tag; defaults to
+    PROSE_SOURCE so all existing callers are byte-for-byte unchanged."""
     org_id = ensure_org(conn, org_slug, org_name, parent_slug=parent_slug, type=org_type)
     sync_org_nodes(conn)
     inserted = updated = unchanged = 0
@@ -194,14 +196,14 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
             "content_hash": ch,
             "images": [list(i) for i in p.images],
             "files": [list(f) for f in p.files],
-            "source": PROSE_SOURCE,
+            "source": created_by,
         }
         meta.update(extract_dates(html_by_url.get(p.source_url, "")))
         ptype = classify_type(p.source_url)
         row = conn.execute(
             "SELECT id, json_extract(metadata,'$.content_hash') FROM knowledge_items "
             "WHERE is_active=1 AND org_id=? AND json_extract(metadata,'$.natural_key')=? "
-            "AND created_by=?", (org_id, p.source_url, PROSE_SOURCE)).fetchone()
+            "AND created_by=?", (org_id, p.source_url, created_by)).fetchone()
         if row and row[1] == ch:
             unchanged += 1
             continue
@@ -214,13 +216,13 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
         conn.execute(
             "INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
             "version,is_active,created_by) VALUES(?,?,?,?,?,?,1,1,?)",
-            (org_id, ptype, p.title, p.content, json.dumps(meta), p.source_url, PROSE_SOURCE))
+            (org_id, ptype, p.title, p.content, json.dumps(meta), p.source_url, created_by))
     return {"org_id": org_id, "prose_inserted": inserted, "prose_updated": updated,
             "prose_unchanged": unchanged, "skipped": len(result.skipped)}
 
 
 def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_bytes,
-                     org_type="college") -> dict:
+                     org_type="college", created_by=PROSE_SOURCE) -> dict:
     """Ingest discovered PDF links as type='pdf' knowledge_items rows.
 
     pdf_items   -- iterable of (url, label) tuples; deduplicated by url inside this function.
@@ -234,6 +236,8 @@ def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_byt
 
     Idempotent on (org_id, natural_key=url, created_by) exactly like ingest_college.
     Does NOT commit (caller owns the transaction).
+    ``created_by`` scopes the idempotency check and the row provenance tag; defaults to
+    PROSE_SOURCE so all existing callers are byte-for-byte unchanged.
 
     Returns {"org_id":…,"pdf_inserted":n,"pdf_updated":n,"pdf_unchanged":n,"skipped":[…]}.
     """
@@ -278,13 +282,13 @@ def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_byt
             "content_hash": ch,
             "pdf_table_degraded": res.table_degraded,
             "status": res.status,
-            "source": PROSE_SOURCE,
+            "source": created_by,
         }
 
         row = conn.execute(
             "SELECT id, json_extract(metadata,'$.content_hash') FROM knowledge_items "
             "WHERE is_active=1 AND org_id=? AND json_extract(metadata,'$.natural_key')=? "
-            "AND created_by=?", (org_id, url, PROSE_SOURCE)).fetchone()
+            "AND created_by=?", (org_id, url, created_by)).fetchone()
 
         if row and row[1] == ch:
             unchanged += 1
@@ -299,7 +303,7 @@ def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_byt
         conn.execute(
             "INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
             "version,is_active,created_by) VALUES(?,?,?,?,?,?,1,1,?)",
-            (org_id, "pdf", title, text, json.dumps(meta), url, PROSE_SOURCE))
+            (org_id, "pdf", title, text, json.dumps(meta), url, created_by))
 
     return {"org_id": org_id, "pdf_inserted": inserted, "pdf_updated": updated,
             "pdf_unchanged": unchanged, "skipped": skipped}
