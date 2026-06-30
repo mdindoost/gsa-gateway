@@ -57,3 +57,20 @@ def test_ingest_created_by_isolation_and_idempotent():
     active = conn.execute("SELECT COUNT(*) FROM knowledge_items WHERE is_active=1 AND source_url=?",
                           (url,)).fetchone()[0]
     assert active == 1
+
+
+def test_org_for_maps_college_segments_else_njit():
+    from v2.core.ingestion.catalog_crawl import org_for
+    assert org_for("https://catalog.njit.edu/graduate/computing-sciences/data-science/data-science-phd")[0] == "ywcc"
+    assert org_for("https://catalog.njit.edu/undergraduate/newark-college-engineering/x")[0] == "nce"
+    assert org_for("https://catalog.njit.edu/graduate/science-liberal-arts/physics")[0] == "csla"
+    assert org_for("https://catalog.njit.edu/graduate/architecture-design/architecture")[0] == "hcad"
+    assert org_for("https://catalog.njit.edu/graduate/management/x")[0] == "mtsm"
+    assert org_for("https://catalog.njit.edu/undergraduate/honors-college")[0] == "honors"
+    # university-wide / unknown → njit root
+    assert org_for("https://catalog.njit.edu/graduate/academic-policies-procedures")[0] == "njit"
+    assert org_for("https://catalog.njit.edu/graduate/admissions-financial-support")[0] == "njit"
+    assert org_for("https://catalog.njit.edu/about-university/accreditation")[0] == "njit"
+    assert org_for("https://catalog.njit.edu/programs")[0] == "njit"
+    # njit tuple shape
+    assert org_for("https://catalog.njit.edu/programs") == ("njit", "New Jersey Institute of Technology", None, "university")
