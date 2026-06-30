@@ -148,26 +148,49 @@ def iter_catalog_groups(urls, fetch):
         yield slug, name, parent, otype, res
 
 
-def reconcile_catalog(conn, sitemap_urls, prior_active_count, *, min_floor=300, ratio=0.8) -> dict:
-    """Retire active catalog_crawl POLICY rows whose source_url left the sitemap. PDFs excluded
-    (their natural_key is never a <loc> — B2). Guarded: skip on empty or below-floor frontier so a
-    partial sitemap fetch never mass-retires (S1). `prior_active_count` is the catalog_crawl/policy
-    active count sampled BEFORE this run's ingest (caller passes it)."""
+def reconcile_sitemap_set(conn, sitemap_urls, prior_active_count, *, created_by,
+                          seen_hashes=frozenset(), types=("policy",),
+                          min_floor=300, ratio=0.8) -> dict:
+    """Retire active rows of one source (`created_by`) whose source_url left the sitemap `union`.
+    Generalized from reconcile_catalog so Build A (catalog) and Build B (www) share it.
+
+    - `types`: the row types subject to retirement (catalog: ('policy',); www adds news/event).
+      'pdf' is never included → PDF asset rows are never retired (B2 — their natural_key is an
+      asset URL, never a <loc>).
+    - `seen_hashes` (SE-2): a row whose metadata.content_hash is in this set is NEVER retired even
+      when its source_url ∉ union — its content was seen elsewhere THIS run (an aliased/renamed
+      URL), so retiring it would lose content the dedup filter suppressed re-inserting.
+    - Guards (S1): empty union → skip; len(union) < max(min_floor, ratio×prior) → skip (a partial/
+      failed sitemap fetch never mass-retires). `prior_active_count` is the same-source/types active
+      count sampled BEFORE this run's ingest (caller passes it).
+    """
     sitemap = set(sitemap_urls)
     if not sitemap:
         return {"retired": 0, "skipped_reason": "empty_sitemap"}
     floor = max(min_floor, int(ratio * prior_active_count))
     if len(sitemap) < floor:
-        logger.warning("reconcile_catalog: frontier %d < floor %d — skipping retirement",
-                       len(sitemap), floor)
+        logger.warning("reconcile_sitemap_set(%s): frontier %d < floor %d — skipping retirement",
+                       created_by, len(sitemap), floor)
         return {"retired": 0, "skipped_reason": f"below_floor({len(sitemap)}<{floor})"}
+    placeholders = ",".join("?" * len(types))
     rows = conn.execute(
-        "SELECT id, source_url FROM knowledge_items "
-        "WHERE is_active=1 AND created_by=? AND type='policy'", (CATALOG_SOURCE,)).fetchall()
+        "SELECT id, source_url, json_extract(metadata,'$.content_hash') FROM knowledge_items "
+        f"WHERE is_active=1 AND created_by=? AND type IN ({placeholders})",
+        (created_by, *types)).fetchall()
     retired = 0
-    for rid, src in rows:
-        if src not in sitemap:
-            conn.execute("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
-                         "WHERE id=?", (rid,))
-            retired += 1
+    for rid, src, ch in rows:
+        if src in sitemap or ch in seen_hashes:   # SE-2: content-survives-this-run guard
+            continue
+        conn.execute("UPDATE knowledge_items SET is_active=0, updated_at=datetime('now') "
+                     "WHERE id=?", (rid,))
+        retired += 1
     return {"retired": retired, "skipped_reason": None}
+
+
+def reconcile_catalog(conn, sitemap_urls, prior_active_count, *, min_floor=300, ratio=0.8) -> dict:
+    """Build A wrapper — retire active catalog_crawl POLICY rows whose source_url left the sitemap.
+    Delegates to reconcile_sitemap_set (created_by=CATALOG_SOURCE, types=('policy',)) → byte-for-byte
+    the same behavior as before the generalization."""
+    return reconcile_sitemap_set(conn, sitemap_urls, prior_active_count,
+                                 created_by=CATALOG_SOURCE, types=("policy",),
+                                 min_floor=min_floor, ratio=ratio)

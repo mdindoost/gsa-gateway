@@ -177,7 +177,7 @@ PROSE_SOURCE = "college_crawl"
 
 
 def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
-                   org_type="college", created_by=PROSE_SOURCE) -> dict:
+                   org_type="college", created_by=PROSE_SOURCE, force_type=None) -> dict:
     """Write an EntryResult's prose into knowledge_items under one org:
       type = classify_type(url); dates from extract_dates(raw html); created_by=PROSE_SOURCE.
     Content-hash idempotent (unchanged skipped; changed version-bumps old). NO Person creation.
@@ -185,7 +185,10 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
     ``org_type`` is the ORG tier for ensure_org when the org does not yet exist (college vs
     department); existing orgs keep their type (ensure_org early-returns).
     ``created_by`` scopes the idempotency check and the row provenance tag; defaults to
-    PROSE_SOURCE so all existing callers are byte-for-byte unchanged."""
+    PROSE_SOURCE so all existing callers are byte-for-byte unchanged.
+    ``force_type`` (mechanical, URL-derived label set by the caller) replaces the per-page
+    classify_type when given; defaults to None so existing callers are byte-for-byte unchanged
+    (used by www_crawl to type the marketing/landing bucket as 'webpage')."""
     org_id = ensure_org(conn, org_slug, org_name, parent_slug=parent_slug, type=org_type)
     sync_org_nodes(conn)
     inserted = updated = unchanged = 0
@@ -199,7 +202,7 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
             "source": created_by,
         }
         meta.update(extract_dates(html_by_url.get(p.source_url, "")))
-        ptype = classify_type(p.source_url)
+        ptype = force_type or classify_type(p.source_url)
         row = conn.execute(
             "SELECT id, json_extract(metadata,'$.content_hash') FROM knowledge_items "
             "WHERE is_active=1 AND org_id=? AND json_extract(metadata,'$.natural_key')=? "
