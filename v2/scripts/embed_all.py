@@ -46,10 +46,9 @@ except ImportError:
 
 from v2.core.database.schema import get_connection  # noqa: E402
 from v2.core.retrieval.embedder import embed_with_retry  # noqa: E402
+from v2.core.retrieval.model_descriptor import active_descriptor  # noqa: E402
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-EMBED_MODEL = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
-EMBED_DIM = 768
 LIVE_DB = str(REPO_ROOT / "gsa_gateway.db")
 
 GREEN, YELLOW, RED, DIM, RESET = "\033[92m", "\033[93m", "\033[91m", "\033[2m", "\033[0m"
@@ -60,7 +59,7 @@ GREEN, YELLOW, RED, DIM, RESET = "\033[92m", "\033[93m", "\033[91m", "\033[2m", 
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _post_embed(text: str, timeout: int = 30) -> list[float] | None:
-    payload = json.dumps({"model": EMBED_MODEL, "input": text}).encode()
+    payload = json.dumps({"model": active_descriptor().ollama_name, "input": text}).encode()
     req = urllib.request.Request(
         f"{OLLAMA_URL}/api/embed", data=payload,
         headers={"Content-Type": "application/json"},
@@ -73,12 +72,17 @@ def _post_embed(text: str, timeout: int = 30) -> list[float] | None:
     return embeddings[0]
 
 
+def _prepare(prefix: str, text: str) -> str:
+    d = active_descriptor()
+    return prefix + d.truncate_to_tokens(text.strip(), d.context_window)
+
+
 def embed_document(text: str, timeout: int = 30) -> list[float] | None:
-    return _post_embed(f"search_document: {text.strip()[:2000]}", timeout)
+    return _post_embed(_prepare(active_descriptor().doc_prefix, text), timeout)
 
 
 def embed_query(text: str, timeout: int = 30) -> list[float] | None:
-    return _post_embed(f"search_query: {text.strip()[:2000]}", timeout)
+    return _post_embed(_prepare(active_descriptor().query_prefix, text), timeout)
 
 
 def normalize(vec: list[float]) -> list[float] | None:
@@ -89,7 +93,8 @@ def normalize(vec: list[float]) -> list[float] | None:
 
 
 def health_check() -> None:
-    """Verify Ollama + model + a real 768-dim embedding before touching the db."""
+    """Verify Ollama + the active model + a real descriptor.dim embedding before touching the db."""
+    d = active_descriptor()
     print("Ollama health check:")
     # 1. server up + model list
     try:
@@ -101,10 +106,11 @@ def health_check() -> None:
     print(f"  ✓ Ollama running at {OLLAMA_URL}")
 
     # 2. model available (match with or without :tag)
-    if not any(m == EMBED_MODEL or m.startswith(EMBED_MODEL + ":") for m in models):
-        sys.exit(f"{RED}  ✗ Model '{EMBED_MODEL}' not found. Available: {models}. "
-                 f"Pull it: `ollama pull {EMBED_MODEL}`{RESET}")
-    print(f"  ✓ Model '{EMBED_MODEL}' available")
+    name = d.ollama_name
+    if not any(m == name or m.startswith(name + ":") for m in models):
+        sys.exit(f"{RED}  ✗ Model '{name}' not found. Available: {models}. "
+                 f"Pull it: `ollama pull {name}`{RESET}")
+    print(f"  ✓ Model '{name}' available")
 
     # 3. test embed
     try:
@@ -116,8 +122,8 @@ def health_check() -> None:
     print(f"  ✓ Test embed 'health check' -> vector returned")
 
     # 4. dimension
-    if len(vec) != EMBED_DIM:
-        sys.exit(f"{RED}  ✗ Expected {EMBED_DIM} dims, got {len(vec)}.{RESET}")
+    if len(vec) != d.dim:
+        sys.exit(f"{RED}  ✗ Expected {d.dim} dims, got {len(vec)}.{RESET}")
     print(f"  ✓ Vector is {len(vec)} dimensions\n")
 
 
