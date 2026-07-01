@@ -90,17 +90,54 @@ def _rebuild_catalog(conn, fetch, fetch_bytes, *, limit=0) -> dict:
     return totals
 
 
-def rebuild(conn, fetch, fetch_bytes, *, limit=0) -> dict:
-    """Wipe crawl prose, then re-crawl fresh through the canonical write path (www all-hosts sitemap
-    sweep + catalog), then enforce the one-active-row-per-canonical-URL index. college_crawl DFS is a
-    coverage supplement added only if the coverage gate flags sitemap⊉DFS gaps (fail-closed there)."""
+def dfs_supplement(conn, fetch, fetch_bytes, *, entries=None, seen_canon=None,
+                   max_depth=4, budget=400, delay=0.0, limit=0) -> dict:
+    """DFS-crawl each entry point (college/dept subdomains + www office SECTION seeds) through the
+    canonical write path to recover pages NO sitemap lists (DFS-only). Deduped against the sitemap
+    sweep by the shared canonical index (a page already written comes back 'unchanged', never doubled).
+    Math course-syllabus PDFs are skipped inside ingest_pdf_pages. Does NOT commit (caller owns txn)."""
+    from v2.core.ingestion.college_crawl import (
+        PROSE_ENTRY_POINTS, SECTION_ENTRY_POINTS, extract_entry, ingest_college, ingest_pdf_pages)
+    if entries is None:
+        entries = list(PROSE_ENTRY_POINTS) + list(SECTION_ENTRY_POINTS)
+    if seen_canon is None:
+        seen_canon = set()
+    totals = {"prose_inserted": 0, "prose_updated": 0, "prose_unchanged": 0,
+              "pdf_inserted": 0, "pdf_updated": 0, "pdf_unchanged": 0, "entries": 0, "truncated": 0}
+    for e in entries:
+        res = extract_entry(e.seed, fetch, max_depth=max_depth, budget=budget, delay=delay)
+        out = ingest_college(conn, e.org_slug, e.org_name, e.parent_slug, res, res.html_by_url,
+                             org_type=e.org_type, created_by="college_crawl",
+                             canonical=True, seen_canon=seen_canon)
+        for k in ("prose_inserted", "prose_updated", "prose_unchanged"):
+            totals[k] += out[k]
+        pdf_items = [(u, t) for p in res.prose for u, t in p.files if u.lower().endswith(".pdf")]
+        if pdf_items:
+            pout = ingest_pdf_pages(conn, e.org_slug, e.org_name, e.parent_slug, pdf_items, fetch_bytes,
+                                    org_type=e.org_type, created_by="college_crawl",
+                                    canonical=True, seen_canon=seen_canon)
+            for k in ("pdf_inserted", "pdf_updated", "pdf_unchanged"):
+                totals[k] += pout[k]
+        totals["entries"] += 1
+        totals["truncated"] += int(res.truncated)
+    return totals
+
+
+def rebuild(conn, fetch, fetch_bytes, *, limit=0, supplement=True) -> dict:
+    """Wipe crawl prose, then re-crawl fresh through the canonical write path: www all-hosts sitemap
+    sweep + catalog + (default) the DFS coverage SUPPLEMENT (dfs_supplement) that recovers DFS-only
+    pages no sitemap lists — the lose-nothing safeguard the coverage gate enforces. One canonical index
+    dedups all three, so a page seen twice is written once. Then enforce the unique index."""
     from v2.core.ingestion import www_crawl as W
 
     wiped = wipe_prose(conn)
     www = W.run(conn, fetch, fetch_bytes, canonical=True, limit=limit)
     cat = _rebuild_catalog(conn, fetch, fetch_bytes, limit=limit)
+    # The supplement dedups against www/catalog rows GLOBALLY via upsert_prose (natural_key=canonical,
+    # not created_by-scoped) → a page in a sitemap AND found by DFS ends as one 'unchanged' row.
+    sup = dfs_supplement(conn, fetch, fetch_bytes, delay=0.0, limit=limit) if supplement else {}
     ensure_prose_unique_index(conn)
-    return {"wiped": wiped, "www": www["totals"], "catalog": cat}
+    return {"wiped": wiped, "www": www["totals"], "catalog": cat, "supplement": sup}
 
 
 def main(argv=None):

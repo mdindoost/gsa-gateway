@@ -69,15 +69,20 @@ def _single_canonical_ok(conn) -> list:
     return [r[0] for r in rows]
 
 
-def coverage_gate(rebuilt_conn, backup_conn, *, drop_list=(), tolerance=0.05) -> dict:
-    """Fail-closed content-aware coverage of rebuilt vs backup. Returns a report dict with `ok`."""
+def coverage_gate(rebuilt_conn, backup_conn, *, drop_list=(), drop_pred=None, tolerance=0.05) -> dict:
+    """Fail-closed content-aware coverage of rebuilt vs backup. Returns a report dict with `ok`.
+
+    ``drop_list`` — explicit reviewed URLs the rebuild intentionally omits (each canonicalized).
+    ``drop_pred`` — optional callable(canonical_url)->bool for a WHOLE CLASS of reviewed drops
+    (e.g. math course-syllabus PDFs) so the caller need not enumerate hundreds of URLs. A backup
+    URL is excused from the coverage check when it is in drop_list OR drop_pred(url) is True."""
     drop = {canonical_prose_url(u) for u in drop_list}
     rebuilt = _prose_map(rebuilt_conn)
     backup = _prose_map(backup_conn)
 
     missing, thinner = [], []
     for url, blen in backup.items():
-        if url in drop:
+        if url in drop or (drop_pred is not None and drop_pred(url)):
             continue
         if url not in rebuilt:
             missing.append(url)
@@ -110,7 +115,11 @@ def main(argv=None):
     ap.add_argument("--tolerance", type=float, default=0.05)
     args = ap.parse_args(argv)
     from v2.core.database.schema import get_connection
+    from v2.core.ingestion.college_crawl import is_math_syllabus
+    # Reviewed drops (owner 2026-07-01): per-semester math course syllabi (a whole class → predicate),
+    # and the bare www.njit.edu homepage (nav/marketing; not a DFS seed — see SECTION_ENTRY_POINTS).
     res = coverage_gate(get_connection(args.rebuilt), get_connection(args.backup),
+                        drop_list=["https://www.njit.edu/"], drop_pred=is_math_syllabus,
                         tolerance=args.tolerance)
     print(f"backup prose URLs: {res['backup_prose_urls']}  rebuilt: {res['rebuilt_prose_urls']}")
     print(f"missing: {len(res['missing_urls'])}  thinner: {len(res['thinner_urls'])}  "

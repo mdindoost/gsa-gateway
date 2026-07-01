@@ -15,7 +15,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from urllib.parse import urlparse, urlsplit
+from urllib.parse import unquote, urlparse, urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -256,6 +256,24 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
             "prose_unchanged": unchanged, "skipped": len(result.skipped)}
 
 
+# Per-semester math COURSE-SYLLABUS PDFs live under math.njit.edu/sites/math/files/ and are named
+# Math_<coursenum>[-<section>]-<sem><yr>.pdf (e.g. Math_107-F18.pdf, Math_105-001-F18.pdf). The owner
+# (2026-07-01) chose to skip these low-value per-semester syllabi; brochures/flyers/exams/quals/annual
+# reports on the SAME host are named otherwise and are kept. The rule is deliberately conservative:
+# it fires ONLY on files whose name starts with "Math" + a digit, under that exact host+path.
+_MATH_SYLLABUS_DIR = "math.njit.edu/sites/math/files/"
+_MATH_SYLLABUS_NAME = re.compile(r"^Math[ _-]?\d", re.IGNORECASE)
+
+
+def is_math_syllabus(url: str) -> bool:
+    """True for a math.njit.edu per-semester course-syllabus PDF (intentionally skipped)."""
+    low = (url or "").lower()
+    if _MATH_SYLLABUS_DIR not in low or not low.endswith(".pdf"):
+        return False
+    fname = unquote(urlparse(url).path.rsplit("/", 1)[-1])
+    return bool(_MATH_SYLLABUS_NAME.match(fname))
+
+
 def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_bytes,
                      org_type="college", created_by=PROSE_SOURCE,
                      canonical=False, seen_canon=None) -> dict:
@@ -290,6 +308,10 @@ def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_byt
         if url in seen_urls:
             continue
         seen_urls.add(url)
+
+        if is_math_syllabus(url):                         # owner 2026-07-01: skip these BEFORE any fetch
+            skipped.append({"url": url, "status": "skipped", "reason": "math_syllabus"})
+            continue
 
         canon = canonical_prose_url(url) if canonical else url
         if canonical and seen_canon is not None and canon in seen_canon:
@@ -432,4 +454,53 @@ PROSE_ENTRY_POINTS: list[ProseEntry] = [
     # live in the KG under their home colleges (home-appointment-only). The prose ingest CREATES
     # the `honors` college org (it doesn't exist yet) via ensure_org.
     ProseEntry("https://honors.njit.edu/", "honors", "Albert Dorman Honors College", "njit", "college"),
+]
+
+
+# SECTION coverage-supplement seeds (day-1 rebuild, 2026-07-01). The wipe+sitemap sweep loses pages
+# that no sitemap lists — DFS-only office subtrees under www.njit.edu (path-scoped: _in_scope bounds
+# each seed to its own /<section>/ subtree, so a seed can NEVER walk the whole homepage) and the
+# ist.njit.edu office subdomain. Each org ALREADY EXISTS (created during the Crawling-2.1 office
+# rollout — ensure_org early-returns by slug); org_slug/name/parent below were DERIVED from the org
+# each section's live prose already attaches to (data-driven, not guessed) and are frozen here so the
+# seed list is STATIC and recrawl-perfect. njitresearch/stem are single university landing pages → the
+# `njit` root org. (The bare www.njit.edu homepage is deliberately NOT a seed — it is nav/marketing and
+# an "/" seed would DFS the entire site; the one homepage row is a reviewed gate drop.)
+SECTION_ENTRY_POINTS: list[ProseEntry] = [
+    ProseEntry("https://ist.njit.edu/", "ist", "IST / Technology Support", "njit", "office"),
+    ProseEntry("https://www.njit.edu/careerservices", "career-development",
+               "Career Development Services", "njit", "office"),
+    ProseEntry("https://www.njit.edu/financialaid", "financialaid", "Office of Financial Aid", "njit", "office"),
+    ProseEntry("https://www.njit.edu/registrar", "registrar", "Office of the Registrar", "njit", "office"),
+    ProseEntry("https://www.njit.edu/environmentalsafety", "eos",
+               "Environmental & Operational Services", "njit", "office"),
+    ProseEntry("https://www.njit.edu/parking", "eos", "Environmental & Operational Services", "njit", "office"),
+    ProseEntry("https://www.njit.edu/mailroom", "eos", "Environmental & Operational Services", "njit", "office"),
+    ProseEntry("https://www.njit.edu/sustainability", "eos",
+               "Environmental & Operational Services", "njit", "office"),
+    ProseEntry("https://www.njit.edu/graduatestudies", "graduate-studies", "Graduate Studies", "njit", "office"),
+    ProseEntry("https://www.njit.edu/global", "ogi", "Office of Global Initiatives", "njit", "office"),
+    ProseEntry("https://www.njit.edu/studyabroad", "studyabroad", "Study Abroad", "njit", "office"),
+    ProseEntry("https://www.njit.edu/bursar", "bursar",
+               "Office of the Bursar / Student Accounts", "njit", "office"),
+    ProseEntry("https://www.njit.edu/dos", "dean-of-students", "Dean of Students", "njit", "office"),
+    ProseEntry("https://www.njit.edu/counseling", "counseling", "Counseling Center (C-CAPS)", "njit", "office"),
+    ProseEntry("https://www.njit.edu/admissions", "graduate-admissions",
+               "Office of University Admissions", "njit", "office"),
+    ProseEntry("https://www.njit.edu/policies", "policies", "Policies", "njit", "office"),
+    ProseEntry("https://www.njit.edu/finance", "finance", "Finance", "njit", "office"),
+    ProseEntry("https://www.njit.edu/president", "president", "Office of the President", "njit", "office"),
+    ProseEntry("https://www.njit.edu/provost", "provost", "Office of the Provost", "njit", "office"),
+    ProseEntry("https://www.njit.edu/reslife", "reslife", "Residence Life", "njit", "office"),
+    ProseEntry("https://www.njit.edu/publicsafety", "publicsafety", "Public Safety", "njit", "office"),
+    ProseEntry("https://www.njit.edu/studentinvolvement", "studentinvolvement",
+               "Student Involvement", "njit", "office"),
+    ProseEntry("https://www.njit.edu/writingcenter", "writingcenter", "Writing Center", "njit", "office"),
+    ProseEntry("https://www.njit.edu/eop", "eop", "Educational Opportunity Program", "njit", "office"),
+    ProseEntry("https://www.njit.edu/persistence", "persistence", "Student Persistence", "njit", "office"),
+    ProseEntry("https://www.njit.edu/accessibility", "accessibility",
+               "Office of Accessibility Resources & Services", "njit", "office"),
+    ProseEntry("https://www.njit.edu/njitresearch", "njit",
+               "New Jersey Institute of Technology", "njit", "office"),
+    ProseEntry("https://www.njit.edu/stem", "njit", "New Jersey Institute of Technology", "njit", "office"),
 ]
