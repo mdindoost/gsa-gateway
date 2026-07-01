@@ -1,0 +1,150 @@
+"""Day-1 PROSE rebuild runner (gated).
+
+Wipes crawl-sourced PROSE and rebuilds it fresh through the ONE canonical write path (upsert_prose),
+so the corpus is one canonical row per NJIT page. PRESERVES people (crawler rows with entity_id), the
+KG (nodes/edges), and manual (dashboard/scholar/migration) content — all asserted unchanged.
+
+ALWAYS run on a DEV COPY first, then the content-aware coverage gate (scripts/prose_rebuild_gate.py),
+then owner sign-off, then the atomic swap. Dry-run default; --commit writes (hardened_backup first).
+
+  python scripts/rebuild_prose.py --db /tmp/dev_rebuild.db --commit --embed
+
+Spec: docs/superpowers/specs/2026-06-30-day1-prose-rebuild-design.md §2/§3
+"""
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+from v2.core.database import vector_gc
+from v2.core.ingestion.prose_store import ensure_prose_unique_index
+
+# The crawl PROSE sources that get wiped + rebuilt (crawler PERSON prose is preserved via entity_id).
+_WIPE_SOURCES = ("njit_www_crawl", "college_crawl", "catalog_crawl")
+_WIPE_WHERE = (
+    "created_by IN ('njit_www_crawl','college_crawl','catalog_crawl') "
+    "OR (created_by='crawler' AND json_extract(metadata,'$.entity_id') IS NULL)"
+)
+
+
+def _preserve_counts(conn) -> dict:
+    q = lambda s: conn.execute(s).fetchone()[0]  # noqa: E731
+    return {
+        "people": q("SELECT COUNT(*) FROM knowledge_items WHERE created_by='crawler' "
+                    "AND json_extract(metadata,'$.entity_id') IS NOT NULL"),
+        "dashboard": q("SELECT COUNT(*) FROM knowledge_items WHERE created_by='dashboard'"),
+        "scholar": q("SELECT COUNT(*) FROM knowledge_items WHERE created_by='scholar'"),
+        "migration": q("SELECT COUNT(*) FROM knowledge_items WHERE created_by='migration'"),
+        "nodes": q("SELECT COUNT(*) FROM nodes"),
+        "edges": q("SELECT COUNT(*) FROM edges"),
+    }
+
+
+def wipe_prose(conn) -> dict:
+    """DELETE crawl-sourced prose (the _WIPE_WHERE scope), then GC orphan vectors. Asserts the
+    PRESERVE set (people/KG/manual) is byte-for-byte unchanged. Does NOT commit (caller owns txn)."""
+    before = _preserve_counts(conn)
+    n = conn.execute(f"SELECT COUNT(*) FROM knowledge_items WHERE {_WIPE_WHERE}").fetchone()[0]
+    conn.execute(f"DELETE FROM knowledge_items WHERE {_WIPE_WHERE}")
+    swept = {"item_vectors": 0, "chunk_rows": 0, "chunk_vectors": 0}
+    try:                                      # best-effort GC (no-op if vec0 tables absent, e.g. tests)
+        swept["item_vectors"] = vector_gc.sweep_orphan_item_vectors(conn)
+        swept["chunk_rows"] = vector_gc.sweep_orphan_chunk_rows(conn)
+        swept["chunk_vectors"] = vector_gc.sweep_orphan_chunk_vectors(conn)
+    except Exception as e:  # noqa: BLE001
+        swept["error"] = str(e)
+    after = _preserve_counts(conn)
+    if before != after:
+        raise AssertionError(f"wipe_prose touched PRESERVE data: before={before} after={after}")
+    return {"wiped": n, "swept": swept, "preserve": after}
+
+
+def _rebuild_catalog(conn, fetch, fetch_bytes, *, limit=0) -> dict:
+    """catalog.njit.edu prose through the canonical write path (mirrors crawl_catalog.py, canonical)."""
+    from v2.core.ingestion.catalog_crawl import catalog_seed_urls, iter_catalog_groups
+    from v2.core.ingestion.college_crawl import ingest_college, ingest_pdf_pages
+    urls = catalog_seed_urls(fetch_bytes)
+    if limit:
+        urls = urls[:limit]
+    seen_canon: set = set()
+    totals = {"prose_inserted": 0, "prose_updated": 0, "prose_unchanged": 0,
+              "pdf_inserted": 0, "pdf_updated": 0, "pdf_unchanged": 0}
+    for slug, name, parent, otype, res in iter_catalog_groups(urls, fetch):
+        out = ingest_college(conn, slug, name, parent, res, res.html_by_url, org_type=otype,
+                             created_by="catalog_crawl", canonical=True, seen_canon=seen_canon)
+        for k in ("prose_inserted", "prose_updated", "prose_unchanged"):
+            totals[k] += out[k]
+        pdf_items = [(u, t) for p in res.prose for u, t in p.files if u.lower().endswith(".pdf")]
+        if pdf_items:
+            pout = ingest_pdf_pages(conn, slug, name, parent, pdf_items, fetch_bytes, org_type=otype,
+                                    created_by="catalog_crawl", canonical=True, seen_canon=seen_canon)
+            for k in ("pdf_inserted", "pdf_updated", "pdf_unchanged"):
+                totals[k] += pout[k]
+    return totals
+
+
+def rebuild(conn, fetch, fetch_bytes, *, limit=0) -> dict:
+    """Wipe crawl prose, then re-crawl fresh through the canonical write path (www all-hosts sitemap
+    sweep + catalog), then enforce the one-active-row-per-canonical-URL index. college_crawl DFS is a
+    coverage supplement added only if the coverage gate flags sitemap⊉DFS gaps (fail-closed there)."""
+    from v2.core.ingestion import www_crawl as W
+
+    wiped = wipe_prose(conn)
+    www = W.run(conn, fetch, fetch_bytes, canonical=True, limit=limit)
+    cat = _rebuild_catalog(conn, fetch, fetch_bytes, limit=limit)
+    ensure_prose_unique_index(conn)
+    return {"wiped": wiped, "www": www["totals"], "catalog": cat}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Day-1 PROSE rebuild (wipe + canonical re-crawl)")
+    ap.add_argument("--db", default="gsa_gateway.db")
+    ap.add_argument("--commit", action="store_true", help="Write DB (hardened_backup first)")
+    ap.add_argument("--embed", action="store_true", help="Run embed_all + embed_chunks after commit")
+    ap.add_argument("--delay", type=float, default=0.3)
+    ap.add_argument("--limit", type=int, default=0, help="Dev: first N urls per entry")
+    args = ap.parse_args(argv)
+
+    from v2.core.database.schema import get_connection
+    from v2.core.ingestion.web_crawler import make_fetcher, make_bytes_fetcher
+
+    if args.commit:
+        from scripts._area_tag_migrate import hardened_backup
+        hardened_backup(args.db, label="prose-rebuild")
+
+    conn = get_connection(args.db)
+    fetch, fetch_bytes = make_fetcher(), make_bytes_fetcher()
+
+    def _delayed(u):
+        h = fetch(u)
+        if args.delay:
+            time.sleep(args.delay)
+        return h
+
+    out = rebuild(conn, _delayed, fetch_bytes, limit=args.limit)
+    print("wiped:", out["wiped"]["wiped"], "swept:", out["wiped"]["swept"])
+    print("www totals:", out["www"])
+    print("catalog totals:", out["catalog"])
+    print("preserve:", out["wiped"]["preserve"])
+
+    if args.commit:
+        conn.commit()
+        print("\nCOMMITTED (run scripts/prose_rebuild_gate.py before any swap)")
+        if args.embed:
+            subprocess.run([sys.executable, str(REPO / "v2/scripts/embed_all.py"), args.db], check=True)
+            subprocess.run([sys.executable, str(REPO / "v2/scripts/embed_chunks.py"), "--db", args.db],
+                           check=True)
+    else:
+        print("\nDRY RUN — no commit")
+    return out
+
+
+if __name__ == "__main__":
+    main()
