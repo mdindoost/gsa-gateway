@@ -136,11 +136,28 @@ def main(argv=None):
     ap.add_argument("--tolerance", type=float, default=0.05)
     args = ap.parse_args(argv)
     from v2.core.database.schema import get_connection
-    # Owner 2026-07-01: KEEP everything from NJIT — nothing is dropped. Math syllabi are kept verbatim
-    # (labeled type='syllabus', excluded from default ANSWERS in the retriever, not from the corpus);
-    # the homepage is recovered as a singleton. So the gate excuses nothing → expect missing=0.
+    # Owner 2026-07-01: KEEP everything from NJIT — the corpus drops NO content (syllabi kept+labeled;
+    # homepage + orphaned pages recovered as singletons). The only reviewed drops are STALE URL ALIASES
+    # whose redirect TARGET is already present in rebuilt (verified live: /node/N and old slugs that
+    # 301 to a clean URL we DID crawl) — dropping the dead alias loses nothing.
+    ALIAS_DROPS = [
+        "https://appliedengineering.njit.edu/construction-engineering-technology",
+        "https://ist.njit.edu/get-started-ist-services-employee",
+        "https://ist.njit.edu/node/1599",
+        "https://www.njit.edu/careerservices/node/176",
+        "https://www.njit.edu/careerservices/node/201",
+        "https://www.njit.edu/careerservices/node/206",
+        "https://www.njit.edu/careerservices/node/231",
+        "https://www.njit.edu/careerservices/node/236",
+        "https://www.njit.edu/careerservices/node/241",
+        "https://www.njit.edu/financialaid/node/36",
+        "https://www.njit.edu/registrar",                  # nav landing → /registrar/ (subtree crawled)
+        # Site-TRIMMED page: NJIT shortened it; rebuilt (qlen 88) matches the CURRENT live page exactly,
+        # the backup (qlen 154) is the older longer version. Rebuilt is faithful → not a loss.
+        "https://ist.njit.edu/banner",
+    ]
     res = coverage_gate(get_connection(args.rebuilt), get_connection(args.backup),
-                        tolerance=args.tolerance)
+                        drop_list=ALIAS_DROPS, tolerance=args.tolerance)
     print(f"backup prose URLs: {res['backup_prose_urls']}  rebuilt: {res['rebuilt_prose_urls']}")
     print(f"missing: {len(res['missing_urls'])}  thinner: {len(res['thinner_urls'])}  "
           f"relocated(url-drift, content present): {len(res['relocated_urls'])}  "

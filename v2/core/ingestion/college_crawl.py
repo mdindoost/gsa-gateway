@@ -526,3 +526,26 @@ SECTION_ENTRY_POINTS: list[ProseEntry] = [
                "New Jersey Institute of Technology", "njit", "office"),
     ProseEntry("https://www.njit.edu/stem", "njit", "New Jersey Institute of Technology", "njit", "office"),
 ]
+
+
+# SINGLETON recovery (owner keep-everything 2026-07-01). Deep/orphaned pages that NO current site link
+# reaches (so the DFS + sitemap can't find them) yet are still LIVE NJIT content present in the pre-
+# rebuild corpus — the coverage gate surfaced them. Recovered as EXACT singletons (crawl_entry with
+# max_depth=0 = the seed page ONLY, no walk) so keep-everything holds and the recovery stays static/
+# repeatable. HTML here (incl. the bare homepage, which can't be a DFS seed); PDFs below.
+SINGLETON_HTML: list[ProseEntry] = [
+    ProseEntry("https://www.njit.edu/", "njit", "New Jersey Institute of Technology", "njit", "office"),
+    ProseEntry("https://www.njit.edu/provost/convocation-2011-award-recipients", "provost",
+               "Office of the Provost", "njit", "office"),
+    ProseEntry("https://www.njit.edu/provost/convocation-2016-award-winners", "provost",
+               "Office of the Provost", "njit", "office"),
+]
+# (url, org_slug, org_name, parent_slug) — orphaned MIE seminar-abstract PDFs no current page links.
+SINGLETON_PDFS: list[tuple] = [
+    ("https://mie.njit.edu/sites/mie/files/lcms/docs/hughes_bio_abstract_apr2012.pdf",
+     "mechanical-industrial-engineering", "Mechanical & Industrial Engineering", "nce"),
+    ("https://mie.njit.edu/sites/mie/files/lcms/docs/nemat-nasser-apr2011.pdf",
+     "mechanical-industrial-engineering", "Mechanical & Industrial Engineering", "nce"),
+    ("https://mie.njit.edu/sites/mie/files/lcms/docs/sreenivasan-oct2015.pdf",
+     "mechanical-industrial-engineering", "Mechanical & Industrial Engineering", "nce"),
+]

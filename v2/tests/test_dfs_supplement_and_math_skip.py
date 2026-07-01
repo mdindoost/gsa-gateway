@@ -252,3 +252,13 @@ def test_syllabus_type_excluded_from_default_answer_corpus():
     from v2.core.retrieval.retriever import DEFAULT_EXCLUDE_TYPES
     assert "syllabus" in DEFAULT_EXCLUDE_TYPES
     assert "publication" in DEFAULT_EXCLUDE_TYPES                # unchanged
+
+
+def test_singleton_recovery_lists_are_well_formed():
+    # keep-everything: orphaned/deep live pages recovered as static singletons (recrawl-repeatable)
+    assert cc.SINGLETON_HTML and cc.SINGLETON_PDFS
+    for e in cc.SINGLETON_HTML:
+        assert urlparse(e.seed).netloc.lower().endswith("njit.edu")
+    for url, slug, name, parent in cc.SINGLETON_PDFS:
+        assert url.lower().endswith(".pdf") and urlparse(url).netloc.lower().endswith("njit.edu")
+        assert slug and parent

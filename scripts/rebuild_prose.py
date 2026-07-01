@@ -145,7 +145,8 @@ def rebuild(conn, fetch, fetch_bytes, *, limit=0, supplement=True) -> dict:
     dedups all three, so a page seen twice is written once. Then enforce the unique index."""
     from v2.core.ingestion import www_crawl as W
 
-    from v2.core.ingestion.college_crawl import ProseEntry
+    from v2.core.ingestion.college_crawl import (
+        SINGLETON_HTML, SINGLETON_PDFS, ingest_pdf_pages)
 
     wiped = wipe_prose(conn)
     www = W.run(conn, fetch, fetch_bytes, canonical=True, limit=limit)
@@ -153,16 +154,21 @@ def rebuild(conn, fetch, fetch_bytes, *, limit=0, supplement=True) -> dict:
     # The supplement dedups against www/catalog rows GLOBALLY via upsert_prose (natural_key=canonical,
     # not created_by-scoped) → a page in a sitemap AND found by DFS ends as one 'unchanged' row.
     sup = dfs_supplement(conn, fetch, fetch_bytes, delay=0.0, limit=limit) if supplement else {}
-    # Keep-everything (owner 2026-07-01): the bare www.njit.edu homepage is in no sitemap and can't be a
-    # DFS seed (a '/' seed would walk the whole site), so recover it as a SINGLETON — max_depth=0 fetches
-    # only the seed page itself. Same dedup path, so a no-op if a sitemap already had it.
+    # Keep-everything (owner 2026-07-01): recover the homepage + deep/orphaned pages no link reaches as
+    # exact SINGLETONS (max_depth=0 = seed page only; a '/' DFS would walk the whole site). Same dedup
+    # path, so a no-op if a sitemap already had it. PDFs go through ingest_pdf_pages directly.
     if supplement:
-        home = ProseEntry("https://www.njit.edu/", "njit", "New Jersey Institute of Technology",
-                          "njit", "office")
-        homeout = dfs_supplement(conn, fetch, fetch_bytes, entries=[home], max_depth=0, budget=1,
-                                 delay=0.0)
-        for k, v in homeout.items():                       # fold the singleton's counts into sup
+        singout = dfs_supplement(conn, fetch, fetch_bytes, entries=SINGLETON_HTML, max_depth=0,
+                                 budget=1, delay=0.0)
+        for k, v in singout.items():                       # fold HTML-singleton counts into sup
             sup[k] = sup.get(k, [] if isinstance(v, list) else 0) + v
+        seen_pdf: set = set()
+        for url, slug, name, parent in SINGLETON_PDFS:
+            pout = ingest_pdf_pages(conn, slug, name, parent, [(url, "")], fetch_bytes,
+                                    org_type="department", created_by="college_crawl",
+                                    canonical=True, seen_canon=seen_pdf)
+            for k in ("pdf_inserted", "pdf_updated", "pdf_unchanged"):
+                sup[k] = sup.get(k, 0) + pout[k]
     ensure_prose_unique_index(conn)
     return {"wiped": wiped, "www": www["totals"], "catalog": cat, "supplement": sup}
 
