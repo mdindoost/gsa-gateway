@@ -14,9 +14,12 @@ Spec: docs/superpowers/specs/2026-06-30-day1-prose-rebuild-design.md §2/§3
 from __future__ import annotations
 
 import argparse
+import logging
 import subprocess
 import sys
 import time
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -95,31 +98,43 @@ def dfs_supplement(conn, fetch, fetch_bytes, *, entries=None, seen_canon=None,
     """DFS-crawl each entry point (college/dept subdomains + www office SECTION seeds) through the
     canonical write path to recover pages NO sitemap lists (DFS-only). Deduped against the sitemap
     sweep by the shared canonical index (a page already written comes back 'unchanged', never doubled).
-    Math course-syllabus PDFs are skipped inside ingest_pdf_pages. Does NOT commit (caller owns txn)."""
+    Math course-syllabus PDFs are skipped inside ingest_pdf_pages. Does NOT commit (caller owns txn).
+
+    ``limit`` (dev): when >0, caps the per-entry page ``budget`` to make a dev subset run quick
+    (mirrors the www/catalog url-limit intent). Each entry is ISOLATED — one entry that raises is
+    recorded in ``failed_entries`` and the rest still run; the caller must fail the gate/report if
+    ``failed_entries`` is non-empty (a failed entry ⇒ its pages surface as gate 'missing')."""
     from v2.core.ingestion.college_crawl import (
         PROSE_ENTRY_POINTS, SECTION_ENTRY_POINTS, extract_entry, ingest_college, ingest_pdf_pages)
     if entries is None:
         entries = list(PROSE_ENTRY_POINTS) + list(SECTION_ENTRY_POINTS)
     if seen_canon is None:
         seen_canon = set()
+    if limit:
+        budget = min(budget, limit)
     totals = {"prose_inserted": 0, "prose_updated": 0, "prose_unchanged": 0,
-              "pdf_inserted": 0, "pdf_updated": 0, "pdf_unchanged": 0, "entries": 0, "truncated": 0}
+              "pdf_inserted": 0, "pdf_updated": 0, "pdf_unchanged": 0, "entries": 0,
+              "truncated": 0, "failed_entries": []}
     for e in entries:
-        res = extract_entry(e.seed, fetch, max_depth=max_depth, budget=budget, delay=delay)
-        out = ingest_college(conn, e.org_slug, e.org_name, e.parent_slug, res, res.html_by_url,
-                             org_type=e.org_type, created_by="college_crawl",
-                             canonical=True, seen_canon=seen_canon)
-        for k in ("prose_inserted", "prose_updated", "prose_unchanged"):
-            totals[k] += out[k]
-        pdf_items = [(u, t) for p in res.prose for u, t in p.files if u.lower().endswith(".pdf")]
-        if pdf_items:
-            pout = ingest_pdf_pages(conn, e.org_slug, e.org_name, e.parent_slug, pdf_items, fetch_bytes,
-                                    org_type=e.org_type, created_by="college_crawl",
-                                    canonical=True, seen_canon=seen_canon)
-            for k in ("pdf_inserted", "pdf_updated", "pdf_unchanged"):
-                totals[k] += pout[k]
-        totals["entries"] += 1
-        totals["truncated"] += int(res.truncated)
+        try:
+            res = extract_entry(e.seed, fetch, max_depth=max_depth, budget=budget, delay=delay)
+            out = ingest_college(conn, e.org_slug, e.org_name, e.parent_slug, res, res.html_by_url,
+                                 org_type=e.org_type, created_by="college_crawl",
+                                 canonical=True, seen_canon=seen_canon)
+            for k in ("prose_inserted", "prose_updated", "prose_unchanged"):
+                totals[k] += out[k]
+            pdf_items = [(u, t) for p in res.prose for u, t in p.files if u.lower().endswith(".pdf")]
+            if pdf_items:
+                pout = ingest_pdf_pages(conn, e.org_slug, e.org_name, e.parent_slug, pdf_items,
+                                        fetch_bytes, org_type=e.org_type, created_by="college_crawl",
+                                        canonical=True, seen_canon=seen_canon)
+                for k in ("pdf_inserted", "pdf_updated", "pdf_unchanged"):
+                    totals[k] += pout[k]
+            totals["entries"] += 1
+            totals["truncated"] += int(res.truncated)
+        except Exception as exc:  # noqa: BLE001 — isolate a bad seed; do NOT abort the whole rebuild
+            logger.exception("dfs_supplement: entry %s failed", e.seed)
+            totals["failed_entries"].append(f"{e.seed} ({exc.__class__.__name__}: {exc})")
     return totals
 
 
@@ -169,6 +184,14 @@ def main(argv=None):
     print("wiped:", out["wiped"]["wiped"], "swept:", out["wiped"]["swept"])
     print("www totals:", out["www"])
     print("catalog totals:", out["catalog"])
+    sup = out.get("supplement") or {}
+    print("supplement totals:", sup)
+    if sup.get("truncated"):
+        print(f"  ⚠️  {sup['truncated']} entry subtree(s) hit the page budget (truncated) — "
+              f"the coverage gate will flag any pages lost to truncation as MISSING.")
+    if sup.get("failed_entries"):
+        print(f"  ⚠️  {len(sup['failed_entries'])} supplement entr(ies) FAILED (fail the gate, "
+              f"do NOT swap): {sup['failed_entries']}")
     print("preserve:", out["wiped"]["preserve"])
 
     if args.commit:

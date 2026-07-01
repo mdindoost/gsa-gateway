@@ -261,17 +261,32 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
 # (2026-07-01) chose to skip these low-value per-semester syllabi; brochures/flyers/exams/quals/annual
 # reports on the SAME host are named otherwise and are kept. The rule is deliberately conservative:
 # it fires ONLY on files whose name starts with "Math" + a digit, under that exact host+path.
-_MATH_SYLLABUS_DIR = "math.njit.edu/sites/math/files/"
+_MATH_SYLLABUS_HOST = "math.njit.edu"
+_MATH_SYLLABUS_PATH = "/sites/math/files/"
 _MATH_SYLLABUS_NAME = re.compile(r"^Math[ _-]?\d", re.IGNORECASE)
+# EXCLUSION — a broad "Math<num>" filename that is actually an EXAM/FINAL/QUIZ/etc, NOT a course
+# syllabus (senior-eng rev e5228bc found ^Math\d also matched 30 exam PDFs the design KEEPS, e.g.
+# "Math 107 Exam 1 Fall 2022.pdf", "Math_222_FinalExam_F17.pdf", "Math 110_Fall 2024_E1.pdf"). These
+# doc-kind tokens never appear in a course-syllabus filename, so excluding them keeps exams/finals/
+# quizzes/solutions/schedules while still skipping the pure "Math <num> <sem><yr>" syllabi.
+_MATH_NON_SYLLABUS = re.compile(
+    r"exam|final|quiz|review|assess|solution|\bsols?\b|practice|schedule|midterm|\btest\b|prelim|"
+    r"placement|[ _\-]E\d|[ _\-]FE\b", re.IGNORECASE)
 
 
 def is_math_syllabus(url: str) -> bool:
-    """True for a math.njit.edu per-semester course-syllabus PDF (intentionally skipped)."""
-    low = (url or "").lower()
-    if _MATH_SYLLABUS_DIR not in low or not low.endswith(".pdf"):
+    """True for a math.njit.edu per-semester course-SYLLABUS PDF (intentionally skipped).
+
+    Parses host + path (NOT a substring match) so a non-math URL that merely CONTAINS the dir string
+    in a query/path segment is never excused by the coverage gate. Excludes exam/final/quiz/etc
+    filenames so only genuine course syllabi are dropped (reviewers rev e5228bc)."""
+    p = urlparse(url or "")
+    if p.netloc.lower() != _MATH_SYLLABUS_HOST or not p.path.lower().startswith(_MATH_SYLLABUS_PATH):
         return False
-    fname = unquote(urlparse(url).path.rsplit("/", 1)[-1])
-    return bool(_MATH_SYLLABUS_NAME.match(fname))
+    if not p.path.lower().endswith(".pdf"):
+        return False
+    fname = unquote(p.path.rsplit("/", 1)[-1])
+    return bool(_MATH_SYLLABUS_NAME.match(fname)) and not _MATH_NON_SYLLABUS.search(fname)
 
 
 def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_bytes,

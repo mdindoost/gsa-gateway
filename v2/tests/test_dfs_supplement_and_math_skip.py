@@ -36,10 +36,37 @@ def test_is_math_syllabus_false_for_brochures_exams_quals():
         assert cc.is_math_syllabus(base + fn) is False, fn
 
 
+def test_is_math_syllabus_keeps_real_corpus_exam_filenames():
+    # ADVERSARIAL — these are REAL "Math<num>…exam" filenames from the corpus that ^Math\d matched;
+    # they are exams/finals the design KEEPS and MUST NOT be dropped (senior-eng rev e5228bc).
+    base = "https://math.njit.edu/sites/math/files/"
+    for fn in ("Math 107 Exam 1 Fall 2022.pdf", "Math 107 Final Exam Fall 2022.pdf",
+               "Math_222_Exam_1_F17.pdf", "Math_222_FinalExam_F17.pdf",
+               "Math 213 Final, 2024 Spring.pdf", "math337-final-fall2018.pdf",
+               "Math 110_Fall 2024_E1.pdf", "Math 110_Fall 2024_FE.pdf", "Math 333 Exam II.pdf"):
+        assert cc.is_math_syllabus(base + fn) is False, fn
+
+
+def test_is_math_syllabus_true_for_real_corpus_syllabus_filenames():
+    # genuine course syllabi (incl. instructor-named + Winter-term) that MUST be skipped
+    base = "https://math.njit.edu/sites/math/files/"
+    for fn in ("Math_107-F18.pdf", "Math_105-004-012-S21.pdf", "Math 105 (Jean) SP23.pdf",
+               "Math 108 W2021-22.pdf", "MATH 373 SP23.pdf", "Math 661-SU22 (Newark Online).pdf"):
+        assert cc.is_math_syllabus(base + fn) is True, fn
+
+
 def test_is_math_syllabus_false_off_host_or_non_pdf():
     assert cc.is_math_syllabus("https://cs.njit.edu/sites/math/files/Math_107-F18.pdf") is False
     assert cc.is_math_syllabus("https://math.njit.edu/sites/math/files/Math_107-F18.html") is False
     assert cc.is_math_syllabus("https://math.njit.edu/academics/Math_107.pdf") is False  # not /files/
+
+
+def test_is_math_syllabus_parses_host_path_not_substring():
+    # a NON-math URL that merely CONTAINS the dir substring (in a query/path) must NOT be excused
+    assert cc.is_math_syllabus(
+        "https://cs.njit.edu/redirect?u=math.njit.edu/sites/math/files/Math_1-F18.pdf") is False
+    assert cc.is_math_syllabus(
+        "https://evil.example.com/math.njit.edu/sites/math/files/Math_1-F18.pdf") is False
 
 
 # ────────────────────────── SECTION_ENTRY_POINTS registry ──────────────────────────
@@ -138,3 +165,24 @@ def test_dfs_supplement_crawls_entry_and_dedups(tmp_path):
     # a second run over the same entry is idempotent (canonical index → unchanged, not duplicated)
     out2 = dfs_supplement(conn, fetch, lambda u: None, entries=[entry], budget=10, delay=0.0)
     assert out2["prose_inserted"] == 0
+
+
+def test_dfs_supplement_isolates_a_failing_entry(tmp_path):
+    """One entry that raises must NOT abort the whole rebuild — it is recorded and the rest proceed."""
+    from scripts.rebuild_prose import dfs_supplement
+
+    conn = _mkdb(tmp_path)
+    good_seed = "https://cs.njit.edu/"
+    good_html = ("<html><head><title>Good</title></head><body>"
+                 + ("Real prose content for the good entry. " * 20) + "</body></html>")
+
+    def fetch(u):
+        if u.startswith("https://boom.njit.edu"):
+            raise RuntimeError("simulated fetch/parse blow-up")
+        return good_html if u.rstrip("/") == good_seed.rstrip("/") else None
+
+    bad = cc.ProseEntry("https://boom.njit.edu/", "njit", "NJIT", "njit", "office")
+    good = cc.ProseEntry(good_seed, "computer-science", "Computer Science", "ywcc", "department")
+    out = dfs_supplement(conn, fetch, lambda u: None, entries=[bad, good], budget=5, delay=0.0)
+    assert "boom.njit.edu" in " ".join(out["failed_entries"])   # the bad seed is recorded, not swallowed
+    assert out["prose_inserted"] >= 1                            # the good entry still ran

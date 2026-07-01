@@ -80,9 +80,12 @@ def coverage_gate(rebuilt_conn, backup_conn, *, drop_list=(), drop_pred=None, to
     rebuilt = _prose_map(rebuilt_conn)
     backup = _prose_map(backup_conn)
 
-    missing, thinner = [], []
+    missing, thinner, dropped_by_pred = [], [], []
     for url, blen in backup.items():
-        if url in drop or (drop_pred is not None and drop_pred(url)):
+        if url in drop:
+            continue
+        if drop_pred is not None and drop_pred(url):
+            dropped_by_pred.append(url)          # audited so a reviewed class-drop is actually reviewable
             continue
         if url not in rebuilt:
             missing.append(url)
@@ -103,6 +106,7 @@ def coverage_gate(rebuilt_conn, backup_conn, *, drop_list=(), drop_pred=None, to
         "preserve_before": preserve_before,
         "preserve_after": preserve_after,
         "dup_canonical": dup_canon,
+        "dropped_by_pred": sorted(dropped_by_pred),
         "backup_prose_urls": len(backup),
         "rebuilt_prose_urls": len(rebuilt),
     }
@@ -124,6 +128,10 @@ def main(argv=None):
     print(f"backup prose URLs: {res['backup_prose_urls']}  rebuilt: {res['rebuilt_prose_urls']}")
     print(f"missing: {len(res['missing_urls'])}  thinner: {len(res['thinner_urls'])}  "
           f"dup_canonical: {len(res['dup_canonical'])}  preserve_ok: {res['preserve_ok']}")
+    dbp = res["dropped_by_pred"]
+    print(f"reviewed drops (math syllabi, by drop_pred): {len(dbp)}  [expected ~882]")
+    for u in dbp[:8]:
+        print("   drop:", u)
     if res["missing_urls"][:20]:
         print("MISSING (first 20):", res["missing_urls"][:20])
     if res["thinner_urls"][:20]:
