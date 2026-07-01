@@ -182,7 +182,7 @@ class OllamaClient:
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
-        model: str = "llama3.1:8b",
+        model: str = "granite4:tiny-h",
         timeout: int = 60,
         embedding_model: str = "nomic-embed-text",
         num_ctx: Optional[int] = None,

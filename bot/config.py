@@ -100,7 +100,7 @@ def load_config() -> Config:
         database_path=db_path,
         operations_db_path=os.getenv("OPERATIONS_DB_PATH", _ops_path_default(db_path)),
         ollama_enabled=os.getenv("OLLAMA_ENABLED", "false").lower() == "true",
-        ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
+        ollama_model=os.getenv("OLLAMA_MODEL", "granite4:tiny-h"),
         ollama_url=os.getenv("OLLAMA_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")),
         ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "60")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
