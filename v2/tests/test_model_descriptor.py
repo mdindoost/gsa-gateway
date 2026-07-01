@@ -32,10 +32,10 @@ def test_qwen_asymmetric_prefix():
     )
 
 
-def test_active_descriptor_defaults_to_qwen(monkeypatch):
-    # The 2026-06-30 production switch: QWEN is the default active model.
+def test_active_descriptor_defaults_to_nomic(monkeypatch):
+    # Default stays NOMIC (safe fallback); the switch is an explicit EMBEDDING_MODEL=qwen opt-in.
     monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
-    assert active_descriptor() is QWEN
+    assert active_descriptor() is NOMIC
 
 
 def test_active_descriptor_env_selects_nomic(monkeypatch):

@@ -98,13 +98,16 @@ QWEN = ModelDescriptor(
 _REGISTRY = {NOMIC.id: NOMIC, QWEN.id: QWEN}
 _BY_OLLAMA = {NOMIC.ollama_name: NOMIC, QWEN.ollama_name: QWEN}
 
-# The production default. `EMBEDDING_MODEL` (an Ollama name) overrides it so the fallback model
-# (nomic) stays selectable without a code change; an unknown value falls back to the default.
-DEFAULT_DESCRIPTOR = QWEN
+# Default = NOMIC (the safe, already-deployed fallback). The nomic->qwen switch is realized by
+# setting `EMBEDDING_MODEL=qwen3-embedding:0.6b` in the environment (.env) at swap time — an
+# explicit, reversible opt-in — rather than flipping the code default (which would desync any
+# module-level active_descriptor() captured at import from an env pinned per-process later).
+DEFAULT_DESCRIPTOR = NOMIC
 
 
 def active_descriptor() -> ModelDescriptor:
-    """The descriptor the pipeline currently uses; env-selectable by Ollama model name."""
+    """The descriptor the pipeline currently uses; env-selectable by Ollama model name
+    (set EMBEDDING_MODEL=qwen3-embedding:0.6b to activate the Qwen switch)."""
     name = os.environ.get("EMBEDDING_MODEL")
     if name and name in _BY_OLLAMA:
         return _BY_OLLAMA[name]

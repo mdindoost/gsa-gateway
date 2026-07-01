@@ -238,22 +238,44 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 # Group B — search tables (virtual; cannot be STRICT) — knowledge only
 # ─────────────────────────────────────────────────────────────────────────────
 
-KNOWLEDGE_VECTORS = """
+# vec0 tables: the embedding width is descriptor-driven (`{dim}` filled from the active
+# ModelDescriptor at build time — nomic 768, qwen 1024). Use vector_table_ddl()/
+# recreate_vector_tables() rather than executing these templates directly.
+KNOWLEDGE_VECTORS_TMPL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_vectors USING vec0(
     item_id   INTEGER PRIMARY KEY,            -- = knowledge_items.id
-    embedding FLOAT[768]                      -- nomic-embed-text
+    embedding FLOAT[{dim}]                     -- active embedding model (descriptor-driven)
 );
 """
 
-KNOWLEDGE_CHUNK_VECTORS = """
+KNOWLEDGE_CHUNK_VECTORS_TMPL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunk_vectors USING vec0(
     chunk_id  INTEGER PRIMARY KEY,             -- = knowledge_chunks.id
-    embedding FLOAT[768],                       -- nomic-embed-text (dim owned by descriptor in Plan 2)
+    embedding FLOAT[{dim}],                      -- active embedding model (descriptor-driven)
     org_id    INTEGER partition key,            -- in-engine filter for org-scoped queries (ARCH R3)
     type      TEXT,                             -- metadata column (filterable)
     +parent_id INTEGER                          -- auxiliary: collapse chunk -> parent item
 );
 """
+
+
+def vector_table_ddl(descriptor=None) -> list[str]:
+    """The two vec0 CREATE statements with the embedding width taken from `descriptor`
+    (default: the active ModelDescriptor). One source of truth for the vector dimension."""
+    from v2.core.retrieval.model_descriptor import active_descriptor
+    dim = (descriptor or active_descriptor()).dim
+    return [KNOWLEDGE_VECTORS_TMPL.format(dim=dim),
+            KNOWLEDGE_CHUNK_VECTORS_TMPL.format(dim=dim)]
+
+
+def recreate_vector_tables(conn: sqlite3.Connection, descriptor=None) -> None:
+    """DROP + recreate both vec0 tables at `descriptor`'s dim (default: active). Used to
+    migrate a DB whose vectors were embedded at a different width (e.g. nomic 768 -> qwen
+    1024) BEFORE re-embedding. Destroys existing vectors — the caller re-embeds after."""
+    conn.execute("DROP TABLE IF EXISTS knowledge_vectors")
+    conn.execute("DROP TABLE IF EXISTS knowledge_chunk_vectors")
+    for ddl in vector_table_ddl(descriptor):
+        conn.execute(ddl)
 
 KNOWLEDGE_FTS = """
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
@@ -536,8 +558,8 @@ _KNOWLEDGE_TABLE_DDL = [
     ORGANIZATIONS,
     KNOWLEDGE_ITEMS,
     KNOWLEDGE_CHUNKS,
-    KNOWLEDGE_VECTORS,
-    KNOWLEDGE_CHUNK_VECTORS,
+    # vec0 tables (knowledge_vectors, knowledge_chunk_vectors) are created via
+    # vector_table_ddl() so their embedding width follows the active descriptor.
     KNOWLEDGE_FTS,
     SETTINGS,
     RAW_PAGES,
@@ -668,6 +690,8 @@ def create_knowledge_schema(db_path: str) -> sqlite3.Connection:
     try:
         for ddl in _KNOWLEDGE_TABLE_DDL:
             conn.execute(ddl)
+        for ddl in vector_table_ddl():          # descriptor-driven vec0 width
+            conn.execute(ddl)
         for ddl in _KNOWLEDGE_INDEXES:
             conn.execute(ddl)
         for ddl in _TRIGGER_DDL:
@@ -736,6 +760,8 @@ def create_all(db_path: str) -> sqlite3.Connection:
     conn = get_connection(db_path)
     try:
         for ddl in _TABLE_DDL:
+            conn.execute(ddl)
+        for ddl in vector_table_ddl():          # descriptor-driven vec0 width
             conn.execute(ddl)
         for ddl in INDEXES:
             conn.execute(ddl)
