@@ -1,9 +1,13 @@
 """Embedding client for v2 retrieval.
 
-Ollama ``nomic-embed-text`` with the same conventions Step 3 used to populate
-``knowledge_vectors``: documents prefixed ``search_document: ``, queries prefixed
-``search_query: ``, and every vector L2-normalized so the vec0 ``FLOAT[768]``
-(default L2 distance) ranks identically to cosine.
+Descriptor-driven (the LLM-agnostic seam): model name, vector dimension, the
+asymmetric embed prefixes, and truncation ALL read from the active
+``ModelDescriptor`` — never a hardcoded constant. For the production model
+(Qwen3-Embedding-0.6B) that means the QUERY is wrapped in the ``Instruct: …
+\\nQuery: `` template and PASSAGES are embedded RAW; for nomic-embed-text it
+means the ``search_document: ``/``search_query: `` prefixes. Every vector is
+L2-normalized so the vec0 ``FLOAT[dim]`` (default L2 distance) ranks identically
+to cosine.
 """
 
 from __future__ import annotations
@@ -14,15 +18,16 @@ import os
 import time
 import urllib.request
 
+from v2.core.retrieval.model_descriptor import active_descriptor
+
 DEFAULT_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-DEFAULT_MODEL = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
-EMBED_DIM = 768
 
 
 class Embedder:
     def __init__(self, base_url: str | None = None, model: str | None = None):
         self.base_url = (base_url or DEFAULT_URL).rstrip("/")
-        self.model = model or DEFAULT_MODEL
+        self.descriptor = active_descriptor()
+        self.model = model or self.descriptor.ollama_name
         self.embed_url = f"{self.base_url}/api/embed"
 
     def _embed(self, text: str, timeout: int = 30) -> list[float] | None:
@@ -60,18 +65,22 @@ class Embedder:
         norm = math.sqrt(sum(v * v for v in vec))
         return [v / norm for v in vec] if norm else None
 
+    def _prepare(self, prefix: str, text: str) -> str:
+        d = self.descriptor
+        return prefix + d.truncate_to_tokens(text.strip(), d.context_window)
+
     def embed_query(self, text: str) -> list[float] | None:
-        return self.normalize(self._embed(f"search_query: {text.strip()[:2000]}"))
+        return self.normalize(self._embed(self._prepare(self.descriptor.query_prefix, text)))
 
     def embed_document(self, text: str) -> list[float] | None:
-        return self.normalize(self._embed(f"search_document: {text.strip()[:2000]}"))
+        return self.normalize(self._embed(self._prepare(self.descriptor.doc_prefix, text)))
 
     def health_check(self) -> bool:
         try:
-            v = self._embed("search_document: health check", timeout=15)
+            v = self._embed(self._prepare(self.descriptor.doc_prefix, "health check"), timeout=15)
         except Exception:  # noqa: BLE001
             return False
-        return v is not None and len(v) == EMBED_DIM
+        return v is not None and len(v) == self.descriptor.dim
 
 
 def embed_with_retry(call, attempts: int = 3, backoff: float = 0.5):
