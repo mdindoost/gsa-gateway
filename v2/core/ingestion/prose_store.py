@@ -16,6 +16,26 @@ import json
 from v2.core.ingestion.prose_quality import keep_better
 
 
+# Prose sources whose rows must be one-active-per-canonical-URL. `crawler` is EXCLUDED: after the
+# day-1 wipe there is no `crawler` prose (it re-crawls as njit_www_crawl), and `crawler` PERSON rows
+# carry an entity-scoped natural_key that must never be constrained by this URL index (SE#1/Codex#5).
+PROSE_INDEX_SOURCES = ("njit_www_crawl", "college_crawl", "catalog_crawl")
+
+PROSE_UNIQUE_INDEX_SQL = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_prose_canonical "
+    "ON knowledge_items(json_extract(metadata,'$.natural_key')) "
+    "WHERE is_active=1 AND created_by IN ('njit_www_crawl','college_crawl','catalog_crawl')"
+)
+
+
+def ensure_prose_unique_index(conn) -> None:
+    """DB-enforce one active row per canonical prose URL (backstop to upsert_prose; spec §4.1).
+    Prose-scoped partial index — applied to the CLEAN rebuilt DB by the rebuild runner, NOT to the
+    always-run create_all (the live DB still holds dup active prose until the swap, which would make
+    a global create-index fail on every bot restart)."""
+    conn.execute(PROSE_UNIQUE_INDEX_SQL)
+
+
 def _hash(content: str) -> str:
     return hashlib.sha1((content or "").encode("utf-8")).hexdigest()
 

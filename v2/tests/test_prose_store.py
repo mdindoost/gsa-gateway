@@ -75,3 +75,31 @@ def test_new_url_inserts(conn, org_a):
                      meta={}, canonical="https://www.njit.edu/new", created_by="c")
     assert r == "inserted"
     assert _active(conn, "https://www.njit.edu/new") == 1
+
+
+def test_prose_unique_index_blocks_second_active_canonical(conn, org_a):
+    import sqlite3
+    from v2.core.ingestion.prose_store import ensure_prose_unique_index
+    ensure_prose_unique_index(conn)
+    conn.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
+                 "version,is_active,created_by) VALUES(?,?,?,?,?,?,1,1,?)",
+                 (org_a, "policy", "T", "x", '{"natural_key":"https://www.njit.edu/u"}',
+                  "https://www.njit.edu/u", "college_crawl"))
+    with pytest.raises(sqlite3.IntegrityError):   # a 2nd active prose row, same canonical -> blocked
+        conn.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
+                     "version,is_active,created_by) VALUES(?,?,?,?,?,?,1,1,?)",
+                     (org_a, "webpage", "T", "y", '{"natural_key":"https://www.njit.edu/u"}',
+                      "https://www.njit.edu/u", "njit_www_crawl"))
+
+
+def test_prose_unique_index_ignores_inactive_and_person_rows(conn, org_a):
+    from v2.core.ingestion.prose_store import ensure_prose_unique_index
+    ensure_prose_unique_index(conn)
+    # an INACTIVE prose row + a PERSON row (created_by='crawler') sharing a natural_key must NOT trip
+    conn.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
+                 "version,is_active,created_by) VALUES(?,?,?,?,?,?,1,0,?)",
+                 (org_a, "policy", "T", "x", '{"natural_key":"K"}', "K", "college_crawl"))
+    conn.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
+                 "version,is_active,created_by) VALUES(?,?,?,?,?,?,1,1,?)",
+                 (org_a, "profile", "P", "p", '{"natural_key":"K","entity_id":5}', "K", "crawler"))
+    # no exception = pass
