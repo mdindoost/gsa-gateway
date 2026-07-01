@@ -148,6 +148,34 @@ def test_coverage_gate_drop_pred_is_generic(tmp_path):
     assert res["ok"] is True
 
 
+def test_coverage_gate_counts_relocated_content_as_covered(tmp_path):
+    # NJIT renames a URL slug: the SAME page content moves from /old-slug to /new-slug. The content
+    # is NOT lost, so the gate must count it as covered (matched by content), not a coverage FAIL.
+    from scripts.prose_rebuild_gate import coverage_gate
+    body = "This is the Software and Data Engineering Technology program page. " * 8
+
+    def seed(name, rows):
+        conn = _mkdb(tmp_path, name)
+        conn.execute("INSERT INTO organizations(id,slug,name,type) VALUES(1,'njit','NJIT','university')")
+        for url, content in rows:
+            conn.execute(
+                "INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
+                "version,is_active,created_by) VALUES(1,'policy','t',?,json_object('natural_key',?),"
+                "?,1,1,'college_crawl')", (content, url, url))
+        conn.commit()
+        return conn
+
+    old = "https://appliedengineering.njit.edu/computer-technology"
+    new = "https://appliedengineering.njit.edu/software-and-data-engineering-technology-sdet"
+    backup = seed("b.db", [(old, body)])
+    rebuilt = seed("r.db", [(new, body)])                   # same content, new URL
+
+    res = coverage_gate(rebuilt, backup)
+    assert old not in res["missing_urls"]                   # relocated content is NOT missing
+    assert old in res["relocated_urls"]                     # ...it's tracked as relocated
+    assert res["ok"] is True
+
+
 # ────────────────────────── DFS supplement assembles seeds + writes canonical ──────────────────────────
 
 def test_dfs_supplement_crawls_entry_and_dedups(tmp_path):

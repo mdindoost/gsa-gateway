@@ -25,8 +25,17 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+import hashlib
+import re
+
 from v2.core.ingestion.canonical_url import canonical_prose_url
 from v2.core.ingestion.prose_quality import prose_quality_len
+
+
+def _fingerprint(content: str):
+    """Whitespace-normalized content hash — stable across a URL rename (same page, new slug)."""
+    norm = re.sub(r"\s+", " ", content or "").strip().lower()
+    return hashlib.sha1(norm.encode("utf-8")).hexdigest() if norm else None
 
 # active crawl-PROSE rows (the wipe/rebuild scope) on either side of the comparison
 _PROSE_WHERE = (
@@ -36,15 +45,15 @@ _PROSE_WHERE = (
 
 
 def _prose_map(conn) -> dict:
-    """canonical URL -> max real-content length over active crawl-prose rows for that URL."""
-    out: dict[str, int] = {}
+    """canonical URL -> (max real-content length, fingerprint of the fullest row) for that URL."""
+    out: dict[str, tuple] = {}
     for nk, src, content in conn.execute(
             f"SELECT json_extract(metadata,'$.natural_key'), source_url, content "
             f"FROM knowledge_items WHERE {_PROSE_WHERE}"):
         canon = canonical_prose_url(nk or src or "")
         qlen = prose_quality_len(content)
-        if canon and qlen > out.get(canon, -1):
-            out[canon] = qlen
+        if canon and qlen > out.get(canon, (-1, None))[0]:
+            out[canon] = (qlen, _fingerprint(content))
     return out
 
 
@@ -79,17 +88,24 @@ def coverage_gate(rebuilt_conn, backup_conn, *, drop_list=(), drop_pred=None, to
     drop = {canonical_prose_url(u) for u in drop_list}
     rebuilt = _prose_map(rebuilt_conn)
     backup = _prose_map(backup_conn)
+    # content present in the rebuilt corpus under ANY URL — so a page NJIT renamed (slug change,
+    # /node/N → clean URL, trailing-slash redirect) is recognized as covered, not "missing". The
+    # goal is lose no CONTENT; URL drift on a months-newer crawl is expected and not a loss.
+    rebuilt_fps = {fp for _, fp in rebuilt.values() if fp}
 
-    missing, thinner, dropped_by_pred = [], [], []
-    for url, blen in backup.items():
+    missing, thinner, dropped_by_pred, relocated = [], [], [], []
+    for url, (blen, bfp) in backup.items():
         if url in drop:
             continue
         if drop_pred is not None and drop_pred(url):
             dropped_by_pred.append(url)          # audited so a reviewed class-drop is actually reviewable
             continue
         if url not in rebuilt:
-            missing.append(url)
-        elif rebuilt[url] < blen * (1 - tolerance):
+            if bfp is not None and bfp in rebuilt_fps:
+                relocated.append(url)            # same content, different URL — covered, not lost
+            else:
+                missing.append(url)
+        elif rebuilt[url][0] < blen * (1 - tolerance):
             thinner.append(url)
 
     preserve_before = _preserve_counts(backup_conn)
@@ -107,6 +123,7 @@ def coverage_gate(rebuilt_conn, backup_conn, *, drop_list=(), drop_pred=None, to
         "preserve_after": preserve_after,
         "dup_canonical": dup_canon,
         "dropped_by_pred": sorted(dropped_by_pred),
+        "relocated_urls": sorted(relocated),
         "backup_prose_urls": len(backup),
         "rebuilt_prose_urls": len(rebuilt),
     }
@@ -126,6 +143,7 @@ def main(argv=None):
                         tolerance=args.tolerance)
     print(f"backup prose URLs: {res['backup_prose_urls']}  rebuilt: {res['rebuilt_prose_urls']}")
     print(f"missing: {len(res['missing_urls'])}  thinner: {len(res['thinner_urls'])}  "
+          f"relocated(url-drift, content present): {len(res['relocated_urls'])}  "
           f"dup_canonical: {len(res['dup_canonical'])}  preserve_ok: {res['preserve_ok']}")
     if res["dropped_by_pred"]:
         print(f"reviewed drops (by drop_pred): {len(res['dropped_by_pred'])}")
