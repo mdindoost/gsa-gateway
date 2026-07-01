@@ -140,7 +140,12 @@ DEFAULT_EVENT_BOOST = 1.2
 # low-signal. They stay embedded and are still reachable via an explicit item_types
 # whitelist or a publications-intent route — just not in general answers. Admin-tunable
 # via the `retriever.exclude_types` setting (comma-separated; empty string = exclude none).
-DEFAULT_EXCLUDE_TYPES = frozenset({"publication"})
+# 'syllabus' = per-semester math course syllabi (owner 2026-07-01): KEPT verbatim in the corpus +
+# embedded, but excluded from the DEFAULT answer corpus so ~882 high-volume, near-identical rows do
+# not dilute normal RAG. They are surfaced on an explicit course/syllabus INTENT — that intent signal
+# is DEFERRED to the routing/intent redesign (Kavosh v2.5 pillar 4); until then they answer only via an
+# explicit item_types whitelist. See project_kavosh_v2_5 / project_www_crawl_build_b memory.
+DEFAULT_EXCLUDE_TYPES = frozenset({"publication", "syllabus"})
 # Candidate pool per leg for fusion — deliberately decoupled from `limit`.
 # "pool" = how wide we search; "limit" = how many we return. A boosted item that
 # is strong in only one leg must still enter the pool to be liftable. Never drops

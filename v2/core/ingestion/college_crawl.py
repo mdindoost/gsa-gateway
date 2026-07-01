@@ -258,9 +258,12 @@ def ingest_college(conn, org_slug, org_name, parent_slug, result, html_by_url,
 
 # Per-semester math COURSE-SYLLABUS PDFs live under math.njit.edu/sites/math/files/ and are named
 # Math_<coursenum>[-<section>]-<sem><yr>.pdf (e.g. Math_107-F18.pdf, Math_105-001-F18.pdf). The owner
-# (2026-07-01) chose to skip these low-value per-semester syllabi; brochures/flyers/exams/quals/annual
-# reports on the SAME host are named otherwise and are kept. The rule is deliberately conservative:
-# it fires ONLY on files whose name starts with "Math" + a digit, under that exact host+path.
+# (2026-07-01) chose to KEEP everything from NJIT verbatim (hard line) but LABEL these so the retriever
+# can keep them out of default answers (they are per-semester, high-volume, and would dilute normal RAG).
+# The label is `type='syllabus'` (a mechanical URL-derived type, like /news→news); the SERVING policy for
+# that type lives in the retriever (excluded from the default corpus), NOT here. brochures/flyers/exams/
+# quals/annual reports on the SAME host are named otherwise and stay type='pdf'.
+SYLLABUS_TYPE = "syllabus"
 _MATH_SYLLABUS_HOST = "math.njit.edu"
 _MATH_SYLLABUS_PATH = "/sites/math/files/"
 _MATH_SYLLABUS_NAME = re.compile(r"^Math[ _-]?\d", re.IGNORECASE)
@@ -287,6 +290,13 @@ def is_math_syllabus(url: str) -> bool:
         return False
     fname = unquote(p.path.rsplit("/", 1)[-1])
     return bool(_MATH_SYLLABUS_NAME.match(fname)) and not _MATH_NON_SYLLABUS.search(fname)
+
+
+def pdf_type(url: str) -> str:
+    """Mechanical type for a PDF knowledge_item: 'syllabus' for a math course syllabus (kept in the
+    corpus but excluded from default answers by the retriever), else 'pdf'. Single source of the
+    PDF-type mapping used by both ingest_pdf_pages write paths."""
+    return SYLLABUS_TYPE if is_math_syllabus(url) else "pdf"
 
 
 def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_bytes,
@@ -324,10 +334,6 @@ def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_byt
             continue
         seen_urls.add(url)
 
-        if is_math_syllabus(url):                         # owner 2026-07-01: skip these BEFORE any fetch
-            skipped.append({"url": url, "status": "skipped", "reason": "math_syllabus"})
-            continue
-
         canon = canonical_prose_url(url) if canonical else url
         if canonical and seen_canon is not None and canon in seen_canon:
             continue                         # same PDF asset already handled this run (two sitemaps)
@@ -362,10 +368,11 @@ def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_byt
             "source": created_by,
         }
 
+        ptype = pdf_type(url)                    # 'syllabus' (excluded from default answers) or 'pdf'
         if canonical:
             meta.pop("natural_key", None)        # upsert_prose sets natural_key=canon
             meta.pop("content_hash", None)
-            status = upsert_prose(conn, org_id=org_id, ptype="pdf", title=title, content=text,
+            status = upsert_prose(conn, org_id=org_id, ptype=ptype, title=title, content=text,
                                   meta=meta, canonical=canon, created_by=created_by)
             if seen_canon is not None:
                 seen_canon.add(canon)
@@ -395,7 +402,7 @@ def ingest_pdf_pages(conn, org_slug, org_name, parent_slug, pdf_items, fetch_byt
         conn.execute(
             "INSERT INTO knowledge_items(org_id,type,title,content,metadata,source_url,"
             "version,is_active,created_by) VALUES(?,?,?,?,?,?,1,1,?)",
-            (org_id, "pdf", title, text, json.dumps(meta), url, created_by))
+            (org_id, ptype, title, text, json.dumps(meta), url, created_by))
 
     return {"org_id": org_id, "pdf_inserted": inserted, "pdf_updated": updated,
             "pdf_unchanged": unchanged, "skipped": skipped}

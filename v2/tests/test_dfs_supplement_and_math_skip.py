@@ -86,7 +86,7 @@ def test_section_entry_points_are_declared_static_and_scoped():
     assert {"registrar", "financialaid", "eos", "ogi", "bursar", "career-development"} <= slugs
 
 
-# ────────────────────────── PDF ingest skips syllabi (before fetch) ──────────────────────────
+# ────────────────────── PDF ingest LABELS syllabi type='syllabus' (keeps everything) ──────────────────────
 
 def _mkdb(tmp_path, name="t.db"):
     db = str(tmp_path / name)
@@ -94,30 +94,36 @@ def _mkdb(tmp_path, name="t.db"):
     return get_connection(db)
 
 
-def test_ingest_pdf_pages_skips_math_syllabus_without_fetching(tmp_path):
-    conn = _mkdb(tmp_path)
+def test_pdf_type_labels_math_syllabus_but_keeps_others_pdf():
+    # owner 2026-07-01: KEEP everything from NJIT; a math course syllabus is LABELED type='syllabus'
+    # (the retriever excludes that type from default answers), everything else stays type='pdf'.
     base = "https://math.njit.edu/sites/math/files/"
-    syllabus = base + "Math_107-F18.pdf"
-    brochure = base + "ms-appliedstatsbrochure.pdf"
+    assert cc.pdf_type(base + "Math_107-F18.pdf") == "syllabus"
+    assert cc.pdf_type(base + "Math 105 (Jean) SP23.pdf") == "syllabus"
+    assert cc.pdf_type(base + "Math_222_FinalExam_F17.pdf") == "pdf"    # exam kept as normal pdf
+    assert cc.pdf_type(base + "ms-appliedstatsbrochure.pdf") == "pdf"
+    assert cc.pdf_type("https://cs.njit.edu/sites/cs/files/handbook.pdf") == "pdf"
+
+
+def test_ingest_pdf_pages_no_longer_skips_syllabus(tmp_path):
+    # the syllabus PDF is FETCHED now (kept), not skipped-before-fetch
+    conn = _mkdb(tmp_path)
+    syllabus = "https://math.njit.edu/sites/math/files/Math_107-F18.pdf"
     calls = []
 
     def fetch_bytes(u):
         calls.append(u)
-        return None                                        # brochure → fetch_failed (fine for this test)
+        return None                                        # fetch outcome irrelevant; we assert it TRIED
 
     out = cc.ingest_pdf_pages(conn, "mathematical-sciences", "Mathematical Sciences", "csla",
-                              [(syllabus, "syl"), (brochure, "bro")], fetch_bytes,
-                              org_type="department")
-    assert syllabus not in calls                            # skipped BEFORE any network fetch
-    assert brochure in calls
-    reasons = {s["url"]: s.get("reason") for s in out["skipped"]}
-    assert reasons.get(syllabus) == "math_syllabus"
-    assert out["pdf_inserted"] == 0                         # syllabus not inserted; brochure fetch_failed
+                              [(syllabus, "syl")], fetch_bytes, org_type="department")
+    assert syllabus in calls                                # NOT skipped — it is brought in
+    assert not any(s.get("reason") == "math_syllabus" for s in out["skipped"])
 
 
-# ────────────────────────── coverage gate: math syllabi are an accepted drop ──────────────────────────
+# ────────────────────────── coverage gate: generic drop_pred still works ──────────────────────────
 
-def test_coverage_gate_drop_pred_excludes_math_syllabi(tmp_path):
+def test_coverage_gate_drop_pred_is_generic(tmp_path):
     from scripts.prose_rebuild_gate import coverage_gate
 
     def seed(name, urls):
@@ -131,13 +137,14 @@ def test_coverage_gate_drop_pred_excludes_math_syllabi(tmp_path):
         conn.commit()
         return conn
 
-    syl = "https://math.njit.edu/sites/math/files/Math_107-F18.pdf"
+    dropped = "https://math.njit.edu/sites/math/files/legacy-thing.pdf"
     kept = "https://cs.njit.edu/about"
-    backup = seed("b.db", [syl, kept])
-    rebuilt = seed("r.db", [kept])                          # syllabus intentionally gone
+    backup = seed("b.db", [dropped, kept])
+    rebuilt = seed("r.db", [kept])                          # `dropped` intentionally absent
 
-    res = coverage_gate(rebuilt, backup, drop_pred=cc.is_math_syllabus)
-    assert syl not in res["missing_urls"]                   # dropped, not a failure
+    res = coverage_gate(rebuilt, backup, drop_pred=lambda u: "legacy-thing" in u)
+    assert dropped not in res["missing_urls"]               # excused by the generic predicate
+    assert dropped in res["dropped_by_pred"]                # ...and audited
     assert res["ok"] is True
 
 
@@ -186,3 +193,34 @@ def test_dfs_supplement_isolates_a_failing_entry(tmp_path):
     out = dfs_supplement(conn, fetch, lambda u: None, entries=[bad, good], budget=5, delay=0.0)
     assert "boom.njit.edu" in " ".join(out["failed_entries"])   # the bad seed is recorded, not swallowed
     assert out["prose_inserted"] >= 1                            # the good entry still ran
+
+
+def test_dfs_supplement_max_depth_zero_fetches_only_the_seed(tmp_path):
+    """A singleton (e.g. the www.njit.edu homepage) is recovered at max_depth=0 — the seed page ONLY,
+    no link-following — so it can be kept without an unsafe '/' DFS over the whole site."""
+    from scripts.rebuild_prose import dfs_supplement
+
+    conn = _mkdb(tmp_path)
+    seed = "https://www.njit.edu/"
+    fetched = []
+
+    def fetch(u):
+        fetched.append(u)
+        return ("<html><head><title>NJIT</title></head><body>"
+                + ("New Jersey Institute of Technology homepage content. " * 15)
+                + '<a href="/about">about</a><a href="/academics">acad</a></body></html>')
+
+    entry = cc.ProseEntry(seed, "njit", "NJIT", "njit", "office")
+    out = dfs_supplement(conn, fetch, lambda u: None, entries=[entry], max_depth=0, budget=1, delay=0.0)
+    assert fetched == [seed]                                     # ONLY the homepage, no /about or /academics
+    assert out["prose_inserted"] >= 1
+
+
+# ────────────────────────── serving policy: syllabi excluded from default answers ──────────────────────────
+
+def test_syllabus_type_excluded_from_default_answer_corpus():
+    # the label's serving policy (owner B, 2026-07-01): type='syllabus' is out of the default corpus,
+    # like 'publication' — still embedded/in-corpus, surfaced later via the routing intent signal.
+    from v2.core.retrieval.retriever import DEFAULT_EXCLUDE_TYPES
+    assert "syllabus" in DEFAULT_EXCLUDE_TYPES
+    assert "publication" in DEFAULT_EXCLUDE_TYPES                # unchanged

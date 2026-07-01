@@ -119,19 +119,18 @@ def main(argv=None):
     ap.add_argument("--tolerance", type=float, default=0.05)
     args = ap.parse_args(argv)
     from v2.core.database.schema import get_connection
-    from v2.core.ingestion.college_crawl import is_math_syllabus
-    # Reviewed drops (owner 2026-07-01): per-semester math course syllabi (a whole class → predicate),
-    # and the bare www.njit.edu homepage (nav/marketing; not a DFS seed — see SECTION_ENTRY_POINTS).
+    # Owner 2026-07-01: KEEP everything from NJIT — nothing is dropped. Math syllabi are kept verbatim
+    # (labeled type='syllabus', excluded from default ANSWERS in the retriever, not from the corpus);
+    # the homepage is recovered as a singleton. So the gate excuses nothing → expect missing=0.
     res = coverage_gate(get_connection(args.rebuilt), get_connection(args.backup),
-                        drop_list=["https://www.njit.edu/"], drop_pred=is_math_syllabus,
                         tolerance=args.tolerance)
     print(f"backup prose URLs: {res['backup_prose_urls']}  rebuilt: {res['rebuilt_prose_urls']}")
     print(f"missing: {len(res['missing_urls'])}  thinner: {len(res['thinner_urls'])}  "
           f"dup_canonical: {len(res['dup_canonical'])}  preserve_ok: {res['preserve_ok']}")
-    dbp = res["dropped_by_pred"]
-    print(f"reviewed drops (math syllabi, by drop_pred): {len(dbp)}  [expected ~882]")
-    for u in dbp[:8]:
-        print("   drop:", u)
+    if res["dropped_by_pred"]:
+        print(f"reviewed drops (by drop_pred): {len(res['dropped_by_pred'])}")
+        for u in res["dropped_by_pred"][:8]:
+            print("   drop:", u)
     if res["missing_urls"][:20]:
         print("MISSING (first 20):", res["missing_urls"][:20])
     if res["thinner_urls"][:20]:
