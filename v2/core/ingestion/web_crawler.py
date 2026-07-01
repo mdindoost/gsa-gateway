@@ -249,6 +249,30 @@ def crawl_site(seed_url: str, fetch, max_depth: int = DEFAULT_DEPTH,
     return res
 
 
+def _load_robots(opener, host: str, timeout: int = TIMEOUT):
+    """Fetch ``host/robots.txt`` through the timeout'd opener and parse it, returning a
+    RobotFileParser or None on any transport error (caller treats None as allowed = fail-open).
+
+    Replaces ``RobotFileParser.read()``, which calls urlopen with NO timeout — a host whose
+    /robots.txt accepts the connection then never responds hangs the whole crawl forever
+    (observed: a 3.5h stall on one socket). Here connect+recv are bounded by ``timeout`` and
+    the body by ``_read_capped``'s wall-clock deadline, so a bad host can never block the run."""
+    rp = urllib.robotparser.RobotFileParser()
+    try:
+        req = Request(host + "/robots.txt", headers={"User-Agent": UA})
+        with opener.open(req, timeout=timeout) as r:
+            raw = _read_capped(r, deadline_s=timeout).decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:
+        # RFC: 401/403 => treat as fully disallowed; other 4xx (e.g. 404 no robots) => allow all.
+        rp.disallow_all = e.code in (401, 403)
+        rp.allow_all = e.code not in (401, 403)
+        return rp
+    except Exception:  # noqa: BLE001 - transport error / timeout: fail-open (prior behavior)
+        return None
+    rp.parse(raw.splitlines())
+    return rp
+
+
 def _make_opener_and_allowed():
     """Shared factory: build a redirect-safe opener and a robots-cache-backed _allowed(url)
     callable. Both fetch_with_status and make_bytes_fetcher use this to avoid duplicating
@@ -260,11 +284,7 @@ def _make_opener_and_allowed():
         host = urlparse(url).scheme + "://" + urlparse(url).netloc
         rp = robots_cache.get(host, "miss")
         if rp == "miss":
-            rp = urllib.robotparser.RobotFileParser()
-            try:
-                rp.set_url(host + "/robots.txt"); rp.read()
-            except Exception:  # noqa: BLE001
-                rp = None
+            rp = _load_robots(opener, host)
             robots_cache[host] = rp
         return rp is None or rp.can_fetch(UA, url)
 
