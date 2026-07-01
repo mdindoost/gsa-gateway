@@ -14,6 +14,7 @@ They are deliberately distinct so a builder can never conflate "use full capacit
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -74,12 +75,40 @@ NOMIC = ModelDescriptor(
     query_prefix="search_query: ",
 )
 
-_REGISTRY = {NOMIC.id: NOMIC}
+# Qwen3-Embedding-0.6B — the production embedding model (switch 2026-06-30). 1024-d Matryoshka
+# vectors stored at FULL width; ASYMMETRIC instruction prefix — the QUERY is wrapped in Qwen's
+# `Instruct: {task}\nQuery: {text}` template (omitting it costs ~1-5% recall), PASSAGES/docs are
+# embedded RAW. 32K native window. working_size stays 512 to isolate the model swap from any
+# chunk-size change (the chunk regime is unchanged; only the model + dim + prefixes move).
+QWEN = ModelDescriptor(
+    id="qwen3-embedding-0.6b@v1",
+    ollama_name="qwen3-embedding:0.6b",
+    tokenizer_file="qwen3_tokenizer.json",
+    dim=1024,
+    context_window=32768,
+    working_size=512,
+    overlap=77,           # ~15% of working_size
+    doc_prefix="",        # passages embedded raw (asymmetric)
+    query_prefix=(
+        "Instruct: Given a web search query, retrieve relevant passages "
+        "that answer the query\nQuery: "
+    ),
+)
+
+_REGISTRY = {NOMIC.id: NOMIC, QWEN.id: QWEN}
+_BY_OLLAMA = {NOMIC.ollama_name: NOMIC, QWEN.ollama_name: QWEN}
+
+# The production default. `EMBEDDING_MODEL` (an Ollama name) overrides it so the fallback model
+# (nomic) stays selectable without a code change; an unknown value falls back to the default.
+DEFAULT_DESCRIPTOR = QWEN
 
 
 def active_descriptor() -> ModelDescriptor:
-    """The descriptor the pipeline currently uses. (Later: settings/env-selectable.)"""
-    return NOMIC
+    """The descriptor the pipeline currently uses; env-selectable by Ollama model name."""
+    name = os.environ.get("EMBEDDING_MODEL")
+    if name and name in _BY_OLLAMA:
+        return _BY_OLLAMA[name]
+    return DEFAULT_DESCRIPTOR
 
 
 def get_descriptor(descriptor_id: str) -> ModelDescriptor:
