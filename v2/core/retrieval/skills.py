@@ -33,6 +33,10 @@ _ORG_ALIASES = {
 }
 _RESEARCH_TYPES = ("research_areas", "research_statement", "overview")
 
+# Shared enum: the ONLY org types WS3 enumerates. Imported by router.py + slot_extractor.py so the
+# guard lives in one place (review MAJOR: validate org_type in the skill, not only at call sites).
+ORG_TYPE_ENUM: tuple[str, ...] = ("club", "department", "college")
+
 # Curated, org-agnostic vocabulary map (Phase 2, spec docs/superpowers/specs/
 # 2026-06-14-semantic-area-matching.md). A query abbreviation/synonym expands into the
 # words faculty profiles actually use, so token-exact FTS bridges "llm" → "large language
@@ -112,14 +116,28 @@ def org_descendants(conn: sqlite3.Connection, org_id: int) -> set[int]:
     return out
 
 
+def orgs_by_type(conn: sqlite3.Connection, org_type: str,
+                 parent_org_id: int | None = None) -> list[str]:
+    """Active org names of a given ``type`` (e.g. 'club', 'college', 'department'), optionally scoped to
+    a parent (``parent_id``). The single type-filtered enumeration; org_departments delegates here so the
+    child-enumeration SQL lives in ONE place (WS3 coexist + DRY). Unknown type ⇒ [] (never raises)."""
+    if org_type not in ORG_TYPE_ENUM:
+        return []
+    if parent_org_id is None:
+        rows = conn.execute(
+            "SELECT name FROM organizations WHERE type=? AND is_active=1 ORDER BY name",
+            (org_type,))
+    else:
+        rows = conn.execute(
+            "SELECT name FROM organizations WHERE type=? AND is_active=1 AND parent_id=? "
+            "ORDER BY name", (org_type, parent_org_id))
+    return [r[0] for r in rows]
+
+
 def org_departments(conn: sqlite3.Connection, org_id: int) -> list[str]:
     """Immediate child org names that are actual departments (e.g. YWCC → Computer Science,
-    Data Science, …). Filters on type='department' so non-department children — e.g. MTSM's
-    'Business Data Science' program or an admin sub-unit — are not reported as departments."""
-    return [r[0] for r in conn.execute(
-        "SELECT name FROM organizations WHERE parent_id=? AND is_active=1 "
-        "AND type='department' ORDER BY name",
-        (org_id,))]
+    Data Science, …). Delegates to orgs_by_type(type='department', parent=org_id) — one SQL path."""
+    return orgs_by_type(conn, "department", org_id)
 
 
 def _display_names(conn: sqlite3.Connection,

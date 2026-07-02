@@ -85,3 +85,30 @@ def test_title_none(conn):
     r = entity.title_of_person(conn, "d/noattr")
     assert r["titles"]  # ["Lecturer", "Computer Science"] present
     assert r["titles"][0][1] == "Computer Science"
+
+
+def test_orgs_by_type_clubs(conn):
+    assert skills.orgs_by_type(conn, "club") == ["ACM Student Chapter", "Women in Computing Society"]
+
+
+def test_orgs_by_type_colleges(conn):
+    got = skills.orgs_by_type(conn, "college")
+    assert "Ying Wu College of Computing" in got and "Martin Tuchman School of Management" in got
+
+
+def test_orgs_by_type_parent_scoped(conn):
+    ywcc_id = conn.execute("SELECT id FROM organizations WHERE slug='ywcc'").fetchone()[0]
+    assert skills.orgs_by_type(conn, "department", ywcc_id) == ["Computer Science"]
+
+
+def test_org_departments_delegates(conn):
+    ywcc_id = conn.execute("SELECT id FROM organizations WHERE slug='ywcc'").fetchone()[0]
+    assert skills.org_departments(conn, ywcc_id) == skills.orgs_by_type(conn, "department", ywcc_id)
+
+
+def test_orgs_by_type_empty(conn):
+    assert skills.orgs_by_type(conn, "club", 999999) == []  # bogus parent → empty, not error
+
+
+def test_orgs_by_type_unknown_type(conn):
+    assert skills.orgs_by_type(conn, "office") == []  # off-enum type → [], never raises
