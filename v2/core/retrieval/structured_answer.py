@@ -49,6 +49,18 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
                 "card": entity.entity_card(conn, a["entity_id"]),
                 "links": profile_fields.render_links(_person_attrs(conn, a["entity_id"])),
                 "scholar_push": _push_paper_lines(conn, a["entity_id"])}
+    if skill == "contact_of_person":
+        return {"skill": skill, **entity.contact_of_person(conn, a["entity_id"])}
+    if skill == "title_of_person":
+        return {"skill": skill, **entity.title_of_person(conn, a["entity_id"])}
+    if skill == "orgs_by_type":
+        parent_name = None
+        if a.get("parent_org_id") is not None:
+            pr = conn.execute("SELECT name FROM organizations WHERE id=?",
+                              (a["parent_org_id"],)).fetchone()
+            parent_name = pr[0] if pr else None
+        return {"skill": skill, "org_type": a["org_type"], "parent_name": parent_name,
+                "rows": skills.orgs_by_type(conn, a["org_type"], a.get("parent_org_id"))}
     if skill == "metric_of_person":
         r = entity.metric_of_person(conn, a["entity_id"], a["field_key"], a.get("metric_key"))
         return {"skill": skill, "field_key": a["field_key"], "metric_key": a.get("metric_key"), **r}
@@ -104,6 +116,19 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
 
 def _join(names: list[str]) -> str:
     return ", ".join(names)
+
+
+# explicit (singular, plural) labels — no plural[:-1] hack (review MINOR)
+_ORG_TYPE_LABEL = {"club": ("club", "clubs"), "department": ("department", "departments"),
+                   "college": ("college", "colleges")}
+
+
+def _fmt_missing(labels: list[str]) -> str:
+    if len(labels) == 1:
+        return labels[0]
+    if len(labels) == 2:
+        return f"{labels[0]} or {labels[1]}"
+    return ", ".join(labels[:-1]) + f", or {labels[-1]}"
 
 
 # Deterministic answers whose NUMBERS must never be reworded by the LLM — the caller skips
@@ -334,6 +359,38 @@ def format_answer(result: dict) -> str:
 
     if skill == "entity_card":
         return result["card"] or ""        # the card is the grounding + offline fallback
+
+    if skill == "contact_of_person":
+        name = result["name"]
+        order = [("email", "Email"), ("phone", "Phone"), ("office", "Office")]
+        have = [(lbl, result[k]) for k, lbl in order if result.get(k)]
+        if not have:
+            return f"I don't have contact information on file for {name}."
+        body = "; ".join(f"{lbl}: {val}" for lbl, val in have)
+        missing = [lbl.lower() for k, lbl in order if not result.get(k)]
+        note = f" (No {_fmt_missing(missing)} on file.)" if missing else ""
+        return f"{name} — {body}.{note}"
+
+    if skill == "title_of_person":
+        name = result["name"]
+        titles = result["titles"]
+        if not titles:
+            return f"I don't have a listed position for {name}."
+        # title-listing style ("Professor, Computer Science; …") so a category fallback ("faculty")
+        # reads naturally instead of an awkward "is faculty at" (review MINOR).
+        parts = [f"{t}, {o}" for t, o in titles]
+        return f"{name} — {'; '.join(parts)}."
+
+    if skill == "orgs_by_type":
+        rows = result["rows"]
+        sing, plur = _ORG_TYPE_LABEL.get(result["org_type"],
+                                         (result["org_type"], result["org_type"] + "s"))
+        scope = f" under {result['parent_name']}" if result.get("parent_name") else " at NJIT"
+        if not rows:
+            return f"I don't have any {plur} on file{scope}."
+        if len(rows) == 1:
+            return f"There is 1 {sing}{scope}: {_join(rows)}."
+        return f"There are {len(rows)} {plur}{scope}: {_join(rows)}."
 
     if skill == "faculty_areas_in_department":
         org = result.get("org_name") or "this department"
