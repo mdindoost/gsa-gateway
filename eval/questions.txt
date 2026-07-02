@@ -139,6 +139,11 @@ Who are the faculty in physics?
 Who are the faculty in theatre arts?
 Who is in the New Jersey School of Architecture?
 Who works in the CS department administration?
+# faculty-roster contamination lock: a dept can have non-person prose (e.g. a "Ph.D. in X"
+# program doc) filed under its org_id — it must NEVER surface as a fake faculty name. The
+# faculty roster must contain ONLY real people (no "phd-computer-science#N" / catalog tails).
+Who are the faculty in the CS department?
+Who are the faculty in informatics?
 
 # supplementary-page discovery (people found via /administration, /joint-faculty, etc.)
 Who is the assistant to the CS chair?

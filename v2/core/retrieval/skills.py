@@ -188,13 +188,17 @@ def faculty_in_department(conn: sqlite3.Connection, org_id: int) -> list[tuple[s
 
     Union of two sources so it works for BOTH crawled and manually-seeded people:
       • KB-derived — entity_ids with an active knowledge_item filed under this dept (crawled
-        profiles); and
+        profiles), constrained to entity_ids that resolve to an active Person node — a dept
+        can also have non-person prose (e.g. a program-info doc) filed under the same org_id,
+        which must not surface as a fake faculty member; and
       • graph-derived — person keys with a faculty `has_role` edge to this org (covers people
         seeded with no KB items, e.g. Theatre, whose page lacks the profile template).
     """
     kb = {e for (e,) in conn.execute(
         "SELECT DISTINCT json_extract(metadata,'$.entity_id') FROM knowledge_items "
-        "WHERE is_active=1 AND org_id=? AND json_extract(metadata,'$.entity_id') IS NOT NULL",
+        "WHERE is_active=1 AND org_id=? AND json_extract(metadata,'$.entity_id') IS NOT NULL "
+        "AND json_extract(metadata,'$.entity_id') IN "
+        "(SELECT key FROM nodes WHERE type='Person' AND is_active=1)",
         (org_id,)).fetchall()}
     edges = {k for (k,) in conn.execute(
         "SELECT DISTINCT p.key FROM edges e JOIN nodes p ON p.id=e.src_id "

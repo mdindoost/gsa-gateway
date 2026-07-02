@@ -45,6 +45,11 @@ def test_faculty_in_department_unions_kb_and_graph(conn):
     dep = ensure_org(conn, "physics", "Physics", parent_slug="njit", type="department")
     sync_org_nodes(conn)
     import json
+    from v2.core.graph.store import upsert_node
+    # Real crawled profiles always get BOTH a Person node (via project_entity) and a KB item
+    # sharing the same entity_id/key — mirror that here rather than a KB item floating alone.
+    upsert_node(conn, type="Person", key="people.njit.edu/profile/haimin", name="Haimin Wang",
+               source="crawler")
     conn.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,created_by) "
                  "VALUES(?,'profile','Haimin Wang','...',?,'crawler')",
                  (dep, json.dumps({"entity_id": "people.njit.edu/profile/haimin"})))
@@ -54,3 +59,30 @@ def test_faculty_in_department_unions_kb_and_graph(conn):
     conn.commit()
     names = [n for n, _ in faculty_in_department(conn, dep)]
     assert "Haimin Wang" in names and "Seeded Prof" in names
+
+
+def test_faculty_in_department_excludes_non_person_kb_entities(conn):
+    # Regression: a department-level document (e.g. a GSA "Ph.D. in X" program-info doc, chunked
+    # and filed under this org_id via the dashboard doc-ingest path) is NOT a person and must
+    # never surface as a fake "faculty member" — even though it shares the department's org_id
+    # with real crawled profiles. Bug: it fell through to the raw entity_id tail as a "name".
+    dep = ensure_org(conn, "computer-science", "Computer Science", parent_slug="njit",
+                     type="department")
+    sync_org_nodes(conn)
+    import json
+    from v2.core.graph.store import upsert_node
+    upsert_node(conn, type="Person", key="people.njit.edu/profile/borcea", name="Cristian Borcea",
+               source="crawler")
+    conn.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,created_by) "
+                 "VALUES(?,'profile','Cristian Borcea','...',?,'crawler')",
+                 (dep, json.dumps({"entity_id": "people.njit.edu/profile/borcea"})))
+    conn.execute("INSERT INTO knowledge_items(org_id,type,title,content,metadata,created_by) "
+                 "VALUES(?,'policy','Ph.D. in Computer Science','...',?,'dashboard')",
+                 (dep, json.dumps({"entity_id": "gsa-doc/phd-computer-science#0"})))
+    conn.commit()
+    fac = faculty_in_department(conn, dep)
+    names = [n for n, _ in fac]
+    ids = [e for _, e in fac]
+    assert "Cristian Borcea" in names
+    assert "phd-computer-science#0" not in names
+    assert "gsa-doc/phd-computer-science#0" not in ids
