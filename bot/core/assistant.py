@@ -27,7 +27,7 @@ from v2.core.retrieval.unified_router import UnifiedRouter
 logger = logging.getLogger(__name__)
 
 
-def maybe_build_unified_router(db_path, embedder, intent_detector):
+def maybe_build_unified_router(db_path, embedder, intent_detector, generate_json=None):
     """Build the v2.1 UnifiedRouter ONLY when ROUTER_V21 is on; else None (zero overhead).
     The classifier is FIT here (encodes the ~500 train exemplars once at startup via the
     embedder's batch path — see route_exemplars._encode_prefixed). The router holds db_path,
@@ -42,7 +42,8 @@ def maybe_build_unified_router(db_path, embedder, intent_detector):
     finally:
         fit_conn.close()
     logger.info("router-v21 classifier fit in %.2fs", time.time() - t0)
-    return UnifiedRouter(db_path=db_path, classifier=clf, intent_detector=intent_detector)
+    return UnifiedRouter(db_path=db_path, classifier=clf, intent_detector=intent_detector,
+                         generate_json=generate_json)
 
 
 @dataclass
@@ -129,8 +130,16 @@ async def build_assistant(config, db, kb, rate_limiter) -> Assistant:
             # classifier/masker + _route and _structured_from_route never query different DBs
             # (e.g. when DATABASE_PATH is overridden) — review F5.
             router_db_path = getattr(db, "db_path", None) or config.database_path
+            # Bind the SYNC constrained-JSON generator (slot-extraction fallback) to the live Ollama
+            # endpoint/model — reuses the same Granite the answer path uses. None if Ollama is off.
+            gen_json = None
+            if ollama is not None:
+                from functools import partial
+                from bot.services.ollama_client import generate_json_sync
+                gen_json = partial(generate_json_sync, base_url=ollama.base_url, model=ollama.model)
             unified_router = maybe_build_unified_router(
-                db_path=router_db_path, embedder=V2Embedder(), intent_detector=intent_detector)
+                db_path=router_db_path, embedder=V2Embedder(), intent_detector=intent_detector,
+                generate_json=gen_json)
         except Exception:  # noqa: BLE001 - never block startup; router stays off on failure
             logger.exception("router-v21 build failed; falling back to legacy routing")
 

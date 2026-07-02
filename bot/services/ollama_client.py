@@ -2,9 +2,12 @@
 
 import asyncio
 import copy
+import json as _json
 import logging
 import math
 import os
+import urllib.error
+import urllib.request
 from typing import Optional
 
 import aiohttp
@@ -12,6 +15,38 @@ import aiohttp
 from bot.services.retriever import RetrievedChunk
 
 logger = logging.getLogger(__name__)
+
+
+def generate_json_sync(system: str, prompt: str, schema: dict, *,
+                       base_url: str = "http://localhost:11434",
+                       model: str = "granite4:tiny-h",
+                       timeout: float = 6.0,
+                       num_predict: int = 256) -> Optional[dict]:
+    """SYNCHRONOUS constrained-JSON generate via Ollama structured outputs (top-level `format` =
+    JSON schema; verified vs live Ollama docs 2026-07-01). Used by the router's slot-extraction
+    fallback, which runs inside the synchronous decide()/resolve_kg path — so this deliberately does
+    NOT touch the async aiohttp client. Returns the parsed dict, or None on ANY failure (timeout,
+    non-200, invalid JSON) so the caller can fail-safe to RAG."""
+    payload = {
+        "model": model, "system": system, "prompt": prompt, "stream": False,
+        "format": schema,
+        "options": {"temperature": 0.0, "num_predict": num_predict},
+    }
+    req = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/generate",
+        data=_json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                return None
+            data = _json.loads(resp.read().decode("utf-8"))
+        text = (data.get("response") or "").strip()
+        return _json.loads(text) if text else None
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
+        logger.warning("generate_json_sync failed: %s", exc)
+        return None
+
 
 try:
     import tiktoken

@@ -41,10 +41,16 @@ class RouteDecision:
 
 
 class UnifiedRouter:
-    def __init__(self, db_path, classifier, intent_detector):
+    def __init__(self, db_path, classifier, intent_detector, generate_json=None, tau=None):
         self.db_path = db_path                 # per-call short-lived connection (no shared conn)
         self.classifier = classifier
         self.intent_detector = intent_detector
+        # Slot-extraction fallback (Workstream 1). `generate_json(system, prompt, schema)->dict|None`
+        # is the SYNC constrained-JSON call (None disables the fallback → legacy None⇒RAG behavior).
+        self.generate_json = generate_json
+        # LLM self-confidence is a SECONDARY gate only (§8): the resolver + family classifier are the
+        # PRIMARY false-positive guard. Default 0.0 (resolver-primary); settings-tunable/calibratable.
+        self.tau = 0.0 if tau is None else tau
 
     def _route(self, message):
         """Run the deterministic resolver on a short-lived connection (FTS+SQL only, no vec0)."""
@@ -65,9 +71,30 @@ class UnifiedRouter:
 
     def resolve_kg(self, message: str) -> "RouteDecision":
         rt = self._route(message)              # short-lived conn; carries all negative guards
-        if rt is None:
+        if rt is not None:
+            return RouteDecision(family="KG", skill=rt.skill, args=dict(rt.args))
+        # ── Fallback: regex route() found nothing → constrained-JSON slot extraction (Workstream 1).
+        # Only runs when the classifier already said KG and a generator is wired. Fail-safe: any
+        # miss (none / low-confidence / unresolved slot) degrades to the unchanged RAG/general.
+        if self.generate_json is None:
             return RouteDecision(family="RAG", source="general")
-        return RouteDecision(family="KG", skill=rt.skill, args=dict(rt.args))
+        try:
+            from v2.core.retrieval.slot_extractor import extract_slots, resolve_and_validate
+            ext = extract_slots(message, self.generate_json)
+            if ext.skill == "none" or ext.confidence < self.tau:
+                return RouteDecision(family="RAG", source="general")
+            import sqlite3
+            conn = sqlite3.connect(self.db_path)
+            try:
+                conn.execute("PRAGMA busy_timeout=5000")
+                resolved = resolve_and_validate(conn, ext.skill, ext.slots, message)
+            finally:
+                conn.close()
+            if resolved is None:               # unresolved/hallucinated slot → never guess
+                return RouteDecision(family="RAG", source="general")
+            return RouteDecision(family="KG", skill=resolved.skill, args=dict(resolved.args))
+        except Exception:                      # the fallback must NEVER break the answer path
+            return RouteDecision(family="RAG", source="general")
 
     def _rag_outcome(self, message: str) -> str:
         from bot.services.intent_detector import INTENT_FOOD

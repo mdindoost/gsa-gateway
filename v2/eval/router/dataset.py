@@ -3,13 +3,12 @@ import json
 from pathlib import Path
 from v2.eval.router.types import Family, LabeledExample
 
-VALID_SKILLS = frozenset({
-    "entity_card", "research_of_person", "metric_of_person", "link_of_person",
-    "faculty_in_department", "people_in_org", "officers_in_org", "people_by_role",
-    "people_by_research_area", "count_people_by_research_area", "areas_in_org", "area_counts",
-    "faculty_areas_in_department", "people_by_area_tag", "top_people_by_metric", "org_departments",
-    "people_by_name", "person_disambig",
-})
+# Single source of truth: the extractor-emittable skills (KG_SKILL_NAMES) + person_disambig, which
+# is a valid GOLD outcome but never extractor-emitted. Importing the shared registry kills the enum
+# drift the RAG review flagged (schema / VALID_SKILLS / dataset must agree).
+from v2.core.retrieval.slot_extractor import KG_SKILL_NAMES  # noqa: E402
+
+VALID_SKILLS = frozenset(KG_SKILL_NAMES) | {"person_disambig"}
 VALID_RAG_SOURCES = frozenset({"food", "event", "general"})
 VALID_PROVENANCE = frozenset({"real", "seed"})
 VALID_SPLIT = frozenset({"train", "test", "hardneg"})

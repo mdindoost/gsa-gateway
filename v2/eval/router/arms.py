@@ -82,6 +82,33 @@ class CoarseThenDeterministicArm:
                                score=score, margin=margin)
 
 
+class CoarseThenExtractorArm:
+    """Arm 4 (Workstream 1 AFTER arm): coarse family classify; if KG, try the deterministic
+    router first, and ONLY on route()==None fall back to the constrained-JSON slot extractor +
+    resolve-and-validate. This is the exact production seam (unified_router.resolve_kg). Requires an
+    injected `generate_json(system, prompt, schema)->dict|None` (a stub in tests, real Ollama live)."""
+    def __init__(self, conn, classifier, encoder, generate_json, tau=0.0):
+        self.conn, self.clf, self.enc = conn, classifier, encoder
+        self.generate_json, self.tau = generate_json, tau
+
+    def predict(self, query: str) -> RoutePrediction:
+        from v2.core.retrieval import router as srouter
+        from v2.core.retrieval.slot_extractor import extract_slots, resolve_and_validate
+        fam, score, margin = self.clf.top(query, self.enc)
+        if fam == Family.KG:
+            r = srouter.route(self.conn, query)
+            if r is None:                                    # regex miss → extractor fallback
+                ext = extract_slots(query, self.generate_json)
+                if ext.skill != "none" and ext.confidence >= self.tau:
+                    resolved = resolve_and_validate(self.conn, ext.skill, ext.slots, query)
+                    r = resolved                             # Route | None
+            p = from_route(r)                                # None → RAG/general
+            p.score, p.margin = score, margin
+            return p
+        return RoutePrediction(family=fam, source=("general" if fam == Family.RAG else None),
+                               score=score, margin=margin)
+
+
 class FullClassifierArm:
     """Arm 3: the classifier picks family AND skill/source directly."""
     def __init__(self, classifier, encoder):
