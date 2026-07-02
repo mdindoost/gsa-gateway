@@ -144,9 +144,18 @@ def test_metric_of_person_maps_keys(conn):
 
 
 def test_least_cited_declines(conn):
+    # "least/fewest" = ascending (lowest-first) = order:asc → the unsupported direction.
     r = resolve_and_validate(conn, "top_people_by_metric",
-                             {"metric": "citations", "order": "desc"}, "least cited in cs")
+                             {"metric": "citations", "order": "asc"}, "least cited in cs")
     assert r.skill == "metric_descending_unsupported"
+
+
+def test_most_cited_desc_executes(conn):
+    # "most cited / top N" = descending (highest-first) = order:desc → SUPPORTED, must execute.
+    r = resolve_and_validate(conn, "top_people_by_metric",
+                             {"metric": "citations", "order": "desc"}, "most cited in cs")
+    assert r.skill == "top_people_by_metric"
+    assert r.args["metric_key"] == "citations"
 
 
 def test_role_climbs_dept_to_college(conn):

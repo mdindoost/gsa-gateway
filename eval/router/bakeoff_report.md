@@ -33,47 +33,47 @@ split: entity-disjoint | train/test: 422/97 (seed 0)
 - gate: {'rejected': True, 'reason': 'anti-fab leak above detector-first baseline'}
 
 ## masked_coarse
-- family_accuracy: 0.660
-- skill_accuracy: 0.9523809523809523
-- structured_false_negative: 18
+- family_accuracy: 0.649
+- skill_accuracy: 0.95
+- structured_false_negative: 19
 - false_honest_partial: 0  (anti-fab)
 - wrong_confident_exact: 1  (anti-fab)
 - gate: {'rejected': False, 'reason': 'ok'}
 
 ## masked_coarse_kgbias
-- family_accuracy: 0.670
-- skill_accuracy: 0.9090909090909091
-- structured_false_negative: 17
+- family_accuracy: 0.660
+- skill_accuracy: 0.9047619047619048
+- structured_false_negative: 18
 - false_honest_partial: 0  (anti-fab)
 - wrong_confident_exact: 2  (anti-fab)
 - gate: {'rejected': False, 'reason': 'ok'}
 
 ## masked_coarse_balanced
-- family_accuracy: 0.660
-- skill_accuracy: 0.9523809523809523
-- structured_false_negative: 18
+- family_accuracy: 0.649
+- skill_accuracy: 0.95
+- structured_false_negative: 19
 - false_honest_partial: 0  (anti-fab)
 - wrong_confident_exact: 1  (anti-fab)
 - gate: {'rejected': False, 'reason': 'ok'}
 
 ## masked_full
-- family_accuracy: 0.804
-- skill_accuracy: 0.8285714285714286
+- family_accuracy: 0.794
+- skill_accuracy: 0.8
 - structured_false_negative: 4
 - false_honest_partial: 0  (anti-fab)
-- wrong_confident_exact: 6  (anti-fab)
+- wrong_confident_exact: 7  (anti-fab)
 - gate: {'rejected': True, 'reason': 'anti-fab leak above detector-first baseline'}
 
 ## masked_full_abstain
-- family_accuracy: 0.804
-- skill_accuracy: 0.8285714285714286
+- family_accuracy: 0.794
+- skill_accuracy: 0.8
 - structured_false_negative: 4
 - false_honest_partial: 0  (anti-fab)
-- wrong_confident_exact: 6  (anti-fab)
+- wrong_confident_exact: 7  (anti-fab)
 - gate: {'rejected': True, 'reason': 'anti-fab leak above detector-first baseline'}
 
 ## masked_coarse_abstain
-- family_accuracy: 0.454
+- family_accuracy: 0.443
 - skill_accuracy: 0.9333333333333333
 - structured_false_negative: 24
 - false_honest_partial: 0  (anti-fab)
@@ -118,47 +118,47 @@ split: paraphrase-disjoint | train/test: 422/97 (seed 0)
 - gate: {'rejected': True, 'reason': 'anti-fab leak above detector-first baseline'}
 
 ## masked_coarse
-- family_accuracy: 0.660
-- skill_accuracy: 0.9523809523809523
-- structured_false_negative: 18
+- family_accuracy: 0.649
+- skill_accuracy: 0.95
+- structured_false_negative: 19
 - false_honest_partial: 0  (anti-fab)
 - wrong_confident_exact: 1  (anti-fab)
 - gate: {'rejected': False, 'reason': 'ok'}
 
 ## masked_coarse_kgbias
-- family_accuracy: 0.670
-- skill_accuracy: 0.9090909090909091
-- structured_false_negative: 17
+- family_accuracy: 0.660
+- skill_accuracy: 0.9047619047619048
+- structured_false_negative: 18
 - false_honest_partial: 0  (anti-fab)
 - wrong_confident_exact: 2  (anti-fab)
 - gate: {'rejected': False, 'reason': 'ok'}
 
 ## masked_coarse_balanced
-- family_accuracy: 0.660
-- skill_accuracy: 0.9523809523809523
-- structured_false_negative: 18
+- family_accuracy: 0.649
+- skill_accuracy: 0.95
+- structured_false_negative: 19
 - false_honest_partial: 0  (anti-fab)
 - wrong_confident_exact: 1  (anti-fab)
 - gate: {'rejected': False, 'reason': 'ok'}
 
 ## masked_full
-- family_accuracy: 0.804
-- skill_accuracy: 0.8285714285714286
+- family_accuracy: 0.794
+- skill_accuracy: 0.8
 - structured_false_negative: 4
 - false_honest_partial: 0  (anti-fab)
-- wrong_confident_exact: 6  (anti-fab)
+- wrong_confident_exact: 7  (anti-fab)
 - gate: {'rejected': True, 'reason': 'anti-fab leak above detector-first baseline'}
 
 ## masked_full_abstain
-- family_accuracy: 0.804
-- skill_accuracy: 0.8285714285714286
+- family_accuracy: 0.794
+- skill_accuracy: 0.8
 - structured_false_negative: 4
 - false_honest_partial: 0  (anti-fab)
-- wrong_confident_exact: 6  (anti-fab)
+- wrong_confident_exact: 7  (anti-fab)
 - gate: {'rejected': True, 'reason': 'anti-fab leak above detector-first baseline'}
 
 ## masked_coarse_abstain
-- family_accuracy: 0.454
+- family_accuracy: 0.443
 - skill_accuracy: 0.9333333333333333
 - structured_false_negative: 24
 - false_honest_partial: 0  (anti-fab)

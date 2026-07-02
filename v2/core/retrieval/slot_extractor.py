@@ -117,7 +117,8 @@ _SYSTEM = (
     "faculty_in_department / people_in_org / officers_in_org / areas_in_org / area_counts / "
     "faculty_areas_in_department / org_departments (all need org); people_by_research_area / "
     "count_people_by_research_area / people_by_area_tag (need area, org optional); top_people_by_metric "
-    "(rank people by a metric — metric required, org optional; set order=desc for least/fewest)."
+    "(rank people HIGHEST-first by a metric — 'most cited', 'top N by h-index'; metric required, org "
+    "optional; set order=asc ONLY for a least/fewest/lowest ask, which is not supported)."
 )
 
 # PINNED few-shot — drawn from TRAIN-split intuition; deliberately uses entities/paraphrases NOT in
@@ -269,7 +270,7 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
         mk = slots["metric"]
         if mk not in _SCHOLAR_METRIC_KEYS:
             return None
-        if slots.get("order") == "desc":
+        if slots.get("order") == "asc":            # least/fewest — unsupported (asc = lowest-first)
             return Route("metric_descending_unsupported", {"field_key": "scholar", "metric_key": mk})
         st = _resolve_person_slot(conn, slots["person"])
         if st[0] == "ok":
@@ -312,7 +313,7 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
         mk = slots["metric"]
         if mk not in _SCHOLAR_METRIC_KEYS:
             return None
-        if slots.get("order") == "desc":
+        if slots.get("order") == "asc":            # least/fewest — unsupported (asc = lowest-first)
             return Route("metric_descending_unsupported", {"field_key": "scholar", "metric_key": mk})
         oid = org_id_from_slot()
         args = {"field_key": "scholar", "metric_key": mk, "n": srouter._parse_topn(q)}
