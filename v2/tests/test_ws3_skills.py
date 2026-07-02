@@ -65,3 +65,23 @@ def test_contact_none_on_file(conn):
     r = entity.contact_of_person(conn, "d/noattr")
     assert r["present"] == []
     assert r["email"] is None and r["phone"] is None and r["office"] is None
+
+
+def test_title_multi(conn):
+    r = entity.title_of_person(conn, "d/koutis")
+    assert r["name"] == "Ioannis Koutis"
+    assert ("Professor", "Computer Science") in r["titles"]
+    assert ("Department Chair", "Computer Science") in r["titles"]
+
+
+def test_title_dedup_and_order(conn):
+    r = entity.title_of_person(conn, "d/koutis")
+    # no duplicate (title, org) pairs
+    assert len(r["titles"]) == len(set(r["titles"]))
+
+
+def test_title_none(conn):
+    # a person with a role but empty titles falls back to the category label, never empty-blank
+    r = entity.title_of_person(conn, "d/noattr")
+    assert r["titles"]  # ["Lecturer", "Computer Science"] present
+    assert r["titles"][0][1] == "Computer Science"

@@ -401,6 +401,31 @@ def contact_of_person(conn: sqlite3.Connection, entity_id: str) -> dict:
     return {"name": name, **vals, "present": present}
 
 
+def title_of_person(conn: sqlite3.Connection, entity_id: str) -> dict:
+    """One person's title(s)/position(s): a de-duplicated [(title, org_name)] list read from each active
+    has_role edge (attrs.titles, or the category label as fallback), org-ordered. Empty list if the
+    person holds no active role — the caller renders an honest 'no listed position', never fabricated.
+    Mirrors the entity_card titles-iteration so the two never drift."""
+    row = conn.execute(
+        "SELECT id, name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+        (entity_id,)).fetchone()
+    if not row:
+        return {"name": entity_id, "titles": []}
+    nid, raw = row
+    out: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for eattrs, cat, oname in conn.execute(
+            "SELECT e.attrs, e.category, o.name FROM edges e JOIN nodes o ON o.id=e.dst_id "
+            "WHERE e.src_id=? AND e.type='has_role' AND e.is_active=1 ORDER BY o.name", (nid,)):
+        titles = (json.loads(eattrs) if eattrs else {}).get("titles") or [cat]
+        for t in titles:
+            pair = (t, oname)
+            if t and pair not in seen:
+                seen.add(pair)
+                out.append(pair)
+    return {"name": normalize_person_name(raw), "titles": out}
+
+
 def metric_of_person(conn: sqlite3.Connection, entity_id: str, field_key: str,
                      metric_key: str | None = None) -> dict:
     """{name, field_key, found, all, updated_at} for one person's numeric metrics, read straight
