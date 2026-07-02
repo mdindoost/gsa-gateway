@@ -31,9 +31,8 @@ from bot.core.live_fallback import maybe_answer_live
 from v2.integration.njit_search import search as brave_search
 from v2.core.ingestion.explore import http_fetch
 from v2.core.retrieval.route_shadow import log_shadow
-from v2.core.retrieval.answer_gate import (
-    gate1_intent, gate2_prompt, parse_gate2, gate_decision, is_fact_shaped, verify_support,
-)
+from v2.core.retrieval.answer_gate import gate1_intent, gate2_prompt, parse_gate2
+from v2.core.retrieval import faithfulness as faith
 import bot.config as botcfg
 
 logger = logging.getLogger(__name__)
@@ -604,6 +603,52 @@ class MessageHandler:
             is_live=True,
         )
 
+    async def _faithfulness_gate(self, question: str, answer: str, chunks) -> tuple[bool, str]:
+        """Post-generation answerability gate (WS4). Returns (keep, reason). keep=False => the
+        composed answer is not a trustworthy response to THIS question, so the caller abstains.
+
+        Deterministic first (subjective guard + answer-type grounding); only the non-typed factual
+        residual costs a Gate-2 LLM call. A composed answer that EXPLICITLY declines (Granite
+        self-declined) is treated as an honest abstain — but NOT one that merely cites a source
+        (the broad deflection detector over-triggered on njit.edu pointers under temp>0 variance)."""
+        if not answer or faith.is_explicit_nonanswer(answer):
+            return False, "self-abstain"
+        passages = [(getattr(c, "text", "") or "")[:1200] for c in chunks[:5]]
+        outcome, reason = faith.assess_pre_gate2(question, answer, passages)
+        if outcome == "gate2" and self.ollama:
+            sys_p, usr_p = gate2_prompt(question, passages)
+            raw = await self.ollama.generate(
+                prompt=usr_p, system=sys_p,
+                options={"temperature": 0.0, "num_predict": 256}, fmt="json",
+            ) or ""
+            v = parse_gate2(raw)
+            outcome, reason = faith.decide_after_gate2(v.label, v.quote, passages, parsed=v.parsed)
+        elif outcome == "gate2":
+            outcome = "answer"  # no LLM available -> never withhold (answer-biased, like parse_gate2)
+        return outcome == "answer", reason
+
+    def _useful_abstain(self, question: str, chunks) -> str:
+        """The honest-abstain reply (WS4 Phase 4): an abstain should still help. Leads with the
+        NEAREST thing retrieval surfaced (framed as related, not the exact answer) when there is a
+        titled chunk, then routes the user to the existing deflection (GSA office / email / contact)."""
+        top = chunks[0] if chunks else None
+        title = (getattr(top, "section_title", None) or getattr(top, "title", None)) if top else None
+        src = None
+        if top is not None:
+            src = getattr(top, "source_url", None) or SOURCE_FRIENDLY_NAMES.get(
+                getattr(top, "source_file", ""), None)
+        lead = "I wasn't able to find a specific answer to that in the GSA knowledge base."
+        if title:
+            lead += f" The closest related section I have is **{title}**"
+            lead += f" ({src})." if src else "."
+        return (
+            f"{lead}\n\n"
+            "For accurate information, please:\n"
+            "- Visit the GSA office at Campus Center 110A (weekdays 11AM–5PM)\n"
+            "- Email us at gsa-pres@njit.edu\n"
+            "- Use /contact to find the right officer"
+        )
+
     async def _rag_pipeline(
         self,
         req: MessageRequest,
@@ -776,64 +821,15 @@ class MessageHandler:
                     used_live = True
                     logger.info("live njit.edu fallback answered from %s", live.source_url)
 
-            # ── Answer-gate Gate-2 (post-retrieval LLM answerability check) ─────────────
-            # Runs ONLY when the flag is on, we have chunks, the live tier did NOT answer
-            # (used_live is False), and the intent is not in the always-answerable exempt set.
-            # `relevance` was computed above at the primary-miss check — reuse that value;
-            # it is the same ce_score the shadow harness used for band calibration (0.70).
-            _gate_deflected = False
-            if (botcfg.ANSWER_GATE_ENABLED and not used_live
-                    and intent not in (INTENT_FOOD, INTENT_SOCIAL) and chunks):
-                _g2_ctx = [(getattr(c, "text", "") or "")[:1200] for c in chunks[:5]]
-                # Recompute on the FINAL chunks: office/deep rescue may have REPLACED `chunks`,
-                # making the primary-miss `relevance` stale for a different context (review MAJOR).
-                _g2_ce = self.retriever.top_relevance(base_q, chunks) if self.retriever else relevance
-                _g2_fact = is_fact_shaped(base_q)
-                _g2_dec = gate_decision(None, _g2_ce, None, botcfg.ANSWER_GATE_BAND,
-                                        fact_shaped=_g2_fact)
-                if _g2_dec.run_gate2 and self.ollama:
-                    _g2_sys, _g2_usr = gate2_prompt(base_q, _g2_ctx)
-                    _g2_raw = await self.ollama.generate(
-                        prompt=_g2_usr, system=_g2_sys,
-                        options={"temperature": 0.0, "num_predict": 256},
-                        fmt="json",
-                    ) or ""
-                    _g2_v = verify_support(parse_gate2(_g2_raw), _g2_ctx)
-                    _g2_dec = gate_decision(None, _g2_ce, _g2_v.label, botcfg.ANSWER_GATE_BAND,
-                                           fact_shaped=_g2_fact)
-                if _g2_dec.outcome in ("deflect", "fallback"):
-                    # NOT-IN-CONTEXT is NEVER terminal while an answering tier is untried
-                    # (fold #5, never-withhold). The shadow scored this verdict as soft/
-                    # downstream — NOT a false-deflect. If live has not run this turn (e.g. a
-                    # deep-rescue set primary_miss=False and skipped it, or retrieval looked
-                    # confident), try live njit.edu BEFORE deflecting; deflect only if it misses.
-                    if (not attempted_live and botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
-                            and self.ollama and self.retriever):
-                        attempted_live = True
-                        live = await self.live_search(base_q)
-                        if live is not None:
-                            response_text = live.text
-                            source_note = live.source_url
-                            used_ai = True
-                            used_live = True
-                            logger.info("answer-gate G2->live answered from %s", live.source_url)
-                    if not used_live:
-                        _gate_deflected = True
-                        logger.debug(
-                            "answer-gate G2 deflect outcome=%s ce=%s fact=%s q=%r",
-                            _g2_dec.outcome, _g2_ce, _g2_fact, base_q[:80],
-                        )
-
-            # Generate
+            # Generate — compose FIRST, then run the post-generation faithfulness / answerability
+            # gate (WS4) on the composed answer. The gate is deterministic answer-type grounding
+            # (count/rate/money/date must carry a GROUNDED value of the expected type) + a
+            # subjective-superlative guard + robust markdown-normalized quote grounding, with a
+            # Gate-2 answerability verdict only for the non-typed factual residual. It replaces the
+            # brittle pre-generation quote_grounded/fact_shaped gate (which false-abstained on
+            # markdown — the Chrome-River bug — while leaking grounded-but-irrelevant fabrications).
             if used_live:
                 pass
-            elif _gate_deflected:
-                # Gate decided this question cannot be answered from the retrieved context AND
-                # every answering tier (office, deep, live) has now been tried and missed — so a
-                # deflect here withholds nothing that any tier could have supplied (never-withhold).
-                response_text = _KB_MISS_RESPONSE
-                is_canned_deflection = True
-                attempted_live = True  # suppress the live-search offer on a gate deflect
             elif chunks and self.ollama:
                 # Compose sees the ORIGINAL wording for fidelity, plus the resolved query (when a
                 # follow-up was rewritten) so the question it answers matches the retrieved chunks
@@ -853,6 +849,34 @@ class MessageHandler:
                     source_note = _source_note_for(_strip_meta_doc_sentences(ai_resp), chunks)
                     response_text = _strip_doc_citations(ai_resp)
                     used_ai = True
+                    # ── Post-generation faithfulness / answerability gate (WS4) ──
+                    # Guarded: a gate fault (regex/LLM) must NEVER discard the already-composed answer
+                    # and fall through to the generic error — default to KEEP on any exception (senior #7).
+                    if botcfg.ANSWER_GATE_ENABLED and intent not in (INTENT_FOOD, INTENT_SOCIAL):
+                        try:
+                            _keep, _why = await self._faithfulness_gate(base_q, response_text, chunks)
+                        except Exception:
+                            logger.exception("faithfulness-gate error; keeping composed answer")
+                            _keep, _why = True, "gate-error-keep"
+                        if not _keep:
+                            # never-withhold: try an untried answering tier (live njit.edu) BEFORE
+                            # abstaining — a deflect here withholds nothing a tier could supply.
+                            if (not attempted_live and botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
+                                    and self.ollama and self.retriever):
+                                attempted_live = True
+                                live = await self.live_search(base_q)
+                                if live is not None:
+                                    response_text = live.text
+                                    source_note = live.source_url
+                                    used_live = True
+                                    logger.info("faithfulness-gate->live answered from %s", live.source_url)
+                            if not used_live:
+                                response_text = self._useful_abstain(base_q, chunks)
+                                source_note = None
+                                used_ai = False
+                                is_canned_deflection = True
+                                attempted_live = True  # suppress the live-search offer on a gate abstain
+                                logger.debug("faithfulness-gate abstain why=%s q=%r", _why, base_q[:80])
                 else:
                     best = chunks[0]
                     response_text = (
@@ -873,8 +897,9 @@ class MessageHandler:
                 is_canned_deflection = True
 
             # Office answers surface the authoritative njit.edu page as the verify-link (RA6),
-            # mirroring the live-fallback's source_url note.
-            if used_office and chunks:
+            # mirroring the live-fallback's source_url note. Skip on an abstain (the gate set
+            # source_note=None and the useful-abstain text already carries its own link — senior #9).
+            if used_office and chunks and not is_canned_deflection:
                 source_note = getattr(chunks[0], "source_url", None) or source_note
 
             # Deflection offer (offer-only — NEVER auto-fire). Detect a confident deflection:

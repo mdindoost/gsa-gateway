@@ -357,18 +357,32 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
     q = message.strip().lower()
 
     def resolve_org_slot():
-        """(org_id | None, named_but_unresolved). Exact `_find_org` → fuzzy head-word. A True flag
-        means an org WAS named but didn't resolve unambiguously (fuzzy multi-match or miss) → the
-        caller must ABSTAIN even for org-OPTIONAL skills, never silently default to the root."""
+        """(org_id | None, named_but_unresolved, disambig_candidates). Exact `_find_org` → fuzzy
+        head-word. `named_but_unresolved=True` means an org WAS named but didn't resolve unambiguously
+        (fuzzy multi-match or miss) → the caller must NOT silently default to the root. When ≥2 distinct
+        orgs match, `disambig_candidates` carries [{org_id, name}] so the caller can CLARIFY
+        (org_disambig, WS4 Phase 4) instead of dead-abstaining; an empty list = a genuine miss."""
         if "org" not in slots:
-            return (None, False)
+            return (None, False, [])
         oid, _phrase = srouter._find_org(conn, slots["org"].strip().lower())
         if oid is not None:
-            return (oid, False)
+            return (oid, False, [])
         fz = srouter.fuzzy_org(conn, slots["org"])
         if len(fz) == 1:                             # single distinct org → KG-grounded resolve
-            return (fz[0][0], False)
-        return (None, True)                          # 0 or ≥2 distinct → named-but-unresolved
+            return (fz[0][0], False, [])
+        cands = []
+        if len(fz) >= 2:                             # ≥2 distinct → surface names for the clarify
+            ids = [oid for oid, _ in fz[:4]]
+            rows = conn.execute(
+                f"SELECT id, name FROM organizations WHERE id IN ({','.join('?' * len(ids))})", ids
+            ).fetchall()
+            by_id = {r[0]: r[1] for r in rows}
+            cands = [{"org_id": i, "name": by_id[i]} for i in ids if i in by_id]
+        return (None, True, cands)                   # 0 or ≥2 distinct → named-but-unresolved
+
+    def _org_clarify(cands):
+        """A CLARIFY Route when ≥2 orgs matched, else None (genuine miss → abstain)."""
+        return Route("org_disambig", {"candidates": cands}) if len(cands) >= 2 else None
 
     # person-centric
     if skill in ("entity_card", "research_of_person"):
@@ -408,9 +422,9 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
             return None
         if not _org_type_grounded(org_type, message):
             return None                          # off-enum coercion ('schools'->college) ⇒ abstain
-        parent_id, named_unresolved = resolve_org_slot()
+        parent_id, named_unresolved, cands = resolve_org_slot()
         if named_unresolved:
-            return None                       # a parent WAS named but didn't resolve ⇒ abstain
+            return _org_clarify(cands)        # a parent WAS named but didn't resolve ⇒ clarify/abstain
         return Route("orgs_by_type", {"org_type": org_type, "parent_org_id": parent_id})
 
     if skill == "people_by_name":
@@ -448,9 +462,9 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
         role = srouter._ROLE_SYNONYM.get(slots["role"].lower(), slots["role"].lower())
         if role not in srouter._ROLE_VOCAB:
             return None
-        target_org, org_unresolved = resolve_org_slot()
-        if org_unresolved:                           # org named but ambiguous/unresolved → abstain
-            return None
+        target_org, org_unresolved, cands = resolve_org_slot()
+        if org_unresolved:                           # org named but ambiguous/unresolved → clarify/abstain
+            return _org_clarify(cands)
         if target_org is not None:
             role_level = srouter.ROLE_SCOPE_LEVEL.get(role, 0)
             if role_level > 0:
@@ -469,9 +483,9 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
             return None
         if slots.get("order") == "asc":            # least/fewest — unsupported (asc = lowest-first)
             return Route("metric_descending_unsupported", {"field_key": "scholar", "metric_key": mk})
-        oid, org_unresolved = resolve_org_slot()
-        if org_unresolved:                           # org named but ambiguous → abstain (not root)
-            return None
+        oid, org_unresolved, cands = resolve_org_slot()
+        if org_unresolved:                           # org named but ambiguous → clarify/abstain (not root)
+            return _org_clarify(cands)
         args = {"field_key": "scholar", "metric_key": mk, "n": srouter._parse_topn(q)}
         if oid is not None:
             args["org_id"] = oid
@@ -486,9 +500,9 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
     # area skills (org optional; bare-area needs KG support)
     if skill in ("people_by_research_area", "count_people_by_research_area", "people_by_area_tag"):
         area = slots["area"]
-        oid, org_unresolved = resolve_org_slot()
-        if org_unresolved:                       # org named but ambiguous → abstain (not bare-area)
-            return None
+        oid, org_unresolved, cands = resolve_org_slot()
+        if org_unresolved:                       # org named but ambiguous → clarify/abstain (not bare-area)
+            return _org_clarify(cands)
         if oid is None:                          # bare area — require KG existence
             if skills.count_people_by_research_area(conn, area, None) < _min_area_support(conn):
                 return None
@@ -497,9 +511,9 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
     # org-only skills (with route()'s negative guards replicated)
     if skill in ("faculty_in_department", "people_in_org", "officers_in_org", "areas_in_org",
                  "area_counts", "faculty_areas_in_department", "org_departments"):
-        oid, _org_unresolved = resolve_org_slot()
-        if oid is None:                          # unresolved/ambiguous/miss → abstain
-            return None
+        oid, _org_unresolved, cands = resolve_org_slot()
+        if oid is None:                          # ≥2 fuzzy → clarify; genuine miss → abstain
+            return _org_clarify(cands)
         if skill == "org_departments" and not srouter._has_child_departments(conn, oid):
             return None
         if skill == "people_in_org" and srouter._is_university_root(conn, oid):

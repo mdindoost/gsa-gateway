@@ -167,12 +167,12 @@ OFFICE_THRESHOLD = float(os.getenv("OFFICE_THRESHOLD", str(LIVE_THRESHOLD)))
 RETRIEVAL_DEEP_FALLBACK = os.getenv("RETRIEVAL_DEEP_FALLBACK", "").strip().lower() in ("1","true","yes","on")
 DEEP_FALLBACK_THRESHOLD = float(os.getenv("DEEP_FALLBACK_THRESHOLD", "0.30"))
 
-# --- Answer-gate (spec §13.6 — hybrid Gate-1 intent + Gate-2 LLM answerability) ---
-# ANSWER_GATE_ENABLED defaults OFF so a commit is inert until an env flip + restart.
-# ANSWER_GATE_BAND: the ce_score threshold below which Gate-2 is invoked. Calibrated at 0.70
-# (shadow: 0 false-deflects on 424 real/fp/held-out Qs, 88.9% abstain-catch at band=0.70).
+# --- Answer-gate (WS4 — post-generation faithfulness / answerability gate) ---
+# ANSWER_GATE_ENABLED defaults OFF so a commit is inert until an env flip + restart. The old
+# ce_score BAND lever was retired in WS4 (the cross-encoder saturates ~0.96-1.0 on topical text,
+# so the band was a dead lever); the gate now keys on deterministic answer-type grounding + a
+# selective Gate-2 answerability call. (ANSWER_GATE_BAND removed — senior review #11.)
 ANSWER_GATE_ENABLED = os.getenv("ANSWER_GATE_ENABLED", "0").strip().lower() in ("1","true","yes","on")
-ANSWER_GATE_BAND = float(os.getenv("ANSWER_GATE_BAND", "0.70"))
 
 
 # --- Kavosh v2.1 unified router (Phase 1b) ---

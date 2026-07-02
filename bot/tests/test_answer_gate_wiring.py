@@ -1,11 +1,14 @@
 """TDD tests for the answer-gate production wiring (ANSWER_GATE_ENABLED flag).
 
-Five cases per the implementation brief:
-  1. flag OFF (default) → personal-status question goes through OLD path (retriever called).
+WS4 moved the over-answer guard to a POST-generation faithfulness/answerability gate: compose FIRST,
+then decide answer|abstain via deterministic answer-type grounding + a subjective guard + robust quote
+grounding, with a Gate-2 answerability verdict only for the non-typed factual residual.
+
+  1. flag OFF (default) → personal-status question goes through OLD path (retriever called, no gate).
   2. flag ON + Gate-1 fires ("has my I-20 been approved") → canned deflection, retriever NOT called.
-  3. flag ON + Gate-2 returns NOT_IN_CONTEXT (low ce) → canned deflection, generate_answer NOT called.
-  4. flag ON + exemption: INTENT_SOCIAL bypasses Gate-2 (ollama.generate NOT called for gate).
-  5. flag ON + gate-the-gate: high ce (>=band, non-fact-shaped) → Gate-2 LLM NOT called, answer proceeds.
+  3. flag ON + non-typed Gate-2 NOT_IN_CONTEXT → abstain; generate_answer WAS called (compose-first).
+  4. flag ON + exemption: INTENT_SOCIAL bypasses the gate (ollama.generate NOT called for gate).
+  5. flag ON + typed-grounded (money value present + grounded) → gate keeps it; Gate-2 LLM NOT called.
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -106,11 +109,11 @@ async def test_case2_gate_on_gate1_fires_returns_deflection_no_retriever(monkeyp
 
 # ─────────────────────────────────────────── Case 3 ─────────────────────────
 @pytest.mark.asyncio
-async def test_case3_gate_on_gate2_not_in_context_returns_deflection(monkeypatch):
-    """Flag ON + Gate-2 returns NOT_IN_CONTEXT (low ce < band) → canned deflection returned;
-    generate_answer NOT called."""
+async def test_case3_gate_on_nontyped_not_in_context_abstains_after_compose(monkeypatch):
+    """Flag ON + non-typed factual question whose Gate-2 answerability verdict is NOT_IN_CONTEXT →
+    the gate abstains (canned deflection). Because the gate is POST-generation, generate_answer WAS
+    called (compose-first) — the deflection replaces the composed answer."""
     monkeypatch.setattr(botcfg, "ANSWER_GATE_ENABLED", True)
-    monkeypatch.setattr(botcfg, "ANSWER_GATE_BAND", 0.70)
     monkeypatch.setattr(botcfg, "LIVE_ENABLED", False)
 
     gate2_json = '{"label": "NOT_IN_CONTEXT", "supporting_quote": "", "missing_piece": "not found"}'
@@ -118,11 +121,9 @@ async def test_case3_gate_on_gate2_not_in_context_returns_deflection(monkeypatch
     ollama = AsyncMock()
     ollama.rewrite_with_context = AsyncMock(return_value=None)
     ollama.expand_query = AsyncMock(return_value=None)
-    # gate2 LLM call → NOT_IN_CONTEXT; the actual generate_answer should never be reached
-    ollama.generate = AsyncMock(return_value=gate2_json)
-    ollama.generate_answer = AsyncMock(return_value="fabricated answer should not appear")
+    ollama.generate = AsyncMock(return_value=gate2_json)                       # the Gate-2 verdict
+    ollama.generate_answer = AsyncMock(return_value="A composed but unsupported answer.")
 
-    # Low ce (0.3) so gate-the-gate fires Gate-2; question is not fact-shaped
     h = _make_handler(ollama=ollama, top_relevance=0.3)
     req = MessageRequest(
         user_id="u1",
@@ -131,8 +132,11 @@ async def test_case3_gate_on_gate2_not_in_context_returns_deflection(monkeypatch
     )
     resp = await h.handle(req)
 
-    assert resp.text == _KB_MISS_RESPONSE
-    ollama.generate_answer.assert_not_awaited()
+    # gate abstained → honest deflection (Phase-4 useful-abstain: contact block present, not the answer)
+    assert "gsa-pres@njit.edu" in resp.text
+    assert "A composed but unsupported answer." not in resp.text
+    ollama.generate_answer.assert_awaited()   # compose-first: the answer was composed, then gated
+    ollama.generate.assert_awaited()          # the non-typed residual ran the Gate-2 answerability check
 
 
 # ─────────────────────────────────────────── Case 4 ─────────────────────────
@@ -140,7 +144,6 @@ async def test_case3_gate_on_gate2_not_in_context_returns_deflection(monkeypatch
 async def test_case4_gate_on_intent_social_bypasses_gate2(monkeypatch):
     """Flag ON + INTENT_SOCIAL → Gate-2 is exempted; ollama.generate NOT called for gate."""
     monkeypatch.setattr(botcfg, "ANSWER_GATE_ENABLED", True)
-    monkeypatch.setattr(botcfg, "ANSWER_GATE_BAND", 0.70)
     monkeypatch.setattr(botcfg, "LIVE_ENABLED", False)
 
     ollama = AsyncMock()
@@ -164,33 +167,31 @@ async def test_case4_gate_on_intent_social_bypasses_gate2(monkeypatch):
 
 # ─────────────────────────────────────────── Case 5 ─────────────────────────
 @pytest.mark.asyncio
-async def test_case5_gate_on_high_ce_skips_gate2_answer_proceeds(monkeypatch):
-    """Flag ON + high ce (>= band, non-fact-shaped) → Gate-2 LLM NOT called (gate-the-gate
-    skip), answer generation proceeds normally."""
+async def test_case5_typed_grounded_answer_keeps_without_gate2(monkeypatch):
+    """Flag ON + a typed ('how much') question whose composed answer carries a GROUNDED money value
+    → the deterministic answer-type grounding keeps the answer WITHOUT any Gate-2 LLM call."""
     monkeypatch.setattr(botcfg, "ANSWER_GATE_ENABLED", True)
-    monkeypatch.setattr(botcfg, "ANSWER_GATE_BAND", 0.70)
     monkeypatch.setattr(botcfg, "LIVE_ENABLED", False)
 
     ollama = AsyncMock()
     ollama.rewrite_with_context = AsyncMock(return_value=None)
     ollama.expand_query = AsyncMock(return_value=None)
-    ollama.generate = AsyncMock(return_value=None)   # should NOT be called for gate
-    ollama.generate_answer = AsyncMock(return_value="GSA travel awards cover up to $500.")
+    ollama.generate = AsyncMock(return_value=None)   # deterministic path → gate2 NOT called
+    # composed answer states $500, which is grounded in the default chunk text
+    ollama.generate_answer = AsyncMock(return_value="The GSA travel award is $500 for domestic travel.")
 
-    # High ce (0.9 >= 0.70 band); question is not fact-shaped (no "how many/much/long" etc.)
     h = _make_handler(ollama=ollama, top_relevance=0.9)
     req = MessageRequest(
         user_id="u1",
-        text="tell me about gsa travel awards",
+        text="how much is the gsa travel award",
         platform="discord",
     )
     resp = await h.handle(req)
 
-    # Gate-2 LLM must NOT have been called (gate-the-gate skipped it)
+    # answer-type grounding (money) kept it deterministically → no Gate-2 LLM call
     ollama.generate.assert_not_awaited()
-    # Normal answer generation must have proceeded
     ollama.generate_answer.assert_awaited_once()
-    assert resp.text == "GSA travel awards cover up to $500."
+    assert resp.text == "The GSA travel award is $500 for domestic travel."
 
 
 # ─────────────────────────────────────────── Fix A ──────────────────────────
@@ -225,9 +226,8 @@ async def test_gate2_not_in_context_routes_to_live(monkeypatch):
     FIRST; a live hit prevents the canned deflection (answer is the live text, not the miss
     response).
     top_relevance=0.3: above LIVE_THRESHOLD (0.15) so primary_miss=False (live not auto-fired
-    on primary miss); below ANSWER_GATE_BAND (0.70) so Gate-2 runs."""
+    on primary miss)."""
     monkeypatch.setattr(botcfg, "ANSWER_GATE_ENABLED", True)
-    monkeypatch.setattr(botcfg, "ANSWER_GATE_BAND", 0.70)
     monkeypatch.setattr(botcfg, "LIVE_ENABLED", True)
     monkeypatch.setattr(botcfg, "BRAVE_API_KEY", "x")
 
@@ -237,7 +237,7 @@ async def test_gate2_not_in_context_routes_to_live(monkeypatch):
     ollama.rewrite_with_context = AsyncMock(return_value=None)
     ollama.expand_query = AsyncMock(return_value=None)
     ollama.generate = AsyncMock(return_value=gate2_json)
-    ollama.generate_answer = AsyncMock(return_value="fabricated answer should not appear")
+    ollama.generate_answer = AsyncMock(return_value="A composed but unsupported answer.")
 
     h = _make_handler(ollama=ollama, top_relevance=0.3)
 
@@ -253,20 +253,19 @@ async def test_gate2_not_in_context_routes_to_live(monkeypatch):
     )
     resp = await h.handle(req)
 
-    # Gate-2 fired NOT_IN_CONTEXT → live was tried before deflecting; live hit → not deflected
+    # gate abstained (NOT_IN_CONTEXT) → live was tried before deflecting; live hit → live text served
     h.live_search.assert_awaited_once()
     assert resp.text == "NJIT registration info from live search."
     assert resp.text != _KB_MISS_RESPONSE
-    ollama.generate_answer.assert_not_awaited()
+    ollama.generate_answer.assert_awaited()   # compose-first even though the gate later abstained
 
 
 # ─────────────────────────────────────────── Fix B-2 ────────────────────────
 @pytest.mark.asyncio
 async def test_gate2_not_in_context_no_live_deflects(monkeypatch):
-    """Fix B (no-live variant): Gate-2 returns NOT_IN_CONTEXT and live is disabled →
+    """Fix B (no-live variant): the gate abstains (NOT_IN_CONTEXT) and live is disabled →
     canned deflection is returned (no live tier available to rescue the answer)."""
     monkeypatch.setattr(botcfg, "ANSWER_GATE_ENABLED", True)
-    monkeypatch.setattr(botcfg, "ANSWER_GATE_BAND", 0.70)
     monkeypatch.setattr(botcfg, "LIVE_ENABLED", False)
 
     gate2_json = '{"label": "NOT_IN_CONTEXT", "supporting_quote": "", "missing_piece": "not found"}'
@@ -275,7 +274,7 @@ async def test_gate2_not_in_context_no_live_deflects(monkeypatch):
     ollama.rewrite_with_context = AsyncMock(return_value=None)
     ollama.expand_query = AsyncMock(return_value=None)
     ollama.generate = AsyncMock(return_value=gate2_json)
-    ollama.generate_answer = AsyncMock(return_value="fabricated answer should not appear")
+    ollama.generate_answer = AsyncMock(return_value="A composed but unsupported answer.")
 
     h = _make_handler(ollama=ollama, top_relevance=0.3)
 
@@ -286,6 +285,7 @@ async def test_gate2_not_in_context_no_live_deflects(monkeypatch):
     )
     resp = await h.handle(req)
 
-    # Gate-2 fired NOT_IN_CONTEXT, live disabled → canned deflection
-    assert resp.text == _KB_MISS_RESPONSE
-    ollama.generate_answer.assert_not_awaited()
+    # gate abstained, live disabled → honest deflection (compose ran first, then was replaced)
+    assert "gsa-pres@njit.edu" in resp.text
+    assert "A composed but unsupported answer." not in resp.text
+    ollama.generate_answer.assert_awaited()
