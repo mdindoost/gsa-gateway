@@ -17,7 +17,17 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+# Load .env so EMBEDDING_MODEL/OLLAMA_MODEL match the live serving config (the X-ray must embed with
+# the SAME model as the DB vectors — else active_descriptor() defaults to nomic-768 and the semantic
+# stage dies with a 768-vs-1024 dimension mismatch on the post-Qwen-cutover corpus).
+try:
+    from dotenv import load_dotenv
+    load_dotenv(REPO_ROOT / ".env")
+except Exception:
+    pass
 
 from v2.core.database.schema import get_connection
 from v2.core.retrieval.router import route
