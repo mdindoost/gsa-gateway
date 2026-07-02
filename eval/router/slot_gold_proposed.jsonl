@@ -1,0 +1,39 @@
+{"id": "t5", "query": "Strategic Events and Conference Services Staff", "skill": "people_in_org", "gold_slots": {"org": "strategic events and conference services"}}
+{"id": "t12", "query": "Ranking citation ywcc top 5", "skill": "top_people_by_metric", "gold_slots": {"metric": "citations", "n": 5, "org": "ywcc"}}
+{"id": "t22", "query": "Top 10 by citation mechanical engineering", "skill": "top_people_by_metric", "gold_slots": {"metric": "citations", "n": 10, "org": "mechanical engineering"}}
+{"id": "t23", "query": "Top 10 citation mechanical department", "skill": "top_people_by_metric", "gold_slots": {"metric": "citations", "n": 10, "org": "mechanical engineering"}}
+{"id": "t25", "query": "Top 10 citation in mechanical engineering", "skill": "top_people_by_metric", "gold_slots": {"metric": "citations", "n": 10, "org": "mechanical engineering"}}
+{"id": "t26", "query": "Give me the citations mechanical engineering", "skill": "top_people_by_metric", "gold_slots": {"metric": "citations", "org": "mechanical engineering"}}
+{"id": "t39", "query": "Most citation mechanical", "skill": "top_people_by_metric", "gold_slots": {"metric": "citations", "n": 1, "org": "mechanical engineering"}}
+{"id": "t40", "query": "Who has the most citation in mechanical", "skill": "top_people_by_metric", "gold_slots": {"metric": "citations", "n": 1, "org": "mechanical engineering"}}
+{"id": "t44", "query": "The most h index cs", "skill": "top_people_by_metric", "gold_slots": {"metric": "h_index", "n": 1, "org": "cs"}}
+{"id": "t45", "query": "Who has the mist h index in cs", "skill": "top_people_by_metric", "gold_slots": {"metric": "h_index", "org": "cs"}}
+{"id": "t53", "query": "Search for koutis", "skill": "entity_card", "gold_slots": {"person": "koutis"}}
+{"id": "t58", "query": "search koutis", "skill": "entity_card", "gold_slots": {"person": "koutis"}}
+{"id": "t60", "query": "Heidi Young research", "skill": "research_of_person", "gold_slots": {"person": "Heidi Young"}}
+{"id": "t62", "query": "oya tukel research field?", "skill": "research_of_person", "gold_slots": {"person": "oya tukel"}}
+{"id": "t66", "query": "Berenjian research field", "skill": "research_of_person", "gold_slots": {"person": "Berenjian"}}
+{"id": "t68", "query": "What is koutis citation?", "skill": "metric_of_person", "gold_slots": {"person": "koutis", "metric": "citations"}}
+{"id": "t69", "query": "Megjia xu", "skill": "entity_card", "gold_slots": {"person": "Megjia xu"}}
+{"id": "t84", "query": "koutis all info", "skill": "entity_card", "gold_slots": {"person": "koutis"}}
+{"id": "t85", "query": "koutis info", "skill": "entity_card", "gold_slots": {"person": "koutis"}}
+{"id": "t86", "query": "koutis research area", "skill": "research_of_person", "gold_slots": {"person": "koutis"}}
+{"id": "t87", "query": "What else you know about mohammad dindoost", "skill": "entity_card", "gold_slots": {"person": "mohammad dindoost"}}
+{"id": "t89", "query": "tell me more abuot Blake Haggerty", "skill": "entity_card", "gold_slots": {"person": "Blake Haggerty"}}
+{"id": "t90", "query": "is John Pelesko provost?", "skill": "people_by_role", "gold_slots": {"role": "provost", "person": "John Pelesko"}}
+{"id": "t91", "query": "who is the provost", "skill": "people_by_role", "gold_slots": {"role": "provost"}}
+{"id": "t92", "query": "tell me more about Yan Xu", "skill": "entity_card", "gold_slots": {"person": "Yan Xu"}}
+{"id": "t94", "query": "who is in the New Jersey School of Architecture", "skill": "people_in_org", "gold_slots": {"org": "New Jersey School of Architecture"}}
+{"id": "t95", "query": "who\u2019s in the civil engineering faculty", "skill": "faculty_in_department", "gold_slots": {"org": "civil engineering"}}
+{"id": "t96", "query": "Name departments if newark college", "skill": "org_departments", "gold_slots": {"org": "newark college"}}
+{"id": "t97", "query": "Name njit colleges", "skill": "org_departments", "gold_slots": {"org": "njit"}}
+{"id": "t101", "query": "Do we have mohammad in njit", "skill": "entity_card", "gold_slots": {"person": "mohammad"}}
+{"id": "t105", "query": "guiling wang research field", "skill": "research_of_person", "gold_slots": {"person": "guiling wang"}}
+{"id": "t106", "query": "more about professor giling wang", "skill": "entity_card", "gold_slots": {"person": "giling wang"}}
+{"id": "t109", "query": "Guiling wang", "skill": "entity_card", "gold_slots": {"person": "Guiling wang"}}
+{"id": "t112", "query": "List all the michael", "skill": "people_by_name", "gold_slots": {"person": "michael"}}
+{"id": "t113", "query": "Do we have any michael in njit", "skill": "people_by_name", "gold_slots": {"person": "michael"}}
+{"id": "t114", "query": "How is lasha in ywcc", "skill": "entity_card", "gold_slots": {"person": "lasha", "org": "ywcc"}}
+{"id": "t115", "query": "Hai phan research area", "skill": "research_of_person", "gold_slots": {"person": "Hai phan"}}
+{"id": "t116", "query": "What is hai phan research field", "skill": "research_of_person", "gold_slots": {"person": "hai phan"}}
+{"id": "t117", "query": "Who is hai phan", "skill": "entity_card", "gold_slots": {"person": "hai phan"}}

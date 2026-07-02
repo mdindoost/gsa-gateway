@@ -116,14 +116,14 @@
 {"id": "t2", "query": "Njit website literally provides this information: https://www.njit.edu/global/program-extensions\n\nHow did you miss this?", "family": "OTHER", "slots": {"note": "complaint"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t3", "query": "I think Michael houle is ds lecturer", "family": "KG", "skill": "entity_card", "slots": {"note": "statement/correction; dual KG+OTHER; fact KG-verifiable"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t4", "query": "Hi, introduce yourself thoroughly", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t5", "query": "Strategic Events and Conference Services Staff", "family": "KG", "skill": "people_in_org", "slots": {"note": "org=strategic events and conference services"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t5", "query": "Strategic Events and Conference Services Staff", "family": "KG", "skill": "people_in_org", "slots": {"note": "org=strategic events and conference services", "org": "strategic events and conference services"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t6", "query": "Parking fee", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t7", "query": "Parking hours", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t8", "query": "gsa travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t9", "query": "Parking hour time", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t10", "query": "how do I apply for CPT   (answers + “confirm with OGI” heads-up)", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t11", "query": "please  recommend some courses for me to take this fall", "family": "CLARIFY", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t12", "query": "Ranking citation ywcc top 5", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t12", "query": "Ranking citation ywcc top 5", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"metric": "citations", "n": 5, "org": "ywcc"}}
 {"id": "t13", "query": "What is his position", "family": "CLARIFY", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t14", "query": "search njit for parking permits", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t15", "query": "what are the hours of the Van Houten library", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
@@ -133,11 +133,11 @@
 {"id": "t19", "query": "how do I contact the office of global initiatives", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t20", "query": "what is GWICS", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t21", "query": "how do I get funding to attend a conference", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t22", "query": "Top 10 by citation mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t23", "query": "Top 10 citation mechanical department", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t22", "query": "Top 10 by citation mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"metric": "citations", "n": 10, "org": "mechanical engineering"}}
+{"id": "t23", "query": "Top 10 citation mechanical department", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"metric": "citations", "n": 10, "org": "mechanical engineering"}}
 {"id": "t24", "query": "Top 10 in mechanical department", "family": "CLARIFY", "slots": {"note": "top-N with no metric specified"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t25", "query": "Top 10 citation in mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t26", "query": "Give me the citations mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t25", "query": "Top 10 citation in mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"metric": "citations", "n": 10, "org": "mechanical engineering"}}
+{"id": "t26", "query": "Give me the citations mechanical engineering", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"metric": "citations", "org": "mechanical engineering"}}
 {"id": "t27", "query": "Who else in mechanical engineering citation you have", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "follow-up; needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t28", "query": "Wrong", "family": "OTHER", "slots": {"note": "feedback"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t29", "query": "Warren street fitness summer working hour", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
@@ -150,13 +150,13 @@
 {"id": "t36", "query": "Search health care", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t37", "query": "Search for food", "family": "RAG", "source": "food", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t38", "query": "Travel award procedure", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t39", "query": "Most citation mechanical", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t40", "query": "Who has the most citation in mechanical", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t39", "query": "Most citation mechanical", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"metric": "citations", "n": 1, "org": "mechanical engineering"}}
+{"id": "t40", "query": "Who has the most citation in mechanical", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"metric": "citations", "n": 1, "org": "mechanical engineering"}}
 {"id": "t41", "query": "Prtras citation", "family": "KG", "skill": "metric_of_person", "slots": {"note": "clarify+kg; typo Prtras=Petras"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t42", "query": "Wrong answer", "family": "OTHER", "slots": {"note": "feedback"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t43", "query": "What was my last question", "family": "OTHER", "slots": {"note": "R15: no recall command implemented"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t44", "query": "The most h index cs", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t45", "query": "Who has the mist h index in cs", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "typo mist=most"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t44", "query": "The most h index cs", "family": "KG", "skill": "top_people_by_metric", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"metric": "h_index", "n": 1, "org": "cs"}}
+{"id": "t45", "query": "Who has the mist h index in cs", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "typo mist=most", "metric": "h_index", "org": "cs"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t46", "query": "The same question ece", "family": "KG", "skill": "top_people_by_metric", "slots": {"note": "clarify+kg follow-up ece"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t47", "query": "کی هستی", "family": "OTHER", "slots": {"note": "non-english"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t48", "query": "What is your llm engine", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
@@ -164,23 +164,23 @@
 {"id": "t50", "query": "Tell me the story of gsa gateway", "family": "OTHER", "slots": {"note": "meta-about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t51", "query": "what time is in njit", "family": "OTHER", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t52", "query": "njit for parking permits", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t53", "query": "Search for koutis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t53", "query": "Search for koutis", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "koutis"}}
 {"id": "t54", "query": "Parking", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t55", "query": "search courses for fall 2026", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t56", "query": "search for parking hours", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t57", "query": "search for it", "family": "CLARIFY", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
-{"id": "t58", "query": "search koutis", "family": "KG", "skill": "entity_card", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t58", "query": "search koutis", "family": "KG", "skill": "entity_card", "slots": {"expected": "live", "kb_candidate": true, "person": "koutis"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t59", "query": "how do I get a parking permit at NJIT", "family": "RAG", "source": "general", "slots": {"expected": "live", "kb_candidate": true}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t60", "query": "Heidi Young research", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t60", "query": "Heidi Young research", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "Heidi Young"}}
 {"id": "t61", "query": "you said research ares for him is multimedia database what else you can say?", "family": "KG", "skill": "research_of_person", "slots": {"note": "follow-up; dual KG+OTHER"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
-{"id": "t62", "query": "oya tukel research field?", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t62", "query": "oya tukel research field?", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "oya tukel"}}
 {"id": "t63", "query": "what is Kavosh?", "family": "OTHER", "slots": {"note": "about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t64", "query": "what is your version?", "family": "OTHER", "slots": {"note": "about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t65", "query": "سلام", "family": "OTHER", "slots": {"note": "non-english"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t66", "query": "Berenjian research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t66", "query": "Berenjian research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "Berenjian"}}
 {"id": "t67", "query": "Whi is smaneh berenjian", "family": "KG", "skill": "entity_card", "slots": {"note": "typo; dual KG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
-{"id": "t68", "query": "What is koutis citation?", "family": "KG", "skill": "metric_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t69", "query": "Megjia xu", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t68", "query": "What is koutis citation?", "family": "KG", "skill": "metric_of_person", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "koutis", "metric": "citations"}}
+{"id": "t69", "query": "Megjia xu", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "Megjia xu"}}
 {"id": "t70", "query": "What about network?", "family": "CLARIFY", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t71", "query": "What are the steps for travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t72", "query": "Is there any time line for travel award", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
@@ -195,40 +195,40 @@
 {"id": "t81", "query": "how to apply to get aard", "family": "RAG", "source": "general", "slots": {"note": "dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t82", "query": "travel award date", "family": "RAG", "source": "general", "slots": {"note": "dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t83", "query": "travel award", "family": "RAG", "source": "general", "slots": {"note": "bare; dual RAG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
-{"id": "t84", "query": "koutis all info", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t85", "query": "koutis info", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t86", "query": "koutis research area", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t87", "query": "What else you know about mohammad dindoost", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t84", "query": "koutis all info", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "koutis"}}
+{"id": "t85", "query": "koutis info", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "koutis"}}
+{"id": "t86", "query": "koutis research area", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "koutis"}}
+{"id": "t87", "query": "What else you know about mohammad dindoost", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "mohammad dindoost"}}
 {"id": "t88", "query": "Where is the capital of iran", "family": "OTHER", "slots": {"note": "out-of-scope"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t89", "query": "tell me more abuot Blake Haggerty", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t90", "query": "is John Pelesko provost?", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t91", "query": "who is the provost", "family": "KG", "skill": "people_by_role", "slots": {"note": "exact-role match required; 8 vice/assoc provosts also carry provost title"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t92", "query": "tell me more about Yan Xu", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t89", "query": "tell me more abuot Blake Haggerty", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "Blake Haggerty"}}
+{"id": "t90", "query": "is John Pelesko provost?", "family": "KG", "skill": "people_by_role", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"role": "provost", "person": "John Pelesko"}}
+{"id": "t91", "query": "who is the provost", "family": "KG", "skill": "people_by_role", "slots": {"note": "exact-role match required; 8 vice/assoc provosts also carry provost title", "role": "provost"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t92", "query": "tell me more about Yan Xu", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "Yan Xu"}}
 {"id": "t93", "query": "what is the bursar's office / how do I pay my bill", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t94", "query": "who is in the New Jersey School of Architecture", "family": "KG", "skill": "people_in_org", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t95", "query": "who’s in the civil engineering faculty", "family": "KG", "skill": "faculty_in_department", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t96", "query": "Name departments if newark college", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t97", "query": "Name njit colleges", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t94", "query": "who is in the New Jersey School of Architecture", "family": "KG", "skill": "people_in_org", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"org": "New Jersey School of Architecture"}}
+{"id": "t95", "query": "who’s in the civil engineering faculty", "family": "KG", "skill": "faculty_in_department", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"org": "civil engineering"}}
+{"id": "t96", "query": "Name departments if newark college", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"org": "newark college"}}
+{"id": "t97", "query": "Name njit colleges", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"org": "njit"}}
 {"id": "t98", "query": "Mmi organizers", "family": "RAG", "source": "general", "slots": {"note": "mmi organizers; he said RAG"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t99", "query": "What you know about mmi", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t100", "query": "Mmi mohammad dindoost", "family": "RAG", "source": "general", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
-{"id": "t101", "query": "Do we have mohammad in njit", "family": "KG", "skill": "entity_card", "slots": {"note": "person existence check"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t101", "query": "Do we have mohammad in njit", "family": "KG", "skill": "entity_card", "slots": {"note": "person existence check", "person": "mohammad"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t102", "query": "Yes", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t103", "query": "110", "family": "OTHER", "slots": {"note": "bare number"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t104", "query": "Judge mide", "family": "COMMAND", "slots": {"note": "typo->judge mode"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t105", "query": "guiling wang research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t106", "query": "more about professor giling wang", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t105", "query": "guiling wang research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "guiling wang"}}
+{"id": "t106", "query": "more about professor giling wang", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "giling wang"}}
 {"id": "t107", "query": "more about professor wang", "family": "KG", "skill": "entity_card", "slots": {"note": "which wang; dual CLARIFY+KG"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t108", "query": "more", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
-{"id": "t109", "query": "Guiling wang", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t109", "query": "Guiling wang", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "Guiling wang"}}
 {"id": "t110", "query": "Why you didnt list him", "family": "OTHER", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
 {"id": "t111", "query": "What about michael giorgio", "family": "KG", "skill": "entity_card", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
-{"id": "t112", "query": "List all the michael", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t113", "query": "Do we have any michael in njit", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t114", "query": "How is lasha in ywcc", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t115", "query": "Hai phan research area", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t116", "query": "What is hai phan research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad"}
-{"id": "t117", "query": "Who is hai phan", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad"}
+{"id": "t112", "query": "List all the michael", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "michael"}}
+{"id": "t113", "query": "Do we have any michael in njit", "family": "KG", "skill": "people_by_name", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "michael"}}
+{"id": "t114", "query": "How is lasha in ywcc", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "lasha", "org": "ywcc"}}
+{"id": "t115", "query": "Hai phan research area", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "Hai phan"}}
+{"id": "t116", "query": "What is hai phan research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "hai phan"}}
+{"id": "t117", "query": "Who is hai phan", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "hai phan"}}
 {"id": "t118", "query": "I20 renew", "family": "RAG", "source": "general", "slots": {"note": "immigration"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t119", "query": "Judge mode", "family": "COMMAND", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "q1", "query": "Talk about yourself and your abilities", "family": "OTHER", "provenance": "real", "split": "train", "annotator": "panel"}
