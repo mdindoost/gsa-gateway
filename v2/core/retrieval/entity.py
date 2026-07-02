@@ -384,6 +384,23 @@ def person_attrs(conn: sqlite3.Connection, entity_id: str) -> dict:
         return {}
 
 
+_CONTACT_FIELDS = ("email", "phone", "office")
+
+
+def contact_of_person(conn: sqlite3.Connection, entity_id: str) -> dict:
+    """One person's contact channels (email/phone/office) from the Person node attrs. Honest-partial:
+    each field is the value or None; ``present`` lists only the fields actually on file, so a caller
+    never implies a channel that isn't there. Never fabricated."""
+    attrs = person_attrs(conn, entity_id)
+    row = conn.execute(
+        "SELECT name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+        (entity_id,)).fetchone()
+    name = normalize_person_name(row[0]) if row else entity_id
+    vals = {f: (attrs.get(f) or None) for f in _CONTACT_FIELDS}
+    present = [f for f in _CONTACT_FIELDS if vals[f]]
+    return {"name": name, **vals, "present": present}
+
+
 def metric_of_person(conn: sqlite3.Connection, entity_id: str, field_key: str,
                      metric_key: str | None = None) -> dict:
     """{name, field_key, found, all, updated_at} for one person's numeric metrics, read straight
