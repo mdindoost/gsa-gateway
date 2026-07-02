@@ -22,6 +22,7 @@ from v2.core.people import profile_fields
 from v2.core.retrieval import entity, skills
 from v2.core.retrieval import router as srouter
 from v2.core.retrieval.router import Route
+from v2.core.retrieval.skills import ORG_TYPE_ENUM
 
 # Cap the candidate list shown in a fuzzy "did you mean…?" CLARIFY (render sanity).
 _MAX_DISAMBIG = 6
@@ -36,6 +37,7 @@ KG_SKILL_NAMES: tuple[str, ...] = (
     "officers_in_org", "top_people_by_metric", "people_by_research_area",
     "count_people_by_research_area", "areas_in_org", "area_counts",
     "faculty_areas_in_department", "people_by_area_tag", "org_departments",
+    "contact_of_person", "title_of_person", "orgs_by_type",
 )
 
 # Required natural slots per skill (org/area may be optional where the skill supports it).
@@ -57,6 +59,9 @@ REQUIRED_SLOTS: dict[str, tuple[str, ...]] = {
     "count_people_by_research_area": ("area",),
     "people_by_area_tag": ("area",),
     "top_people_by_metric": ("metric",),
+    "contact_of_person": ("person",),
+    "title_of_person": ("person",),
+    "orgs_by_type": ("org_type",),
 }
 
 _SCHOLAR_METRIC_KEYS = tuple(m.key for fk, m in profile_fields.metric_fields() if fk == "scholar")
@@ -101,6 +106,7 @@ def build_schema() -> dict:
                     "profile": {"type": "string", "enum": list(_LINK_FIELD_KEYS)},
                     "role": {"type": "string"},
                     "order": {"type": "string", "enum": ["asc", "desc"]},
+                    "org_type": {"type": "string", "enum": list(ORG_TYPE_ENUM)},
                     "n": {"type": "integer"},
                 },
             },
@@ -123,6 +129,9 @@ _SYSTEM = (
     "count_people_by_research_area / people_by_area_tag (need area, org optional); top_people_by_metric "
     "(rank people HIGHEST-first by a metric — 'most cited', 'top N by h-index'; metric required, org "
     "optional; set order=asc ONLY for a least/fewest/lowest ask, which is not supported)."
+    " contact_of_person (X's email/phone/office — needs person); title_of_person (X's title/position "
+    "— needs person); orgs_by_type (list/how-many CLUBS or COLLEGES — needs org_type in "
+    "{club,college}, org optional as a parent)."
 )
 
 # PINNED few-shot — drawn from TRAIN-split intuition; deliberately uses entities/paraphrases NOT in
@@ -133,11 +142,13 @@ _FEWSHOT = [
     ('can you tell me a bit about professor Koutis?',
      {"skill": "entity_card", "slots": {"person": "Koutis"}, "confidence": 0.95}),
     ('I am trying to reach someone named Koutis',
-     {"skill": "entity_card", "slots": {"person": "Koutis"}, "confidence": 0.8}),
+     {"skill": "contact_of_person", "slots": {"person": "Koutis"}, "confidence": 0.85}),
     ('how do I apply for a travel award',
      {"skill": "none", "slots": {}, "confidence": 0.9}),
     ('who leads the math department',
      {"skill": "people_by_role", "slots": {"role": "chair", "org": "math"}, "confidence": 0.85}),
+    ('what clubs are there at NJIT',
+     {"skill": "orgs_by_type", "slots": {"org_type": "club"}, "confidence": 0.9}),
 ]
 
 
@@ -174,7 +185,7 @@ def extract_slots(message: str, generate_json_fn) -> ExtractResult:
         conf = 0.0
     # keep only known slot keys, string/int coerced
     clean: dict = {}
-    for k in ("person", "org", "area", "metric", "profile", "role", "order"):
+    for k in ("person", "org", "area", "metric", "profile", "role", "order", "org_type"):
         v = slots.get(k)
         if isinstance(v, str) and v.strip():
             clean[k] = v.strip()
@@ -332,6 +343,25 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
         if skill == "entity_card" and not _identity_cued(message, st[2], mention):
             return None
         return Route(skill, {"entity_id": st[1], "name": st[2]})
+
+    # WS3 person-attribute skills — inherit WS2 resolution; ambiguous ⇒ person_disambig.
+    if skill in ("contact_of_person", "title_of_person"):
+        st = _resolve_person_slot(conn, slots["person"], message)
+        if st[0] == "ambiguous":
+            return Route("person_disambig", {"candidates": st[1]})
+        if st[0] != "ok":
+            return None
+        return Route(skill, {"entity_id": st[1], "name": st[2]})
+
+    # WS3 orgs_by_type — validate the type enum; optional parent via the shared org resolver.
+    if skill == "orgs_by_type":
+        org_type = slots["org_type"]
+        if org_type not in ORG_TYPE_ENUM:     # 'school'/anything off-enum ⇒ abstain (never mapped)
+            return None
+        parent_id, named_unresolved = resolve_org_slot()
+        if named_unresolved:
+            return None                       # a parent WAS named but didn't resolve ⇒ abstain
+        return Route("orgs_by_type", {"org_type": org_type, "parent_org_id": parent_id})
 
     if skill == "people_by_name":
         if entity.resolve_people(conn, slots["person"]):
