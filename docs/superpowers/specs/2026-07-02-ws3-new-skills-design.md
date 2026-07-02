@@ -81,9 +81,16 @@ New cue detectors, placed **before** the generic "who is X" → `entity_card` fa
   + a resolved named person → `Route("contact_of_person", {entity_id, name})`.
 - **B4** title cue (`title`, `position`, `what (is|'?s) .*'?s (title|position)`, `what does <name> do`)
   + a resolved named person → `Route("title_of_person", {entity_id, name})`.
-- **B3** type-enumeration cue (`clubs?`, `student org(anization)?s?`, `list .*(colleges?|departments?)`,
-  `how many (clubs?|colleges?|departments?)`, `what (clubs?|colleges?) are there`) → resolve `org_type`
-  (+ optional parent via WS2 `fuzzy_org`) → `Route("orgs_by_type", {org_type, parent_org_id?})`.
+- **B3** type-enumeration — **tightened per review (over-match blocker):** fire ONLY on an explicit
+  enumerate-verb *bound to a plural type noun* — `(list|name|show|how many|which|what) … (clubs|colleges)`
+  or `(clubs|colleges) … (are there)` / `student organizations`. **Drop bare `what`/`which`
+  co-occurrence** (else "which college is X in", "what college should I apply to" mis-route). Only
+  `club` and `college` fire here; **`department` stays entirely on the existing `_DEPT_ENUM`+`not
+  _FACULTY_CUE`+`org_id is not None` branch** (do NOT add an unscoped all-departments route — it
+  cannibalizes "which department is Koutis in"). Parent: pass `parent_org_id` ONLY when an org
+  resolves AND is a *plausible* parent (not the university root for a college query); otherwise
+  `None` (abstain from silent mis-scoping). `org_type` validated against the shared
+  `ORG_TYPE_ENUM = {"club","department","college"}` constant (used in skill + router + extractor).
 
 **Disambiguation contract (must hold in verification):**
 | Query | Skill |
@@ -97,7 +104,12 @@ New cue detectors, placed **before** the generic "who is X" → `entity_card` fa
 
 **Guards (inherit, do not weaken):**
 - Bare-pronoun / context-dependent ("what is his position", "who do I contact about this") stay
-  **hardneg/CLARIFY** via the existing `_FOLLOWUP_RX` — never mine a person.
+  **out of KG**. NOTE (review correction): `_FOLLOWUP_RX` matches only "what about/how about/who
+  else…" — it does NOT match these pronoun phrases. Today they stay out of KG only *incidentally*
+  (no surname resolves from "his"/"this"). WS3 makes this **explicit**: a bare pronoun subject
+  ("his"/"her"/"their"/"this") with no named person → `route()` returns None (RAG) and the extractor
+  abstains; add a pronoun guard in `_resolve_surname` + router-level hardneg tests, don't rely on the
+  data-dependent accident.
 - B1/B4 person resolution goes through WS2 `_resolve_person_slot` → ambiguous ⇒ `person_disambig`,
   fuzzy-typo ⇒ corroborate-or-clarify. Never a wrong person.
 - B3 multi-match parent or unknown `org_type` ⇒ abstain (⇒ RAG), consistent with WS2.
@@ -105,12 +117,21 @@ New cue detectors, placed **before** the generic "who is X" → `entity_card` fa
 ### 4b. Slot extractor (constrained-JSON fallback, fires when `route()`==None)
 - `KG_SKILL_NAMES` += `contact_of_person`, `orgs_by_type`, `title_of_person`.
 - `REQUIRED_SLOTS`: B1/B4 → `("person",)`; B3 → `("org_type",)`.
-- `build_schema`: add an `org_type` string property with `enum: [club, department, college]`; keep
-  optional `org` (parent).
-- `resolve_and_validate`: B1/B4 clone the `entity_card` person-resolve branch (WS2 fuzzy inherited;
-  ambiguous → `person_disambig`; no identity-cue gate needed — the contact/title cue IS the intent).
-  B3 = new branch: validate `org_type` ∈ enum; optional parent via `resolve_org_slot()` (True flag ⇒
-  abstain, never silently default to root); else `Route("orgs_by_type", {...})`.
+- `build_schema`: add an `org_type` string property with `enum: ORG_TYPE_ENUM`; keep optional `org`
+  (parent).
+- **BLOCKER (all 3 reviewers): `extract_slots` slot whitelist.** `extract_slots` copies only
+  `("person","org","area","metric","profile","role","order")` into `clean` — so a model-emitted
+  `org_type` is **silently stripped** and B3 abstains every time. **MUST add `"org_type"` to that
+  tuple**, and add an **end-to-end test through `extract_slots`** (stub `generate_json_fn`) — the
+  direct-`resolve_and_validate` unit tests do NOT catch this.
+- **`_SYSTEM` prompt + few-shots (MAJOR):** add one clause per new skill to `_SYSTEM`; add ≥1 B3
+  few-shot; and **re-point the existing few-shot** `'I am trying to reach someone named Koutis' →
+  entity_card` to `contact_of_person` (that row is literally the WS1 finding B1 fixes).
+- `resolve_and_validate`: B1/B4 = a **separate** branch (NOT folded into the `entity_card`/
+  `research_of_person` block) that clones the person-resolve (WS2 fuzzy; ambiguous → `person_disambig`)
+  but **skips the `_identity_cued` gate** — the contact/title cue IS the intent; add a test that a
+  contact query resolves without an identity cue. B3 = new branch: validate `org_type ∈ ORG_TYPE_ENUM`;
+  optional parent via `resolve_org_slot()` (named-but-unresolved ⇒ abstain, never default to root).
 
 ## 5. Render (Phase 3) — `structured_answer.py`
 `run()` data arms + `format_answer()` text arms for all three:
@@ -119,8 +140,15 @@ New cue detectors, placed **before** the generic "who is X" → `entity_card` fa
 - **B4**: crisp title line(s) — `{name} is {title} at {org}` (join multiples); empty → honest no-position line.
 - **B3**: `There are N <type>(s) at NJIT: {list}.` (parent-scoped variant names the parent).
 
-B1/B4/B3 are deterministic factual reads → add to `_DETERMINISTIC_SKILLS` so compose/LLM-reword is
-skipped (a contact/title/enumeration is never reworded). (Confirm against `is_deterministic` at build.)
+**Compose with greeting (owner decision, 2026-07-02).** B1/B4/B3 are **NOT** added to
+`_DETERMINISTIC_SKILLS`; they go through `compose_from_rows` like `entity_card` (and the sibling list
+skills `officers_in_org`/`people_in_org`), so they keep the friendly "Hi there!" opener
+([[feedback_keep_friendly_greeting]]). `format_answer` still produces the canonical facts string — it
+becomes the "Facts" handed to compose AND the offline fallback. Anti-fabrication rides on the SAME
+`compose_from_rows` clauses `entity_card` already uses (temp 0.0; MUST NOT add/drop/alter a fact) — the
+identical risk profile the owner already accepts for `entity_card`'s email/phone. (Reviewers flagged
+deterministic-skip as the stronger value-safety option; owner chose warmth + consistency with
+entity_card, accepting the compose clamp.)
 
 ## 6. Labeling (Phase 3) — `eval/router/labeled_routes.jsonl`
 **Note:** `route_exemplars.py` holds no hardcoded exemplars — it loads them from `labeled_routes.jsonl`
@@ -163,6 +191,32 @@ existing test/hardneg rows.
 - `eval/router/labeled_routes.jsonl` — new labeled rows (incl. hardneg pronoun cases).
 - `v2/tests/…` — new unit tests per skill + routing/disambiguation + anti-fabrication.
 - Auto gate report from `scripts/router_slot_bakeoff.py`.
+
+## 11. HARD-GATE review — findings folded (senior-eng + RAG + Codex, all GO-WITH-CHANGES)
+
+Coexist call: unanimous (§2.2). Full design+plan review verdict: **GO-WITH-CHANGES**, all folded above.
+- **[BLOCKER] `extract_slots` strips `org_type`** → B3 fallback dead. Folded §4b (add key + e2e test).
+- **[BLOCKER] B3 cue over-broad** (bare what/which + singular college) → cannibalizes RAG. Folded §4a
+  (enumerate-verb bound to plural noun; drop bare what/which).
+- **[BLOCKER] unscoped-department branch cannibalizes** "which department is X in". Folded §4a
+  (dropped; department stays on the existing guarded branch).
+- **[BLOCKER] B3 parent scoping too eager** → "list colleges at NJIT" scopes to root. Folded §4a
+  (parent only when plausible; else None).
+- **[MAJOR] B1 headline under-fires** — add `_CONTACT_CUE` to BOTH person-branch triggers.
+- **[MAJOR] extractor `_SYSTEM`/few-shots** — add clauses + B3 few-shot + re-point the Koutis row.
+- **[MAJOR] validate `org_type` in the skill** — shared `ORG_TYPE_ENUM` in skill+router+extractor.
+- **[MAJOR] bakeoff too weak** — gates only `family_accuracy`; add a per-skill non-regression check
+  for `entity_card`/`org_departments` (the skills B1/B4/B3 could cannibalize).
+- **[MAJOR] router pronoun hardneg tests** + explicit pronoun guard in `_resolve_surname` (§4a).
+- **[MAJOR] title category-fallback wording** — `[cat]` fallback ("faculty") is acceptable
+  role-evidence; render as a title-listing (`{name} — {title}, {org}; …`) so "is faculty at" reads fine.
+- **[MINOR] "office hours" regression** — narrow `_CONTACT_CUE` so `office` doesn't catch "office hours".
+- **[MINOR] render plural hack** → explicit `{type: (singular, plural)}` label map.
+- **[MINOR] school→abstain untested** — add hardneg tests/labels ("list the schools" → not orgs_by_type).
+- **[MINOR] fixture cleanups** (no-op `_set_attrs`, dead `if False` line).
+**Verified sound by senior-eng (no change needed):** delegation byte-identical; `resolve_org_slot` in
+scope at the B3 insertion; B1/B4 skip `_identity_cued`; "list faculty in CS department" stays put;
+"how many clubs"/"list student organizations" reach B3; `_person_skill` dispatch correct.
 
 ## 10. Goals checklist (shipped/deferred — per feedback_review_against_plan)
 - [ ] B1 contact_of_person built + honest-partial + routed + rendered + labeled + verified.
