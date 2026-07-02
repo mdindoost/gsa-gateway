@@ -90,6 +90,43 @@ def test_resolve_school_abstains(conn):
     assert resolve_and_validate(conn, "orgs_by_type", {"org_type": "school"}, "list schools") is None
 
 
+def test_ungrounded_person_abstains(conn):
+    # Granite hallucinating person="Koutis" for a pronoun query must NOT resolve
+    assert resolve_and_validate(conn, "contact_of_person", {"person": "Koutis"}, "email him") is None
+
+
+def test_grounded_person_still_resolves(conn):
+    r = resolve_and_validate(conn, "contact_of_person", {"person": "Koutis"}, "koutis email")
+    assert r.skill == "contact_of_person"
+
+
+def test_ungrounded_org_type_abstains(conn):
+    # 'schools' coerced to college must abstain (no college synonym in the query)
+    assert resolve_and_validate(conn, "orgs_by_type", {"org_type": "college"}, "list the schools") is None
+
+
+def test_grounded_org_type_resolves(conn):
+    r = resolve_and_validate(conn, "orgs_by_type", {"org_type": "college"}, "list the colleges")
+    assert r.skill == "orgs_by_type"
+
+
+def test_student_orgs_synonym_grounds_club(conn):
+    r = resolve_and_validate(conn, "orgs_by_type", {"org_type": "club"}, "list student organizations")
+    assert r.skill == "orgs_by_type" and r.args["org_type"] == "club"
+
+
+def test_fragment_with_garbage_token_abstains(conn):
+    # "Mmi mohammad dindoost": grounded name but a foreign 'mmi' residual ⇒ abstain, not person_disambig
+    r = resolve_and_validate(conn, "entity_card", {"person": "Mmi Mohammad Dindoost"},
+                             "mmi mohammad dindoost")
+    assert r is None
+
+
+def test_followup_rx_catches_same_question():
+    from v2.core.retrieval.slot_extractor import _FOLLOWUP_RX
+    assert _FOLLOWUP_RX.match("the same question ece")
+
+
 def test_extract_slots_keeps_org_type(conn):
     # END-TO-END through extract_slots (BLOCKER: org_type must survive the slot whitelist). A stub
     # generator returns the JSON Granite would emit; the org_type slot must reach resolve_and_validate.

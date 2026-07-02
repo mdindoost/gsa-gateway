@@ -208,7 +208,7 @@
 {"id": "t94", "query": "who is in the New Jersey School of Architecture", "family": "KG", "skill": "people_in_org", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"org": "New Jersey School of Architecture"}}
 {"id": "t95", "query": "who\u2019s in the civil engineering faculty", "family": "KG", "skill": "faculty_in_department", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"org": "civil engineering"}}
 {"id": "t96", "query": "Name departments if newark college", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"org": "newark college"}}
-{"id": "t97", "query": "Name njit colleges", "family": "KG", "skill": "org_departments", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"org": "njit"}}
+{"id": "t97", "query": "Name njit colleges", "family": "KG", "skill": "orgs_by_type", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"org_type": "college"}}
 {"id": "t98", "query": "Mmi organizers", "family": "RAG", "source": "general", "slots": {"note": "mmi organizers; he said RAG"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t99", "query": "What you know about mmi", "family": "RAG", "source": "general", "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t100", "query": "Mmi mohammad dindoost", "family": "RAG", "source": "general", "slots": {"note": "context-dependent follow-up/bare token"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}

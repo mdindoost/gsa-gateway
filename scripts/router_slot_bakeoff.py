@@ -35,7 +35,7 @@ from v2.core.retrieval.slot_extractor import extract_slots, resolve_and_validate
 REGRESSIONS = [
     ("which prof does ML in computing", "people_by_research_area"),
     ("can you tell me a bit about professor Koutis?", "entity_card"),
-    ("I'm trying to reach someone named Koutis", "entity_card"),
+    ("I'm trying to reach someone named Koutis", "contact_of_person"),
 ]
 
 

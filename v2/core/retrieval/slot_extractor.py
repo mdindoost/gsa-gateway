@@ -17,12 +17,49 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 
 from v2.core.people import profile_fields
 from v2.core.retrieval import entity, skills
 from v2.core.retrieval import router as srouter
 from v2.core.retrieval.router import Route
 from v2.core.retrieval.skills import ORG_TYPE_ENUM
+
+
+def _mention_grounded(mention: str, message: str) -> bool:
+    """True iff the extractor's SURFACE person mention actually appears in the query (fuzzy token
+    containment). Anti-hallucination: Granite sometimes invents a name from the few-shot ('Email him'
+    -> person='Koutis'). Fuzzy (not exact) so a typo the extractor auto-corrected ('kotis'->'Koutis')
+    still grounds. Checks the TYPED slot, never the resolved name, so WS2 fuzzy resolution composes."""
+    mtoks = srouter._qtokens(mention)
+    qtoks = srouter._qtokens(message)
+    if not mtoks:
+        return False
+    for mt in mtoks:
+        for qt in qtoks:
+            if mt == qt:
+                return True
+            # containment only for tokens long enough that a match is a real name fragment, not a
+            # short common word ('is'/'he') that happens to be a substring of a longer name token
+            # ('koutis') — that false positive let 'What is his position' hallucinate person=Koutis.
+            if len(mt) >= 3 and len(qt) >= 3 and (mt in qt or qt in mt):
+                return True
+            if SequenceMatcher(None, mt, qt).ratio() >= 0.8:
+                return True
+    return False
+
+
+_ORG_TYPE_SYNONYMS = {
+    "club": re.compile(r"\b(clubs?|student\s+(?:organizations?|orgs?|groups?)|rgos?)\b"),
+    "college": re.compile(r"\bcolleges?\b"),
+    "department": re.compile(r"\bdepartments?\b"),
+}
+
+def _org_type_grounded(org_type: str, message: str) -> bool:
+    """True iff a surface synonym of org_type appears in the query — blocks Granite coercing an
+    off-enum word to the nearest valid enum ('List the schools' -> org_type='college')."""
+    rx = _ORG_TYPE_SYNONYMS.get(org_type)
+    return bool(rx and rx.search(message.lower()))
 
 # Cap the candidate list shown in a fuzzy "did you mean…?" CLARIFY (render sanity).
 _MAX_DISAMBIG = 6
@@ -77,7 +114,8 @@ _DEFAULT_MIN_AREA_SUPPORT = 1
 # the hardneg merge gate. Anchored at the start so a mid-sentence "and" doesn't trip it.
 _FOLLOWUP_RX = re.compile(
     r"^\s*(?:what about|how about|who else|what else|and (?:for|what|who|how|about)|"
-    r"for (?:that|the other|this) one|the (?:former|latter))\b", re.I)
+    r"for (?:that|the other|this) one|the (?:former|latter)|"
+    r"(?:the\s+)?same\s+(?:question|thing|one))\b", re.I)
 
 
 @dataclass
@@ -312,6 +350,10 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
         if req not in slots:
             return None
 
+    # anti-hallucination: any person-slot skill must have its person actually named in the query
+    if "person" in REQUIRED_SLOTS.get(skill, ()) and not _mention_grounded(slots["person"], message):
+        return None
+
     q = message.strip().lower()
 
     def resolve_org_slot():
@@ -332,6 +374,9 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
     if skill in ("entity_card", "research_of_person"):
         st = _resolve_person_slot(conn, slots["person"], message)
         if st[0] == "ambiguous":
+            cand_name = st[1][0]["name"] if st[1] else ""
+            if not _identity_cued(message, cand_name):
+                return None                      # foreign residual ('mmi …') ⇒ fragment, abstain
             return Route("person_disambig", {"candidates": st[1]})
         if st[0] != "ok":
             return None
@@ -348,6 +393,9 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
     if skill in ("contact_of_person", "title_of_person"):
         st = _resolve_person_slot(conn, slots["person"], message)
         if st[0] == "ambiguous":
+            cand_name = st[1][0]["name"] if st[1] else ""
+            if not _identity_cued(message, cand_name):
+                return None                      # foreign residual ('mmi …') ⇒ fragment, abstain
             return Route("person_disambig", {"candidates": st[1]})
         if st[0] != "ok":
             return None
@@ -358,6 +406,8 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
         org_type = slots["org_type"]
         if org_type not in ORG_TYPE_ENUM:     # 'school'/anything off-enum ⇒ abstain (never mapped)
             return None
+        if not _org_type_grounded(org_type, message):
+            return None                          # off-enum coercion ('schools'->college) ⇒ abstain
         parent_id, named_unresolved = resolve_org_slot()
         if named_unresolved:
             return None                       # a parent WAS named but didn't resolve ⇒ abstain
