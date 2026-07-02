@@ -28,6 +28,9 @@ from v2.eval.router.dataset import load_dataset
 from v2.eval.router.encode import real_encoder
 from v2.eval.router.mask import MaskedEncoder, build_masker_from_db
 from v2.eval.router.metrics import score
+from v2.eval.router.slot_metrics import ROUTING_SLOT_KEYS, slot_score
+from v2.core.retrieval import router as srouter
+from v2.core.retrieval.slot_extractor import extract_slots, resolve_and_validate
 
 REGRESSIONS = [
     ("which prof does ML in computing", "people_by_research_area"),
@@ -90,12 +93,45 @@ def main():
     gate_c = len(new_misfires) == 0
     print(f"  new KG mis-fires: {len(new_misfires)}")
 
+    # (d) DEFERRED slot-F1 gate — active once the 39 KG test rows carry gold routing slots.
+    print("\n=== SLOT-F1 (extractor-path KG test rows) ===")
+    def _routing(slots):
+        return {k: v for k, v in (slots or {}).items() if k in ROUTING_SLOT_KEYS and str(v).strip()}
+    gold_rows = [ex for ex in test if ex.family == "KG" and _routing(ex.slots)]
+    if not gold_rows:
+        print("  SKIPPED — no gold routing slots yet. Fill eval/router/slot_gold_worksheet.jsonl and")
+        print("  merge into labeled_routes.jsonl to activate this gate.")
+        gate_d = None
+    else:
+        before_items, after_items = [], []
+        for ex in gold_rows:
+            if srouter.route(conn, ex.query) is not None:
+                continue                                   # regex-path (deterministic) — not the extractor's job
+            ext = extract_slots(ex.query, gen)
+            pred = {}
+            if ext.skill != "none":
+                r = resolve_and_validate(conn, ext.skill, ext.slots, ex.query)
+                if r is not None and r.skill == ex.skill:
+                    pred = ext.slots
+            before_items.append((ex.skill, _routing(ex.slots), {}))       # BEFORE = RAG, no slots
+            after_items.append((ex.skill, _routing(ex.slots), pred))
+        if not after_items:
+            print("  (no extractor-path rows among gold-slot rows)")
+            gate_d = None
+        else:
+            b = slot_score(before_items, conn); a = slot_score(after_items, conn)
+            print(f"  rows={a['n_rows']}  BEFORE slot_f1={b['slot_f1']}  AFTER slot_f1={a['slot_f1']} "
+                  f"(P={a['slot_precision']} R={a['slot_recall']} exact={a['slot_exact_match']})")
+            gate_d = a["slot_f1"] > b["slot_f1"]
+
     dt = time.time() - t0
     print(f"\n=== GATES ===  latency(all rows) {dt:.1f}s over {len(test)+len(hardneg)} rows")
     print(f"  (a) family non-regression : {'PASS' if gate_a else 'FAIL'}")
     print(f"  (b) regression paraphrases: {'PASS' if gate_b else 'FAIL'}")
     print(f"  (c) hardneg no new misfire: {'PASS' if gate_c else 'FAIL'}")
-    print("MERGE GATE:", "PASS" if (gate_a and gate_b and gate_c) else "FAIL")
+    print(f"  (d) slot-F1 improves      : {'DEFERRED' if gate_d is None else ('PASS' if gate_d else 'FAIL')}")
+    core = gate_a and gate_b and gate_c
+    print("MERGE GATE:", "PASS" if (core and gate_d is not False) else "FAIL")
 
 
 if __name__ == "__main__":
