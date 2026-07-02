@@ -14,6 +14,7 @@ what is real.
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 
@@ -21,6 +22,9 @@ from v2.core.people import profile_fields
 from v2.core.retrieval import entity, skills
 from v2.core.retrieval import router as srouter
 from v2.core.retrieval.router import Route
+
+# Cap the candidate list shown in a fuzzy "did you mean…?" CLARIFY (render sanity).
+_MAX_DISAMBIG = 6
 
 # ── Shared skill registry (single source of truth; imported by v2/eval/router/dataset) ──────────
 # The skills the EXTRACTOR may emit. `person_disambig` is an OUTCOME (never extractor-emitted) and is
@@ -196,30 +200,86 @@ _IDENTITY_FILLER = {
 }
 
 
-def _identity_cued(message: str, name: str) -> bool:
+def _identity_cued(message: str, name: str, mention: str = "") -> bool:
     """True iff `message` is a genuine identity ask for this person: an explicit person-intent/attr
     cue, OR the query minus filler minus the person's own name tokens is empty (i.e. essentially just
     the name). A leftover foreign content token ('mmi mohammad dindoost') → False. This is looser than
     route()'s cue list ON PURPOSE — catching paraphrases route() misses is the point — while still
-    refusing to card-answer a fragment that merely contains a name."""
+    refusing to card-answer a fragment that merely contains a name.
+
+    ``mention`` is the (possibly typo'd) surface string the person was resolved FROM. On a fuzzy
+    resolve the resolved `name` ('Ioannis Koutis') differs from what the user typed ('kotis'), so
+    without this the typo token counts as a disqualifying residual and a bare "who is kotis" wrongly
+    abstains (WS2 review B2). Passing the mention consumes those tokens too."""
     q = message.strip().lower().rstrip("?").strip()
     if srouter._PERSON_INTENT.search(q) or srouter._PERSON_ATTR.search(q):
         return True
     name_toks = set(srouter._qtokens(name))
+    if mention:                                          # fuzzy-resolved: the TYPO'd mention tokens
+        name_toks |= set(srouter._qtokens(mention))      # ARE the person reference — consume them too
     residual = [t for t in srouter._qtokens(q) if t not in _IDENTITY_FILLER and t not in name_toks]
     return not residual
 
 
-def _resolve_person_slot(conn, person: str):
-    """('ok', entity_id, name) | ('ambiguous', candidates) | ('none',)."""
+def _person_in_org_subtree(conn, person_key: str, org_id: int) -> bool:
+    """True iff the person holds an active role anywhere in ``org_id``'s org subtree. The KG-grounded
+    corroboration signal (WS2): a fuzzy name candidate is only trusted when the query ALSO names an
+    org the candidate really belongs to."""
+    subtree = skills.org_descendants(conn, org_id)          # organizations.id set (org + descendants)
+    prow = conn.execute("SELECT id FROM nodes WHERE type='Person' AND key=?", (person_key,)).fetchone()
+    if not prow:
+        return False
+    for (dst,) in conn.execute(
+            "SELECT dst_id FROM edges WHERE src_id=? AND type='has_role' AND is_active=1", (prow[0],)):
+        row = conn.execute("SELECT attrs FROM nodes WHERE id=? AND type='Org'", (dst,)).fetchone()
+        if not row:
+            continue
+        try:
+            dst_oid = (json.loads(row[0]) if row[0] else {}).get("org_id")
+        except (TypeError, ValueError):
+            dst_oid = None
+        if dst_oid in subtree:
+            return True
+    return False
+
+
+def _structural_pick(conn, candidates: list[dict], message: str) -> dict | None:
+    """WS2 structural corroboration: if the QUERY names an org that exactly ONE fuzzy candidate belongs
+    to, that candidate is KG-grounded → safe to auto-resolve. Returns that candidate, else None (⇒ the
+    caller CLARIFYs). This is the ONLY way a fuzzy name auto-resolves — never string similarity alone,
+    because a 1-edit typo of an absent person is score-indistinguishable from a typo of a present one
+    (WS2 review: 'chon'→Chong Jin @89 looks identical to 'kotis'→Koutis @91)."""
+    oid, _phrase = srouter._find_org(conn, message.strip().lower())
+    if oid is None:
+        return None
+    matches = [c for c in candidates if _person_in_org_subtree(conn, c["entity_id"], oid)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _resolve_person_slot(conn, person: str, message: str = ""):
+    """('ok', entity_id, name, via) | ('ambiguous', candidates) | ('none',). ``via`` ∈ {'exact','fuzzy'}.
+
+    Tiers: exact (resolve_people) → surname (single token) → FUZZY fallback (WS2). Fuzzy NEVER
+    auto-resolves on string similarity alone — it either corroborates structurally (query names a
+    matching org ⇒ 'ok', via='fuzzy') or returns 'ambiguous' (⇒ 'did you mean…?' CLARIFY). Clean input
+    resolves at the exact tier and never reaches fuzzy, so correctness on clean names is unchanged."""
     hits = entity.resolve_people(conn, person)
     if not hits and len(person.split()) == 1:
         hits = entity.persons_by_lastname(conn, person)
     if len(hits) == 1:
-        return ("ok", hits[0]["entity_id"], hits[0]["name"])
+        return ("ok", hits[0]["entity_id"], hits[0]["name"], "exact")
     if len(hits) >= 2:
         return ("ambiguous", hits)
-    return ("none",)
+    # exact/surname missed → fuzzy CANDIDATE generation (never a bare resolve)
+    fz = entity.fuzzy_people(conn, person)
+    if not fz:
+        return ("none",)
+    top = fz[0]["score"]
+    close = [c for c in fz if top - c["score"] <= entity._FUZZY_PERSON_MARGIN]
+    picked = _structural_pick(conn, close, message)
+    if picked is not None:                               # KG-grounded → safe auto-resolve
+        return ("ok", picked["entity_id"], picked["name"], "fuzzy")
+    return ("ambiguous", close[:_MAX_DISAMBIG])          # uncorroborated → CLARIFY, never guess
 
 
 def _min_area_support(conn) -> int:
@@ -243,21 +303,33 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
 
     q = message.strip().lower()
 
-    def org_id_from_slot():
-        oid, _phrase = srouter._find_org(conn, slots["org"].lower()) if "org" in slots else (None, None)
-        return oid
+    def resolve_org_slot():
+        """(org_id | None, named_but_unresolved). Exact `_find_org` → fuzzy head-word. A True flag
+        means an org WAS named but didn't resolve unambiguously (fuzzy multi-match or miss) → the
+        caller must ABSTAIN even for org-OPTIONAL skills, never silently default to the root."""
+        if "org" not in slots:
+            return (None, False)
+        oid, _phrase = srouter._find_org(conn, slots["org"].strip().lower())
+        if oid is not None:
+            return (oid, False)
+        fz = srouter.fuzzy_org(conn, slots["org"])
+        if len(fz) == 1:                             # single distinct org → KG-grounded resolve
+            return (fz[0][0], False)
+        return (None, True)                          # 0 or ≥2 distinct → named-but-unresolved
 
     # person-centric
     if skill in ("entity_card", "research_of_person"):
-        st = _resolve_person_slot(conn, slots["person"])
+        st = _resolve_person_slot(conn, slots["person"], message)
         if st[0] == "ambiguous":
             return Route("person_disambig", {"candidates": st[1]})
         if st[0] != "ok":
             return None
         # entity_card is the bare-identity catch-all → guard against firing on a fragment that only
         # INCIDENTALLY contains a name ("Mmi mohammad dindoost"): require an identity cue OR that the
-        # query is essentially just the name — the exact condition route() uses (router.py:545).
-        if skill == "entity_card" and not _identity_cued(message, st[2]):
+        # query is essentially just the name — the exact condition route() uses (router.py:545). On a
+        # fuzzy resolve, pass the typo'd mention so it isn't counted as a disqualifying residual.
+        mention = slots["person"] if st[3] == "fuzzy" else ""
+        if skill == "entity_card" and not _identity_cued(message, st[2], mention):
             return None
         return Route(skill, {"entity_id": st[1], "name": st[2]})
 
@@ -272,7 +344,7 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
             return None
         if slots.get("order") == "asc":            # least/fewest — unsupported (asc = lowest-first)
             return Route("metric_descending_unsupported", {"field_key": "scholar", "metric_key": mk})
-        st = _resolve_person_slot(conn, slots["person"])
+        st = _resolve_person_slot(conn, slots["person"], message)
         if st[0] == "ok":
             return Route("metric_of_person", {"entity_id": st[1], "name": st[2],
                                               "field_key": "scholar", "metric_key": mk})
@@ -284,7 +356,7 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
         fk = slots["profile"]
         if fk not in _LINK_FIELD_KEYS:
             return None
-        st = _resolve_person_slot(conn, slots["person"])
+        st = _resolve_person_slot(conn, slots["person"], message)
         if st[0] == "ok":
             return Route("link_of_person", {"entity_id": st[1], "name": st[2], "field_key": fk})
         if st[0] == "ambiguous":
@@ -296,7 +368,9 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
         role = srouter._ROLE_SYNONYM.get(slots["role"].lower(), slots["role"].lower())
         if role not in srouter._ROLE_VOCAB:
             return None
-        target_org = org_id_from_slot()
+        target_org, org_unresolved = resolve_org_slot()
+        if org_unresolved:                           # org named but ambiguous/unresolved → abstain
+            return None
         if target_org is not None:
             role_level = srouter.ROLE_SCOPE_LEVEL.get(role, 0)
             if role_level > 0:
@@ -315,7 +389,9 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
             return None
         if slots.get("order") == "asc":            # least/fewest — unsupported (asc = lowest-first)
             return Route("metric_descending_unsupported", {"field_key": "scholar", "metric_key": mk})
-        oid = org_id_from_slot()
+        oid, org_unresolved = resolve_org_slot()
+        if org_unresolved:                           # org named but ambiguous → abstain (not root)
+            return None
         args = {"field_key": "scholar", "metric_key": mk, "n": srouter._parse_topn(q)}
         if oid is not None:
             args["org_id"] = oid
@@ -330,7 +406,9 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
     # area skills (org optional; bare-area needs KG support)
     if skill in ("people_by_research_area", "count_people_by_research_area", "people_by_area_tag"):
         area = slots["area"]
-        oid = org_id_from_slot()
+        oid, org_unresolved = resolve_org_slot()
+        if org_unresolved:                       # org named but ambiguous → abstain (not bare-area)
+            return None
         if oid is None:                          # bare area — require KG existence
             if skills.count_people_by_research_area(conn, area, None) < _min_area_support(conn):
                 return None
@@ -339,8 +417,8 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
     # org-only skills (with route()'s negative guards replicated)
     if skill in ("faculty_in_department", "people_in_org", "officers_in_org", "areas_in_org",
                  "area_counts", "faculty_areas_in_department", "org_departments"):
-        oid = org_id_from_slot()
-        if oid is None:
+        oid, _org_unresolved = resolve_org_slot()
+        if oid is None:                          # unresolved/ambiguous/miss → abstain
             return None
         if skill == "org_departments" and not srouter._has_child_departments(conn, oid):
             return None

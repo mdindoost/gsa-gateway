@@ -178,7 +178,7 @@
 {"id": "t64", "query": "what is your version?", "family": "OTHER", "slots": {"note": "about-bot"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t65", "query": "\u0633\u0644\u0627\u0645", "family": "OTHER", "slots": {"note": "non-english"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t66", "query": "Berenjian research field", "family": "KG", "skill": "research_of_person", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "Berenjian"}}
-{"id": "t67", "query": "Whi is smaneh berenjian", "family": "KG", "skill": "entity_card", "slots": {"note": "typo; dual KG+CLARIFY"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
+{"id": "t67", "query": "Whi is smaneh berenjian", "family": "KG", "skill": "person_disambig", "slots": {"note": "typo of real KG faculty Samaneh Berenjian (profile/sb936); WS2 fuzzy CLARIFY 'did you mean' — re-split hardneg->test 2026-07-02, gold family was already KG"}, "provenance": "real", "split": "test", "annotator": "mohammad"}
 {"id": "t68", "query": "What is koutis citation?", "family": "KG", "skill": "metric_of_person", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "koutis", "metric": "citations"}}
 {"id": "t69", "query": "Megjia xu", "family": "KG", "skill": "entity_card", "provenance": "real", "split": "test", "annotator": "mohammad", "slots": {"person": "Megjia xu"}}
 {"id": "t70", "query": "What about network?", "family": "CLARIFY", "slots": {"note": "R13 follow-up: needs prior turn"}, "provenance": "real", "split": "hardneg", "annotator": "mohammad"}
