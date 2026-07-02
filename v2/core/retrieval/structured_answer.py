@@ -351,6 +351,8 @@ def format_answer(result: dict) -> str:
         cands = result["candidates"]
         listed = "; ".join(
             c["name"] + (f" ({c['org']})" if c.get("org") else "") for c in cands)
+        if len(cands) == 1:                        # fuzzy "did you mean…?" (WS2) — no exact match
+            return (f"I couldn't find an exact match for that name — did you mean {listed}?")
         return (f"There are {len(cands)} people that could match — which one did you mean? "
                 f"{listed}.")
 

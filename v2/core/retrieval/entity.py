@@ -29,6 +29,8 @@ import json
 import re
 import sqlite3
 
+from rapidfuzz import fuzz
+
 from v2.core.graph.project import area_key, canonical_area
 
 from v2.core.people import profile_fields
@@ -36,6 +38,16 @@ from v2.core.people import profile_fields
 # Lower rank = preferred for the "primary" role shown in disambiguation.
 _ROLE_RANK = {"faculty": 0, "admin": 1, "officer": 2, "joint": 3,
               "staff": 4, "advisor": 5, "emeritus": 6}
+
+# ── WS2 fuzzy person resolution (FALLBACK ONLY) ──────────────────────────────────────────────────
+# Cutoffs are conservative: a "did you mean…?" (CLARIFY) or ABSTAIN always beats a confident wrong
+# match (WS2 non-negotiable). WRatio on names typically lands a real typo ("kotis"→"Ioannis Koutis")
+# in the high 80s while an unrelated name stays well below.
+_FUZZY_PERSON_CUTOFF = 86.0     # token-aware score floor (data-calibrated: 86 gives 0 near-miss
+                                # single-resolves — 'wong'/'tann' leak at ≤85, gone at 86 — while
+                                # every genuine typo still recovers; see WS2 calibration sweep).
+_FUZZY_PERSON_MARGIN = 6.0      # top-N within this many points of the top → AMBIGUOUS (→ structural
+                                # tie-break, else CLARIFY with ALL close candidates)
 
 # Title types whose text we fold into an entity card (publication/webpage excluded).
 _CARD_DOC_TYPES = ("about", "research_statement", "education", "teaching", "service")
@@ -130,6 +142,114 @@ def persons_by_lastname(conn: sqlite3.Connection, token: str) -> list[dict]:
             out.append({"entity_id": key, "name": normalize_person_name(raw),
                         "title": title, "org": org})
     return sorted(out, key=lambda d: d["name"])
+
+
+def _symspell_correct(conn: sqlite3.Connection, mention: str) -> str | None:
+    """WS2 optional symspellpy pass: correct each mention token against a dictionary built from the
+    KG's OWN name vocabulary (person first/last tokens), so a heavier typo ('koutas'→'koutis') snaps
+    to a real name term before RapidFuzz. Returns a corrected mention, or None if nothing changed (so
+    the caller only retries when correction actually did something). Cheap: runs ONLY on the fuzzy
+    fallback path (exact/surname already missed), edit distance 1 only.
+
+    PRECISION NOTE: the real risk is NOT correcting a name into a common word — it's correcting a real
+    but ABSENT name into a DIFFERENT real name ('chan'→'chen'), a confident wrong-person answer. That
+    is guarded by (a) ambiguity-awareness below — a tie among KG neighbors leaves the token uncorrected
+    — and (b) the caller never auto-resolving a fuzzy hit without structural corroboration."""
+    try:
+        from symspellpy import SymSpell, Verbosity
+    except Exception:
+        return None
+    toks = _name_tokens(mention)
+    if not toks:
+        return None
+    # Edit distance 1 ONLY: a genuine typo ('koutas'/'kotis' → 'koutis') is one edit; distance-2
+    # would let nonsense snap to a real name ('xhat' → 'zhao'). High precision beats recovering the
+    # rare 2-edit typo — the caller ABSTAINs on a real miss.
+    sym = SymSpell(max_dictionary_edit_distance=1, prefix_length=7)
+    freq: dict[str, int] = {}
+    for (raw,) in conn.execute(
+            "SELECT name FROM nodes WHERE type='Person' AND is_active=1"):
+        for t in _name_tokens(normalize_person_name(raw)):
+            freq[t] = freq.get(t, 0) + 1
+    if not freq:
+        return None
+    for term, count in freq.items():
+        sym.create_dictionary_entry(term, count)
+    changed = False
+    fixed: list[str] = []
+    for t in toks:
+        if t in freq:                       # already a known term — never "correct" a real name token
+            fixed.append(t)
+            continue
+        # AMBIGUITY-AWARE (WS2 review B1): correct ONLY when a SINGLE KG token sits at the minimum
+        # edit distance. A typo of a real-but-absent name usually has ≥2 near KG neighbors ('wong' →
+        # {'wang','won'}) — correcting to the frequency-top one would silently answer about the WRONG
+        # person. Verbosity.CLOSEST returns every term at the closest distance; a tie ⇒ leave the token
+        # uncorrected ⇒ the caller ABSTAINs (never a confident wrong-person resolve).
+        sugg = sym.lookup(t, Verbosity.CLOSEST, max_edit_distance=1, transfer_casing=False)
+        if sugg:
+            best = sugg[0].distance
+            tied = [s for s in sugg if s.distance == best and s.term != t]
+            if len(tied) == 1:
+                fixed.append(tied[0].term)
+                changed = True
+                continue
+        fixed.append(t)
+    return " ".join(fixed) if changed else None
+
+
+def fuzzy_people(conn: sqlite3.Connection, mention: str,
+                 cutoff: float = _FUZZY_PERSON_CUTOFF) -> list[dict]:
+    """FALLBACK-ONLY fuzzy candidate generation for a typo'd/partial person mention. Call ONLY when
+    the exact/surname paths (resolve_people/persons_by_lastname) return [] — clean input never reaches
+    here, so correctness on clean names is unchanged.
+
+    Token-aware RapidFuzz scoring (full-string ``ratio`` + per-name-token ``ratio`` + multi-token
+    ``token_set_ratio``; WRatio/partial_ratio are deliberately NOT used — their substring optimization
+    hands short nonsense a spurious 100) over EVERY active Person canonical name; keeps candidates >=
+    cutoff, sorted by score desc. Each hit adds a numeric ``score`` to the standard
+    {entity_id,name,title,org} shape. If nothing clears the bar, an edit-distance-1 symspellpy
+    name-vocab correction is applied to the mention and the scan retried once (heavier typos). NEVER
+    resolves on its own — the CALLER (WS2 gate) decides ok/ambiguous and only auto-resolves with
+    structural corroboration, so a fuzzy match is only ever a CANDIDATE until validated against a
+    real node."""
+    m = (mention or "").strip()
+    if len(m) < 3:                          # too short to fuzzy safely → let the caller ABSTAIN
+        return []
+
+    def _best_score(query: str, name_l: str) -> float:
+        # Token-aware (case-folded): a bare surname typo ('kotis') must score against the LAST/first
+        # name TOKEN ('koutis'), not only the full 'first last' string. We deliberately AVOID WRatio /
+        # partial_ratio — their substring optimization hands short nonsense a spurious 100 ('xhat'→
+        # 'Zhao'). Full-string ratio + per-token ratio separates a real typo from decoys cleanly, and
+        # token_set (multi-token only) recovers word-order/extra-word paraphrases.
+        s = fuzz.ratio(query, name_l)
+        for tok in name_l.split():
+            if len(tok) > 1:
+                s = max(s, fuzz.ratio(query, tok))
+        if " " in query:
+            s = max(s, fuzz.token_set_ratio(query, name_l))
+        return s
+
+    def _scan(query: str) -> list[dict]:
+        query = query.lower()
+        hits: list[dict] = []
+        for nid, key, raw in conn.execute(
+                "SELECT id, key, name FROM nodes WHERE type='Person' AND is_active=1"):
+            name = normalize_person_name(raw)
+            score = _best_score(query, name.lower())
+            if score >= cutoff:
+                title, org = _primary_role(conn, nid)
+                hits.append({"entity_id": key, "name": name, "title": title,
+                             "org": org, "score": float(score)})
+        return sorted(hits, key=lambda d: -d["score"])
+
+    hits = _scan(m)
+    if not hits:
+        corrected = _symspell_correct(conn, m)
+        if corrected and corrected != m.lower():
+            hits = _scan(corrected)
+    return hits
 
 
 # A title segment whose LEAD role is support staff — so a trailing role in their title is a

@@ -18,6 +18,8 @@ import re
 import sqlite3
 from dataclasses import dataclass
 
+from rapidfuzz import fuzz
+
 from v2.core.people import profile_fields
 from v2.core.retrieval import entity, skills
 
@@ -285,6 +287,40 @@ def _find_org(conn: sqlite3.Connection, text: str) -> tuple[int | None, str | No
             if best is None or len(phrase) > len(best[1]):
                 best = (oid, phrase)
     return best if best else (None, None)
+
+
+# Generic org words shared by many units — must NOT drive a fuzzy match on their own.
+_ORG_STOPWORDS = frozenset({
+    "college", "school", "department", "dept", "office", "center", "centre", "institute",
+    "program", "programs", "of", "the", "and", "njit", "university", "division", "new", "jersey",
+    "graduate", "society", "club"})
+_FUZZY_ORG_CUTOFF = 90.0        # token_set_ratio floor for a candidate org phrase
+_FUZZY_ORG_TOKFLOOR = 88.0      # a query CONTENT token must fuzzily match a candidate token this well
+
+
+def fuzzy_org(conn: sqlite3.Connection, phrase: str) -> list[tuple[int, float]]:
+    """WS2 org head-word / partial resolution: DISTINCT org ids whose name/slug/alias fuzzily matches
+    a content head-word ('mechanical' → 'Mechanical & Industrial Engineering'). FALLBACK for when the
+    exact whole-word `_find_org` misses. Returns [(org_id, score)] desc, collapsed to distinct orgs.
+
+    Precision guards (WS2 review S3): generic org words (college/school/department…) are dropped so
+    they can't match on their own, and a content-token floor stops an incidental `token_set_ratio`
+    subset hit from resolving. A broad word ('engineering'/'science') matches MANY orgs → the caller
+    sees ≥2 and ABSTAINs (never silently picks one)."""
+    q = (phrase or "").strip().lower()
+    qtoks = [t for t in re.findall(r"[a-z]+", q) if len(t) > 2 and t not in _ORG_STOPWORDS]
+    if not qtoks:
+        return []
+    scored: dict[int, float] = {}
+    for cand_phrase, oid in _org_candidates(conn):
+        s = fuzz.token_set_ratio(q, cand_phrase)
+        if s < _FUZZY_ORG_CUTOFF:
+            continue
+        ctoks = [t for t in cand_phrase.split() if len(t) > 2]
+        tokmatch = max((fuzz.ratio(qt, ct) for qt in qtoks for ct in ctoks), default=0.0)
+        if tokmatch >= _FUZZY_ORG_TOKFLOOR:
+            scored[oid] = max(scored.get(oid, 0.0), float(s))
+    return sorted(scored.items(), key=lambda kv: -kv[1])
 
 
 def _extract_area(q: str, org_phrase: str | None) -> str | None:
