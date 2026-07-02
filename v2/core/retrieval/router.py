@@ -172,6 +172,21 @@ _PERSON_ATTR = re.compile(r"\b(e-?mail|office|phone|number|title|position|bio)\b
 # Looser "more about this person" cues that FOLLOW a bare surname ("koutis info",
 # "koutis all info", "koutis details") — distinct from _PERSON_INTENT's "info ON <name>".
 _INFO_CUE = re.compile(r"\b(info|information|details|profile|bio|background|everything)\b")
+# WS3 person-attribute sub-cues: contact vs title vs the generic card at the person return site.
+# 'office' excludes "office hours" (a schedule ask, not a contact field) — review MINOR.
+_CONTACT_CUE = re.compile(r"\b(e-?mail|phone|contact|reach)\b|\bnumbers?\b|\boffice\b(?!\s+hours)")
+_TITLE_CUE = re.compile(r"\b(title|position)\b|\bwhat\s+does\b.+\bdo\b")
+# WS3 org-type enumeration (B3): a PLURAL type noun is the discriminator — 'clubs'/'colleges'/'student
+# organizations' fire; SINGULAR 'college'/'club' ("which college is X in", "what college should I apply
+# to", "what is the ACM club") do NOT (review BLOCKER: over-match). Departments are NOT enumerated here
+# (they stay on the existing _DEPT_ENUM/org_departments branch). Pronoun subjects can't be surname-mined.
+_B3_TYPE = re.compile(r"\b(clubs|colleges|student\s+(?:organizations|orgs|groups)|rgos)\b")
+_B3_ENUM_VERB = re.compile(r"\b(list|name|show|how\s+many|what|which|any|are\s+there|do\s+we\s+have)\b")
+# Personal pronouns (never a surname) always block; this/that only in the flagged shapes
+# ("about this", "this one") so "is that Koutis?" isn't over-blocked.
+_PRONOUN_SUBJ = re.compile(
+    r"\b(his|her|hers|their|theirs|he|she|they|him|them)\b"
+    r"|\b(?:about|contact|reach)\s+(?:this|that)\b|\b(?:this|that)\s+one\b")
 # Scholar PAPERS: a paper noun (so "most cited PAPER" routes to papers, not the citations metric or a
 # professor ranking). Selectors pick the captured slice; default = most-cited.
 _PAPER_NOUN = re.compile(r"\b(papers?|publications?|articles?)\b")
@@ -353,6 +368,8 @@ def _resolve_surname(conn: sqlite3.Connection, q: str) -> dict | Route | None:
     and an incidental word like "see" resolves to a real person (Adam See) → confident wrong-person
     answer. No stoplist — that would break real faculty named Young/White/Brown; length is the fix."""
     stripped = _NAME_PREFIX.sub("", q)
+    if _PRONOUN_SUBJ.search(stripped):   # "what is his position" / "who do I contact about this" → no KG
+        return None
     if len(_qtokens(stripped)) > 4:
         return None
     for tok in _qtokens(stripped):
@@ -372,6 +389,16 @@ def _resolve_person(conn: sqlite3.Connection, q: str, named: list[dict]) -> dict
     if len(named) > 1:
         return Route("person_disambig", {"candidates": named})
     return _resolve_surname(conn, q)
+
+
+def _person_skill(q: str) -> str:
+    """Which person-attribute skill a resolved-person query wants: contact vs title vs the full card.
+    Contact wins over title if both cue words appear (rare)."""
+    if _CONTACT_CUE.search(q):
+        return "contact_of_person"
+    if _TITLE_CUE.search(q):
+        return "title_of_person"
+    return "entity_card"
 
 
 def route(conn: sqlite3.Connection, question: str) -> Route | None:
@@ -540,6 +567,15 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
                             target_org = climbed
                 return Route("people_by_role", {"role_head": role, "org_id": target_org})
 
+    # ── org enumeration by TYPE (WS3 B3): clubs / colleges only. Fires ONLY on an enumerate verb + a
+    # PLURAL type noun; SINGULAR "which college is X in" falls through to RAG. Parent scopes ONLY to a
+    # NON-root org (blocker: "list colleges at NJIT" must NOT scope to the university root → None).
+    tm = _B3_TYPE.search(q)
+    if tm and _B3_ENUM_VERB.search(q):
+        org_type = "college" if tm.group(1).startswith("college") else "club"
+        parent = org_id if (org_id is not None and not _is_university_root(conn, org_id)) else None
+        return Route("orgs_by_type", {"org_type": org_type, "parent_org_id": parent})
+
     # Faculty roster is MORE SPECIFIC than the generic people list, so it wins first — e.g.
     # "academic staff in biology" is a faculty ask even though it contains 'staff' (which the
     # generic _PEOPLE cue also matches).
@@ -579,10 +615,12 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     # bare name). LAST + most-guarded so it never hijacks a "who works on X" ask.
     qn = _NAME_PREFIX.sub("", q).strip()
     if len(named) == 1 and (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q)
+                            or _CONTACT_CUE.search(q) or _TITLE_CUE.search(q)
                             or _is_bare_name(qn, named[0])):
-        return Route("entity_card",
+        return Route(_person_skill(q),
                      {"entity_id": named[0]["entity_id"], "name": named[0]["name"]})
-    if len(named) > 1 and (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q)):
+    if len(named) > 1 and (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q)
+                           or _CONTACT_CUE.search(q) or _TITLE_CUE.search(q)):
         return Route("person_disambig", {"candidates": named})
 
     # surname-only: "professor Wang" / "who is Wang" / "Koutis's email" / "koutis info" /
@@ -590,12 +628,13 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     # info cue) OR the whole query is just one token (a lone surname). Resolution is by real
     # last name, so a non-person single word ("events") simply finds nothing and falls to RAG.
     qn_toks = _qtokens(qn)
-    if (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q) or _NAME_PREFIX.search(q)
-            or _INFO_CUE.search(q) or len(qn_toks) == 1):
+    if (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q) or _CONTACT_CUE.search(q)
+            or _TITLE_CUE.search(q) or _NAME_PREFIX.search(q) or _INFO_CUE.search(q)
+            or len(qn_toks) == 1):
         person = _resolve_surname(conn, q)
         if isinstance(person, Route):
             return person
         if isinstance(person, dict):
-            return Route("entity_card",
+            return Route(_person_skill(q),
                          {"entity_id": person["entity_id"], "name": person["name"]})
     return None

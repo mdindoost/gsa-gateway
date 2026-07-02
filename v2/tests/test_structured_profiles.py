@@ -108,12 +108,20 @@ def test_list_skill_has_no_suffix(conn):
 
 
 @pytest.mark.parametrize("q", [
-    "Koutis's email", "koutis info", "koutis all info", "koutis", "koutis details",
+    "koutis info", "koutis all info", "koutis", "koutis details",
 ])
 def test_surname_attribute_and_info_route_to_entity_card_with_links(conn, q):
     skill, facts, suffix = _suffix(conn, q)
     assert skill == "entity_card"
     assert suffix is not None and "Google Scholar" in suffix and "LinkedIn" in suffix
+
+
+def test_surname_email_routes_to_contact_of_person(conn):
+    # WS3: "email" now dispatches to the dedicated contact_of_person skill (the WS1 finding
+    # B1 fixes) instead of the generic entity_card — no links/metrics suffix on this skill.
+    skill, facts, suffix = _suffix(conn, "Koutis's email")
+    assert skill == "contact_of_person"
+    assert suffix is None
 
 
 def test_bare_nonperson_word_does_not_misroute(conn):

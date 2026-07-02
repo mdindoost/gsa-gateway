@@ -47,7 +47,9 @@ def test_short_common_word_surnames_still_resolve(conn):
 
 
 def test_short_person_queries_unaffected(conn):
-    assert route(conn, "oria email").skill == "entity_card"
+    # WS3: "email" now resolves the surname AND correctly dispatches to contact_of_person
+    # (the WS1 finding B1 fixes) instead of the generic entity_card.
+    assert route(conn, "oria email").skill == "contact_of_person"
     assert route(conn, "vincent oria").skill == "entity_card"
     assert route(conn, "oria info").skill == "entity_card"
 
