@@ -79,6 +79,9 @@ docs/faculty_review.txt
 # Reranker model (auto-downloaded once, ~90MB)
 models/reranker/
 
+# CPU NLI checker (WS4 bake-off only — downloaded, benchmarked, NOT used in the shipped gate; ~568MB)
+models/nli/
+
 # Eval harness run artifacts (regenerated)
 eval_results.jsonl
 eval_run.log

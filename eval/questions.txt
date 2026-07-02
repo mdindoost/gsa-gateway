@@ -295,3 +295,10 @@ what clubs are there
 how many clubs
 list student organizations
 list the colleges
+
+# WS4 abstention + faithfulness gate (exercised when ANSWER_GATE_ENABLED=1) — both directions:
+#  Chrome River must ANSWER grounded ("within 30 days"); the out-of-domain bait must ABSTAIN (no guess);
+#  the ambiguous org must CLARIFY ("which department?"), not dead-abstain.
+How many days after travel must I submit the Chrome River Expense Report
+what is the capital of France
+who are the faculty in engineering

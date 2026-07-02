@@ -86,6 +86,8 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         return {"skill": skill}    # deterministic decline; no DB query
     if skill == "person_disambig":
         return {"skill": skill, "candidates": a["candidates"]}
+    if skill == "org_disambig":
+        return {"skill": skill, "candidates": a["candidates"]}
     if skill == "faculty_areas_in_department":
         rows = skills.faculty_areas_in_department(conn, a["org_id"])
         # honest fallback when NObody lists areas: the roster (names only) + a 'no areas' line.
@@ -135,7 +137,11 @@ def _fmt_missing(labels: list[str]) -> str:
 # compose_from_rows for these (their format_answer output IS the final answer).
 _DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric", "link_of_person",
                                    "metric_descending_unsupported", "papers_of_person",
-                                   "citation_trend_of_person", "papers_cross_unsupported"})
+                                   "citation_trend_of_person", "papers_cross_unsupported",
+                                   # CLARIFY lists (senior review #10): a "which did you mean?" roster
+                                   # must render VERBATIM from the KG — LLM rewording could drop/alter
+                                   # a candidate, defeating the disambiguation.
+                                   "person_disambig", "org_disambig"})
 
 
 def is_deterministic(result: dict) -> bool:
@@ -412,6 +418,11 @@ def format_answer(result: dict) -> str:
             return (f"I couldn't find an exact match for that name — did you mean {listed}?")
         return (f"There are {len(cands)} people that could match — which one did you mean? "
                 f"{listed}.")
+
+    if skill == "org_disambig":                    # WS4 Phase 4 — org multi-match CLARIFY
+        cands = result["candidates"]
+        listed = ", ".join(c["name"] for c in cands)
+        return (f"That could be more than one — which did you mean? {listed}.")
 
     org, area, rows = result["org_name"], result["area"], result["rows"]
     scope = f" in {org}" if org else ""

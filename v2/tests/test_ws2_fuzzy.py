@@ -140,20 +140,25 @@ def test_org_headword_gate_resolves(conn):
     assert r.skill == "faculty_in_department" and r.args["org_id"] == _oid(conn, "ee")
 
 
-def test_broad_org_word_is_ambiguous_and_abstains(conn):
-    # "engineering" matches EE + ME → 2 distinct → org-required skill ABSTAINS (never picks one).
+def test_broad_org_word_is_ambiguous_and_clarifies(conn):
+    # "engineering" matches EE + ME → 2 distinct. Never picks one; WS4 Phase 4 turns the old
+    # dead-abstain into an org_disambig CLARIFY (still never a resolved faculty_in_department).
     from v2.core.retrieval.router import fuzzy_org
     assert len(fuzzy_org(conn, "engineering")) >= 2
-    assert resolve_and_validate(conn, "faculty_in_department", {"org": "engineering"},
-                                "faculty in engineering") is None
+    r = resolve_and_validate(conn, "faculty_in_department", {"org": "engineering"},
+                             "faculty in engineering")
+    assert r is not None and r.skill == "org_disambig"
+    assert len(r.args["candidates"]) >= 2
 
 
-def test_broad_org_optional_skill_abstains_not_root(conn):
-    # org-OPTIONAL skill: a named-but-ambiguous org must ABSTAIN, NOT silently default to root.
+def test_broad_org_optional_skill_clarifies_not_root(conn):
+    # org-OPTIONAL skill: a named-but-ambiguous org must NEVER silently default to root — WS4 Phase 4
+    # now CLARIFYs (org_disambig) instead of the old dead-abstain; still never a root-defaulted answer.
     r = resolve_and_validate(conn, "top_people_by_metric",
                              {"metric": "h_index", "org": "engineering"},
                              "top h-index in engineering")
-    assert r is None
+    assert r is not None and r.skill == "org_disambig"
+    assert len(r.args["candidates"]) >= 2
 
 
 def test_generic_org_word_does_not_resolve(conn):
@@ -169,3 +174,12 @@ def test_symspell_recovers_two_edit_surname_typo(conn):
     r = resolve_and_validate(conn, "entity_card", {"person": "koutas"}, "who is koutas")
     assert r is not None and r.skill == "person_disambig"
     assert [c["name"] for c in r.args["candidates"]] == ["Ioannis Koutis"]
+
+
+def test_person_disambig_renders_deterministically():
+    # senior review #10 (folded with org_disambig): a "did you mean…?" list must render VERBATIM,
+    # never LLM-reworded — rewording a disambiguation list could drop/alter a candidate.
+    from v2.core.retrieval import structured_answer
+    assert structured_answer.is_deterministic(
+        {"skill": "person_disambig", "candidates": [{"name": "Jane Doe"}, {"name": "John Doe"}]}
+    ) is True
