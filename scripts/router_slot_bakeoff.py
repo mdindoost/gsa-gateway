@@ -65,8 +65,8 @@ def main():
 
     # (a) family accuracy on blind test
     t0 = time.time()
-    b_score, _ = _fam_acc(before, test)
-    a_score, _ = _fam_acc(after, test)
+    b_score, b_pairs = _fam_acc(before, test)
+    a_score, a_pairs = _fam_acc(after, test)
     print("\n=== BLIND TEST (family accuracy) ===")
     print(f"  BEFORE family_acc = {b_score['family_accuracy']:.3f}  skill_acc = {b_score['skill_accuracy']}")
     print(f"  AFTER  family_acc = {a_score['family_accuracy']:.3f}  skill_acc = {a_score['skill_accuracy']}")
@@ -124,13 +124,27 @@ def main():
                   f"(P={a['slot_precision']} R={a['slot_recall']} exact={a['slot_exact_match']})")
             gate_d = a["slot_f1"] > b["slot_f1"]
 
+    # (e) per-skill non-regression for the skills WS3 could cannibalize
+    print("\n=== SKILL NON-REGRESSION (entity_card, org_departments) ===")
+    def _ok(pairs, target):
+        return sum(1 for ex, p in pairs if ex.family == "KG" and ex.skill == target and p.skill == target)
+    def _tot(pairs, target):
+        return sum(1 for ex, p in pairs if ex.family == "KG" and ex.skill == target)
+    gate_e = True
+    for target in ("entity_card", "org_departments"):
+        b_ok, a_ok, tot = _ok(b_pairs, target), _ok(a_pairs, target), _tot(a_pairs, target)
+        ok = a_ok >= b_ok
+        gate_e = gate_e and ok
+        print(f"  {target}: BEFORE {b_ok}/{tot} AFTER {a_ok}/{tot} [{'OK' if ok else 'REGRESS'}]")
+
     dt = time.time() - t0
     print(f"\n=== GATES ===  latency(all rows) {dt:.1f}s over {len(test)+len(hardneg)} rows")
     print(f"  (a) family non-regression : {'PASS' if gate_a else 'FAIL'}")
     print(f"  (b) regression paraphrases: {'PASS' if gate_b else 'FAIL'}")
     print(f"  (c) hardneg no new misfire: {'PASS' if gate_c else 'FAIL'}")
     print(f"  (d) slot-F1 improves      : {'DEFERRED' if gate_d is None else ('PASS' if gate_d else 'FAIL')}")
-    core = gate_a and gate_b and gate_c
+    print(f"  (e) skill non-regression  : {'PASS' if gate_e else 'FAIL'}")
+    core = gate_a and gate_b and gate_c and gate_e
     print("MERGE GATE:", "PASS" if (core and gate_d is not False) else "FAIL")
 
 
