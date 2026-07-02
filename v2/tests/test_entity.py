@@ -169,7 +169,9 @@ def test_router_person_research(conn):
 def test_router_entity_card_bare_name(conn):
     assert _route(conn, "guiling wang") == "entity_card"
     assert _route(conn, "tell me about guiling wang") == "entity_card"
-    assert _route(conn, "guiling wang email") == "entity_card"
+    # WS3: "email" now dispatches to contact_of_person (the WS1 finding B1 fixes),
+    # not the generic entity_card.
+    assert _route(conn, "guiling wang email") == "contact_of_person"
 
 def test_router_surname_disambiguation(conn):
     assert _route(conn, "professor wang") == "person_disambig"
