@@ -20,8 +20,10 @@ Produce three arms:
   = abstain_or_clarify; if it targets a genuinely missing field, set expected.missing_field.
 
 Ask ONLY questions a real student would ask in plain language ("what is X's email", "who leads Y",
-"what kind of office is Z"). NEVER ask about the record's internal structure — no questions about how
-many aliases/fields/ids it has, which fields are available, or what the data schema contains.
+"what kind of office is Z", "what does X research"). NEVER ask about the record's internal structure —
+no questions about how many aliases/fields/ids it has, which fields are available, or what the data
+schema contains. NEVER ask to COUNT a person's own attributes ("how many titles / research areas /
+publications does X have") — ask for the actual titles/areas instead (arm "answer", expected.type=list).
 
 Return JSON matching the schema. Every question MUST carry a checkable expected spec."""
 

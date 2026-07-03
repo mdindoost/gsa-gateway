@@ -29,6 +29,7 @@ def test_build_prompt_hides_has_fields_keeps_missing():
     assert "has_fields" not in prompt          # not exposed → no "which fields are available" Qs
     assert "missing_fields" in prompt          # still exposed → out-of-scope arm can target gaps
     assert "internal structure" in prompt      # explicit anti-meta instruction present
+    assert "COUNT a person's own attributes" in prompt  # no "how many titles/areas" count questions
 
 def test_expected_item_key_is_forced_from_item():
     raw = {"questions": [{"arm": "answer", "question": "q",

@@ -22,6 +22,13 @@ def test_numeric_match():
     assert numeric_match("He has 1,234 citations.", "1234")
     assert not numeric_match("He has 999 citations.", "1234")
 
+def test_numeric_match_spelled_out_small_ints():
+    # Kavosh says "one title", not "1 title" — a correct count must not read as a miss.
+    assert numeric_match("She is listed as having one title: Events Coordinator.", "1")
+    assert numeric_match("There are three research areas.", "3")
+    assert not numeric_match("There are two areas.", "3")      # wrong word-number still fails
+    assert not numeric_match("He has 4203490 citations.", "1")  # no spurious word match on big metrics
+
 def test_list_overlap_precision_recall():
     p, r = list_overlap("Members: Alice, Bob, Carol", ["Alice", "Bob", "Dan"])
     assert r == 2/3  # Alice+Bob found of 3 expected

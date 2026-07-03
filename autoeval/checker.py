@@ -53,10 +53,24 @@ def email_present(answer: str, value: str) -> bool:
     domain scattered as separate tokens). Case- and markdown-insensitive."""
     return _norm(value) in _answer_emails(answer)
 
+_WORD_NUM = {  # small integers spelled out — Kavosh naturally says "one title", not "1 title"
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20}
+
 def numeric_match(answer: str, value: str) -> bool:
     want = re.sub(r"[,\s]", "", str(value))
     nums = re.findall(r"\d[\d,]*", answer)
-    return any(re.sub(r"[,\s]", "", n) == want for n in nums)
+    if any(re.sub(r"[,\s]", "", n) == want for n in nums):
+        return True
+    # Fallback: a small integer written as a word ("one" satisfies expected "1"). Only for exact
+    # small ints — never for large metric values, where a spelled-out form wouldn't appear anyway.
+    if want.isdigit():
+        w = int(want)
+        words = {k for k, v in _WORD_NUM.items() if v == w}
+        if words and (words & set(_toks(answer))):
+            return True
+    return False
 
 def _member_found(member: str, answer_tokens: set[str]) -> bool:
     """A roster/list member counts as found when >=60% of its content tokens appear in the answer
