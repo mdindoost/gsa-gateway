@@ -14,11 +14,6 @@ _ABSTAIN_SUBSTRINGS = (
 )
 _CLARIFY_SUBSTRING = "I want to make sure I answer the right thing"
 
-# Person-centric skills expose args["entity_id"]; org skills expose args["org_id"].
-_ORG_SKILLS = {"people_in_org", "officers_in_org", "faculty_in_department",
-               "orgs_by_type", "areas_in_org", "area_counts", "count_people_by_research_area",
-               "top_people_by_metric", "people_by_research_area"}
-
 def detect_abstain(text: str) -> bool:
     return any(s in (text or "") for s in _ABSTAIN_SUBSTRINGS)
 
@@ -26,15 +21,16 @@ def detect_clarify(text: str) -> bool:
     return _CLARIFY_SUBSTRING in (text or "")
 
 def resolved_key_for(decision) -> tuple[str | None, bool]:
-    """Family-aware resolved key. Person skills -> entity_id; org skills -> str(org_id).
-    slot_extracted flags routes that went through LLM slot extraction (fidelity caveat)."""
+    """Family-aware resolved key. Person skills -> entity_id; org-scoped skills -> str(org id).
+    Org id is read from org_id OR parent_org_id (orgs_by_type uses parent_org_id) so the check
+    is not tied to a drift-prone skill allowlist. slot_extracted flags LLM-slot-extraction routes."""
     args = getattr(decision, "args", {}) or {}
     slot = bool(args.get("_slot_extracted"))
-    skill = getattr(decision, "skill", None)
     if args.get("entity_id"):
         return str(args["entity_id"]), slot
-    if skill in _ORG_SKILLS and args.get("org_id") is not None:
-        return str(args["org_id"]), slot
+    for k in ("org_id", "parent_org_id"):
+        if args.get(k) is not None:
+            return str(args[k]), slot
     return None, slot
 
 class KavoshRunner:
@@ -82,3 +78,9 @@ class KavoshRunner:
         if self._asst and getattr(self._asst, "ollama", None):
             try: await self._asst.ollama.close()
             except Exception: pass
+        try:
+            db = getattr(self._handler, "db", None)
+            if db is not None:
+                db.close()
+        except Exception:
+            pass

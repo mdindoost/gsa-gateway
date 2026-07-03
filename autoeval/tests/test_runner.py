@@ -19,3 +19,11 @@ def test_resolved_key_person_vs_org():
     assert k2 == "42"
     k3, _ = resolved_key_for(_D("RAG", None, {}))
     assert k3 is None
+    # orgs_by_type carries parent_org_id, not org_id — was None before the allowlist-free fix.
+    k4, _ = resolved_key_for(_D("KG", "orgs_by_type", {"org_type": "department", "parent_org_id": 7}))
+    assert k4 == "7"
+    # org_departments was absent from the old allowlist entirely.
+    k5, _ = resolved_key_for(_D("KG", "org_departments", {"org_id": 42}))
+    assert k5 == "42"
+    k6, _ = resolved_key_for(_D("KG", "people_by_area_tag", {"area": "ml", "org_id": 9}))
+    assert k6 == "9"
