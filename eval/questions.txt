@@ -310,3 +310,21 @@ who are the faculty in engineering
 
 # followup-resume
 who has the lowest citation in ywcc
+
+# router D+E — org/role collision (president) + terse officer forms
+who is the GSA president
+gsa president
+gsa's president
+gsa treasurer
+GSA officers
+gwics officers
+who is the njit president
+ywcc officers
+cs officers
+who is the ywcc president
+ist president
+ywcc dean
+who is the njit registrar
+president office hours
+registrar office hours
+former gsa president

@@ -66,6 +66,13 @@ _OFFICER_IDENTITY = re.compile(
 _OFFICER_PROCESS = re.compile(
     r"\b(?:impeach|elect|appoint|nominat|remov|dismiss|replac|becom|eligib|qualif|"
     r"responsib|dut(?:y|ies)|chosen|select|how\s+many)")
+# Bare officer-title matcher, compiled for the terse-officer branch (E) + collision detection (D).
+_OFFICER_TITLE_RX = re.compile(_OFFICER_TITLE, re.I)
+# Tokens allowed to remain after stripping the org phrase + officer-title span from a terse
+# officer query ("the gsa president" → residue empty → fire). Any OTHER residue token blocks the
+# fire, so "former gsa president" / "gsa president salary" fall through to RAG.
+_TERSE_OFFICER_STOP = frozenset({"the", "a", "an", "of", "for", "in", "at", "to",
+                                 "who", "is", "are", "and", "s", "'s"})
 
 # "who works at/in <org>", "people in <org>", "<org> staff/team" -> the full roster.
 _PEOPLE = re.compile(
@@ -308,6 +315,76 @@ def _find_org(conn: sqlite3.Connection, text: str) -> tuple[int | None, str | No
     return best if best else (None, None)
 
 
+# ── D: role-word-office collision (only bare officer-title offices, e.g. slug 'president') ────────
+def _bare_officer_office(phrase: str | None) -> str | None:
+    """The officer-title word if ``phrase`` is EXACTLY a bare officer title (the office slug case,
+    e.g. 'president' → Office of the President). Fullmatch — 'office of the president' is NOT bare,
+    so a spelled-out office name is never treated as a role collision."""
+    if not phrase:
+        return None
+    m = _OFFICER_TITLE_RX.fullmatch(phrase.strip())
+    return m.group(0).lower() if m else None
+
+
+def _longest_non_officer_office(conn: sqlite3.Connection, text: str,
+                                exclude_id: int) -> tuple[int, str] | None:
+    """Longest whole-word org match whose phrase is NOT a bare officer-title office and whose id
+    != ``exclude_id`` → (id, phrase), else None. The candidate alternate org in a collision."""
+    best: tuple[int, str] | None = None
+    for phrase, oid in _org_candidates(conn):
+        if oid == exclude_id or not phrase or _bare_officer_office(phrase):
+            continue
+        if re.search(r"\b" + re.escape(phrase) + r"\b", text):
+            if best is None or len(phrase) > len(best[1]):
+                best = (oid, phrase)
+    return best
+
+
+def _has_true_officers(conn: sqlite3.Connection, org_id: int) -> bool:
+    """True iff the org holds ≥1 active officer/deprep has_role edge (GSA/clubs). The E real-officer
+    gate — colleges/depts (admin edges only) fail it, so terse 'officers' can't mislabel them."""
+    row = conn.execute(
+        "SELECT 1 FROM edges e JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
+        "WHERE e.type='has_role' AND e.is_active=1 AND e.category IN ('officer','deprep') "
+        "AND json_extract(o.attrs,'$.org_id')=? LIMIT 1", (org_id,)).fetchone()
+    return row is not None
+
+
+def _org_answers_title(conn: sqlite3.Connection, org_id: int, title: str) -> bool:
+    """True iff the org can actually answer the collision officer ``title`` (D gate 3): a true
+    officer/deprep edge, OR an admin edge whose title carries ``title`` as a SEGMENT HEAD (reuse
+    people_by_role's matcher; ``^title\\b(?!')`` so 'Vice President'/'President's Advisory' do NOT
+    head-match). Confines D's alternate-swap to orgs that genuinely hold the title."""
+    if _has_true_officers(conn, org_id):
+        return True
+    rx = re.compile(r"^" + re.escape(title.lower()) + r"\b(?!')")
+    for (eattrs,) in conn.execute(
+            "SELECT e.attrs FROM edges e JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
+            "WHERE e.type='has_role' AND e.is_active=1 AND e.category='admin' "
+            "AND json_extract(o.attrs,'$.org_id')=?", (org_id,)):
+        titles = (json.loads(eattrs) if eattrs else {}).get("titles") or []
+        for t in titles:
+            segs = [s.strip() for s in re.split(r",|\s+and\s+", t) if s.strip()]
+            if any(rx.match(s.lower()) for s in segs):
+                return True
+    return False
+
+
+def _officer_org(conn: sqlite3.Connection, text: str, org_id: int | None,
+                 org_phrase: str | None) -> tuple[int | None, str | None]:
+    """Org for an OFFICER route (identity/terse), applying the president-collision swap: if the
+    resolved org is a bare officer-title office AND a distinct alternate org can actually answer
+    that title (gate 3), use the alternate. Otherwise unchanged. `_find_org` itself is untouched,
+    so the role/faculty/people branches keep the office as their scope (no regression)."""
+    collision = _bare_officer_office(org_phrase)
+    if org_id is None or not collision:
+        return org_id, org_phrase
+    alt = _longest_non_officer_office(conn, text, exclude_id=org_id)
+    if alt is not None and _org_answers_title(conn, alt[0], collision):
+        return alt
+    return org_id, org_phrase
+
+
 # Generic org words shared by many units — must NOT drive a fuzzy match on their own.
 _ORG_STOPWORDS = frozenset({
     "college", "school", "department", "dept", "office", "center", "centre", "institute",
@@ -408,6 +485,10 @@ def _person_skill(q: str) -> str:
 def route(conn: sqlite3.Connection, question: str) -> Route | None:
     q = question.strip().lower().rstrip("?").strip()
     org_id, org_phrase = _find_org(conn, q)
+    # D: the org used ONLY by the officer branches — swaps a bare officer-title office (slug
+    # 'president') for the real named org when one co-occurs and can answer the title. Every other
+    # branch keeps the raw org_id/org_phrase (so registrar/dean-of-students scope is untouched).
+    off_id, off_phrase = _officer_org(conn, q, org_id, org_phrase)
     # C1: strip the matched org_phrase from the query before area extraction so org-name
     # tokens (e.g. "studies" in "graduate studies") don't trigger a research-area verb match.
     # Also clean up any trailing preposition left dangling after the strip (e.g. "graph in").
@@ -546,9 +627,9 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
                          {"entity_id": person["entity_id"], "name": person["name"],
                           "field_key": field_key})
 
-    if (org_id is not None and _OFFICER_IDENTITY.search(q)
+    if (off_id is not None and _OFFICER_IDENTITY.search(q)
             and not _OFFICER_PROCESS.search(q)):
-        return Route("officers_in_org", {"org_id": org_id})
+        return Route("officers_in_org", {"org_id": off_id})
 
     # ── role lookup: find a person BY THEIR ROLE ("who is the provost", "the chair of cs",
     # "who are the deans"). Comes BEFORE the department/faculty/people branches so a NAMED role
@@ -583,6 +664,24 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
                         if climbed is not None:
                             target_org = climbed
                 return Route("people_by_role", {"role_head": role, "org_id": target_org})
+
+    # ── terse OFFICER forms (E): "<org> officers" / "<org> president" / "<org> treasurer" with NO
+    # verb (the verb-ful case is the officer-identity branch above). Placed AFTER the role branch so
+    # a role word wins ("cs chair secretary" → people_by_role). Gated to orgs holding a TRUE
+    # officer/deprep role, so a college's "officers" can't mislabel its deans. Two guards keep
+    # process/attribute/tense forms out: title-is-org (the title merely NAMES the office, e.g.
+    # "president office hours") and zero-residue (any non-stopword left after stripping org+title).
+    if off_id is not None:
+        otm = _OFFICER_TITLE_RX.search(q)
+        if otm and not _OFFICER_PROCESS.search(q):
+            title_word = otm.group(0).lower()
+            title_is_org = bool(off_phrase and title_word in off_phrase.lower())
+            residue = re.sub(r"\b" + re.escape(off_phrase) + r"\b", " ", q) if off_phrase else q
+            residue = _OFFICER_TITLE_RX.sub(" ", residue)
+            leftover = [t for t in re.findall(r"[a-z0-9'\-]+", residue)
+                        if t not in _TERSE_OFFICER_STOP]
+            if not title_is_org and not leftover and _has_true_officers(conn, off_id):
+                return Route("officers_in_org", {"org_id": off_id})
 
     # ── org enumeration by TYPE (WS3 B3): clubs / colleges only. Fires ONLY on an enumerate verb + a
     # PLURAL type noun; SINGULAR "which college is X in" falls through to RAG. Parent scopes ONLY to a
