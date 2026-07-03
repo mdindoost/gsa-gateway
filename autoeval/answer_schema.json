@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "required": ["questions"],
+  "properties": {
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["arm", "question", "expected"],
+        "properties": {
+          "arm": {"type": "string", "enum": ["answer", "noisy", "out_of_scope"]},
+          "variant_type": {"type": "string", "enum": ["typo", "wording", "esl", "truncation"]},
+          "twin_ref": {"type": "string"},
+          "question": {"type": "string"},
+          "expected": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {"type": "string",
+                       "enum": ["contact", "count", "metric", "list", "abstain_or_clarify", "prose", "entity"]},
+              "value": {"type": "string"},
+              "must_contain_field": {"type": "string"},
+              "members": {"type": "array", "items": {"type": "string"}},
+              "missing_field": {"type": "string"},
+              "skill_hint": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}
