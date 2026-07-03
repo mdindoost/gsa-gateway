@@ -26,6 +26,7 @@ class ConversationSession:
     channel_id: Optional[str]
     message_count: int
     mode: str = "gsa"
+    pending_action: object = None   # Optional[bot.core.pending.PendingAction]; typed loosely to avoid an import cycle
 
 
 class ConversationManager:
@@ -157,6 +158,20 @@ class ConversationManager:
         # the default (GSA). Mode now lives in the shared store, so reset it explicitly.
         self.mode_store.reset(user_id)
         logger.info("Session cleared for user %s...", user_id[:8])
+
+    def set_pending(self, user_id: str, pending) -> None:
+        """Register a resumable offer/clarify for the user's NEXT turn (one-shot)."""
+        session = self.get_or_create_session(user_id)
+        session.pending_action = pending
+
+    def get_pending(self, user_id: str):
+        session = self.get_session(user_id)
+        return session.pending_action if session is not None else None
+
+    def clear_pending(self, user_id: str) -> None:
+        session = self.get_session(user_id)
+        if session is not None:
+            session.pending_action = None
 
     def get_mode(self, user_id: str) -> str:
         # Delegates to the shared ConversationModeStore (single source of truth). Returns the
