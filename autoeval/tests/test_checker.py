@@ -29,11 +29,12 @@ def _o(text, **kw):
              is_abstain=False, is_clarify=False, latency_ms=1)
     d.update(kw); return KavoshObservation(answer_text=text, **d)
 
-def test_armC_confident_answer_is_fabrication():
-    exp = ExpectedSpec(type="abstain_or_clarify", item_key="crawler/zzyzx")
-    obs = _o("Professor Zzyzx's email is zzyzx@njit.edu", is_abstain=False)
-    out = classify(exp, obs, arm="out_of_scope", missing_fields=[], twin_passed=None)
-    assert out.result == "fail" and out.failure_class == "fabrication"
+def test_armC_missing_email_fabricated_is_fabrication():
+    # We KNOW the email field is absent, so asserting an email is a verifiable fabrication.
+    exp = ExpectedSpec(type="abstain_or_clarify", item_key="crawler/x", missing_field="email")
+    obs = _o("His email is made-up@njit.edu", is_abstain=False)
+    out = classify(exp, obs, arm="out_of_scope", missing_fields=["email"], twin_passed=None)
+    assert out.result == "fail" and out.failure_class == "fabrication" and out.data_gap is True
 
 def test_armC_correct_abstain_passes():
     exp = ExpectedSpec(type="abstain_or_clarify", item_key="crawler/zzyzx")
@@ -77,8 +78,17 @@ def test_armC_noncanned_soft_refusal_is_not_fabrication():
     out = classify(exp, obs, arm="out_of_scope", missing_fields=[], twin_passed=None)
     assert out.result == "pass" and out.failure_class is None
 
-def test_armC_value_beats_hedge_still_fabrication():
-    exp = ExpectedSpec("abstain_or_clarify", "crawler/zzyzx")
-    obs = _o("I'm not sure, but Professor Zzyzx's email is zzyzx@njit.edu", is_abstain=False)
+def test_armC_email_in_prose_without_known_missing_field_is_soft_not_fabrication():
+    # An out-of-scope answer that mentions a (possibly real) email but where we have NO ground-truth
+    # 'this field is absent' cannot be deterministically called a fabrication -> soft judge decides.
+    exp = ExpectedSpec("abstain_or_clarify", "crawler/x")
+    obs = _o("His office hours aren't listed, but you can reach him at prof@njit.edu.", is_abstain=False)
     out = classify(exp, obs, arm="out_of_scope", missing_fields=[], twin_passed=None)
-    assert out.result == "fail" and out.failure_class == "fabrication"
+    assert out.result == "pass" and out.failure_class is None and out.graded_soft is True
+
+def test_armA_office_value_interleaved_in_prose_passes():
+    # Multi-word value the answer splits across a clause must still match (order-independent tokens).
+    exp = ExpectedSpec(type="contact", item_key="crawler/x", value="569 Weston Hall (WEST)")
+    obs = _o("His office is in room 569 Weston Hall, which is on the WEST side. Email: a@njit.edu.")
+    out = classify(exp, obs, arm="answer", missing_fields=[], twin_passed=None)
+    assert out.result == "pass" and out.failure_class is None
