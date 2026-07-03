@@ -502,15 +502,15 @@ class MessageHandler:
             return
         try:
             resumable = structured_answer.resumable_action(rt)
+            if resumable:
+                cm.set_pending(user_id, PendingAction(
+                    options=[PendingOption(label, "structured",
+                                           {"skill": r.skill, "args": r.args}) for (label, r) in resumable],
+                    created_at=datetime.now(timezone.utc)))
+            cm.add_turn(user_id=user_id, role="user", content=clean_text)
+            cm.add_turn(user_id=user_id, role="assistant", content=(text or "")[:500])
         except Exception:  # noqa: BLE001 - never break the answer path
-            resumable = None
-        if resumable:
-            cm.set_pending(user_id, PendingAction(
-                options=[PendingOption(label, "structured",
-                                       {"skill": r.skill, "args": r.args}) for (label, r) in resumable],
-                created_at=datetime.now(timezone.utc)))
-        cm.add_turn(user_id=user_id, role="user", content=clean_text)
-        cm.add_turn(user_id=user_id, role="assistant", content=(text or "")[:500])
+            logger.debug("followup register_and_record failed (ignored)", exc_info=True)
 
     def _structured_from_route(self, skill: str, args: dict):
         """SQL body for a DECIDED skill/args (no route() — the UnifiedRouter already resolved it).
