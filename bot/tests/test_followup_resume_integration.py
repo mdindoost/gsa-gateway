@@ -85,6 +85,82 @@ def test_yes_resumes_the_metric_ranking():
 
 
 @pytest.mark.integration
+def test_followup_edge_cases():
+    async def run():
+        from dotenv import load_dotenv; load_dotenv("/home/md724/gsa-gateway/.env")
+        from bot.config import config
+        from bot.services.database import Database
+        from bot.services.knowledge_base import KnowledgeBase
+        from bot.services.moderation import RateLimiter
+        from bot.core.assistant import build_assistant
+        from bot.core.message_handler import MessageRequest
+        _enable_flags()                                   # BEFORE build_assistant (Fable #7)
+
+        db = Database(config.database_path); db.connect(); db.init_tables(); db.migrate_rag_columns()
+        kb = KnowledgeBase(data_dir=config.data_dir); kb.load()
+        asst = await build_assistant(config, db, kb, RateLimiter(max_calls=99999, period_seconds=1))
+        h = asst.message_handler; cm = h.conversation_manager
+
+        async def turn(U, t):
+            wm = db.conn.execute("SELECT COALESCE(MAX(id),0) FROM questions").fetchone()[0]
+            r = await h.handle(MessageRequest(user_id=U, text=t, platform="telegram"))
+            db.conn.execute("DELETE FROM questions WHERE id>?", (wm,)); db.conn.commit()
+            return r
+
+        # decline -> graceful ack, not routed
+        Ua = "pf_decline"; cm.clear_session(Ua)
+        await turn(Ua, "who has the lowest citation in ywcc")
+        r = await turn(Ua, "no")
+        assert "no problem" in (r.text or "").lower(); assert cm.get_pending(Ua) is None
+
+        # "yes but ..." -> NOT resumed: routed normally as a fresh query, pending cleared
+        Ub = "pf_yesbut"; cm.clear_session(Ub)
+        await turn(Ub, "who has the lowest citation in ywcc")
+        r = await turn(Ub, "yes but who are the gsa officers")
+        low = (r.text or "").lower()
+        assert cm.get_pending(Ub) is None            # cleared
+        assert low.strip() != ""                     # produced a real answer
+        # proves it did NOT resume the metric ranking (that answer would rank people by citations)
+        assert "most cited" not in low and "by citations" not in low
+
+        # stale: unrelated new question supersedes
+        Uc = "pf_stale"; cm.clear_session(Uc)
+        await turn(Uc, "who has the lowest citation in ywcc")
+        r = await turn(Uc, "what are the registrar office hours")
+        assert cm.get_pending(Uc) is None
+
+        # recognized-but-failed -> graceful stop, never the raw token
+        Ud = "pf_fail"; cm.clear_session(Ud)
+        await turn(Ud, "who has the lowest citation in ywcc")
+        orig = h._resume_pending
+        async def boom(_opt): return None
+        h._resume_pending = boom
+        try:
+            r = await turn(Ud, "yes")
+        finally:
+            h._resume_pending = orig
+        assert "couldn't pull that up" in (r.text or "").lower()
+
+        # context-rewrite regression (Fable #6 / spec §8): a plain structured answer now lands in
+        # history. (a) a referential follow-up still resolves; (b) a NON-referential new query after a
+        # structured answer is not corrupted. Self-discovers a real person with research areas.
+        Ue = "pf_ctx"; cm.clear_session(Ue)
+        prow = db.conn.execute("SELECT name FROM nodes WHERE type='Person' LIMIT 1").fetchone()
+        if prow:
+            await turn(Ue, f"who is {prow[0]}")             # plain structured answer -> recorded in history
+            ra = await turn(Ue, "what is their research")   # referential follow-up
+            assert (ra.text or "").strip() != ""            # (a) resolves, not broken
+            nb = await turn(Ue, "what are the registrar office hours")  # (b) non-referential
+            assert (nb.text or "").strip() != ""            # not corrupted into a rewrite of the person Q
+
+        for U in (Ua, Ub, Uc, Ud, "pf_ctx"): cm.clear_session(U)
+        if asst.embedder: await asst.embedder.close()
+        if asst.ollama: await asst.ollama.close()
+        db.close()
+    asyncio.run(run())
+
+
+@pytest.mark.integration
 def test_disambig_offer_and_resume():
     async def run():
         from dotenv import load_dotenv; load_dotenv("/home/md724/gsa-gateway/.env")
