@@ -494,6 +494,11 @@ class TelegramConnector(BasePlatform):
         await query.answer()
         thinking = await query.message.reply_text("🌐 Searching NJIT's website…")
 
+        # Clear pending action on live-search button tap (belt-and-suspenders override)
+        cm = getattr(self.handler, "conversation_manager", None)
+        if cm is not None:
+            cm.clear_pending(self._hash_uid(query.from_user.id))
+
         try:
             live = await self.handler.live_search(question_text)
         except Exception as exc:  # noqa: BLE001
