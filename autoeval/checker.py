@@ -8,13 +8,13 @@ sys.path.insert(0, str(Path("/home/md724/gsa-gateway")))
 from v2.core.retrieval.faithfulness import _norm  # markdown/whitespace/casing-safe normalizer
 
 def value_present(answer: str, value: str) -> bool:
-    """All normalized tokens of the expected value appear in the normalized answer.
-    Reuses faithfulness._norm so markdown ** and casing don't break the match (the WS4 fix)."""
-    a_tokens = set(_norm(answer).split())
-    v_tokens = _norm(value).split()
-    if not v_tokens:
+    """The expected value appears in the answer after markdown/whitespace/casing normalization
+    (`faithfulness._norm`). Uses normalized-substring rather than exact token-set membership,
+    which was brittle when the value sat next to punctuation ('njit.edu.' vs 'njit.edu')."""
+    nv = _norm(value)
+    if not nv:
         return False
-    return all(t in a_tokens for t in v_tokens)
+    return nv in _norm(answer)
 
 def numeric_match(answer: str, value: str) -> bool:
     want = re.sub(r"[,\s]", "", str(value))
@@ -27,13 +27,6 @@ def list_overlap(answer: str, members: list[str]) -> tuple[float, float]:
     recall = len(found) / len(members) if members else 0.0
     precision = 1.0 if found else 0.0  # coarse; recall is the meaningful signal for a roster
     return precision, recall
-
-_REFUSAL_MARKERS = (
-    "wasn't able", "was not able", "not able to find", "unable to",
-    "couldn't find", "could not find", "can't find", "cannot find",
-    "don't have", "do not have", "not sure i have", "no information",
-    "no record", "i'm not sure", "i am not sure", "don't know", "do not know",
-)
 
 def check_typed(expected: ExpectedSpec, obs: KavoshObservation) -> bool | None:
     """True=answer correct, False=incorrect/contradiction, None=no typed check (prose -> soft judge)."""
@@ -48,9 +41,9 @@ def check_typed(expected: ExpectedSpec, obs: KavoshObservation) -> bool | None:
     return None  # prose / abstain handled by the failure-class layer (Task 7)
 
 def _asserts_a_value(obs: KavoshObservation) -> bool:
-    """Arm-C fabrication test: the answer is NOT a canned deflection AND makes an affirmative
-    factual assertion (email / phone / number / substantive prose). A non-canned soft refusal
-    (paraphrased decline that the canned-string matcher missed) is NOT an assertion."""
+    """True iff the answer makes a CONCRETE factual assertion (email / phone / multi-digit number).
+    Bare prose (even long) is NOT a concrete assertion — flagging it as fabrication produced ~50%
+    false positives on real RAG answers. A canned/soft abstain is never an assertion."""
     if obs.is_abstain or obs.is_clarify:
         return False
     t = obs.answer_text
@@ -58,12 +51,9 @@ def _asserts_a_value(obs: KavoshObservation) -> bool:
         return True
     if re.search(r"\d{3}[.\-\s]?\d{3}[.\-\s]?\d{4}", t):  # a phone
         return True
-    if re.search(r"\b\d[\d,]*\b", t) and len(t) < 400:    # a bare figure in a short answer
+    if re.search(r"\b\d{3,}\b", t):                       # a 3+ digit figure
         return True
-    low = t.lower()
-    if any(m in low for m in _REFUSAL_MARKERS):           # non-canned soft refusal -> decline
-        return False
-    return len(t) > 40                                     # substantive prose answer
+    return False
 
 def classify(expected: ExpectedSpec, obs: KavoshObservation, arm: str,
              missing_fields: list[str], twin_passed: bool | None) -> CheckOutcome:
@@ -79,7 +69,8 @@ def classify(expected: ExpectedSpec, obs: KavoshObservation, arm: str,
         if _asserts_a_value(obs):
             ev["check"] = "armC_assertion"
             return CheckOutcome("fail", "fabrication", field_missing, ev)
-        return CheckOutcome("pass", None, field_missing, ev)
+        # substantive prose, no concrete value: provisional pass, routed to the soft judge for audit
+        return CheckOutcome("pass", None, field_missing, ev, graded_soft=True)
 
     # --- Arm A/B: should answer ---
     typed = check_typed(expected, obs)
