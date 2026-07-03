@@ -321,3 +321,24 @@ once the checker's verdicts match hand judgment on a sample.
   separate `decide()` call proves to diverge).
 - Live/Brave-branch testing on by default (flag-gated; optional separate Brave key).
 - Any memory-system entries or production service wiring.
+
+## Accepted deferrals (recorded at the final whole-branch review, 2026-07-03)
+
+Per the "loudly flag, don't silently drop" rule, the build shipped with these known, accepted
+deferrals (all non-integrity; the merge gate verdict was READY TO MERGE):
+
+- **Sampler area/chunk extractors — deferred.** `sample_items` draws only Person + Org; the
+  area/chunk mix fractions are absorbed into person+org (the run still returns the requested N).
+  ResearchArea/prose-chunk ground-truth extraction is future work.
+- **Concurrency fixed at 1 — intentional.** GPU-polite by default; raising it is a config change,
+  not new code (blocking-subprocess Codex calls serialize by design = single working window).
+- **Live/Brave branch off by default** (`LIVE_ENABLED=0`); no Brave-key selection field.
+- **Entity-resolution key comparison is captured but graded via twin-pairing, by design.** The
+  sampler emits a family-typed `item_key` and the runner captures a family-aware `resolved_key`
+  (both stored on every row for audit), but the checker does NOT gate pass/fail on
+  `resolved_key == item_key`. Resolution failures are inferred from the A/B twin-pairing +
+  value-match heuristic. Consequence: a wrong-entity resolution that still yields the expected
+  value scores `pass`. Wiring a direct key comparison is a future grading-precision enhancement.
+- **A/B twin-pairing relies on Codex echoing the arm-A question text verbatim into `twin_ref`.**
+  If Codex drifts, the lookup misses and the row degrades `resolution_failure → routing_failure`
+  (graceful; never a crash or false fabrication). A structural twin index is future hardening.
