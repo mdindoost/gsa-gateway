@@ -259,8 +259,10 @@ def test_affirmation_with_many_options_is_none():
 def test_ordinal_selection():
     assert match_followup("the first", THREE) == 0
     assert match_followup("2", THREE) == 1
+    assert match_followup("2nd", THREE) == 1
     assert match_followup("#3", THREE) == 2
     assert match_followup("option 2", THREE) == 1
+    assert match_followup("the first one", THREE) == 0
     assert match_followup("the fourth", THREE) is None   # out of range
 
 
@@ -311,8 +313,8 @@ def _normalize(text: str) -> str:
 
 
 def _ordinal_index(norm: str, n: int):
-    # "the first", "first", "option 2", "#3", bare "2"
-    m = re.fullmatch(r"(?:the\s+|option\s+|#)?(\d+)", norm)
+    # "the first", "first", "option 2", "#3", bare "2", "2nd"
+    m = re.fullmatch(r"(?:the\s+|option\s+|#)?(\d+)(?:st|nd|rd|th)?", norm)
     if m:
         i = int(m.group(1))
         return i - 1 if 1 <= i <= n else None
@@ -576,11 +578,20 @@ git commit -m "feat(followup): FOLLOWUP_RESUME_ENABLED flag (default off)"
 ```python
 """Integration: the offer turn registers a pending action + records history, on the LIVE
 router path (ROUTER_V21=1). Uses the real assistant against the live DB, then cleans up its
-analytics rows (mirrors scratchpad/repro_followup.py)."""
-import os, asyncio, pytest
+analytics rows (mirrors scratchpad/repro_followup.py).
 
-os.environ["ROUTER_V21"] = "1"
-os.environ["FOLLOWUP_RESUME_ENABLED"] = "1"
+IMPORTANT (Fable #7): the assistant builds unified_router ONLY when botcfg.ROUTER_V21 is true
+AT BUILD TIME. So we set the config-module attributes BEFORE build_assistant — os.environ at
+import time is unreliable once bot.config is already imported by a conftest. botcfg.ROUTER_V21 /
+FOLLOWUP_RESUME_ENABLED are read per-call, so setting the attrs is sufficient + correct."""
+import asyncio, pytest
+
+
+def _enable_flags():
+    import bot.config as c
+    c.ROUTER_V21 = True
+    c.ROUTER_V21_SHADOW = False
+    c.FOLLOWUP_RESUME_ENABLED = True
 
 
 @pytest.mark.integration
@@ -593,6 +604,7 @@ def test_offer_registers_pending_and_history():
         from bot.services.moderation import RateLimiter
         from bot.core.assistant import build_assistant
         from bot.core.message_handler import MessageRequest
+        _enable_flags()                                   # BEFORE build_assistant (Fable #7)
 
         db = Database(config.database_path); db.connect(); db.init_tables(); db.migrate_rag_columns()
         kb = KnowledgeBase(data_dir=config.data_dir); kb.load()
@@ -624,24 +636,25 @@ Expected: FAIL (pending is None / history empty).
 ```python
     def _register_and_record(self, user_id, clean_text, rt, text) -> None:
         """Side-effect chokepoint for BOTH structured paths (_answer_decision + _try_structured):
-        register a resumable pending action (flag-gated) and record the answer in history
-        (Bug 1 / G6). No return — the caller builds its own MessageResponse."""
+        register a resumable pending action AND record the answer in history (Bug 1 / G6). The WHOLE
+        body is flag-gated so flag-off is truly zero-behavior-change — with the flag off, structured
+        answers are NOT added to history (unchanged current behavior). No return — the caller builds
+        its own MessageResponse."""
         from datetime import datetime, timezone
         from v2.core.retrieval import structured_answer
         from bot.core.pending import PendingAction, PendingOption
         cm = self.conversation_manager
-        if cm is None:
+        if cm is None or not botcfg.FOLLOWUP_RESUME_ENABLED:   # flag off ⇒ fully inert (Fable #2)
             return
-        if botcfg.FOLLOWUP_RESUME_ENABLED:
-            try:
-                resumable = structured_answer.resumable_action(rt)
-            except Exception:  # noqa: BLE001 - never break the answer path
-                resumable = None
-            if resumable:
-                cm.set_pending(user_id, PendingAction(
-                    options=[PendingOption(label, "structured",
-                                           {"skill": r.skill, "args": r.args}) for (label, r) in resumable],
-                    created_at=datetime.now(timezone.utc)))
+        try:
+            resumable = structured_answer.resumable_action(rt)
+        except Exception:  # noqa: BLE001 - never break the answer path
+            resumable = None
+        if resumable:
+            cm.set_pending(user_id, PendingAction(
+                options=[PendingOption(label, "structured",
+                                       {"skill": r.skill, "args": r.args}) for (label, r) in resumable],
+                created_at=datetime.now(timezone.utc)))
         cm.add_turn(user_id=user_id, role="user", content=clean_text)
         cm.add_turn(user_id=user_id, role="assistant", content=(text or "")[:500])
 ```
@@ -732,6 +745,7 @@ def test_yes_resumes_the_metric_ranking():
         from bot.services.moderation import RateLimiter
         from bot.core.assistant import build_assistant
         from bot.core.message_handler import MessageRequest
+        _enable_flags()                                   # BEFORE build_assistant (Fable #7)
 
         db = Database(config.database_path); db.connect(); db.init_tables(); db.migrate_rag_columns()
         kb = KnowledgeBase(data_dir=config.data_dir); kb.load()
@@ -819,11 +833,72 @@ Expected: FAIL ("yes" still routes to garbage; no pre-check yet).
 Run: `.venv/bin/python -m pytest bot/tests/test_followup_resume_integration.py -q`
 Expected: PASS (offer→"yes"→real ranked answer; pending consumed).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Add the person-disambig resume test (Fable #3 — proves G3-disambig or loudly flags it)**
+
+Append to `bot/tests/test_followup_resume_integration.py`. Self-discovers an ambiguous surname from
+the live DB; if the disambig offer does NOT fire under ROUTER_V21, the test FAILS loudly (not a silent
+skip) so the reachability gap surfaces — at which point G3-disambig is loudly deferred in the plan's
+goals table rather than shipped-broken.
+
+```python
+@pytest.mark.integration
+def test_disambig_offer_and_resume():
+    async def run():
+        from dotenv import load_dotenv; load_dotenv("/home/md724/gsa-gateway/.env")
+        from bot.config import config
+        from bot.services.database import Database
+        from bot.services.knowledge_base import KnowledgeBase
+        from bot.services.moderation import RateLimiter
+        from bot.core.assistant import build_assistant
+        from bot.core.message_handler import MessageRequest
+        _enable_flags()
+        db = Database(config.database_path); db.connect(); db.init_tables(); db.migrate_rag_columns()
+        kb = KnowledgeBase(data_dir=config.data_dir); kb.load()
+        asst = await build_assistant(config, db, kb, RateLimiter(max_calls=99999, period_seconds=1))
+        h = asst.message_handler; cm = h.conversation_manager
+
+        # find a surname shared by >=2 Person nodes
+        surname = None
+        for cand in ["wang", "chen", "kim", "lee", "zhang", "liu", "patel", "gupta", "singh", "li"]:
+            n = db.conn.execute("SELECT COUNT(*) FROM nodes WHERE type='Person' AND lower(name) LIKE ?",
+                                (f"% {cand}",)).fetchone()[0]
+            if n >= 2:
+                surname = cand; break
+        if surname is None:
+            import pytest as _p; _p.skip("no ambiguous surname in live DB — disambig not exercisable here")
+
+        U = "pytest_disambig"; cm.clear_session(U)
+        async def turn(t):
+            wm = db.conn.execute("SELECT COALESCE(MAX(id),0) FROM questions").fetchone()[0]
+            r = await h.handle(MessageRequest(user_id=U, text=t, platform="telegram"))
+            db.conn.execute("DELETE FROM questions WHERE id>?", (wm,)); db.conn.commit()
+            return r
+
+        await turn(f"who is {surname}")
+        pa = cm.get_pending(U)
+        # If this assertion fails, ROUTER_V21 does NOT emit person_disambig → loudly defer G3-disambig.
+        assert pa is not None and len(pa.options) >= 2, "disambig offer did not fire under ROUTER_V21"
+        chosen = pa.options[0].label
+        r2 = await turn(chosen)                      # select by full name
+        assert (r2.text or "").strip() != "" and cm.get_pending(U) is None
+        cm.clear_session(U)
+        if asst.embedder: await asst.embedder.close()
+        if asst.ollama: await asst.ollama.close()
+        db.close()
+    asyncio.run(run())
+```
+
+- [ ] **Step 7: Run it**
+
+Run: `.venv/bin/python -m pytest bot/tests/test_followup_resume_integration.py::test_disambig_offer_and_resume -q`
+Expected: PASS (disambig offer fires + resumes) OR a loud FAIL revealing v21 doesn't emit disambig →
+then update the goals table to defer G3-disambig and remove the assertion's hard-fail (skip instead).
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add bot/core/message_handler.py bot/tests/test_followup_resume_integration.py
-git commit -m "feat(followup): resume pre-check + executor (the repro now passes)"
+git commit -m "feat(followup): resume pre-check + executor (the repro now passes) + disambig resume"
 ```
 
 ---
@@ -847,6 +922,7 @@ def test_followup_edge_cases():
         from bot.services.moderation import RateLimiter
         from bot.core.assistant import build_assistant
         from bot.core.message_handler import MessageRequest
+        _enable_flags()                                   # BEFORE build_assistant (Fable #7)
 
         db = Database(config.database_path); db.connect(); db.init_tables(); db.migrate_rag_columns()
         kb = KnowledgeBase(data_dir=config.data_dir); kb.load()
@@ -865,11 +941,15 @@ def test_followup_edge_cases():
         r = await turn(Ua, "no")
         assert "no problem" in (r.text or "").lower(); assert cm.get_pending(Ua) is None
 
-        # "yes but ..." -> NOT resumed (routed normally, pending cleared)
+        # "yes but ..." -> NOT resumed: routed normally as a fresh query, pending cleared
         Ub = "pf_yesbut"; cm.clear_session(Ub)
         await turn(Ub, "who has the lowest citation in ywcc")
-        r = await turn(Ub, "yes but who is the ywcc dean")
-        assert cm.get_pending(Ub) is None  # cleared; answer is the dean route, not the metric ranking
+        r = await turn(Ub, "yes but who are the gsa officers")
+        low = (r.text or "").lower()
+        assert cm.get_pending(Ub) is None            # cleared
+        assert low.strip() != ""                     # produced a real answer
+        # proves it did NOT resume the metric ranking (that answer would rank people by citations)
+        assert "most cited" not in low and "by citations" not in low
 
         # stale: unrelated new question supersedes
         Uc = "pf_stale"; cm.clear_session(Uc)
@@ -889,7 +969,19 @@ def test_followup_edge_cases():
             h._resume_pending = orig
         assert "couldn't pull that up" in (r.text or "").lower()
 
-        for U in (Ua, Ub, Uc, Ud): cm.clear_session(U)
+        # context-rewrite regression (Fable #6 / spec §8): a plain structured answer now lands in
+        # history. (a) a referential follow-up still resolves; (b) a NON-referential new query after a
+        # structured answer is not corrupted. Self-discovers a real person with research areas.
+        Ue = "pf_ctx"; cm.clear_session(Ue)
+        prow = db.conn.execute("SELECT name FROM nodes WHERE type='Person' LIMIT 1").fetchone()
+        if prow:
+            await turn(Ue, f"who is {prow[0]}")             # plain structured answer -> recorded in history
+            ra = await turn(Ue, "what is their research")   # referential follow-up
+            assert (ra.text or "").strip() != ""            # (a) resolves, not broken
+            nb = await turn(Ue, "what are the registrar office hours")  # (b) non-referential
+            assert (nb.text or "").strip() != ""            # not corrupted into a rewrite of the person Q
+
+        for U in (Ua, Ub, Uc, Ud, "pf_ctx"): cm.clear_session(U)
         if asst.embedder: await asst.embedder.close()
         if asst.ollama: await asst.ollama.close()
         db.close()
@@ -960,15 +1052,30 @@ git commit -m "feat(followup): live-search button clears pending (override)"
 
 ## Goals coverage (vs spec §2)
 
+> **G-numbering note:** these are the CURRENT (revised) spec §2 goals — G5 = "mode switch clears
+> everything," and the original draft's "live-search wired / exact-wording" is intentionally a spec
+> non-goal (§2). The deferred rows below name every dropped piece loudly (hard rule: shipped or
+> loudly deferred).
+
 | Goal | Task |
 |---|---|
 | G1 pending state + offer recorded | 1, 7 |
 | G2 deterministic match + execute | 3, 8 |
-| G3 general (metric #1 + disambig #3) | 4, 5, 7 |
+| G3 general (metric #1 + disambig #3) | 4, 5, 7, 8 (disambig proof) |
 | G4 drop on non-follow-up | 8 (idx None fall-through) |
 | G5 mode switch clears everything | 2 |
-| G6 structured answers in history | 7 |
-| G7 gated flag | 6 |
+| G6 structured answers in history (flag-gated) | 7 |
+| G7 gated flag + flag-off inert | 6, 7 |
 | Finding S0 (chokepoint, live path) | 7 |
 | Finding #1 (recognized-but-failed) | 8 (graceful stop) + 9 (test) |
-| Live-search override | 10 |
+| Live-search button override | 10 |
+
+**Explicitly DEFERRED (not in this plan — own follow-up / thread F):**
+
+| Deferred item | Where it goes |
+|---|---|
+| Live-search resume via typed "yes" (spec-orig-G3-live) | Live-search follow-up |
+| Live-search exact-original-wording payload (spec-orig-G5) | Live-search follow-up |
+| Offer-first live-search policy (stop auto-firing) | Live-search follow-up |
+| Slot-fill offer #4 ("name a college") | Thread F |
+| Thread F clarify content (which bare terms, option sets) | Thread F (this is its infra) |
