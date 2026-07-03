@@ -334,9 +334,14 @@ turn; a later "yes" has nothing to resume.
 ## 8. Risk: recording all structured answers in history (G6)
 
 Today no structured answer reaches conversation history. This build writes **every** structured
-answer to history (one standard, no bandaid). Consequence: `context_rewrite` will now see structured
-answers as prior context and *may* fire `is_follow_up` on a referential follow-up where it currently
-cannot. This is arguably an improvement (structured answers become first-class conversational turns),
+answer to history (one standard, no bandaid). **Bounded by the existing rolling cap:** `add_turn`
+already keeps only the last `max_turns * 2` messages (default **last 10**), popping the oldest — so
+"record all" means "record all *within the existing last-10 window*," never unbounded growth. It also
+means an offer that ages out of that window is fine: **the resume reads the separate `pending_action`
+slot, not the transcript**, so history is only about context-rewrite continuity, never the resume
+itself. Consequence: `context_rewrite` will now see structured answers as prior context and *may*
+fire `is_follow_up` on a referential follow-up where it currently cannot — bounded to those last-10
+turns. This is arguably an improvement (structured answers become first-class conversational turns),
 but it is a behavior change. Two concrete hazards (finding #3):
 - **False-positive rewrite:** a new, non-referential question after a structured answer must not be
   wrongly rewritten. Covered by §7 regression (b).
