@@ -7,7 +7,7 @@ from autoeval.models import ExpectedSpec, KavoshObservation, CheckOutcome
 sys.path.insert(0, str(Path("/home/md724/gsa-gateway")))
 from v2.core.retrieval.faithfulness import _norm  # markdown/whitespace/casing-safe normalizer
 
-_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.\w+")
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.\w+)+")  # multi-label domains (user@cs.njit.edu)
 _STRIP = ".,;:!?()[]{}\"'"
 
 def _toks(s: str) -> list[str]:

@@ -12,6 +12,12 @@ def test_value_present_markdown_and_case_insensitive():
     assert value_present("Her email is **JDOE@njit.edu**.", "jdoe@njit.edu")
     assert not value_present("Her email is someoneelse@njit.edu.", "jdoe@njit.edu")
 
+def test_email_present_subdomain_whole_address():
+    from autoeval.checker import email_present
+    # multi-label domain must not be truncated (would false-negative a correct answer)
+    assert email_present("Reach him at jdoe@cs.njit.edu today.", "jdoe@cs.njit.edu")
+    assert not email_present("Reach him at jdoe@njit.edu today.", "jdoe@cs.njit.edu")
+
 def test_numeric_match():
     assert numeric_match("He has 1,234 citations.", "1234")
     assert not numeric_match("He has 999 citations.", "1234")
