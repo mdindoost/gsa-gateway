@@ -491,8 +491,16 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         # is partial; "least cited" over a partial set is misleading + unkind). Decline deterministically
         # — never RAG, never a roster dump — so no person is ever named as "least <metric>".
         if person_cue and _DESC_DIR.search(q):
+            # Thread the org so the follow-up resume ("most instead") can scope top_people_by_metric.
+            # No org named but a person cue → default to the NJIT root (university-wide), mirroring the
+            # ascending branch below.
+            desc_org, defaulted = org_id, False
+            if desc_org is None:
+                desc_org = _root_org_id(conn)
+                defaulted = True
             return Route("metric_descending_unsupported",
-                         {"field_key": field_key, "metric_key": metric.key})
+                         {"field_key": field_key, "metric_key": metric.key,
+                          "org_id": desc_org, "n": _parse_topn(q), "org_defaulted": defaulted})
         if _RANK_CUE.search(q):
             if org_id is not None:
                 return Route("top_people_by_metric",

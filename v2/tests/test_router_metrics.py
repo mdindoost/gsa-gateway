@@ -176,3 +176,19 @@ def test_fewest_citations_to_graduate_is_not_a_decline(conn):
 
 def test_papers_with_fewest_citations_is_not_a_decline(conn):
     assert route(conn, "papers with the fewest citations") is None
+
+
+# ── Task 4: thread org/n into the decline route so a resume can scope top_people_by_metric ──
+def test_metric_descending_route_carries_org(conn):
+    r = route(conn, "least cited professor in ywcc")
+    assert r is not None and r.skill == "metric_descending_unsupported"
+    assert r.args.get("org_id") is not None          # ywcc resolved + threaded
+    assert "n" in r.args
+    assert r.args.get("org_defaulted") is False
+
+
+def test_metric_descending_no_org_defaults_root(conn):
+    r = route(conn, "least cited professor")
+    assert r is not None and r.skill == "metric_descending_unsupported"
+    assert r.args.get("org_id") is not None          # defaulted to root (NJIT id=1)
+    assert r.args.get("org_defaulted") is True
