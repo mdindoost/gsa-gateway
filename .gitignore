@@ -101,3 +101,12 @@ v2/data/match_watcher_*_state.json
 eval/gate_shadow.jsonl
 eval/gate_shadow_smoke.jsonl
 eval/heldout_results.jsonl
+
+# Kavosh auto-eval harness runtime artifacts (source lives in autoeval/*.py + tests)
+autoeval/snapshots/
+autoeval/autoeval.db
+autoeval/status.json
+autoeval/report_run_*.md
+autoeval/codex_raw/
+logs/autoeval.out
+logs/autoeval.pid
