@@ -49,16 +49,14 @@ def match_followup(text: str, options):
         return DECLINE
     if norm in _AFFIRM:
         return 0 if len(options) == 1 else None   # bare "yes" to N options is ambiguous
-    # ordinal selection among N
-    idx = _ordinal_index(norm, len(options))
-    if idx is not None:
-        return idx
-    # unique label match: exact-equal OR unique substring of exactly one option's label
+    # ordinal and label are both candidate selections; reconcile — never guess on a collision.
+    idx_ord = _ordinal_index(norm, len(options))
     labels = [_normalize(o.label) for o in options]
     exact = [i for i, lbl in enumerate(labels) if lbl == norm]
-    if len(exact) == 1:
-        return exact[0]
     subs = [i for i, lbl in enumerate(labels) if norm in lbl]
-    if len(subs) == 1:
-        return subs[0]
-    return None
+    idx_lbl = exact[0] if len(exact) == 1 else (subs[0] if len(subs) == 1 else None)
+    if idx_ord is not None and idx_lbl is not None and idx_ord != idx_lbl:
+        return None                      # ordinal and label disagree → ambiguous, never guess
+    if idx_ord is not None:
+        return idx_ord
+    return idx_lbl

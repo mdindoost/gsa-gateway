@@ -49,3 +49,9 @@ def test_ambiguous_or_absent_label_is_none():
     assert match_followup("Smith", THREE) is None        # matches none
     assert match_followup("", ONE) is None
     assert match_followup("what are the office hours", ONE) is None
+
+
+def test_label_ordinal_collision_is_ambiguous():
+    opts = _opts("Second Choice", "First Choice")
+    assert match_followup("second", opts) is None      # ordinal(→idx1) disagrees with label(→idx0)
+    assert match_followup("first", opts) is None        # same collision the other way
