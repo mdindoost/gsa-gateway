@@ -67,7 +67,7 @@ Codex occupies exactly one box (generation). It never sees Kavosh's output.
 | Module | Job |
 |---|---|
 | `snapshot.py` | Per-run-window `cp gsa_gateway.db → autoeval/snapshots/snap_<hash>.db`; record hash; hand both Kavosh and sampler the frozen copy |
-| `sampler.py` | Sample Person/Org/ResearchArea/prose-chunk from the snapshot (configurable mix, default Person 50 / Org 20 / Area 15 / chunk 15); extract ground-truth + `has_fields` + `missing_fields`; coverage-aware (sweeps the whole DB over time) |
+| `sampler.py` | Sample Person/Org/ResearchArea/prose-chunk from the snapshot (configurable mix, default Person 50 / Org 20 / Area 15 / chunk 15); extract ground-truth + `has_fields` + `missing_fields`; emit a **family-typed `item_key`** (person `nodes.key` for Person, numeric `org_id` via `resolve_org` for Org, area string for Area) so the checker's resolution test compares the right arg; coverage-aware (sweeps the whole DB over time) |
 | `generator.py` | Codex 3-arm generation; validates that every Q carries a machine-checkable `expected` spec; stores raw Codex prompt+response for audit |
 | `runner.py` | Drive `handle()`; separately call `unified_router.decide(q)` for `family/skill/entity_id`; capture `used_ai/is_live/is_deep/source_note`; text-match canned abstain/clarify strings; time the call |
 | `checker.py` | Deterministic typed checks → `result`, `failure_class`, `data_gap` signal, `evidence`; fuzzy-prose fallback to soft LLM-judge |
@@ -80,9 +80,19 @@ Codex occupies exactly one box (generation). It never sees Kavosh's output.
 ### Data isolation (the "not user questions" guarantee)
 
 - **Snapshot copy:** Kavosh runs against the frozen `snap_<hash>.db`, so every analytics row
-  `handle()` writes (the `questions` table lives in the KB DB) lands in the **throwaway
-  snapshot** — production `gsa_gateway.db` never sees a harness row. This is the primary
-  guarantee, by construction; no watermark/delete dance needed.
+  `handle()` writes (the `questions` table lives in the KB DB, `bot/services/database.py:227`)
+  lands in the **throwaway snapshot** — production `gsa_gateway.db` never sees a harness row.
+  This is the primary guarantee, by construction; no watermark/delete dance needed.
+  - **Both DB seams must point at the snapshot.** The retriever reads `config.database_path`
+    (`assistant.py:114`) and the router reads `db.db_path` (`assistant.py:132`). The harness
+    mutates the `config` module singleton (`config.database_path = snapshot`) **and** constructs
+    `Database(snapshot)` *before* `build_assistant`, or retrieval silently reads production while
+    analytics go to the snapshot. This deliberately diverges from `eval_run.py:65`, which points
+    at production on purpose.
+  - **Combined mode, no production ops DB.** Construct `Database(snapshot)` with **no**
+    `ops_db_path` (combined mode, `database.py:35`) so the harness never opens a connection to
+    production `gsa_gateway_ops.db`. (`handle()` doesn't write ops today, but there's no reason
+    to open it.)
 - **Tagged synthetic identity:** every question uses a branded synthetic `user_id`
   (`autoeval::<uuid>`, hashed as usual) — trivially excludable, never collides with real
   conversation memory.
@@ -94,17 +104,46 @@ Codex occupies exactly one box (generation). It never sees Kavosh's output.
 - **No external footprint:** `LIVE_ENABLED=0` default → no Brave/njit.edu traffic, no shared
   budget spend.
 
+### Required runtime environment (exported by `scripts/autoeval.sh`, asserted at startup)
+
+Several flags are read at **import time** as module constants; their production defaults are the
+opposite of what the harness needs. The launcher exports these **before** the Python process
+imports `bot.config`, and the harness asserts them at startup (fail fast if wrong):
+
+- **`ROUTER_V21=1`** — otherwise `unified_router` is `None` (`assistant.py:125`) and the runner's
+  `handler.unified_router.decide(q)` throws `AttributeError`.
+- **`ROUTER_V21_SHADOW=0`** — with shadow on (the default `1`, `config.py:184`), `handle()`
+  **ignores** `decide()` and answers via the legacy path (`message_handler.py:268-276`), so our
+  captured `family/skill/entity_id` would describe a decision `handle()` never acted on
+  (corrupts `routing_failure` classification), **and** every question appends a harness row to
+  the shared `logs/router_v21_shadow.jsonl` (`route_shadow.py:15`) — a production-location leak.
+  Setting it `0` fixes fidelity and the leak at once.
+- **`LIVE_ENABLED=0`** — read as a module constant (`config.py:154`) and consumed directly as
+  `botcfg.LIVE_ENABLED` (`message_handler.py:813,864`), so it must be an env export set before
+  import, not a runtime config attribute. Guarantees zero Brave/njit.edu footprint.
+- **`ROUTER_V21_SLOT_RECOVERY=0`** — see the double-`decide()` caveat below; pinning it off makes
+  the captured route deterministic so it matches what `handle()` acted on.
+
 ### Metadata capture (non-invasive)
 
 `handle()` returns only a thin `MessageResponse` (`text`, `used_ai`, `source_note`, `is_live`,
 `is_deep`, `ollama_failed`, `question_id`, `offer_live_search`) — no skill/entity-key/abstain
-flag. Rather than instrument production code (would trip the expert-review gate and break
-isolation), the runner **calls `handler.unified_router.decide(query)` separately** to capture
-`family / skill / args["entity_id"]`, and derives abstain/clarify by matching the response text
-against the canned strings (`_KB_MISS_RESPONSE`, `_useful_abstain` lead-in, `_CLARIFY_MSG`)
-combined with `used_ai`. `decide()` is deterministic and, for single-shot questions
-(`resolved_query == clean_text`), matches what `handle()` computed internally. Latency is timed
+flag, and **`used_ai` is not an abstain signal** (KG/structured/metric/clarify answers all
+return `used_ai=False`; see the checker). Rather than instrument production code (would trip the
+expert-review gate and break isolation), the runner **calls `handler.unified_router.decide(query)`
+separately** to capture `family / skill / args`, and derives abstain/clarify purely by matching
+the response text against the canned strings (`_KB_MISS_RESPONSE` `:43`, the `_useful_abstain`
+lead-in "I wasn't able to find a specific answer" `:640`, `_CLARIFY_MSG` `:58`). Latency is timed
 around the `await`.
+
+**Double-`decide()` caveat:** `handle()` calls `decide()` internally (`:264`) and the runner
+calls it again. For regex/fast-path/classifier routes this is deterministic and the two agree.
+On the LLM-slot-extraction path (`unified_router.py:81-95`, `generate_json`) two calls are not
+guaranteed identical — so with slot recovery ON the captured route could diverge from what
+`handle()` used. We pin `ROUTER_V21_SLOT_RECOVERY=0` for the fidelity guarantee; rows that still
+route via slot extraction are flagged and **excluded from `routing_failure` classification**
+rather than trusted. (This capture also doubles the router's LLM calls per question — accepted,
+consistent with GPU-polite pacing.)
 
 ## Question generator — three arms
 
@@ -139,10 +178,20 @@ routing bug count.
 - **count / metric:** numeric match of the expected figure.
 - **list** (clubs, faculty): set-overlap of expected members vs. the answer; report
   precision/recall.
-- **abstain_or_clarify:** pass iff `used_ai == False` OR the answer is a clarify prompt; fail
-  (→ fabrication) if it asserts a factual answer.
-- **entity resolution:** pass iff captured `RouteDecision.args["entity_id"]` == expected
-  `item_key`.
+- **abstain_or_clarify:** pass iff the answer **text matches a canned abstain/clarify string**
+  (`_KB_MISS_RESPONSE`, the `_useful_abstain` lead-in, or `_CLARIFY_MSG`). **Do NOT use
+  `used_ai==False` as an abstain proxy** — KG/structured/metric answers all return
+  `used_ai=False`, so that shortcut would score a confident, fabricated KG answer as a correct
+  abstain and hide the exact Arm-C leak we exist to catch. Fail (→ fabrication) iff the answer is
+  **not** a canned deflection AND asserts a factual value (an email/phone/number/name) — an
+  affirmative factual-assertion test, never an `used_ai` check.
+- **entity resolution (family-aware):** the resolved-key check depends on the routed family/skill.
+  Person-centric skills carry `args["entity_id"]` (= `nodes.key`, e.g. `crawler/ioannis-koutis`);
+  **Org skills carry numeric `args["org_id"]`** (not a node key), and area skills carry `args["area"]`
+  (`router.py:380/424/475/534/577/589`). The sampler emits an `item_key` of the matching type per
+  family (person key for Person items, numeric `org_id` — resolved via `resolve_org` — for Org
+  items), and the checker compares the family-appropriate arg. Skills carrying neither a key nor an
+  id (e.g. `person_disambig` → `candidates`) are treated as non-resolving for this check.
 - **prose / fuzzy** (open "what is X" with no typed check): fall back to a **local LLM-judge**
   verdict stored in separate soft columns (`llm_judge_verdict`, `llm_judge_confidence`), row
   flagged `graded_soft=1` — NEVER part of the deterministic pass/fail.
@@ -260,7 +309,11 @@ once the checker's verdicts match hand judgment on a sample.
 - Confirm a genuine missing-field case is tagged `data_gap`, not `routing_failure`.
 - Confirm a noisy variant that misresolves is `resolution_failure`, paired to its passing clean
   twin.
-- Confirm the production-analytics before/after diff is zero (isolation holds).
+- Confirm the production-analytics before/after diff is zero AND no harness row landed in the
+  shared `logs/router_v21_shadow.jsonl` (isolation holds; `ROUTER_V21_SHADOW=0` verified).
+- Confirm the four required env exports are asserted at startup (`ROUTER_V21=1`,
+  `ROUTER_V21_SHADOW=0`, `LIVE_ENABLED=0`, `ROUTER_V21_SLOT_RECOVERY=0`) and that the runner's
+  captured route equals the route `handle()` acted on for a sample of non-slot-extracted rows.
 
 ## Out of scope / deferred
 
