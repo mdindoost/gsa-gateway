@@ -16,14 +16,21 @@ Produce three arms:
 - arm "noisy": for EACH answer question, 1-2 degraded variants (typo/wording/esl/truncation).
   Set variant_type and twin_ref (copy the exact answer-arm question text). SAME expected spec.
 - arm "out_of_scope": 2 questions that CANNOT be answered from the facts (a fabricated person,
-  an uncovered policy, a subjective 'who is best', OR a field the item LACKS). expected.type =
-  abstain_or_clarify; if it targets a genuinely missing field, set expected.missing_field.
+  an uncovered policy, a subjective 'who is best', OR a field listed in missing_fields). expected.type
+  = abstain_or_clarify; if it targets a genuinely missing field, set expected.missing_field.
+
+Ask ONLY questions a real student would ask in plain language ("what is X's email", "who leads Y",
+"what kind of office is Z"). NEVER ask about the record's internal structure — no questions about how
+many aliases/fields/ids it has, which fields are available, or what the data schema contains.
 
 Return JSON matching the schema. Every question MUST carry a checkable expected spec."""
 
 def build_prompt(item: SourceItem) -> str:
+    # NOTE: has_fields is deliberately NOT exposed — handing the generator a field-name list made it
+    # ask "which fields are available"-style meta-questions. missing_fields IS exposed because the
+    # out-of-scope arm needs to know which real fields to target for abstention.
     facts = json.dumps({"item_type": item.item_type, "name": item.display_name,
-                        "known_facts": item.ground_truth, "has_fields": item.has_fields,
+                        "known_facts": item.ground_truth,
                         "missing_fields": item.missing_fields}, indent=2)
     return f"{_ARM_INSTRUCTIONS}\n\nKNOWN FACTS:\n{facts}\n"
 

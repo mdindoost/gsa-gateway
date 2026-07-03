@@ -68,6 +68,8 @@ async def run_window(cfg, n_items: int, smoke: bool = False):
     items = sample_items(gt_conn, cfg.sampler_mix, n_items, prefer_keys=prefer, seed=None if not smoke else 1)
 
     runner = KavoshRunner(cfg); await runner.build(snap)
+    warmed = await runner.warm()   # pre-load Ollama so cold-start slot-extraction timeouts don't bias results
+    print(f"[autoeval] model warm-up {'ok' if warmed else 'skipped/failed'}", flush=True)
     # arm-A pass tracking for A/B pairing, keyed by (item_key, twin question text)
     twin_pass: dict[tuple[str, str], bool] = {}
     completed = 0

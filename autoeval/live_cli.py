@@ -14,7 +14,17 @@ def main():
     action = sys.argv[1] if len(sys.argv) > 1 else "status"
     run_id = _latest_run(store)
     rows = store.results_for_run(run_id) if run_id else []
-    if action == "tail":
+    if action == "failures":
+        from autoeval.report import _fail_detail, _WHERE
+        fails = [r for r in rows if r.get("result") == "fail"]
+        order = {"fabrication": 0, "routing_failure": 1, "resolution_failure": 2}
+        if not fails:
+            print("No failures in the latest run 🎉"); return
+        print(f"{len(fails)} failing questions in run {run_id} "
+              f"(fix-location: " + ", ".join(f"{k}→{v}" for k, v in _WHERE.items()) + ")\n")
+        for r in sorted(fails, key=lambda x: (order.get(x.get("failure_class"), 9), x.get("item_key") or "")):
+            print("\n".join(_fail_detail(r)))
+    elif action == "tail":
         n = int(sys.argv[2]) if len(sys.argv) > 2 else 20
         print(format_tail([r for r in rows if r.get("result")][-n:]))
     else:

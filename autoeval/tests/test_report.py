@@ -20,6 +20,21 @@ def test_report_counts_classes_separately_and_lists_fabrications():
     assert "Zzyzx email?" in rep            # fabrications listed in full
     assert "data_gap" in rep.lower()        # data gap reported separately
 
+def test_report_lists_each_failing_question_with_where():
+    rows = [
+        _row(result="fail", failure_class="routing_failure", item_key="59",
+             question_text="What type of organization is Study Abroad?",
+             answer_text="Study Abroad Providers are organizations that...",
+             expected_json='{"type":"contact","value":"office"}', family="RAG", skill=None),
+        _row(result="pass"),
+    ]
+    rep = build_report(rows)
+    assert "Failure details" in rep
+    assert "What type of organization is Study Abroad?" in rep   # the exact failing question
+    assert "expected: office" in rep                              # what it should have said
+    assert "routed → RAG:-" in rep                                # WHERE it went
+    assert "the router" in rep                                    # fix-location hint for the class
+
 def test_report_shows_errored_count_excluded_from_pass_fail():
     rows = [
         _row(result="error", failure_class=None),

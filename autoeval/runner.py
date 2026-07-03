@@ -54,6 +54,25 @@ class KavoshRunner:
         self._handler = self._asst.message_handler
         assert self._handler.unified_router is not None, "ROUTER_V21 not active"
 
+    async def warm(self) -> bool:
+        """Pre-load the Ollama model into memory so the first real questions don't eat cold-start
+        slot-extraction timeouts (generate_json_sync has only a 6s budget). One throwaway
+        constrained-JSON call on the SAME model the router uses, with a generous timeout. Best-effort
+        — returns True if the warm call succeeded, False otherwise; never raises."""
+        import asyncio
+        try:
+            ol = getattr(self._asst, "ollama", None)
+            if ol is None:
+                return False
+            from bot.services.ollama_client import generate_json_sync
+            schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
+            res = await asyncio.to_thread(
+                generate_json_sync, "Reply with {\"ok\":true}.", "ready?", schema,
+                base_url=ol.base_url, model=ol.model, timeout=180.0, num_predict=8)
+            return res is not None
+        except Exception:
+            return False
+
     async def observe(self, question_text: str) -> KavoshObservation:
         from bot.core.message_handler import MessageRequest
         import uuid

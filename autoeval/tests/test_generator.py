@@ -23,6 +23,13 @@ def test_validate_keeps_checkable_and_drops_specless():
     assert ("out_of_scope", "abstain_or_clarify") in kinds
     assert len(qs) == 2  # the value-less contact question was dropped
 
+def test_build_prompt_hides_has_fields_keeps_missing():
+    from autoeval.generator import build_prompt
+    prompt = build_prompt(_item())
+    assert "has_fields" not in prompt          # not exposed → no "which fields are available" Qs
+    assert "missing_fields" in prompt          # still exposed → out-of-scope arm can target gaps
+    assert "internal structure" in prompt      # explicit anti-meta instruction present
+
 def test_expected_item_key_is_forced_from_item():
     raw = {"questions": [{"arm": "answer", "question": "q",
             "expected": {"type": "contact", "value": "jdoe@njit.edu"}}]}

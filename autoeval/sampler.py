@@ -29,15 +29,15 @@ def extract_person(conn: sqlite3.Connection, key: str) -> SourceItem:
                       ground_truth=gt, has_fields=has, missing_fields=missing)
 
 def extract_org(conn: sqlite3.Connection, org_id: int) -> SourceItem:
-    row = conn.execute("SELECT name,type,metadata FROM organizations WHERE id=?",
-                       (org_id,)).fetchone()
-    import json
-    meta = json.loads(row["metadata"]) if row and row["metadata"] else {}
+    # Ground truth carries ONLY facts a real user would ask about (name, type, members).
+    # KG-internal structure (aliases, field lists, ids) is deliberately EXCLUDED — feeding it to
+    # the generator produced junk meta-questions ("how many aliases", "which fields are available")
+    # that no student asks and that Kavosh has no skill for, inflating routing_failure with noise.
+    row = conn.execute("SELECT name,type FROM organizations WHERE id=?", (org_id,)).fetchone()
     members = _skills.people_in_org(conn, org_id)        # [(name,title,email)]
-    gt = {"name": row["name"], "type": row["type"], "aliases": meta.get("aliases", []),
-          "members": [m[0] for m in members]}
-    has = ["name", "type"] + (["aliases"] if gt["aliases"] else []) + (["members"] if members else [])
-    missing = [f for f in ("aliases", "members") if f not in has]
+    gt = {"name": row["name"], "type": row["type"], "members": [m[0] for m in members]}
+    has = ["name", "type"] + (["members"] if members else [])
+    missing = ["members"] if not members else []
     return SourceItem(item_type="org", item_key=str(org_id), display_name=row["name"],
                       ground_truth=gt, has_fields=has, missing_fields=missing)
 

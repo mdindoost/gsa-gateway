@@ -2,6 +2,33 @@ from __future__ import annotations
 import json
 from collections import Counter
 
+# subsystem each failure class points at — the "where to go fix it" hint
+_WHERE = {
+    "fabrication": "retrieval/generation grounding",
+    "routing_failure": "the router (rules / slot-extractor)",
+    "resolution_failure": "the fuzzy resolver (WS2)",
+}
+
+def _expected_gist(r: dict) -> str:
+    try:
+        e = json.loads(r.get("expected_json") or "{}")
+    except Exception:
+        return "?"
+    val = e.get("value") or e.get("members") or e.get("missing_field") or e.get("type")
+    return str(val)[:90]
+
+def _fail_detail(r: dict) -> list[str]:
+    arm = r.get("arm") or "?"
+    variant = f"/{r['variant_type']}" if r.get("variant_type") else ""
+    route = f"{r.get('family') or '?'}:{r.get('skill') or '-'}"
+    ans = (r.get("answer_text") or "").replace("\n", " ")[:160]
+    return [
+        f"- [{r.get('failure_class')}] {r.get('item_key')} · {arm}{variant} · routed → {route}",
+        f"    Q: {r.get('question_text')}",
+        f"    expected: {_expected_gist(r)}",
+        f"    Kavosh said: {ans}",
+    ]
+
 def build_report(rows: list[dict], prev_rows: list[dict] | None = None) -> str:
     total = len(rows)
     passed = sum(1 for r in rows if r["result"] == "pass")
@@ -28,9 +55,23 @@ def build_report(rows: list[dict], prev_rows: list[dict] | None = None) -> str:
         L.append(f"- [{r['item_key']}] Q: {r['question_text']}\n    A: {r['answer_text'][:200]}")
     L.append("")
 
-    # Top failing items
+    # Full per-failure detail — WHICH question failed and WHERE (the core deliverable).
+    # Ordered by severity so the most important failures are read first. Not truncated: every
+    # failing question is listed so nothing hides behind an aggregate count.
+    L.append("## Failure details — which question failed & where")
+    if not fails:
+        L.append("- none 🎉\n")
+    else:
+        L.append(f"_Fix-location by class: " +
+                 ", ".join(f"{k} → {v}" for k, v in _WHERE.items()) + "._\n")
+        order = {"fabrication": 0, "routing_failure": 1, "resolution_failure": 2}
+        for r in sorted(fails, key=lambda x: (order.get(x.get("failure_class"), 9), x.get("item_key") or "")):
+            L.extend(_fail_detail(r))
+        L.append("")
+
+    # Top failing items (concentration view)
     item_fails = Counter(r["item_key"] for r in fails)
-    L.append("## Top failing items")
+    L.append("## Top failing items (concentration)")
     for key, c in item_fails.most_common(15):
         L.append(f"- {key}: {c} failures")
     L.append("")

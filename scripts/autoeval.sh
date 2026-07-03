@@ -53,7 +53,8 @@ case "$cmd" in
     rm -f "$PIDFILE"
     ;;
 
-  status) exec "$PY" -m autoeval.live_cli status ;;
-  tail)   exec "$PY" -m autoeval.live_cli tail "${1:-20}" ;;
-  *) echo "usage: autoeval.sh {start [N/batch] | stop | run [--items N] | smoke [N] | status | tail [N]}"; exit 2 ;;
+  status)   exec "$PY" -m autoeval.live_cli status ;;
+  tail)     exec "$PY" -m autoeval.live_cli tail "${1:-20}" ;;
+  failures) exec "$PY" -m autoeval.live_cli failures ;;
+  *) echo "usage: autoeval.sh {start [N/batch] | stop | run [--items N] | smoke [N] | status | tail [N] | failures}"; exit 2 ;;
 esac
