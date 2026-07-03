@@ -287,7 +287,7 @@ class MessageHandler:
         # NOT a GSA structured answer — skip structured so free mode isn't identical to GSA.
         # (mode already resolved above for the contextual-rewrite gate)
         if mode != "free":
-            structured = await self._try_structured(resolved_query)
+            structured = await self._try_structured(resolved_query, user_id=user_id, clean_text=clean_text)
             if structured is not None:
                 return MessageResponse(text=structured)
 
@@ -423,7 +423,8 @@ class MessageHandler:
         # ── RAG pipeline ──────────────────────────────────────────────────────
         return await self._rag_pipeline(req, clean_text, intent, resolved_query=resolved_query)
 
-    async def _try_structured(self, text: str) -> Optional[str]:
+    async def _try_structured(self, text: str, user_id: str | None = None,
+                              clean_text: str | None = None) -> Optional[str]:
         """Answer enumerate/filter/traverse/count questions from structured DB queries
         (complete + deterministic), or return None to fall through to semantic RAG.
 
@@ -454,7 +455,7 @@ class MessageHandler:
                 # FINAL answer verbatim — never handed to the LLM to restate.
                 # Metric answers are themselves deterministic (numbers must not be reworded) →
                 # flag so the caller skips LLM compose entirely.
-                return (facts, structured_answer.deterministic_suffix(result),
+                return (rt, facts, structured_answer.deterministic_suffix(result),
                         structured_answer.is_deterministic(result))
             finally:
                 conn.close()
@@ -466,8 +467,11 @@ class MessageHandler:
             return None
         if not ran:
             return None
-        facts, suffix, deterministic = ran
-        return await self._compose_structured(text, facts, suffix, deterministic)
+        rt, facts, suffix, deterministic = ran
+        composed = await self._compose_structured(text, facts, suffix, deterministic)
+        if user_id is not None:                      # main :290 path → register + record
+            self._register_and_record(user_id, clean_text or text, rt, composed)
+        return composed
 
     async def _compose_structured(self, text: str, facts: str, suffix: str,
                                   deterministic: bool) -> str:
@@ -483,6 +487,30 @@ class MessageHandler:
         if suffix:
             out = f"{out}\n\n{suffix}"
         return out
+
+    def _register_and_record(self, user_id, clean_text, rt, text) -> None:
+        """Side-effect chokepoint for BOTH structured paths (_answer_decision + _try_structured):
+        register a resumable pending action AND record the answer in history (Bug 1 / G6). The WHOLE
+        body is flag-gated so flag-off is truly zero-behavior-change — with the flag off, structured
+        answers are NOT added to history (unchanged current behavior). No return — the caller builds
+        its own MessageResponse."""
+        from datetime import datetime, timezone
+        from v2.core.retrieval import structured_answer
+        from bot.core.pending import PendingAction, PendingOption
+        cm = self.conversation_manager
+        if cm is None or not botcfg.FOLLOWUP_RESUME_ENABLED:   # flag off ⇒ fully inert (Fable #2)
+            return
+        try:
+            resumable = structured_answer.resumable_action(rt)
+        except Exception:  # noqa: BLE001 - never break the answer path
+            resumable = None
+        if resumable:
+            cm.set_pending(user_id, PendingAction(
+                options=[PendingOption(label, "structured",
+                                       {"skill": r.skill, "args": r.args}) for (label, r) in resumable],
+                created_at=datetime.now(timezone.utc)))
+        cm.add_turn(user_id=user_id, role="user", content=clean_text)
+        cm.add_turn(user_id=user_id, role="assistant", content=(text or "")[:500])
 
     def _structured_from_route(self, skill: str, args: dict):
         """SQL body for a DECIDED skill/args (no route() — the UnifiedRouter already resolved it).
@@ -547,8 +575,11 @@ class MessageHandler:
                 ran = None
             if ran:
                 facts, suffix, deterministic = ran
-                return MessageResponse(
-                    text=await self._compose_structured(text, facts, suffix, deterministic))
+                text = await self._compose_structured(text, facts, suffix, deterministic)
+                from v2.core.retrieval.router import Route
+                self._register_and_record(req.user_id, req.text.strip(),
+                                          Route(skill=decision.skill, args=dict(decision.args or {})), text)
+                return MessageResponse(text=text)
             return await self._rag_pipeline(req, text, INTENT_QUESTION, resolved_query=resolved_query)
         if fam == "RAG":
             rag_intent = INTENT_FOOD if decision.source == "food" else INTENT_QUESTION
