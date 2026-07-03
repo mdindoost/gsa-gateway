@@ -28,6 +28,13 @@ def list_overlap(answer: str, members: list[str]) -> tuple[float, float]:
     precision = 1.0 if found else 0.0  # coarse; recall is the meaningful signal for a roster
     return precision, recall
 
+_REFUSAL_MARKERS = (
+    "wasn't able", "was not able", "not able to find", "unable to",
+    "couldn't find", "could not find", "can't find", "cannot find",
+    "don't have", "do not have", "not sure i have", "no information",
+    "no record", "i'm not sure", "i am not sure", "don't know", "do not know",
+)
+
 def check_typed(expected: ExpectedSpec, obs: KavoshObservation) -> bool | None:
     """True=answer correct, False=incorrect/contradiction, None=no typed check (prose -> soft judge)."""
     t = expected.type
@@ -42,17 +49,21 @@ def check_typed(expected: ExpectedSpec, obs: KavoshObservation) -> bool | None:
 
 def _asserts_a_value(obs: KavoshObservation) -> bool:
     """Arm-C fabrication test: the answer is NOT a canned deflection AND makes an affirmative
-    factual assertion (email / phone / number / an entity-card-style 'X is/are ...')."""
+    factual assertion (email / phone / number / substantive prose). A non-canned soft refusal
+    (paraphrased decline that the canned-string matcher missed) is NOT an assertion."""
     if obs.is_abstain or obs.is_clarify:
         return False
     t = obs.answer_text
-    if re.search(r"[\w.+-]+@[\w-]+\.\w+", t):      # an email
+    if re.search(r"[\w.+-]+@[\w-]+\.\w+", t):            # an email
         return True
     if re.search(r"\d{3}[.\-\s]?\d{3}[.\-\s]?\d{4}", t):  # a phone
         return True
     if re.search(r"\b\d[\d,]*\b", t) and len(t) < 400:    # a bare figure in a short answer
         return True
-    return len(t) > 40   # a substantive prose answer to a should-abstain question
+    low = t.lower()
+    if any(m in low for m in _REFUSAL_MARKERS):           # non-canned soft refusal -> decline
+        return False
+    return len(t) > 40                                     # substantive prose answer
 
 def classify(expected: ExpectedSpec, obs: KavoshObservation, arm: str,
              missing_fields: list[str], twin_passed: bool | None) -> CheckOutcome:

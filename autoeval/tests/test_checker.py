@@ -69,3 +69,16 @@ def test_armB_fail_with_passing_twin_is_resolution_failure():
              is_abstain=True)
     out = classify(exp, obs, arm="noisy", missing_fields=[], twin_passed=True)
     assert out.failure_class == "resolution_failure"
+
+def test_armC_noncanned_soft_refusal_is_not_fabrication():
+    exp = ExpectedSpec("abstain_or_clarify", "crawler/zzyzx")
+    obs = _o("I'm not sure I have that information readily available for you right now, "
+             "sorry about that.", is_abstain=False)
+    out = classify(exp, obs, arm="out_of_scope", missing_fields=[], twin_passed=None)
+    assert out.result == "pass" and out.failure_class is None
+
+def test_armC_value_beats_hedge_still_fabrication():
+    exp = ExpectedSpec("abstain_or_clarify", "crawler/zzyzx")
+    obs = _o("I'm not sure, but Professor Zzyzx's email is zzyzx@njit.edu", is_abstain=False)
+    out = classify(exp, obs, arm="out_of_scope", missing_fields=[], twin_passed=None)
+    assert out.result == "fail" and out.failure_class == "fabrication"
