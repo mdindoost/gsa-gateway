@@ -70,8 +70,12 @@ The helper returns the **corrected `(org_id, org_phrase)` pair**. It swaps to th
 2. a distinct non-officer-office org also matched, **and**
 3. **the alternate org can actually answer the collision title (RAG finding #2 — the load-bearing
    gate).** The alternate must have either an `officer`/`deprep` edge **or** an `admin` edge whose
-   title contains the collision word (`"president"`). Otherwise **no swap** — the pair stays the
-   office `(52, 'president')` and the query keeps today's honest deflection.
+   title carries the collision word (`"president"`) as a **segment head** — reuse `people_by_role`'s
+   matcher (`entity.py:278`, split the title on `,`/` and `, test `^president\b` per segment), **not**
+   a bare `LIKE '%president%'`. Segment-head is empirically identical today (passes only root org 1 +
+   cabinet org 47) but future-proofs against an `admin`-category "Vice President" title on a
+   short-named org (Fable sign-off). Otherwise **no swap** — the pair stays the office
+   `(52, 'president')` and the query keeps today's honest deflection.
 
 **Both the `org_id` AND the `org_phrase` are corrected together** — load-bearing, because E's guards
 (below) strip/compare against `org_phrase`; running them on the raw `'president'` phrase would block
@@ -195,8 +199,9 @@ RAG; optionally extend the alternation to `exec(?:utive)?\s*board` — decide at
 `gsa treasurer` (non-president terse title) · `GSA officers` · `gwics officers` ·
 `who is the njit president` (D root case → Teik Lim, RAG finding #6) · `ywcc officers` ·
 `cs officers` · `who is the ywcc president` (must deflect, NOT a mislabeled roster — RAG finding #2) ·
-`ywcc dean` · `who is the njit registrar` · `president office hours` · `registrar office hours` ·
-`former gsa president`.
+`ist president` (short-named office + "president" → must deflect; locks the gate-3 no-leak property
+as data changes — Fable sign-off) · `ywcc dean` · `who is the njit registrar` ·
+`president office hours` · `registrar office hours` · `former gsa president`.
 
 ---
 
