@@ -192,3 +192,14 @@ def test_metric_descending_no_org_defaults_root(conn):
     assert r is not None and r.skill == "metric_descending_unsupported"
     assert r.args.get("org_id") is not None          # defaulted to root (NJIT id=1)
     assert r.args.get("org_defaulted") is True
+
+
+def test_metric_descending_no_root_org_no_false_default():
+    # No organizations at all → no root to default to. The decline may still fire (it needs no org),
+    # but it must NEVER claim org_defaulted=True while org_id is None (contradictory; a later task
+    # trusts org_defaulted=True to imply a usable org_id).
+    c = create_all(":memory:")
+    r = route(c, "least cited professor")
+    c.close()
+    if r is not None and r.skill == "metric_descending_unsupported":
+        assert not (r.args.get("org_defaulted") and r.args.get("org_id") is None)

@@ -496,8 +496,12 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
             # ascending branch below.
             desc_org, defaulted = org_id, False
             if desc_org is None:
-                desc_org = _root_org_id(conn)
-                defaulted = True
+                root = _root_org_id(conn)
+                if root is not None:
+                    desc_org, defaulted = root, True
+                # else: no root org -> desc_org stays None, defaulted stays False; the decline still
+                # fires (a decline needs no org), the resume just won't be scoped (consumer guards
+                # org_id=None). Never emit org_defaulted=True with org_id=None (contradictory).
             return Route("metric_descending_unsupported",
                          {"field_key": field_key, "metric_key": metric.key,
                           "org_id": desc_org, "n": _parse_topn(q), "org_defaulted": defaulted})
