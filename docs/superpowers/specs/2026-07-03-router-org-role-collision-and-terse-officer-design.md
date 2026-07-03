@@ -64,18 +64,26 @@ dean/director/chair.
 In practice only `president`(52) is such an office today, so the alternate is "the longest org
 match that isn't org 52-by-bare-president".
 
-Consume the alternate in exactly two places — **the officer-identity branch (549) and the new
+The helper returns the **corrected `(org_id, org_phrase)` pair**: if the resolved `org_id`'s
+matched phrase is a bare officer-title office **and** a distinct non-officer-office org also
+matched, the pair becomes the alternate `(id, phrase)`; otherwise it is unchanged. **Both the
+`org_id` AND the `org_phrase` are corrected together** — this is load-bearing, because E's guards
+(below) strip/compare against `org_phrase`, and running them on the raw `'president'` phrase would
+block the very cases D exists to fix (SE finding 1). "gsa president" must carry the corrected
+phrase `'gsa'` into E.
+
+Consume the corrected pair in exactly two places — **the officer-identity branch (549) and the new
 terse branch**:
 
-> If the resolved `org_id`'s matched phrase is a bare officer-title office **and** a distinct
-> non-officer-office org also matched → use the alternate org for the officer route.
-
-- "gsa president" → alternate `gsa`(2) → `officers_in_org(2)`. ✓
-- "gwics president" → alternate `gwics`(11) → `officers_in_org(11)`. ✓
-- "njit president" → alternate `njit`(root) → `officers_in_org(root)` → surfaces Teik C. Lim
-  (`admin` edge on root). ✓
+- "gsa president" → corrected `(2, 'gsa')` → `officers_in_org(2)`. ✓
+- "gwics president" → corrected `(11, 'gwics')` → `officers_in_org(11)`. ✓
+- "who is the njit president" (**verb-ful**) → corrected `(root, 'njit')`; officer-identity branch
+  (549) has **no** E gate → `officers_in_org(root)` → surfaces Teik C. Lim (`admin` edge on root). ✓
+  **Terse "njit president"** → RAG: D still corrects to root, but the E real-officer gate fails
+  (root has only `admin`, no `officer`/`deprep`) → `route()=None`. Defensible (live/RAG answers it);
+  see the goals table.
 - "president office hours" / "office of the president" → **no** distinct alternate → stays
-  org 52 → today's behavior (`route()=None` → RAG/live). ✓ (preserves the `role_is_org`
+  `(52, 'president')` → today's behavior (`route()=None` → RAG/live). ✓ (preserves the `role_is_org`
   intent without touching that guard)
 
 The role branch (558-585) is untouched → registrar/DoS/provost keep their office scope.
@@ -90,22 +98,26 @@ Fire `officers_in_org(org_id)` (org_id = the D-corrected org) **iff all** hold:
 
 1. `_OFFICER_TITLE.search(q)` — a bare officer/president/vp/treasurer/secretary/… word is present.
 2. `not _OFFICER_PROCESS.search(q)` — no impeach/elect/eligible/duties/etc.
-3. **title-is-org guard:** the matched title word is **not** contained in the resolved
-   `org_phrase`. Kills "president office hours" (org 52, title == org) → falls through.
-4. **zero-residue guard:** strip the org phrase and the matched `_OFFICER_TITLE` span from `q`;
-   fire only if **every** remaining token is a stopword. Mirrors the existing `_is_bare_name`
-   helper (all-tokens-accounted-for). "the gsa president" → residue empty → fire; "former gsa
-   president" / "gsa president salary" / "past gsa presidents" → non-stopword residue → RAG.
+3. **title-is-org guard:** the matched title word is **not** contained in the **D-corrected**
+   `org_phrase`. Kills "president office hours" (org 52 uncorrected, title == org) → falls through;
+   "gsa president" uses corrected phrase `'gsa'` → passes.
+4. **zero-residue guard:** strip the **D-corrected** `org_phrase` and the matched `_OFFICER_TITLE`
+   span from `q`; fire only if **every** remaining token is a stopword. Mirrors the existing
+   `_is_bare_name` helper (all-tokens-accounted-for). "the gsa president" → strip `'gsa'`+`'president'`
+   → residue empty → fire; "former gsa president" / "gsa president salary" / "past gsa presidents" →
+   non-stopword residue → RAG. **NB (SE finding 1): guards 3+4 MUST use the corrected phrase — on the
+   raw `'president'` phrase they would strip the wrong span and block the flagship fires.**
 5. **real-officer gate (Option A):** the org has ≥1 active `has_role` edge with
    `category IN ('officer','deprep')`. Same query shape as `skills.py:221-228`, narrowed to the
    two true-officer categories:
    ```sql
-   SELECT 1 FROM edges e JOIN nodes o ON o.id = e.dst_id
+   SELECT 1 FROM edges e JOIN nodes o ON o.id = e.dst_id AND o.is_active=1
    WHERE e.type='has_role' AND e.is_active=1
      AND e.category IN ('officer','deprep')
      AND json_extract(o.attrs,'$.org_id') = ?
    LIMIT 1
    ```
+   (`o.is_active=1` on the join for parity with `skills.py:224` — SE finding 3.)
 
 **Why the gate:** `has_role.category` is a clean closed vocabulary. `officer`/`deprep` = true
 officers, present on exactly 5 orgs (GSA + GWICS + Grad BME Society + Iranian Cultural Assoc +
@@ -151,6 +163,14 @@ students at njit" → `people_by_role("dean of students", 20)`; "who works in th
 (title-is-org); "former gsa president" / "gsa president salary" → `None` (zero-residue); "gsa
 events" → not officer route.
 
+**Test-assertion boundary (SE finding 5):** unit tests assert on `route()`'s return — `is None` or
+the exact `Route(skill, args)` — **not** "→ RAG". Under `ROUTER_V21=1` a `None` first hits the LLM
+slot-extractor path; that downstream behavior is existing and out of this change's control.
+
+**Minor hardening (SE findings 3-4):** gate SQL carries `o.is_active=1` (done, §2.E.5). "exec board"
+is **not** in `_OFFICER_TITLE` today (only `e-?board`/`executive board`) → "gsa exec board" falls to
+RAG; optionally extend the alternation to `exec(?:utive)?\s*board` — decide at build, not a claimed case.
+
 **Eval additions** (`eval/questions.txt`, per feedback_grow_correctness_suite):
 `who is the GSA president` · `gsa president` · `GSA officers` · `gwics officers` · `ywcc officers`
 · `cs officers` · `ywcc dean` · `who is the njit registrar` · `president office hours` ·
@@ -162,7 +182,9 @@ events" → not officer route.
 
 | Goal | Status |
 |---|---|
-| D: "gsa/gwics/njit president" resolve to the right org's officers | **shipped** |
+| D: "gsa"/"gwics president" resolve to the club's officers | **shipped** |
+| D: **verb-ful** "who is the njit president" → root officers (Teik Lim) | **shipped** |
+| D: **terse** "njit president" → officers | **deferred/by-design** — root has only `admin`, E gate → RAG (SE finding 2) |
 | D: registrar / dean-of-students / "registrar office" — no regression | **shipped** (untouched) |
 | D: "president office hours" — no false positive | **shipped** (guard) |
 | D: provost collision | **deferred** — data on org 47, subtree scope out of scope |
