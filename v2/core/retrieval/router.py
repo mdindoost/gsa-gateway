@@ -168,6 +168,10 @@ _TOPN = re.compile(r"\btop\s+(\d+)\b|\b(\d+)\s+most\b")
 _PERSON_INTENT = re.compile(
     r"\b(who(?:'s|\s+is|\s+are)|tell\s+me\s+about|info(?:rmation)?\s+on|"
     r"profile\s+of|contact\s+(?:for|info)|reach)\b")
+# "who has/have" ("who has the lowest citation in ywcc") — a metric-block-local person cue.
+# Deliberately NOT folded into _PERSON_INTENT (reused elsewhere for other routing, e.g. lines
+# ~557/629/634/643); scoped to the metric ranking/decline branch only (see person_cue below).
+_METRIC_WHO_HAS = re.compile(r"\bwho\s+ha(?:s|ve)\b")
 _PERSON_ATTR = re.compile(r"\b(e-?mail|office|phone|number|title|position|bio)\b")
 # Looser "more about this person" cues that FOLLOW a bare surname ("koutis info",
 # "koutis all info", "koutis details") — distinct from _PERSON_INTENT's "info ON <name>".
@@ -486,7 +490,8 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         # A person/faculty cue gates the ranking branches (both descending decline and the no-org
         # default), so a metric alias on a NON-people question ("most cited PAPER", "fewest citations
         # needed to graduate") falls through to RAG instead of a people ranking/decline.
-        person_cue = bool(_FACULTY_CUE.search(q) or _PERSON_INTENT.search(q))
+        person_cue = bool(_FACULTY_CUE.search(q) or _PERSON_INTENT.search(q)
+                          or _METRIC_WHO_HAS.search(q))
         # Bug B (position-1): a descending-direction ranking of people is unsupported (Scholar coverage
         # is partial; "least cited" over a partial set is misleading + unkind). Decline deterministically
         # — never RAG, never a roster dump — so no person is ever named as "least <metric>".

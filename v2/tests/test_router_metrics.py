@@ -203,3 +203,24 @@ def test_metric_descending_no_root_org_no_false_default():
     c.close()
     if r is not None and r.skill == "metric_descending_unsupported":
         assert not (r.args.get("org_defaulted") and r.args.get("org_id") is None)
+
+
+# ── Task 7.5: "who has the lowest/most <metric> in <org>" is a person-metric cue too ──
+# ("who has" was missing from _PERSON_INTENT, so these fell through to None and lost org_id).
+def test_who_has_lowest_metric_in_org_routes_deterministically(conn):
+    # the literal reported repro — must now route to the decline WITH org threaded
+    r = route(conn, "who has the lowest citation in ywcc")
+    assert r is not None and r.skill == "metric_descending_unsupported"
+    assert r.args.get("org_id") is not None
+    assert r.args.get("org_defaulted") is False
+
+
+def test_who_has_most_metric_in_org_still_ranks(conn):
+    r = route(conn, "who has the most citations in ywcc")
+    assert r is not None and r.skill == "top_people_by_metric"
+
+
+def test_who_has_non_metric_unaffected(conn):
+    # blast-radius guard: no metric word -> metric block skipped -> unchanged (None)
+    assert route(conn, "who has office hours") is None
+    assert route(conn, "who has a phd") is None
