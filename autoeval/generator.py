@@ -50,7 +50,7 @@ def parse_and_validate(raw: dict, item: SourceItem) -> list[GeneratedQuestion]:
         spec = ExpectedSpec(
             type=exp["type"], item_key=item.item_key,          # key ALWAYS from the item, never Codex
             value=exp.get("value"), must_contain_field=exp.get("must_contain_field"),
-            members=exp.get("members", []), skill_hint=exp.get("skill_hint"),
+            members=(exp.get("members") or []), skill_hint=exp.get("skill_hint"),
             missing_field=exp.get("missing_field"))
         out.append(GeneratedQuestion(
             arm=q["arm"], variant_type=q.get("variant_type"), twin_ref=q.get("twin_ref"),
