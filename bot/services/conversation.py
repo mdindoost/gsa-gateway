@@ -180,12 +180,14 @@ class ConversationManager:
         return self.mode_store.get(user_id).value
 
     def set_mode(self, user_id: str, mode: str) -> None:
-        # G5 (owner 2026-07-03): a mode switch loses everything — context AND any pending action.
-        # Drop the session directly (NOT clear_session, which resets the mode to GSA and would fight
-        # the switch we're about to make). No-op when the mode is unchanged.
+        # G5: a mode switch wipes the session (history + pending) — but ONLY when the follow-up-resume
+        # feature is on. With the flag off there are no pending actions to protect, so preserve the
+        # pre-feature behavior (mode switch keeps history) => flag off = zero behavior change.
         current = self.mode_store.get(user_id).value
         from bot.core.modes import Mode
-        if Mode(mode).value != current and user_id in self.sessions:
+        import bot.config as botcfg
+        if (botcfg.FOLLOWUP_RESUME_ENABLED and Mode(mode).value != current
+                and user_id in self.sessions):
             del self.sessions[user_id]
         self.mode_store.set(user_id, mode)
 

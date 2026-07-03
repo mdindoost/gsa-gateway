@@ -205,3 +205,30 @@ def test_disambig_offer_and_resume():
         if asst.ollama: await asst.ollama.close()
         db.close()
     asyncio.run(run())
+
+
+@pytest.mark.integration
+def test_flag_off_registers_no_pending():
+    async def run():
+        from dotenv import load_dotenv; load_dotenv("/home/md724/gsa-gateway/.env")
+        import bot.config as c
+        c.ROUTER_V21 = True; c.ROUTER_V21_SHADOW = False; c.FOLLOWUP_RESUME_ENABLED = False  # flag OFF
+        from bot.config import config
+        from bot.services.database import Database
+        from bot.services.knowledge_base import KnowledgeBase
+        from bot.services.moderation import RateLimiter
+        from bot.core.assistant import build_assistant
+        from bot.core.message_handler import MessageRequest
+        db = Database(config.database_path); db.connect(); db.init_tables(); db.migrate_rag_columns()
+        kb = KnowledgeBase(data_dir=config.data_dir); kb.load()
+        asst = await build_assistant(config, db, kb, RateLimiter(max_calls=99999, period_seconds=1))
+        h = asst.message_handler; cm = h.conversation_manager; U = "pf_flagoff"; cm.clear_session(U)
+        wm = db.conn.execute("SELECT COALESCE(MAX(id),0) FROM questions").fetchone()[0]
+        await h.handle(MessageRequest(user_id=U, text="who has the lowest citation in ywcc", platform="telegram"))
+        db.conn.execute("DELETE FROM questions WHERE id>?", (wm,)); db.conn.commit()
+        assert cm.get_pending(U) is None            # flag off => NO pending registered
+        cm.clear_session(U)
+        if asst.embedder: await asst.embedder.close()
+        if asst.ollama: await asst.ollama.close()
+        db.close()
+    asyncio.run(run())

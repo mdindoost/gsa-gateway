@@ -231,28 +231,31 @@ class MessageHandler:
         # instead of routing the raw token. Runs BEFORE context-rewrite so "yes" is never rewritten.
         # One-shot: cleared regardless. Flag-gated.
         if botcfg.FOLLOWUP_RESUME_ENABLED and self.conversation_manager is not None:
-            _pending = self.conversation_manager.get_pending(user_id)
-            if _pending is not None:
-                from bot.core.followup_match import match_followup, DECLINE
-                self.conversation_manager.clear_pending(user_id)   # one-shot, before execute (a resume may re-offer)
-                _idx = match_followup(clean_text, _pending.options)
-                if _idx is DECLINE:
-                    ack = "No problem — what else can I help you with?"
-                    self.conversation_manager.add_turn(user_id, "user", clean_text)
-                    self.conversation_manager.add_turn(user_id, "assistant", ack)
-                    return MessageResponse(text=ack)
-                if _idx is not None:
-                    _resumed = await self._resume_pending(_pending.options[_idx])
-                    if _resumed is not None:
+            try:
+                _pending = self.conversation_manager.get_pending(user_id)
+                if _pending is not None:
+                    from bot.core.followup_match import match_followup, DECLINE
+                    self.conversation_manager.clear_pending(user_id)   # one-shot, before execute (a resume may re-offer)
+                    _idx = match_followup(clean_text, _pending.options)
+                    if _idx is DECLINE:
+                        ack = "No problem — what else can I help you with?"
                         self.conversation_manager.add_turn(user_id, "user", clean_text)
-                        self.conversation_manager.add_turn(user_id, "assistant", _resumed[:500])
-                        return MessageResponse(text=_resumed)
-                    # recognized but execution FAILED → graceful stop; NEVER fall through to route the token
-                    sorry = "Sorry — I couldn't pull that up just now. Could you ask again?"
-                    self.conversation_manager.add_turn(user_id, "user", clean_text)
-                    self.conversation_manager.add_turn(user_id, "assistant", sorry)
-                    return MessageResponse(text=sorry)
-                # _idx is None → unrecognized reply → pending already cleared → fall through, route normally
+                        self.conversation_manager.add_turn(user_id, "assistant", ack)
+                        return MessageResponse(text=ack)
+                    if _idx is not None:
+                        _resumed = await self._resume_pending(_pending.options[_idx])
+                        if _resumed is not None:
+                            self.conversation_manager.add_turn(user_id, "user", clean_text)
+                            self.conversation_manager.add_turn(user_id, "assistant", _resumed[:500])
+                            return MessageResponse(text=_resumed)
+                        # recognized but execution FAILED → graceful stop; NEVER fall through to route the token
+                        sorry = "Sorry — I couldn't pull that up just now. Could you ask again?"
+                        self.conversation_manager.add_turn(user_id, "user", clean_text)
+                        self.conversation_manager.add_turn(user_id, "assistant", sorry)
+                        return MessageResponse(text=sorry)
+                    # _idx is None → unrecognized reply → pending already cleared → fall through, route normally
+            except Exception:  # noqa: BLE001 - never break the answer path; fall through to routing
+                logger.debug("followup resume pre-check failed (ignored)", exc_info=True)
 
         if mode != "free" and self.ollama and self.conversation_manager:
             _max_turns = getattr(self.config, "conversation_max_turns", 5)
