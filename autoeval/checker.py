@@ -89,6 +89,14 @@ def classify(expected: ExpectedSpec, obs: KavoshObservation, arm: str,
         return CheckOutcome("pass", None, field_missing, ev, graded_soft=True)
 
     # --- Arm A/B: should answer ---
+    # An abstaining/clarifying answer is a MISS, never a fabrication — even though the canned
+    # deflection boilerplate contains an email (gsa-pres@njit.edu), which must NOT be read as an
+    # email contradiction. Classify by A/B pairing.
+    if obs.is_abstain or obs.is_clarify:
+        ev["check"] = "abstain_miss"
+        if arm == "noisy" and twin_passed is True and not obs.slot_extracted:
+            return CheckOutcome("fail", "resolution_failure", False, ev)
+        return CheckOutcome("fail", "routing_failure", False, ev)
     typed = check_typed(expected, obs)
     ev["check"] = f"typed:{expected.type}"
     if typed is None:

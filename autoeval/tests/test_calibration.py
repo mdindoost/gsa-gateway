@@ -53,6 +53,12 @@ CASES = [
     (ExpectedSpec("contact", "x", value="jdoe@njit.edu"),
      _o("I can share general information about the department, but I don't have that detail."),
      "answer", [], None, "fail", "routing_failure", False),
+    # Arm-B abstain whose CLEAN twin passed => resolution_failure, NOT fabrication — even though the
+    # canned deflection boilerplate contains gsa-pres@njit.edu (must not read as an email contradiction).
+    (ExpectedSpec("contact", "crawler/x", value="jaehyuck.park@njit.edu"),
+     _o("I wasn't able to find a specific answer to that in the GSA knowledge base. "
+        "For accurate information, email us at gsa-pres@njit.edu.", is_abstain=True),
+     "noisy", [], True, "fail", "resolution_failure", False),
 ]
 
 def test_calibration_matrix():
