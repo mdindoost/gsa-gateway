@@ -147,10 +147,12 @@ spaces. Then:
 
 ### 3.3 Resumable-action computation — `v2/core/retrieval/structured_answer.py`
 
-New: `resumable_action(rt: Route, result: dict) -> Optional[list[tuple[str, Route]]]` — given a
-routed skill + its result, return the option set (label, resume-`Route`) for offer-type skills, else
-`None`. Owns the single definition of "what is resumable." Returns v2-native `Route`s; the bot layer
-wraps them. Initial coverage:
+New: `resumable_action(rt: Route) -> Optional[list[tuple[str, Route]]]` — given a routed skill,
+return the option set (label, resume-`Route`) for offer-type skills, else `None`. Reads ONLY `rt`
+(skill + args) — a `person_disambig`'s candidates live in `rt.args["candidates"]`, so no `result` is
+needed. (This is what lets the chokepoint avoid changing any existing return contract — see §3.4.)
+Owns the single definition of "what is resumable." Returns v2-native `Route`s; the bot layer wraps
+them. Initial coverage:
 
 | Offer skill | Resume option(s) |
 |---|---|
@@ -181,19 +183,22 @@ under `ROUTER_V21=1`).
 > BOTH). So the wiring must live at a **shared chokepoint**, not at either return site individually.
 
 **(a) Shared chokepoint helper — the single place pending + history are written.**
-Introduce `_finalize_structured(user_id, clean_text, rt, result, text) -> MessageResponse` on the
-handler. Given the routed skill (`rt`), its `result`, and the already-composed answer `text`, it:
-1. `resumable = structured_answer.resumable_action(rt, result)`;
-2. if `resumable`, `cm.set_pending(user_id, PendingAction(options=[PendingOption(label,"structured",
-   {"skill":r.skill,"args":r.args}) for (label,r) in resumable], created_at=now))`;
+Introduce `_register_and_record(user_id, clean_text, rt, text) -> None` on the handler — a
+**side-effect** (no return; the caller builds its own `MessageResponse`). Given the routed skill
+(`rt`) and the already-composed answer `text`, it:
+1. `resumable = structured_answer.resumable_action(rt)`;
+2. if `resumable` (and the flag is on), `cm.set_pending(user_id, PendingAction(options=[PendingOption(
+   label,"structured",{"skill":r.skill,"args":r.args}) for (label,r) in resumable], created_at=now))`;
 3. writes history for **every** structured answer (offer or not) — `add_turn(user,clean_text)` +
-   `add_turn(assistant, text[:500])` — the **Bug 1 fix (G6)**, one standard with the RAG path;
-4. returns `MessageResponse(text=text)`.
+   `add_turn(assistant, text[:500])` — the **Bug 1 fix (G6)**, one standard with the RAG path.
 
-**Both** structured return sites call it: `_answer_decision`'s KG branch (`:550-551`, the LIVE path)
-and `_try_structured`'s early-return (`:290`, the kill-switch path). Each already holds `rt`/`(skill,
-args)` + `result` + the composed `text`. `_try_structured`/`_structured_from_route` therefore surface
-`rt` + `result` (not just the text) so the chokepoint can compute `resumable_action`.
+**Both** structured return sites call it: `_answer_decision`'s KG branch (`:548-551`, the LIVE path)
+and `_try_structured` (`:290`, the kill-switch path). Because `resumable_action` needs only `rt`, the
+chokepoint takes a `Route` — NOT `result` — so **`_structured_from_route` and `_try_structured` keep
+their exact current return contracts** (3-tuple / `Optional[str]`) and every existing mock stays
+valid. `_answer_decision` builds a `Route` from `decision.skill`/`decision.args`; `_try_structured`
+surfaces `rt` from its internal `_run` closure and registers only when the `:290` caller passes a
+`user_id` (the `:250`/`:516` probe calls pass none → no registration, unchanged behavior).
 
 **(b) Resume pre-check — top of `handle()`** (right after mode resolution ~`:226`, **before** the
 context-rewrite call at `:228`, `_answer_decision`, and all routing). This is the entry point that
