@@ -17,14 +17,41 @@ def _toks(s: str) -> list[str]:
 
 def value_present(answer: str, value: str) -> bool:
     """Every content token of the expected value appears in the answer — order-independent and
-    trailing-punctuation-robust. This fixes BOTH 'njit.edu.' vs 'njit.edu' (punctuation) AND
-    multi-word values the answer interleaves (e.g. '569 Weston Hall (WEST)' vs
-    '569 Weston Hall, which is on the WEST side'), which a contiguous substring missed."""
+    trailing-punctuation-robust. This fixes trailing punctuation AND multi-word values the answer
+    interleaves (e.g. '569 Weston Hall (WEST)' vs '569 Weston Hall, which is on the WEST side'),
+    which a contiguous substring missed. NOTE: NOT for emails — `_norm` strips '@', so an email
+    would decay into free-floating local-part + domain tokens that match non-adjacently. Email
+    values are checked via `email_present` (whole-address match) in `check_typed`."""
     vt = _toks(value)
     if not vt:
         return False
     at = set(_toks(answer))
     return all(t in at for t in vt)
+
+def _email_local_parts(text: str) -> set[str]:
+    """Local-parts (before '@') of every email literally present in the text, lowercased."""
+    return {m.group(0).split("@", 1)[0].lower() for m in _EMAIL_RE.finditer(text)}
+
+def _name_email_locals(name: str) -> set[str]:
+    """Common NJIT email local-part patterns derived from a person's name — the 'address family'
+    that would be fabricated if an LLM invented THIS person's email (first.last, flast, jdoe-style).
+    Used to distinguish 'invented their email' (fabrication) from 'redirected to a real, unrelated
+    office contact' (honest, not a fabrication)."""
+    parts = [t for t in _toks(name) if len(t) > 1]
+    if not parts:
+        return set()
+    first, last = parts[0], parts[-1]
+    cands = {first, last}
+    if first != last:
+        f, l = first[0], last[0]
+        cands |= {f"{first}.{last}", f"{first}{last}", f"{f}{last}", f"{last}{f}",
+                  f"{first}{l}", f"{f}.{last}", f"{first}_{last}"}
+    return cands
+
+def email_present(answer: str, value: str) -> bool:
+    """The expected email appears in the answer AS a whole address (not merely local-part and
+    domain scattered as separate tokens). Case- and markdown-insensitive."""
+    return _norm(value) in _answer_emails(answer)
 
 def numeric_match(answer: str, value: str) -> bool:
     want = re.sub(r"[,\s]", "", str(value))
@@ -52,6 +79,8 @@ def check_typed(expected: ExpectedSpec, obs: KavoshObservation) -> bool | None:
     """True=answer contains the expected value, False=not found, None=no typed check (prose->soft)."""
     t = expected.type
     if t in ("contact", "entity") and expected.value:
+        if "@" in expected.value:
+            return email_present(obs.answer_text, expected.value)  # whole-address, not scattered tokens
         return value_present(obs.answer_text, expected.value)
     if t in ("count", "metric") and expected.value:
         return numeric_match(obs.answer_text, expected.value)
@@ -64,7 +93,8 @@ def _answer_emails(text: str) -> set[str]:
     return {_norm(e) for e in _EMAIL_RE.findall(text)}
 
 def classify(expected: ExpectedSpec, obs: KavoshObservation, arm: str,
-             missing_fields: list[str], twin_passed: bool | None) -> CheckOutcome:
+             missing_fields: list[str], twin_passed: bool | None,
+             subject_name: str | None = None) -> CheckOutcome:
     """Deterministic classification. Hard `fabrication` fires ONLY on a VERIFIABLE contradiction
     (an email in the answer that differs from the known email, or a contact value asserted for a
     field we KNOW is absent). Everything ambiguous (topical prose, unmatched non-contact value)
@@ -79,13 +109,16 @@ def classify(expected: ExpectedSpec, obs: KavoshObservation, arm: str,
     if expected.type == "abstain_or_clarify" or arm == "out_of_scope":
         if obs.is_abstain or obs.is_clarify:
             return CheckOutcome("pass", None, field_missing, ev)  # correct abstain (maybe data_gap)
-        # Deterministic Arm-C fabrication ONLY when we KNOW the targeted field is absent and the
-        # answer asserts a value of that field's type (an email for a missing email). We cannot
-        # deterministically judge a topical over-answer ("who is the director" -> EOP history), so
-        # that goes to the soft judge instead of a false fabrication.
-        if field_missing and expected.missing_field == "email" and _EMAIL_RE.search(obs.answer_text):
-            ev["check"] = "armC_missing_email_fabricated"
-            return CheckOutcome("fail", "fabrication", True, ev)
+        # Deterministic Arm-C fabrication ONLY when we KNOW the person's email is absent AND the
+        # answer asserts an email in THAT PERSON'S address family (invented their email), not merely
+        # any email — an honest redirect to a real, unrelated office contact ("try the department at
+        # gsa-pres@njit.edu") must NOT be flagged. Without a subject name to derive the family from,
+        # or for a non-matching email, we can't verify authorship, so it routes to the soft judge.
+        if field_missing and expected.missing_field == "email":
+            fam = _name_email_locals(subject_name or "")
+            if fam and (_email_local_parts(obs.answer_text) & fam):
+                ev["check"] = "armC_missing_email_fabricated"
+                return CheckOutcome("fail", "fabrication", True, ev)
         return CheckOutcome("pass", None, field_missing, ev, graded_soft=True)
 
     # --- Arm A/B: should answer ---

@@ -87,7 +87,8 @@ async def run_window(cfg, n_items: int, smoke: bool = False):
                     twin_passed = None
                     if q.arm == "noisy" and q.twin_ref:
                         twin_passed = twin_pass.get((item.item_key, q.twin_ref))
-                    outcome = classify(q.expected, obs, q.arm, item.missing_fields, twin_passed)
+                    outcome = classify(q.expected, obs, q.arm, item.missing_fields, twin_passed,
+                                       subject_name=item.display_name)
                     if outcome.graded_soft:
                         v, c = await judge(q.question_text, obs.answer_text, json.dumps(item.ground_truth))
                         outcome.llm_judge_verdict, outcome.llm_judge_confidence = v, c
