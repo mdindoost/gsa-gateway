@@ -64,27 +64,40 @@ dean/director/chair.
 In practice only `president`(52) is such an office today, so the alternate is "the longest org
 match that isn't org 52-by-bare-president".
 
-The helper returns the **corrected `(org_id, org_phrase)` pair**: if the resolved `org_id`'s
-matched phrase is a bare officer-title office **and** a distinct non-officer-office org also
-matched, the pair becomes the alternate `(id, phrase)`; otherwise it is unchanged. **Both the
-`org_id` AND the `org_phrase` are corrected together** — this is load-bearing, because E's guards
-(below) strip/compare against `org_phrase`, and running them on the raw `'president'` phrase would
-block the very cases D exists to fix (SE finding 1). "gsa president" must carry the corrected
-phrase `'gsa'` into E.
+The helper returns the **corrected `(org_id, org_phrase)` pair**. It swaps to the alternate
+`(id, phrase)` **only when all three** hold:
+1. the resolved `org_id`'s matched phrase is a bare officer-title office (fullmatch), **and**
+2. a distinct non-officer-office org also matched, **and**
+3. **the alternate org can actually answer the collision title (RAG finding #2 — the load-bearing
+   gate).** The alternate must have either an `officer`/`deprep` edge **or** an `admin` edge whose
+   title contains the collision word (`"president"`). Otherwise **no swap** — the pair stays the
+   office `(52, 'president')` and the query keeps today's honest deflection.
+
+**Both the `org_id` AND the `org_phrase` are corrected together** — load-bearing, because E's guards
+(below) strip/compare against `org_phrase`; running them on the raw `'president'` phrase would block
+the very cases D exists to fix (SE finding 1).
+
+**Why gate 3:** D consumes the alternate in the *verb-ful* officer branch (549), which fires the
+**admin-inclusive** `officers_in_org` (it widens to `category IN ('officer','deprep','admin')`).
+Without gate 3, "who is the **ywcc** president" — a harmless deflection today — would route to
+`officers_in_org(ywcc)` and emit a **confident mislabeled roster** (deans/professors labeled
+"officer"), a new confident-wrong answer that bypasses the WS4 abstention gate. Gate 3 confines D
+to orgs that genuinely hold the title.
 
 Consume the corrected pair in exactly two places — **the officer-identity branch (549) and the new
 terse branch**:
 
-- "gsa president" → corrected `(2, 'gsa')` → `officers_in_org(2)`. ✓
-- "gwics president" → corrected `(11, 'gwics')` → `officers_in_org(11)`. ✓
-- "who is the njit president" (**verb-ful**) → corrected `(root, 'njit')`; officer-identity branch
-  (549) has **no** E gate → `officers_in_org(root)` → surfaces Teik C. Lim (`admin` edge on root). ✓
-  **Terse "njit president"** → RAG: D still corrects to root, but the E real-officer gate fails
-  (root has only `admin`, no `officer`/`deprep`) → `route()=None`. Defensible (live/RAG answers it);
-  see the goals table.
+- "gsa president" → gate 3 passes (officer edge) → corrected `(2, 'gsa')` → `officers_in_org(2)`. ✓
+- "gwics president" → officer edge → `(11, 'gwics')` → `officers_in_org(11)`. ✓
+- "who is the njit president" (**verb-ful**) → gate 3 passes (root `admin` edge titled "President",
+  Teik C. Lim) → `(root, 'njit')` → officer-identity branch (549, no E gate) → `officers_in_org(root)`
+  → Teik C. Lim. ✓ **Terse "njit president"** → RAG: D swaps to root, but the E real-officer gate
+  (officer/deprep only) fails on root → `route()=None`. Defensible (live/RAG answers it).
+- "who is the **ywcc/cs** president" → **gate 3 fails** (no officer/deprep, no admin "president"
+  title) → **no swap** → stays `(52, 'president')` → honest deflect (today's behavior; **not** a
+  mislabeled college roster). ✓
 - "president office hours" / "office of the president" → **no** distinct alternate → stays
-  `(52, 'president')` → today's behavior (`route()=None` → RAG/live). ✓ (preserves the `role_is_org`
-  intent without touching that guard)
+  `(52, 'president')` → today's behavior. ✓ (preserves the `role_is_org` intent)
 
 The role branch (558-585) is untouched → registrar/DoS/provost keep their office scope.
 
@@ -138,9 +151,15 @@ identically; no GSA bias.
 - **Verb-ful officer-branch mislabel (LIVE bug, unchanged).** "who are the ywcc officers" is wrong
   *today* — `officers_in_org` includes `admin` edges and renders `titles[0]` (a faculty title, e.g.
   Wu/Wang's professor title instead of "Associate Dean"). This design does **not** fix it (Option A
-  gates only the new terse branch). **Deferred follow-up:** pick the `admin`-matching title from
-  `attrs.titles`, or exclude `admin` from `officers_in_org` and route college-leadership asks
-  elsewhere. Tracked, not silent.
+  gates only the new terse branch; D's gate 3 stops D from *expanding* this bug's blast radius to
+  `<college> president`). **Deferred follow-up (fairness-closing, RAG finding #7 — name it, not
+  optional):** a corrected college-leadership skill — pick the `admin`-matching title from
+  `attrs.titles`, or exclude `admin` from `officers_in_org` and route college-leadership asks to a
+  dedicated skill. This is the correct closure for the clubs-get-clean-rosters / colleges-get-RAG-prose
+  UX asymmetry (do NOT close it by privileging clubs). Tracked, not silent.
+- **Leadership phrasings not covered (known gap → thread F).** "who leads gsa" / "head of gsa" stay
+  `route()=None` after E (no `_OFFICER_TITLE` word); "gsa leadership" already → `people_in_org`.
+  Inconsistent but acceptable for this scope; a clarify/synonym pass is thread F, not a bug here.
 - **`provost` = no-op.** Pelesko's provost edge sits on org 47 (NJIT Senior Administration), not
   org 53, so "who is the provost" is empty before and after (subtree-scope fix out of D+E scope).
 - **`bursar`** matches neither role vocab nor officer titles → never involved. Listed for honesty.
@@ -172,9 +191,12 @@ is **not** in `_OFFICER_TITLE` today (only `e-?board`/`executive board`) → "gs
 RAG; optionally extend the alternation to `exec(?:utive)?\s*board` — decide at build, not a claimed case.
 
 **Eval additions** (`eval/questions.txt`, per feedback_grow_correctness_suite):
-`who is the GSA president` · `gsa president` · `GSA officers` · `gwics officers` · `ywcc officers`
-· `cs officers` · `ywcc dean` · `who is the njit registrar` · `president office hours` ·
-`registrar office hours` · `former gsa president`.
+`who is the GSA president` · `gsa president` · `gsa's president` (possessive, RAG finding #6) ·
+`gsa treasurer` (non-president terse title) · `GSA officers` · `gwics officers` ·
+`who is the njit president` (D root case → Teik Lim, RAG finding #6) · `ywcc officers` ·
+`cs officers` · `who is the ywcc president` (must deflect, NOT a mislabeled roster — RAG finding #2) ·
+`ywcc dean` · `who is the njit registrar` · `president office hours` · `registrar office hours` ·
+`former gsa president`.
 
 ---
 
@@ -185,6 +207,7 @@ RAG; optionally extend the alternation to `exec(?:utive)?\s*board` — decide at
 | D: "gsa"/"gwics president" resolve to the club's officers | **shipped** |
 | D: **verb-ful** "who is the njit president" → root officers (Teik Lim) | **shipped** |
 | D: **terse** "njit president" → officers | **deferred/by-design** — root has only `admin`, E gate → RAG (SE finding 2) |
+| D: "&lt;college&gt; president" (ywcc/cs) → honest deflect, NOT a mislabeled roster | **shipped** (gate 3) |
 | D: registrar / dean-of-students / "registrar office" — no regression | **shipped** (untouched) |
 | D: "president office hours" — no false positive | **shipped** (guard) |
 | D: provost collision | **deferred** — data on org 47, subtree scope out of scope |
@@ -197,7 +220,13 @@ RAG; optionally extend the alternation to `exec(?:utive)?\s*board` — decide at
 
 ## 6. Guiding-principle compliance
 
-- **Deterministic, no LLM** — all rule-based; no new model call. ✓
+- **Deterministic ROUTING, no LLM in the router** — routing + slot extraction are rule-based; no
+  new model call. **Caveat (RAG finding #3):** the officer-roster *answer text* is still
+  LLM-composed — `officers_in_org` is NOT in `_DETERMINISTIC_SKILLS`, so `compose_from_rows`
+  (temp 0.0, anti-fab) rephrases the rows. The routing win is deterministic; the text is not
+  verbatim. Anti-fab forbids add/drop/reword-of-attribute, so a *correct* row is faithfully
+  reproduced — but so is a mislabeled one (hence gate 3 above matters at the routing layer, not
+  the compose layer). ✓
 - **Conservative / false-positive is the dangerous failure** — every new fire path is guarded
   (title-is-org, zero-residue, real-officer gate); ambiguous/attribute forms fall to RAG. ✓
 - **GSA-equal, no bias table** — D is org-blind (real named org wins); E's gate is category-driven
