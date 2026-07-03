@@ -26,6 +26,7 @@ class ConversationSession:
     channel_id: Optional[str]
     message_count: int
     mode: str = "gsa"
+    pending_action: object = None   # Optional[bot.core.pending.PendingAction]; typed loosely to avoid an import cycle
 
 
 class ConversationManager:
@@ -158,6 +159,20 @@ class ConversationManager:
         self.mode_store.reset(user_id)
         logger.info("Session cleared for user %s...", user_id[:8])
 
+    def set_pending(self, user_id: str, pending) -> None:
+        """Register a resumable offer/clarify for the user's NEXT turn (one-shot)."""
+        session = self.get_or_create_session(user_id)
+        session.pending_action = pending
+
+    def get_pending(self, user_id: str):
+        session = self.get_session(user_id)
+        return session.pending_action if session is not None else None
+
+    def clear_pending(self, user_id: str) -> None:
+        session = self.get_session(user_id)
+        if session is not None:
+            session.pending_action = None
+
     def get_mode(self, user_id: str) -> str:
         # Delegates to the shared ConversationModeStore (single source of truth). Returns the
         # plain string value ("gsa"/"free") for back-compat with callers that compare to a
@@ -165,6 +180,15 @@ class ConversationManager:
         return self.mode_store.get(user_id).value
 
     def set_mode(self, user_id: str, mode: str) -> None:
+        # G5: a mode switch wipes the session (history + pending) — but ONLY when the follow-up-resume
+        # feature is on. With the flag off there are no pending actions to protect, so preserve the
+        # pre-feature behavior (mode switch keeps history) => flag off = zero behavior change.
+        current = self.mode_store.get(user_id).value
+        from bot.core.modes import Mode
+        import bot.config as botcfg
+        if (botcfg.FOLLOWUP_RESUME_ENABLED and Mode(mode).value != current
+                and user_id in self.sessions):
+            del self.sessions[user_id]
         self.mode_store.set(user_id, mode)
 
     def get_stats(self) -> dict:

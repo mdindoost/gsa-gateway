@@ -225,6 +225,38 @@ class MessageHandler:
         # hallucinated antecedent is discarded by the entity-membership guard. Spec 2026-06-22.
         mode = self.conversation_manager.get_mode(user_id) if self.conversation_manager else "gsa"
         resolved_query = clean_text
+
+        # ── Follow-up resume (thread A) ───────────────────────────────────────
+        # A pending offer/clarify from last turn: match this reply to an option and EXECUTE it,
+        # instead of routing the raw token. Runs BEFORE context-rewrite so "yes" is never rewritten.
+        # One-shot: cleared regardless. Flag-gated.
+        if botcfg.FOLLOWUP_RESUME_ENABLED and self.conversation_manager is not None:
+            try:
+                _pending = self.conversation_manager.get_pending(user_id)
+                if _pending is not None:
+                    from bot.core.followup_match import match_followup, DECLINE
+                    self.conversation_manager.clear_pending(user_id)   # one-shot, before execute (a resume may re-offer)
+                    _idx = match_followup(clean_text, _pending.options)
+                    if _idx is DECLINE:
+                        ack = "No problem — what else can I help you with?"
+                        self.conversation_manager.add_turn(user_id, "user", clean_text)
+                        self.conversation_manager.add_turn(user_id, "assistant", ack)
+                        return MessageResponse(text=ack)
+                    if _idx is not None:
+                        _resumed = await self._resume_pending(_pending.options[_idx])
+                        if _resumed is not None:
+                            self.conversation_manager.add_turn(user_id, "user", clean_text)
+                            self.conversation_manager.add_turn(user_id, "assistant", _resumed[:500])
+                            return MessageResponse(text=_resumed)
+                        # recognized but execution FAILED → graceful stop; NEVER fall through to route the token
+                        sorry = "Sorry — I couldn't pull that up just now. Could you ask again?"
+                        self.conversation_manager.add_turn(user_id, "user", clean_text)
+                        self.conversation_manager.add_turn(user_id, "assistant", sorry)
+                        return MessageResponse(text=sorry)
+                    # _idx is None → unrecognized reply → pending already cleared → fall through, route normally
+            except Exception:  # noqa: BLE001 - never break the answer path; fall through to routing
+                logger.debug("followup resume pre-check failed (ignored)", exc_info=True)
+
         if mode != "free" and self.ollama and self.conversation_manager:
             _max_turns = getattr(self.config, "conversation_max_turns", 5)
             _hist = self.conversation_manager.get_history(user_id, max_turns=_max_turns)
@@ -287,7 +319,7 @@ class MessageHandler:
         # NOT a GSA structured answer — skip structured so free mode isn't identical to GSA.
         # (mode already resolved above for the contextual-rewrite gate)
         if mode != "free":
-            structured = await self._try_structured(resolved_query)
+            structured = await self._try_structured(resolved_query, user_id=user_id, clean_text=clean_text)
             if structured is not None:
                 return MessageResponse(text=structured)
 
@@ -423,7 +455,8 @@ class MessageHandler:
         # ── RAG pipeline ──────────────────────────────────────────────────────
         return await self._rag_pipeline(req, clean_text, intent, resolved_query=resolved_query)
 
-    async def _try_structured(self, text: str) -> Optional[str]:
+    async def _try_structured(self, text: str, user_id: str | None = None,
+                              clean_text: str | None = None) -> Optional[str]:
         """Answer enumerate/filter/traverse/count questions from structured DB queries
         (complete + deterministic), or return None to fall through to semantic RAG.
 
@@ -454,7 +487,7 @@ class MessageHandler:
                 # FINAL answer verbatim — never handed to the LLM to restate.
                 # Metric answers are themselves deterministic (numbers must not be reworded) →
                 # flag so the caller skips LLM compose entirely.
-                return (facts, structured_answer.deterministic_suffix(result),
+                return (rt, facts, structured_answer.deterministic_suffix(result),
                         structured_answer.is_deterministic(result))
             finally:
                 conn.close()
@@ -466,8 +499,11 @@ class MessageHandler:
             return None
         if not ran:
             return None
-        facts, suffix, deterministic = ran
-        return await self._compose_structured(text, facts, suffix, deterministic)
+        rt, facts, suffix, deterministic = ran
+        composed = await self._compose_structured(text, facts, suffix, deterministic)
+        if user_id is not None:                      # main :290 path → register + record
+            self._register_and_record(user_id, clean_text or text, rt, composed)
+        return composed
 
     async def _compose_structured(self, text: str, facts: str, suffix: str,
                                   deterministic: bool) -> str:
@@ -483,6 +519,46 @@ class MessageHandler:
         if suffix:
             out = f"{out}\n\n{suffix}"
         return out
+
+    def _register_and_record(self, user_id, clean_text, rt, text) -> None:
+        """Side-effect chokepoint for BOTH structured paths (_answer_decision + _try_structured):
+        register a resumable pending action AND record the answer in history (Bug 1 / G6). The WHOLE
+        body is flag-gated so flag-off is truly zero-behavior-change — with the flag off, structured
+        answers are NOT added to history (unchanged current behavior). No return — the caller builds
+        its own MessageResponse."""
+        from datetime import datetime, timezone
+        from v2.core.retrieval import structured_answer
+        from bot.core.pending import PendingAction, PendingOption
+        cm = self.conversation_manager
+        if cm is None or not botcfg.FOLLOWUP_RESUME_ENABLED:   # flag off ⇒ fully inert (Fable #2)
+            return
+        try:
+            resumable = structured_answer.resumable_action(rt)
+            if resumable:
+                cm.set_pending(user_id, PendingAction(
+                    options=[PendingOption(label, "structured",
+                                           {"skill": r.skill, "args": r.args}) for (label, r) in resumable],
+                    created_at=datetime.now(timezone.utc)))
+            cm.add_turn(user_id=user_id, role="user", content=clean_text)
+            cm.add_turn(user_id=user_id, role="assistant", content=(text or "")[:500])
+        except Exception:  # noqa: BLE001 - never break the answer path
+            logger.debug("followup register_and_record failed (ignored)", exc_info=True)
+
+    async def _resume_pending(self, option) -> "Optional[str]":
+        """Execute a pending option's structured resume, bypassing the router (deterministic).
+        Returns composed text, or None on any failure (caller → graceful stop)."""
+        if option.action != "structured":
+            return None
+        skill = option.payload.get("skill"); args = option.payload.get("args") or {}
+        try:
+            ran = await asyncio.to_thread(self._structured_from_route, skill, args)
+        except Exception as exc:  # noqa: BLE001 - never break the message path
+            logger.warning("followup resume errored: %s", exc)
+            return None
+        if not ran:
+            return None
+        facts, suffix, deterministic = ran        # _structured_from_route returns a 3-tuple (unchanged)
+        return await self._compose_structured(option.label, facts, suffix, deterministic)
 
     def _structured_from_route(self, skill: str, args: dict):
         """SQL body for a DECIDED skill/args (no route() — the UnifiedRouter already resolved it).
@@ -547,8 +623,11 @@ class MessageHandler:
                 ran = None
             if ran:
                 facts, suffix, deterministic = ran
-                return MessageResponse(
-                    text=await self._compose_structured(text, facts, suffix, deterministic))
+                text = await self._compose_structured(text, facts, suffix, deterministic)
+                from v2.core.retrieval.router import Route
+                self._register_and_record(req.user_id, req.text.strip(),
+                                          Route(skill=decision.skill, args=dict(decision.args or {})), text)
+                return MessageResponse(text=text)
             return await self._rag_pipeline(req, text, INTENT_QUESTION, resolved_query=resolved_query)
         if fam == "RAG":
             rag_intent = INTENT_FOOD if decision.source == "food" else INTENT_QUESTION

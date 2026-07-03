@@ -501,3 +501,25 @@ def deterministic_suffix(result: dict) -> str | None:
         return None
     parts = [p for p in parts if p]                # omit a missing line (links/metrics/each push)
     return "\n".join(parts) if parts else None
+
+
+def resumable_action(rt: Route) -> list[tuple[str, Route]] | None:
+    """Given a routed skill, return the resumable option set [(label, Route), ...] for
+    offer/clarify skills, else None. Reads ONLY rt (skill + args) — candidates for a
+    person_disambig live in rt.args. Owns the single definition of 'what is resumable';
+    returns v2-native Routes for the bot layer to wrap."""
+    skill = rt.skill
+    if skill == "metric_descending_unsupported":
+        a = rt.args
+        if a.get("org_id") is None:      # no scoped org -> no resume option (decline still stands)
+            return None
+        noun = _metric_noun(a["metric_key"])
+        return [(f"most {noun}",
+                 Route("top_people_by_metric",
+                       {"org_id": a["org_id"], "field_key": a["field_key"],
+                        "metric_key": a["metric_key"], "n": a.get("n", 1),
+                        "org_defaulted": a.get("org_defaulted", False)}))]
+    if skill == "person_disambig":
+        cands = rt.args.get("candidates") or []
+        return [(c["name"], Route("entity_card", {"entity_id": c["entity_id"]})) for c in cands] or None
+    return None

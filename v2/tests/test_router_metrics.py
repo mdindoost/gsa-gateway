@@ -176,3 +176,51 @@ def test_fewest_citations_to_graduate_is_not_a_decline(conn):
 
 def test_papers_with_fewest_citations_is_not_a_decline(conn):
     assert route(conn, "papers with the fewest citations") is None
+
+
+# ── Task 4: thread org/n into the decline route so a resume can scope top_people_by_metric ──
+def test_metric_descending_route_carries_org(conn):
+    r = route(conn, "least cited professor in ywcc")
+    assert r is not None and r.skill == "metric_descending_unsupported"
+    assert r.args.get("org_id") is not None          # ywcc resolved + threaded
+    assert "n" in r.args
+    assert r.args.get("org_defaulted") is False
+
+
+def test_metric_descending_no_org_defaults_root(conn):
+    r = route(conn, "least cited professor")
+    assert r is not None and r.skill == "metric_descending_unsupported"
+    assert r.args.get("org_id") is not None          # defaulted to root (NJIT id=1)
+    assert r.args.get("org_defaulted") is True
+
+
+def test_metric_descending_no_root_org_no_false_default():
+    # No organizations at all → no root to default to. The decline may still fire (it needs no org),
+    # but it must NEVER claim org_defaulted=True while org_id is None (contradictory; a later task
+    # trusts org_defaulted=True to imply a usable org_id).
+    c = create_all(":memory:")
+    r = route(c, "least cited professor")
+    c.close()
+    if r is not None and r.skill == "metric_descending_unsupported":
+        assert not (r.args.get("org_defaulted") and r.args.get("org_id") is None)
+
+
+# ── Task 7.5: "who has the lowest/most <metric> in <org>" is a person-metric cue too ──
+# ("who has" was missing from _PERSON_INTENT, so these fell through to None and lost org_id).
+def test_who_has_lowest_metric_in_org_routes_deterministically(conn):
+    # the literal reported repro — must now route to the decline WITH org threaded
+    r = route(conn, "who has the lowest citation in ywcc")
+    assert r is not None and r.skill == "metric_descending_unsupported"
+    assert r.args.get("org_id") is not None
+    assert r.args.get("org_defaulted") is False
+
+
+def test_who_has_most_metric_in_org_still_ranks(conn):
+    r = route(conn, "who has the most citations in ywcc")
+    assert r is not None and r.skill == "top_people_by_metric"
+
+
+def test_who_has_non_metric_unaffected(conn):
+    # blast-radius guard: no metric word -> metric block skipped -> unchanged (None)
+    assert route(conn, "who has office hours") is None
+    assert route(conn, "who has a phd") is None
