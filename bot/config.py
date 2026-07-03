@@ -174,6 +174,11 @@ DEEP_FALLBACK_THRESHOLD = float(os.getenv("DEEP_FALLBACK_THRESHOLD", "0.30"))
 # selective Gate-2 answerability call. (ANSWER_GATE_BAND removed — senior review #11.)
 ANSWER_GATE_ENABLED = os.getenv("ANSWER_GATE_ENABLED", "0").strip().lower() in ("1","true","yes","on")
 
+# FOLLOWUP_RESUME_ENABLED (default OFF): register a pending-action on offers/clarifies and resume it
+# next turn. Off ⇒ no pending is set and the pre-check is skipped (pure current behavior). Flip in
+# .env + restart to enable; backout = 0 (or revert).
+FOLLOWUP_RESUME_ENABLED = os.getenv("FOLLOWUP_RESUME_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+
 
 # --- Kavosh v2.1 unified router (Phase 1b) ---
 # ROUTER_V21 master switch (default OFF). When on, the UnifiedRouter is built + consulted.
