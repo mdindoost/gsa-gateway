@@ -1,7 +1,10 @@
 # autoeval/generator.py
 from __future__ import annotations
 import json, hashlib
+from pathlib import Path
 from autoeval.models import SourceItem, GeneratedQuestion, ExpectedSpec
+
+RAW_DIR = Path(__file__).resolve().parent / "codex_raw"
 
 _ARM_INSTRUCTIONS = """You generate EVALUATION questions about ONE known item to stress-test a
 university assistant. You are NOT answering; you produce questions plus a machine-checkable
@@ -34,8 +37,11 @@ def _checkable(exp: dict) -> bool:
         return True
     return False
 
+def _raw_ref(raw: dict) -> str:
+    return hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest()[:16]
+
 def parse_and_validate(raw: dict, item: SourceItem) -> list[GeneratedQuestion]:
-    ref = hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest()[:16]
+    ref = _raw_ref(raw)
     out: list[GeneratedQuestion] = []
     for q in raw.get("questions", []):
         exp = q.get("expected") or {}
@@ -56,4 +62,9 @@ async def generate(item: SourceItem, run_codex_fn=None) -> list[GeneratedQuestio
     from autoeval.codex_client import run_codex
     fn = run_codex_fn or run_codex
     raw = fn(build_prompt(item))            # may raise RateLimitError -> caller pauses
+    ref = _raw_ref(raw)
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    raw_path = RAW_DIR / f"{ref}.json"
+    if not raw_path.exists():
+        raw_path.write_text(json.dumps({"prompt": build_prompt(item), "response": raw}, indent=2))
     return parse_and_validate(raw, item)

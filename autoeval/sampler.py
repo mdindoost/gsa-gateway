@@ -50,7 +50,9 @@ def _org_ids(conn, limit):
     return [r["id"] for r in conn.execute(
         "SELECT id FROM organizations WHERE is_active=1 ORDER BY id LIMIT ?", (limit,)).fetchall()]
 
-# DEFERRED: area/chunk extractors
+# DEFERRED: area/chunk extractors. Their mix fractions are absorbed by person+org below
+# (org count still drawn from mix.get("org"), then persons fill the ENTIRE remainder) so a
+# run still returns exactly n items even though area/chunk aren't implemented yet.
 def sample_items(conn: sqlite3.Connection, mix: dict, n: int,
                  prefer_keys: list[str] | None = None, seed: int | None = None) -> list[SourceItem]:
     """Sample n items across types by `mix`. `prefer_keys` (from coverage) biases toward
@@ -58,8 +60,12 @@ def sample_items(conn: sqlite3.Connection, mix: dict, n: int,
     area/chunk fall back to person until their extractors land (see Task 4b note)."""
     rng = random.Random(seed)
     out: list[SourceItem] = []
-    n_person = max(1, int(round(n * mix.get("person", 0.5))))
-    n_org = int(round(n * mix.get("org", 0.2)))
+    oids = _org_ids(conn, 2000); rng.shuffle(oids)
+    n_org = min(int(round(n * mix.get("org", 0.2))), len(oids))
+    orgs_drawn = oids[:n_org]
+    for oid in orgs_drawn:
+        out.append(extract_org(conn, oid))
+    n_person = n - len(orgs_drawn)
     pkeys = _person_keys(conn, 5000)
     if prefer_keys:
         pref = [k for k in prefer_keys if k in set(pkeys)]
@@ -68,7 +74,4 @@ def sample_items(conn: sqlite3.Connection, mix: dict, n: int,
         rng.shuffle(pkeys)
     for k in pkeys[:n_person]:
         out.append(extract_person(conn, k))
-    oids = _org_ids(conn, 2000); rng.shuffle(oids)
-    for oid in oids[:n_org]:
-        out.append(extract_org(conn, oid))
     return out

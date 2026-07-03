@@ -19,3 +19,13 @@ def test_report_counts_classes_separately_and_lists_fabrications():
     assert "routing_failure: 1" in rep.lower()
     assert "Zzyzx email?" in rep            # fabrications listed in full
     assert "data_gap" in rep.lower()        # data gap reported separately
+
+def test_report_shows_errored_count_excluded_from_pass_fail():
+    rows = [
+        _row(result="error", failure_class=None),
+        _row(result="pass"),
+        _row(result="fail", failure_class="routing_failure"),
+    ]
+    rep = build_report(rows)
+    assert "errored" in rep.lower()
+    assert "errored (harness/transport failures, excluded from pass/fail): 1" in rep

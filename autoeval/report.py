@@ -9,6 +9,7 @@ def build_report(rows: list[dict], prev_rows: list[dict] | None = None) -> str:
     classes = Counter(r["failure_class"] for r in fails if r["failure_class"])
     data_gaps = [r for r in rows if r.get("data_gap")]
     fabrications = [r for r in fails if r["failure_class"] == "fabrication"]
+    errored = sum(1 for r in rows if r["result"] == "error")
 
     L = []
     L.append("# Kavosh Auto-Eval — Triage Report\n")
@@ -17,7 +18,8 @@ def build_report(rows: list[dict], prev_rows: list[dict] | None = None) -> str:
     L.append(f"- 🔴 fabrication: {classes.get('fabrication', 0)}")
     L.append(f"- resolution_failure: {classes.get('resolution_failure', 0)}")
     L.append(f"- routing_failure: {classes.get('routing_failure', 0)}")
-    L.append(f"- data_gap (data problem, NOT a Kavosh bug): {len(data_gaps)}\n")
+    L.append(f"- data_gap (data problem, NOT a Kavosh bug): {len(data_gaps)}")
+    L.append(f"- errored (harness/transport failures, excluded from pass/fail): {errored}\n")
 
     L.append("## 🔴 Fabrications (full list — zero tolerance)")
     if not fabrications:
