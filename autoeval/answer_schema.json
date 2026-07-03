@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["questions"],
+  "properties": {
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["arm", "variant_type", "twin_ref", "question", "expected"],
+        "properties": {
+          "arm": {"type": "string", "enum": ["answer", "noisy", "out_of_scope"]},
+          "variant_type": {"type": ["string", "null"], "enum": ["typo", "wording", "esl", "truncation", null]},
+          "twin_ref": {"type": ["string", "null"]},
+          "question": {"type": "string"},
+          "expected": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "value", "must_contain_field", "members", "missing_field", "skill_hint"],
+            "properties": {
+              "type": {"type": "string",
+                       "enum": ["contact", "count", "metric", "list", "abstain_or_clarify", "prose", "entity"]},
+              "value": {"type": ["string", "null"]},
+              "must_contain_field": {"type": ["string", "null"]},
+              "members": {"type": ["array", "null"], "items": {"type": "string"}},
+              "missing_field": {"type": ["string", "null"]},
+              "skill_hint": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}
