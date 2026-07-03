@@ -225,6 +225,35 @@ class MessageHandler:
         # hallucinated antecedent is discarded by the entity-membership guard. Spec 2026-06-22.
         mode = self.conversation_manager.get_mode(user_id) if self.conversation_manager else "gsa"
         resolved_query = clean_text
+
+        # ── Follow-up resume (thread A) ───────────────────────────────────────
+        # A pending offer/clarify from last turn: match this reply to an option and EXECUTE it,
+        # instead of routing the raw token. Runs BEFORE context-rewrite so "yes" is never rewritten.
+        # One-shot: cleared regardless. Flag-gated.
+        if botcfg.FOLLOWUP_RESUME_ENABLED and self.conversation_manager is not None:
+            _pending = self.conversation_manager.get_pending(user_id)
+            if _pending is not None:
+                from bot.core.followup_match import match_followup, DECLINE
+                self.conversation_manager.clear_pending(user_id)   # one-shot, before execute (a resume may re-offer)
+                _idx = match_followup(clean_text, _pending.options)
+                if _idx is DECLINE:
+                    ack = "No problem — what else can I help you with?"
+                    self.conversation_manager.add_turn(user_id, "user", clean_text)
+                    self.conversation_manager.add_turn(user_id, "assistant", ack)
+                    return MessageResponse(text=ack)
+                if _idx is not None:
+                    _resumed = await self._resume_pending(_pending.options[_idx])
+                    if _resumed is not None:
+                        self.conversation_manager.add_turn(user_id, "user", clean_text)
+                        self.conversation_manager.add_turn(user_id, "assistant", _resumed[:500])
+                        return MessageResponse(text=_resumed)
+                    # recognized but execution FAILED → graceful stop; NEVER fall through to route the token
+                    sorry = "Sorry — I couldn't pull that up just now. Could you ask again?"
+                    self.conversation_manager.add_turn(user_id, "user", clean_text)
+                    self.conversation_manager.add_turn(user_id, "assistant", sorry)
+                    return MessageResponse(text=sorry)
+                # _idx is None → unrecognized reply → pending already cleared → fall through, route normally
+
         if mode != "free" and self.ollama and self.conversation_manager:
             _max_turns = getattr(self.config, "conversation_max_turns", 5)
             _hist = self.conversation_manager.get_history(user_id, max_turns=_max_turns)
@@ -511,6 +540,22 @@ class MessageHandler:
             cm.add_turn(user_id=user_id, role="assistant", content=(text or "")[:500])
         except Exception:  # noqa: BLE001 - never break the answer path
             logger.debug("followup register_and_record failed (ignored)", exc_info=True)
+
+    async def _resume_pending(self, option) -> "Optional[str]":
+        """Execute a pending option's structured resume, bypassing the router (deterministic).
+        Returns composed text, or None on any failure (caller → graceful stop)."""
+        if option.action != "structured":
+            return None
+        skill = option.payload.get("skill"); args = option.payload.get("args") or {}
+        try:
+            ran = await asyncio.to_thread(self._structured_from_route, skill, args)
+        except Exception as exc:  # noqa: BLE001 - never break the message path
+            logger.warning("followup resume errored: %s", exc)
+            return None
+        if not ran:
+            return None
+        facts, suffix, deterministic = ran        # _structured_from_route returns a 3-tuple (unchanged)
+        return await self._compose_structured(option.label, facts, suffix, deterministic)
 
     def _structured_from_route(self, skill: str, args: dict):
         """SQL body for a DECIDED skill/args (no route() — the UnifiedRouter already resolved it).
