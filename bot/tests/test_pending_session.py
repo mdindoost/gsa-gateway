@@ -26,3 +26,20 @@ def test_clear_session_drops_pending():
     cm.set_pending("u1", _pa())
     cm.clear_session("u1")
     assert cm.get_pending("u1") is None
+
+
+def test_mode_switch_clears_session_and_pending():
+    cm = ConversationManager()
+    cm.add_turn("u1", "user", "who has the lowest citation in ywcc")
+    cm.set_pending("u1", _pa())
+    cm.set_mode("u1", "free")                       # actual change gsa -> free
+    assert cm.get_pending("u1") is None             # pending wiped
+    assert cm.get_history("u1") == []               # context wiped
+    assert cm.get_mode("u1") == "free"              # new mode stuck (not reset to gsa)
+
+
+def test_mode_set_same_mode_is_noop():
+    cm = ConversationManager()
+    cm.add_turn("u1", "user", "hello")
+    cm.set_mode("u1", "gsa")                         # unchanged (default is gsa)
+    assert cm.get_history("u1") != []               # NOT wiped
