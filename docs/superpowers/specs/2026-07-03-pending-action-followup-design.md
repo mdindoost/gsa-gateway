@@ -53,21 +53,30 @@ multiply questions the bot can't hear the answer to.
   turn in history.
 - **G2** — Next turn, **deterministically** match the user's reply to the pending options and
   **execute** the chosen action, instead of routing the raw text. No LLM in the detection path.
-- **G3** — **General, not metric-specific.** One mechanism; every offer point registers an option
-  set. Wire the metric decline, person-disambiguation, and the live-search offer in this build.
+- **G3** — **General, not metric-specific.** One mechanism; every wired offer point registers an
+  option set. Wire the **metric decline (#1)** and **person-disambiguation (#3)** in this build.
+  (Live-search #2 is intentionally NOT wired — see below.)
 - **G4** — **Drop on non-follow-up.** Any reply that is not a recognized selection clears the
   pending action and routes normally (one-shot, single turn). A new question silently supersedes.
-- **G5** — **Live search uses the user's exact original wording**, never the acceptance token or a
-  rewrite (this is the specific defect behind the repro garbage).
+- **G5** — **A mode switch clears everything.** Switching conversation mode (gsa⇄free, or into a
+  judging mode) wipes the session — conversation context AND any pending action. Pending is NOT
+  carried across a mode switch. (Owner decision 2026-07-03; also resolves the "resume GSA content in
+  free mode" boundary.)
 - **G6** — Fix Bug 1: structured answers are recorded in conversation history.
 - **G7** — Gated rollout behind a flag; reversible.
 
 ### Non-goals (deferred — flagged, not silently dropped)
+- **Live-search wired into the pending mechanism (#2)** — the live-search **button** is an
+  independent, always-available override the user can tap at any turn; it is deliberately kept
+  OUTSIDE this mechanism (owner decision 2026-07-03). A button tap runs live search and **clears any
+  pending action** (it overrides). Because the button only ever appears on RAG deflections (which set
+  no pending), there is provably no double-fire. Making live search *offer-first* and resumable via a
+  typed "yes" (with the exact-original-wording payload) is a **separate follow-up** — the owner had
+  already suggested deferring it ("if these are too much, put it for follow up"). The long-term aim
+  is a bot good enough that users rarely reach for the button at all.
 - **Offer-first live-search policy** — making the auto-firing live fallback *offer before running*
-  on every KB miss. This is a user-facing **policy** change to the live-fallback trigger (adds a
-  round-trip on every KB miss) and interacts with `LIVE_THRESHOLD`. Deferred to its own tightly
-  scoped follow-up; once this mechanism exists it is a small swap (return an offer + pending instead
-  of the auto-answer). **This build only makes the *existing* live-search offer resumable.**
+  on every KB miss. User-facing **policy** change to the live-fallback trigger (adds a round-trip on
+  every KB miss) and interacts with `LIVE_THRESHOLD`. Part of the same deferred live-search follow-up.
 - **Slot-fill offers** (#4 "This is university-wide. Just name a college.") — the reply fills an
   *arbitrary arg* rather than selecting from a bounded set; different shape, and it is the least
   broken (it already gives a real answer, then merely invites narrowing). Folds into thread F.
@@ -88,9 +97,9 @@ session** (writes the pending action + history) and **executes** the resume.
 @dataclass
 class PendingOption:
     label: str            # human label; also the match target for pick-1-of-N ("John Smith")
-    action: str           # "structured" | "live_search"  (executor selector)
+    action: str           # "structured"  (only executor wired this build; kept as a field so the
+                          #  deferred live-search follow-up can add "live_search" with no reshape)
     payload: dict         # structured: {"skill": str, "args": dict}
-                          # live_search: {"query": str}   (verbatim original — G5)
 
 @dataclass
 class PendingAction:
@@ -105,6 +114,10 @@ class PendingAction:
   objects; the resume site rebuilds `Route(skill, args)`.
 - `ConversationManager` gains `set_pending(user_id, pa)`, `get_pending(user_id) -> Optional`,
   `clear_pending(user_id)`. `clear_session` already drops the whole session (so pending too).
+- **Mode switch clears everything (G5):** `set_mode` already routes through the shared
+  `ConversationModeStore`. `ConversationManager.set_mode` will, on an *actual* mode change, call
+  `clear_session(user_id)` — wiping conversation history AND pending. (No-op when the mode is
+  unchanged.) This is the single enforcement point for "a mode switch loses everything."
 - The number of options drives the detector: **1 option = a yes/no offer**; **N options =
   pick-1-of-N**. No separate `kind` field needed.
 
@@ -149,73 +162,86 @@ drops the resolved `org_id` (and `n`). Add `org_id` + `n` to its args so the res
 correctly (falls back to the NJIT root org — university-wide — when `org_id` is absent, mirroring the
 ascending `top_people_by_metric` default). This is the only router edit.
 
-The live-search offer (§3.4) is registered directly by `message_handler` (its resume is
-`maybe_answer_live`, not a structured skill), so it does not go through `resumable_action`.
+**Reachability to verify at build:** in production `ROUTER_V21=1`, so KG answers flow through the
+UnifiedRouter → `_answer_decision` (§3.4), not the legacy `_try_structured`. Both call
+`structured_answer.run()`, so `resumable_action(rt, result)` is invoked at the shared chokepoint
+regardless of router. The build must confirm the UnifiedRouter actually emits `person_disambig` as a
+KG skill (it wraps `router.route()`, which can return that Route) — if a fuzzy person instead
+degrades to the generic CLARIFY→RAG path under Phase-1b, wiring #3 lands only once disambiguation is
+a real KG outcome. Metric-decline (#1) is confirmed reachable on the live path (the repro produced it
+under `ROUTER_V21=1`).
 
 ### 3.4 Wiring — `bot/core/message_handler.py`
 
-**(a) `_try_structured` returns text + resumable.** Change the return from `Optional[str]` to a
-small `(text, resumable)` shape (`resumable` = the `list[(label, Route)]` from `resumable_action`,
-or `None`). Its `_run` closure already holds both `rt` and `result`, so it computes `resumable` there
-and surfaces it. Three call sites adjusted (`:250` gate-check, `:290` main, `:516` dispatch) —
-None-ness/text preserved for the two that only care about answered-vs-not.
+> **CRITICAL (finding S0):** production runs `ROUTER_V21=1, SHADOW=0` — KG answers flow through the
+> **UnifiedRouter → `_answer_decision`** (`:535-551`, via `_structured_from_route` `:499`), which
+> **short-circuits at `:278` and never reaches `_try_structured` (`:290`)**. `_try_structured` runs
+> only on the `ROUTER_V21=0` kill-switch. Both paths call `structured_answer.run()` +
+> `_compose_structured`, and both currently return early *before* the `:920` history write (Bug 1 on
+> BOTH). So the wiring must live at a **shared chokepoint**, not at either return site individually.
 
-**(b) Offer early-return site (`:289-292`) — register + record.**
-```
-text, resumable = await self._try_structured(resolved_query)
-if text is not None:
-    if resumable:
-        cm.set_pending(user_id, PendingAction(
-            options=[PendingOption(label, "structured", {"skill": r.skill, "args": r.args})
-                     for (label, r) in resumable], created_at=now))
-    cm.add_turn(user_id, "user", clean_text)          # Bug 1 fix (G6)
-    cm.add_turn(user_id, "assistant", text[:500])
-    return MessageResponse(text=text)
-```
-Per G6, history is written for **every** structured answer (offer or not), matching the RAG path —
-one standard.
+**(a) Shared chokepoint helper — the single place pending + history are written.**
+Introduce `_finalize_structured(user_id, clean_text, rt, result, text) -> MessageResponse` on the
+handler. Given the routed skill (`rt`), its `result`, and the already-composed answer `text`, it:
+1. `resumable = structured_answer.resumable_action(rt, result)`;
+2. if `resumable`, `cm.set_pending(user_id, PendingAction(options=[PendingOption(label,"structured",
+   {"skill":r.skill,"args":r.args}) for (label,r) in resumable], created_at=now))`;
+3. writes history for **every** structured answer (offer or not) — `add_turn(user,clean_text)` +
+   `add_turn(assistant, text[:500])` — the **Bug 1 fix (G6)**, one standard with the RAG path;
+4. returns `MessageResponse(text=text)`.
 
-**(c) Live-search offer becomes resumable.** Where `offer_live_search` is set true
-(`message_handler.py:914`), also register a 1-option pending action whose resume is a `live_search`
-on the **verbatim original query** (G5):
-```
-cm.set_pending(user_id, PendingAction(
-    options=[PendingOption("search NJIT's website", "live_search", {"query": clean_text})],
-    created_at=now))
-```
-The existing button is unchanged; button and typed-`"yes"` hit the same server-side resume and do
-not race (different turns).
+**Both** structured return sites call it: `_answer_decision`'s KG branch (`:550-551`, the LIVE path)
+and `_try_structured`'s early-return (`:290`, the kill-switch path). Each already holds `rt`/`(skill,
+args)` + `result` + the composed `text`. `_try_structured`/`_structured_from_route` therefore surface
+`rt` + `result` (not just the text) so the chokepoint can compute `resumable_action`.
 
-**(d) Resume pre-check — top of `handle()`** (after mode resolution ~`:226`, **before** the
-context-rewrite gate `:228` and all routing). This is the entry point that makes acceptance work:
+**(b) Resume pre-check — top of `handle()`** (right after mode resolution ~`:226`, **before** the
+context-rewrite call at `:228`, `_answer_decision`, and all routing). This is the entry point that
+makes acceptance work, and it must precede context-rewrite so `"yes"` is never rewritten against the
+freshly-recorded offer turn:
 ```
 pending = cm.get_pending(user_id) if cm else None
 if pending is not None:
     cm.clear_pending(user_id)                         # one-shot, BEFORE execute (a resume may re-offer)
     idx = match_followup(clean_text, pending.options)
-    if idx is DECLINE:
+    if idx is DECLINE:                                # explicit "no"
         cm.add_turn(user_id, "user", clean_text)
         ack = "No problem — what else can I help you with?"
         cm.add_turn(user_id, "assistant", ack)
         return MessageResponse(text=ack)
-    if idx is not None:
+    if idx is not None:                               # a selection WAS recognized
         resumed = await self._resume_pending(pending.options[idx])
         if resumed is not None:
             cm.add_turn(user_id, "user", clean_text)
             cm.add_turn(user_id, "assistant", resumed[:500])
             return MessageResponse(text=resumed)
-    # not a recognized selection → pending already cleared → fall through, route normally (G4)
+        # recognized but execution FAILED → graceful stop; NEVER fall through to route "yes"/"the first"
+        cm.add_turn(user_id, "user", clean_text)
+        sorry = "Sorry — I couldn't pull that up just now. Could you ask again?"
+        cm.add_turn(user_id, "assistant", sorry)
+        return MessageResponse(text=sorry)
+    # idx is None → NO selection recognized → pending already cleared → fall through, route normally (G4)
 ```
-Pending state is **mode-agnostic** (a direct commitment); a mode-switch message is a non-selection
-and drops it naturally via the fall-through.
+**Finding #1 (Fable, HIGH) is fixed here:** a *recognized* selection whose execution returns `None`
+returns a graceful message — it does **not** fall through and route the raw `"yes"`/`"the first"`
+(which would resurrect the exact garbage this fix exists to kill). Only an *unrecognized* reply
+(`idx is None`) falls through. Pending is cleared regardless (one-shot).
 
-**(e) `_resume_pending(option) -> Optional[str]`** — dispatch by `option.action`:
+Pending is **not** carried across a mode switch — the mode-switch → `clear_session` rule (§3.1, G5)
+wipes it, so there is no "resume in the wrong mode" case.
+
+**(c) `_resume_pending(option) -> Optional[str]`** — dispatch by `option.action` (only `"structured"`
+this build):
 - `"structured"` → run `structured_answer.run(conn, Route(skill, args))` in the worker thread, then
-  `format_answer` + `_compose_structured` (shared with `_try_structured` via a factored-out helper).
-  **Bypasses `router.route()`** — deterministic, and sidesteps the unfixed terse-form routing gap
-  (thread E).
-- `"live_search"` → `await maybe_answer_live(option.payload["query"], …)` — the exact original query
-  (G5). Returns its grounded answer or `None`.
+  `format_answer` + `_compose_structured` (shared helper). **Bypasses `router.route()`** —
+  deterministic, and sidesteps the unfixed terse-form routing gap (thread E). Any exception / empty /
+  unknown skill → `None` (caller → graceful stop, per (b)).
+
+**(d) Live-search stays OUT of this mechanism** (owner decision — §2 non-goals). The `offer_live_search`
+bool and its button are unchanged. **One defensive addition:** the connector's live-search **button
+callback** calls `cm.clear_pending(user_id)` before running the search, so a tap always overrides any
+pending state. (There is no coexistence in practice — the live button appears only on RAG deflections,
+which set no pending — so this is belt-and-suspenders honoring "the button overrides anything.")
 Any exception, empty options, or unknown skill/action → return `None` → caller falls through to
 normal routing. **Never raises into the message path.**
 
@@ -231,18 +257,18 @@ it live after review + a `restart.sh`. Backout = flag to 0 (or revert the merge)
 | # | Offer point | Location | Shape | This build |
 |---|---|---|---|---|
 | 1 | "Want the most {noun} instead?" | `structured_answer.py:307` | yes/no | **Wired** (`resumable_action`) |
-| 2 | Live-search: "search NJIT's website?" | `offer_live_search` (`:914`) | yes/no | **Wired** (`live_search` action, exact wording — G5) |
-| 3 | "did you mean A, B, or C?" (person disambig) | `structured_answer.py:413-425` | pick-1-of-N | **Wired** (`resumable_action`) |
+| 2 | Live-search: "search NJIT's website?" | `offer_live_search` (`:914`) | yes/no | **Deferred** — button stays an independent override; button-tap clears pending (§3.4d, §2) |
+| 3 | "did you mean A, B, or C?" (person disambig) | `structured_answer.py:413-425` | pick-1-of-N | **Wired** (`resumable_action`; reachability §3.3) |
 | 4 | "…university-wide. Just name a college." | `structured_answer.py:297-298` | slot-fill | **Deferred → thread F** (§2 non-goals) |
 
 ---
 
 ## 5. Data flow
 
-**Offer turn (e.g. metric decline):** `handle()` → `_try_structured` routes
-`metric_descending_unsupported`, `resumable_action` returns `[("most citations",
-Route("top_people_by_metric", {org_id:ywcc,…}))]` → early-return site registers the `PendingAction`
-+ writes both history turns → returns the offer text.
+**Offer turn (e.g. metric decline):** `handle()` → UnifiedRouter (`ROUTER_V21=1`) → `_answer_decision`
+KG branch runs `metric_descending_unsupported` → **`_finalize_structured`** computes
+`resumable_action` = `[("most citations", Route("top_people_by_metric", {org_id:ywcc,…}))]`,
+registers the `PendingAction`, writes both history turns, returns the offer text.
 
 **Resume turn ("yes"):** `handle()` pre-check finds the pending action → clears it → `match_followup`
 returns `0` (affirmation, 1 option) → `_resume_pending` runs `top_people_by_metric` scoped to YWCC
@@ -251,12 +277,19 @@ returns `0` (affirmation, 1 option) → `_resume_pending` runs `top_people_by_me
 **Non-follow-up ("what are the office hours"):** pre-check clears the stale pending action,
 `match_followup` returns `None` → falls through → routes the new question normally (G4).
 
+**Mode switch mid-offer:** offer turn sets pending → user types "free mode" → `set_mode` detects a
+real change → `clear_session` wipes context + pending (G5) → the message routes as a fresh free-mode
+turn; a later "yes" has nothing to resume.
+
 ---
 
 ## 6. Error handling
-- Resume executes in the worker thread like `_try_structured`; any exception → `None` → fall through
-  to normal routing. The message path never breaks.
-- Empty option set / unknown skill / unknown action → `None` → fall through.
+- Resume executes in the worker thread like `_try_structured`; any exception → `_resume_pending`
+  returns `None`. The message path never breaks (no raise escapes).
+- **Recognized selection, failed execution** (`idx` valid but `resumed is None`) → a graceful "Sorry,
+  I couldn't pull that up" message. It **never** falls through to route the raw acceptance token
+  (finding #1). Only an *unrecognized* reply (`idx is None`) falls through to normal routing.
+- Empty option set / unknown skill → `None` → graceful stop (a selection was recognized).
 - Pre-check clears pending **before** executing, so a resume that itself makes an offer can register
   a fresh pending action.
 
@@ -272,19 +305,28 @@ returns `0` (affirmation, 1 option) → `_resume_pending` runs `top_people_by_me
   (org threaded); `person_disambig` → one option per candidate; any other skill → `None`.
 - Router: `metric_descending_unsupported` Route now carries `org_id` + `n`.
 
-**Integration (2-turn, one user_id)**
-- **The repro now passes:** offer → `"yes"` → correct ranked YWCC-by-citations answer (add to
-  `eval/questions.txt` per the grow-correctness-suite rule).
+**Integration (2-turn, one user_id) — run with `ROUTER_V21=1` (the live path)**
+- **The repro now passes:** offer → `"yes"` → correct ranked YWCC-by-citations answer, via
+  `_answer_decision` (assert it does NOT go through `_try_structured`) (add to `eval/questions.txt`
+  per the grow-correctness-suite rule).
 - Person disambig → `"the first"` / a surname → the right person's card.
-- Live-search offer → `"yes"` → live search runs on the **verbatim original query** (assert the
-  searched query == the original, not `"yes"`) (G5).
+- **Recognized-but-failed (finding #1):** offer → `"yes"` but `_resume_pending` returns `None`
+  (monkeypatch to force it) → the **graceful "couldn't pull that up" message**, and assert the raw
+  `"yes"` is NOT routed (no live-search / no random page).
 - Stale-offer superseded: offer → unrelated question → pending cleared, normal answer, no resume.
 - `"yes but …"` after an offer → NOT resumed → routed normally.
 - Decline: offer → `"no"` → graceful ack, pending cleared, not routed as a query.
-- History recorded after a structured answer (offer **and** plain) — Bug 1 / G6.
+- **Mode switch (G5):** offer → `"free mode"` → pending AND history cleared; a following `"yes"`
+  resumes nothing (routes as fresh free-mode input).
+- **Live-search button override:** with a pending action set (hypothetical), a button-tap callback
+  clears pending (assert `get_pending is None` after the tap).
+- History recorded after a structured answer (offer **and** plain) — Bug 1 / G6 — on the
+  `_answer_decision` path.
 - Expiry: pending does not survive two messages.
-- **Regression:** a genuine referential follow-up after a plain structured answer still resolves
-  correctly now that structured answers appear in history (context-rewrite interaction — see §8).
+- **Regression (context-rewrite, finding #3):** (a) a genuine referential follow-up after a plain
+  structured answer still resolves correctly; **(b) a NON-referential new query after a structured
+  answer is NOT wrongly rewritten** (no false-positive `is_follow_up`); (c) a long ranked-list answer
+  truncated at `[:500]` does not corrupt a downstream referential rewrite (partial-name breakage).
 - Flag off → zero behavior change (no pending registered, pre-check skipped).
 
 ---
@@ -295,10 +337,16 @@ Today no structured answer reaches conversation history. This build writes **eve
 answer to history (one standard, no bandaid). Consequence: `context_rewrite` will now see structured
 answers as prior context and *may* fire `is_follow_up` on a referential follow-up where it currently
 cannot. This is arguably an improvement (structured answers become first-class conversational turns),
-but it is a behavior change. **Mitigation:** the §7 regression test asserts referential follow-ups
-after a structured answer still behave. If review finds the surface too wide, the fallback is to
-record history only at offer sites (narrower, but two standards) — flagged here for the reviewer's
-call. **Recommended: record all (current design).**
+but it is a behavior change. Two concrete hazards (finding #3):
+- **False-positive rewrite:** a new, non-referential question after a structured answer must not be
+  wrongly rewritten. Covered by §7 regression (b).
+- **`[:500]` truncation:** long ranked-list / roster answers are stored truncated. A downstream
+  referential rewrite that keys off a name cut mid-string could break. Covered by §7 regression (c);
+  if it bites, store a rewrite-friendly summary instead of a raw truncation.
+
+**Mitigation:** the expanded §7 regression set (a/b/c). If review still finds the surface too wide,
+the fallback is to record history only at offer sites (narrower, but two standards) — flagged for the
+reviewer's call. **Recommended: record all (current design).**
 
 ---
 
@@ -308,18 +356,44 @@ call. **Recommended: record all (current design).**
 |---|---|
 | G1 pending-action state + offer-turn recorded | Shipped in this build |
 | G2 deterministic reply→option match + execute | Shipped |
-| G3 general (metric #1, disambig #3, live #2 wired) | Shipped |
+| G3 general (metric #1 + disambig #3 wired via shared chokepoint) | Shipped |
 | G4 drop on non-follow-up (one-shot) | Shipped |
-| G5 live search uses exact original wording | Shipped |
-| G6 structured answers recorded in history | Shipped (risk §8) |
+| G5 mode switch clears everything (context + pending) | Shipped |
+| G6 structured answers recorded in history (both router paths) | Shipped (risk §8) |
 | G7 gated rollout flag `FOLLOWUP_RESUME_ENABLED` | Shipped |
-| Offer-first live-search policy (#a) | **Deferred → own follow-up** (§2) |
+| Live-search #2 wired into pending (typed-yes / offer-first / exact-wording) | **Deferred → own follow-up** (§2) |
 | Slot-fill offer #4 ("name a college") | **Deferred → thread F** (§2) |
 | Thread F clarify content | **Deferred → thread F** (this is its infra) |
+| Finding S0 — wiring targets the live `_answer_decision` path (chokepoint) | Addressed (§3.4) |
+| Finding #1 — recognized-but-failed → graceful stop | Addressed (§3.4b, §6) |
 
 ---
 
 ## 10. Review gate
-Per the EXPERT-REVIEW HARD GATE: this design goes to a senior-engineer review **and** a RAG/LLM
-review (it touches the answer/retrieval path), plus a Codex second opinion, then owner approval,
-before any build. Build is TDD; diff shown before commit + `restart.sh`.
+Per the EXPERT-REVIEW HARD GATE, this design is reviewed before any build. **Owner chose a single
+Fable review this round** (instead of the usual senior-eng + RAG + Codex panel). Fable's review +
+main's own code-path investigation are logged in §11. Next: owner approval → build TDD → diff shown →
+sign-off → commit + `restart.sh`.
+
+## 11. Review log (2026-07-03)
+
+**Main (code-path investigation) — finding S0 (highest):** the original draft anchored all wiring to
+`_try_structured`, but production runs `ROUTER_V21=1` → answers flow through `_answer_decision`;
+`_try_structured` is bypassed. Empirically confirmed by the repro (offer produced under
+`ROUTER_V21=1`, history empty). **Resolved:** shared `_finalize_structured` chokepoint covering both
+router paths (§3.4a).
+
+**Fable review — dispositions:**
+- **#1 (HIGH) — recognized-but-failed execution routed the raw token.** Fixed: graceful stop, never
+  fall through when a selection was recognized (§3.4b, §6).
+- **#2 (HIGH) — live-search button double-fire.** Resolved by **de-scoping live-search** from the
+  mechanism (owner decision); button stays an independent override and clears pending on tap (§3.4d,
+  §2). No pending/​button coexistence remains.
+- **#3 (MED) — §8 regression too thin.** Expanded to false-positive `is_follow_up` + `[:500]`
+  truncation hazard (§7 regression a/b/c, §8).
+- **#4 (MED) — pending across a mode switch.** Resolved by the owner's "mode switch loses everything"
+  rule — `set_mode` → `clear_session` (§3.1 G5); no cross-mode resume exists.
+- **#5 (LOW) — `"yes"` to a pick-1-of-N dead-ends.** Accepted as known UX (correct per
+  "never guess"); a bare `"yes"` to an N-option "did you mean…?" clears + routes normally.
+- **#6 (LOW) — casing/TOCTOU.** `clean_text` preserves original casing; the get→clear TOCTOU on
+  concurrent double-taps is benign at this cadence. Noted.
