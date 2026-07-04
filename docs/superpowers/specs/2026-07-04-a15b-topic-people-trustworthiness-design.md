@@ -1,7 +1,9 @@
 # A15b — topic→people trustworthiness: never assert a non-NJIT person (+ A11 + A15 determiner)
 
 **Date:** 2026-07-04
-**Status:** DRAFT → Fable design-review → owner sign-off → build TDD → Fable diff → ship.
+**Status:** Fable design-review = **APPROVE-WITH-CHANGES → folded in** (R1 live-reinvoke control flow, R2
+scope-narrowing named, R3 un-tagged eval Qs, O1 plumbing wording, O2 keep-neutral-context, flag terminal
+state). → **awaiting owner sign-off** → build TDD → Fable diff → ship.
 **Roadmap:** accuracy review (`project_pipeline_accuracy_review`), items **A15b** (RAG asserts wrong-topic/non-NJIT
 people) bundled with **A11** (distorted miss-signal — the trigger) and an **A15 determiner fix** (the
 completeness half). Fable design-consult adjudicated the scope (2026-07-04).
@@ -48,6 +50,17 @@ cover what the other structurally cannot:
   topic→people query for which no research-area tag will ever exist — so a seminar/external chunk can never be
   asserted as the person answer.
 
+## Scope narrowing — NAMED, not dropped (Fable R2, review-against-plan hard line)
+The roadmap's A15b was framed as "wrong-**TOPIC** people" (a CE-relevance guard). This spec deliberately pivots
+to a **non-NJIT-IDENTITY** guard, because the execution evidence falsified the relevance framing (the polluting
+seminar chunk is topically ON-target; only the person is non-NJIT). **Accepted residual:** the identity guard
+does NOT catch a *real NJIT person who is on-keyword but does not actually study the topic* — that person
+carries an `entity_id`, survives the trim, and could be asserted. This is the original "wrong-topic" case,
+knowingly narrowed out of the enforcing path here. It is a smaller, defensible risk (survivors are the
+highest-CE stamped chunks; Commit 2 routes most tagged topics to the KG and away from RAG entirely; compose is
+grounded at temp 0.3), and it is **covered by Commit 4's topic-fit name-verify TELEMETRY** — promotion to an
+enforcing topic-fit check is an explicit deferred item, not a silent drop.
+
 ## Scope — three coordinated changes, one branch, sequenced commits
 
 ### Commit 0 (build-time, no ship) — linkage-coverage audit (Fable Q4)
@@ -69,19 +82,24 @@ back to a single reranker pass on the first chunk (today's tail path).
 - **Flag:** `MISS_SIGNAL_SKIP_UNSCORED` (default **off** = today). Flip after the eval diff is clean.
 
 ### Commit 2 — A15 determiner fix: validate the determiner-stripped candidate too
-In `router.route`, where the loose-area candidate is validated against `is_listed_research_area`, ALSO try the
-**leading-determiner-stripped** form (`the|a|an`) and route if EITHER validates. `is_listed_research_area`
-remains the sole guard (word-boundary match on real tag VALUES), so this only ever ADDS recall for candidates
-that are genuinely listed tags — worst case is unchanged (→ RAG). Fixes "which professors study **the** brain"
-→ `"brain"` → KG (11 people). Preserves A15's R2 intent: "faculty in the news" → "news" → not a tag → RAG.
+The leak is ONLY in the **loose-verb branch** (`_LOOSE_CONNECTOR`, `router.py:~486`), which deliberately keeps
+the determiner — the topic-first branch already strips via `_DET_LEAD` (`:482`). Fix at the **validation site**
+(`route ~640`, NOT in `_extract_area_loose` — do not double-strip): where the loose candidate `_loose` is
+checked against `is_listed_research_area`, ALSO try its **leading-determiner-stripped** form (`the|a|an`) and
+route if EITHER validates. `is_listed_research_area` remains the sole guard (word-boundary match on real tag
+VALUES), so this only ever ADDS recall for candidates that are genuinely listed tags — worst case is unchanged
+(→ RAG). Fixes "which professors study **the** brain" → `"brain"` → KG (11 people). Preserves A15's R2 intent:
+"faculty in the news" → "news" → not a tag → RAG.
 - **Regression:** the full A15 router/skills suite must stay green; add the "which professors study the brain"
   family + hard-negatives ("in the news", "in the department", "for the semester") to the tests.
 - Ships **unflagged** (pure validation-guarded recall add, like A15 itself), eval-Q backed.
 
 ### Commit 3 — A15b entity-scoped compose guard (the safety net)
-**(a) Plumb the signal.** Add `entity_id: str | None` to `RetrievedChunk` (populated from the metadata the
-retriever already parses via `_meta_entity_id`), and carry it through `V2RetrieverShim._to_v1` into
-`V1Chunk.metadata["entity_id"]` so the compose boundary can read it. (No DB change; the field already exists in
+**(a) Plumb the signal (two small adds — O1).** `_meta_entity_id` exists (`retriever.py:196`) but is NOT wired
+onto the chunk: (i) add `entity_id: str | None = None` to `RetrievedChunk` and populate it at the build site
+(`retriever.py:~607`) with `entity_id=_meta(r["metadata"]).get("entity_id")`; (ii) extend the hand-picked
+`V2RetrieverShim._to_v1` metadata dict (`retriever_shim.py:~159`) with `"entity_id": getattr(c,"entity_id",None)`
+so the compose boundary reads `chunk.metadata["entity_id"]`. (No DB change; the value already exists in
 `knowledge_items.metadata`.)
 
 **(b) Shared person-seeking predicate.** A single module-level predicate (factored from the router's existing
@@ -107,12 +125,25 @@ predicate fires:
   failure → pass the chunk through untouched. The guard only ever REMOVES a demonstrably-unstamped chunk.
 - **Flag:** `PERSON_SCOPE_GUARD_ENABLED` (default **off** = today; byte-identical when off).
 
+**Flag terminal state (Fable):** both `MISS_SIGNAL_SKIP_UNSCORED` and `PERSON_SCOPE_GUARD_ENABLED` ON is the
+intended end state — they are split only for independent eval-diffing, not a permanent either/or. Rollout is
+robust to flag ORDER: guard-ON compensates for A11-OFF (it trims the McGill chunk out of a spuriously-rescued
+pool), and A11-ON removes the spurious rescue that produced the pool — so neither ordering leaves the repro
+exposed.
+
 **(d) Degrade policy** when the trim runs (Fable-default; low-stakes now that Commit 2 removes the flagship
 query from this path — it only governs the open-vocab tail):
-1. **≥1 NJIT-person chunk survives** → compose from the survivors (+ neutral context chunks). Honest-partial:
-   answer from who we can confirm.
-2. **Zero person chunks survive** (predicate fired, ≥1 entity chunk existed, but none resolved) → fall to the
-   **live tier** (now A1-gated) — proven to produce the right shape for exactly this query class.
+1. **≥1 NJIT-person chunk survives** → compose from the survivors (**keep** neutral topic-context chunks — O2:
+   they carry no false-person risk and thinning the answer buys zero safety). Honest-partial: answer from who
+   we can confirm.
+2. **Zero person chunks survive** (predicate fired, ≥1 entity chunk existed, but none resolved) → **re-invoke
+   the live tier via the existing `self.live_search(base_q)` seam** (A1-gated), inline at the guard site
+   (Fable R1, option (a) — reuse the one live seam, do not duplicate it). **Control-flow hole this closes:**
+   the guard runs AFTER the fallback ladder, so if `primary_miss` was False (a good primary pool, ladder never
+   ran) and the guard *then* trims to zero, live would otherwise never have been tried — a reachable real
+   answer silently skipped (a never-withhold violation). So the guard OWNS the zero-survivor live attempt; set
+   `attempted_live=True` and route its `LiveAnswer`/`LiveLinks`/`None` through the SAME consumer mapping as the
+   ladder's live sites (B3 from A1: `LiveLinks` → `is_abstain`/`live-offtarget`/`is_live=False`).
 3. **Live misses / disabled / capped** → honest abstain (`_useful_abstain` + the strongest source link in the
    pool). **Never** name the external seminar speaker (not even with a "McGill" disclaimer in v1).
 - **Owner fork (deferred, non-blocking):** whether case 1 additionally appends an opt-in "want the full NJIT
@@ -151,8 +182,11 @@ frequency (eval-diff-gated). The determiner fix only adds KG recall for real tag
   doesn't fire; exception in the KG lookup → fail-open (pass through); flag-off → no trim.
 - **Degrade:** all person chunks fail to resolve → live tried, then abstain; never names the external speaker.
 - **Regression:** full bot/tests live/gate/router/skills suites; eval.sh kb/live/deflect diff vs baseline.
-- **Eval Qs:** add "which professors study the brain" + 3–4 sibling topic→people queries to `eval/questions.txt`
-  as permanent regressions (per grow-correctness-suite).
+- **Eval Qs:** add "which professors study the brain" (verifies Commit 2 → KG, 11 people) PLUS 3–4 sibling
+  topic→people queries whose topic is **genuinely un-tagged** so they hit RAG + the guard (Fable R3 — otherwise
+  the guard has zero real-traffic coverage, only synthetic unit tests). **Build step:** for each candidate,
+  confirm via `ask.sh` that it routes to RAG (not KG) BEFORE adding it; a query that routes to KG doesn't
+  exercise the guard. Record the chosen un-tagged topics in the PR.
 
 ## Goals checklist (to verify at ship)
 - A11 miss-signal skip-unscored + eval diff — IN (Commit 1, flagged)
@@ -160,9 +194,11 @@ frequency (eval-diff-gated). The determiner fix only adds KG recall for real tag
 - entity_id plumbed to compose boundary — IN (Commit 3a)
 - shared person-seeking predicate w/ contact-exclusions — IN (Commit 3b)
 - entity-scoped trim at compose choke-point, activation rule, fail-open — IN (Commit 3c, flagged)
-- honest-partial → live → abstain degrade — IN (Commit 3d)
+- honest-partial → live (guard-owned re-invoke, R1) → abstain degrade — IN (Commit 3d)
 - linkage-coverage audit gating guard aggressiveness — IN (Commit 0)
 - post-compose name-verify TELEMETRY-ONLY — IN (Commit 4)
+- **NARROWED (named, not dropped — R2):** roadmap's "wrong-TOPIC people" → this ships a non-NJIT-IDENTITY guard;
+  topic-fit verification of surviving *NJIT* persons is DEFERRED to Commit 4 telemetry (accepted residual above)
 - seminar/colloquium page typing at the crawler — DEFERRED (redundant negative signal; data producer is
   already correct; not required for the root fix)
 - brain→neuroscience synonym-UNION (widen "brain" to also return the neuroscience cluster) — DEFERRED
