@@ -6,6 +6,7 @@ import asyncio
 import logging
 import re
 import time
+import unicodedata
 from dataclasses import dataclass
 from typing import Optional
 
@@ -145,6 +146,55 @@ def _source_note_for(answer_text: str, chunks) -> str:
                 seen.add(c.source_file); ordered.append(c.source_file)
     names = [SOURCE_FRIENDLY_NAMES.get(f, f) for f in ordered[:2]]
     return " & ".join(names)
+
+
+# QW-A4a — compose survival check. compose_from_rows truncates its output at num_predict; an uncapped
+# roster can have the COUNT survive while the TAIL names vanish. This guard flags that so the caller
+# keeps the complete Facts VERBATIM. Scoped to COUNTED rosters (the truncation-prone skills); short
+# cards/prose are NOT second-guessed (return True) so the friendly greeting/phrasing survives. Errs
+# toward verbatim-facts (safe, rule #2/#4) — over-triggering only costs a big list its rephrase.
+_A4A_EMAIL_RX = re.compile(r"[\w.%+-]+@[\w.-]+\.[a-zA-Z]{2,}")
+_A4A_DIGIT_RUN_RX = re.compile(r"\d{3,}")
+# counted-roster lead-in: a number immediately governing faculty/people/officer(s)/person — matches
+# "has 30 faculty", "30 faculty work on", "has 5 officer(s)", "has N people". Real roster skills use
+# MIXED separators (", " via _join for faculty/area rosters; "; " for officers/people_in_org).
+_A4A_ROSTER_LEADIN_RX = re.compile(r"\b\d+\s+(?:faculty|people|officers?|persons?|departments?)\b", re.I)
+
+
+def _a4a_norm(s: str) -> str:
+    """Casefold + strip markdown emphasis + NFKD-fold diacritics — so 'José'/'Jose', '**Wicke**'/'wicke'
+    compare equal (a composed answer may ASCII-fold or drop emphasis without dropping the name)."""
+    s = unicodedata.normalize("NFKD", s or "")
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"[*_`]", "", s).casefold()
+
+
+def _compose_preserves_facts(facts: str, composed: str) -> bool:
+    """True unless the composed answer DROPPED a fact from a counted-roster Facts. Checks (over a
+    counted roster only): (a) every email survives, (b) every 3+-digit run survives, (c) every list
+    item's tail token survives (a truncated tail loses its items' last tokens). Non-roster Facts →
+    True (trust compose; protects the greeting). Over-triggers are safe: the caller keeps Facts verbatim."""
+    if not _A4A_ROSTER_LEADIN_RX.search(facts):
+        return True
+    comp_cf = composed.casefold()
+    for em in _A4A_EMAIL_RX.findall(facts):                 # (a) emails verbatim
+        if em.casefold() not in comp_cf:
+            return False
+    for d in _A4A_DIGIT_RUN_RX.findall(facts):              # (b) 3+-digit runs (phones etc.)
+        if d not in composed:
+            return False
+    comp_norm = _a4a_norm(composed)                         # (c) each list item's tail token
+    body = facts.split(":", 1)[1] if ":" in facts else facts
+    items = body.split(";") if ";" in body else body.split(",")
+    for item in items:
+        item = re.sub(r"\([^)]*\)", " ", item)             # drop parenthetical (email/org)
+        toks = re.findall(r"[A-Za-zÀ-ɏ]{3,}", item)
+        # word-boundary match (not bare substring) so a dropped "Chen" can't false-pass on a surviving
+        # "Cheng" (Fable note #2 — hardens the one dangerous direction). Truncation drops a contiguous
+        # tail, so a full false-pass would need every dropped surname to collide — now even less likely.
+        if toks and not re.search(rf"\b{re.escape(_a4a_norm(toks[-1]))}\b", comp_norm):
+            return False
+    return True
 
 
 def _deep_adopt(current_rel, rescue_rel, threshold) -> bool:
@@ -529,7 +579,10 @@ class MessageHandler:
         out = facts
         if self.ollama and not deterministic:   # metric numbers must not be reworded by the LLM
             composed = await self.ollama.compose_from_rows(text, facts)
-            if composed:
+            # QW-A4a: accept the compose ONLY if it didn't DROP a fact from a counted roster
+            # (truncation at num_predict silently loses tail names/emails/digits); else keep the
+            # complete Facts verbatim (rule #2/#4). Checked BEFORE the suffix append (suffix ∉ facts).
+            if composed and _compose_preserves_facts(facts, composed):
                 out = composed
         if suffix:
             out = f"{out}\n\n{suffix}"
