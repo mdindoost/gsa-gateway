@@ -47,35 +47,28 @@ def test_c3_live_flag_wins_even_if_text_looks_like_kb():
     assert eval_run.classify("some answer text with no special prefix", is_live=True) == "live"
 
 
-# ═══════════════ C4 — every abstain template classifies as 'deflect' ═══════════════
-def test_c4_kb_miss_is_deflect():
-    assert eval_run.classify(_KB_MISS_RESPONSE, is_live=False) == "deflect"
+# ═══════════════ C4 — abstain classified off the is_abstain FLAG, not answer text ═══════════════
+def test_c4_is_abstain_flag_is_deflect_regardless_of_text():
+    # every canned non-answer carries is_abstain=True at source → deflect, whatever the wording
+    for txt in (_KB_MISS_RESPONSE, _USEFUL_ABSTAIN, LIVE_NOT_FOUND_MSG, _RAG_ERROR):
+        assert eval_run.classify(txt, is_live=False, is_abstain=True) == "deflect"
 
 
-def test_c4_useful_abstain_is_deflect():
-    # the exact bug: "a specific ANSWER" escaped the old "specific information" substring.
-    assert eval_run.classify(_USEFUL_ABSTAIN, is_live=False) == "deflect"
-
-
-def test_c4_live_not_found_is_deflect():
-    assert eval_run.classify(LIVE_NOT_FOUND_MSG, is_live=False) == "deflect"
-
-
-def test_c4_rag_error_text_is_deflect():
-    assert eval_run.classify(_RAG_ERROR, is_live=False) == "deflect"
+def test_c4_no_text_coupling_kb_miss_without_flag_is_kb():
+    # the whole point of the rewire: a canned text WITHOUT the flag is not special-cased anymore
+    assert eval_run.classify(_KB_MISS_RESPONSE, is_live=False, is_abstain=False) == "kb"
 
 
 def test_c4_empty_is_deflect():
     assert eval_run.classify("", is_live=False) == "deflect"
 
 
-def test_c4_real_kb_answer_still_classifies_kb():
+def test_c4_real_kb_answer_classifies_kb():
     assert eval_run.classify("The GSA President convenes the Executive Board.", is_live=False) == "kb"
 
 
-def test_c4_clarify_request_is_deflect():
-    from bot.core.message_handler import _CLARIFY_MSG
-    assert eval_run.classify(_CLARIFY_MSG, is_live=False) == "deflect"
+def test_c4_is_live_wins_over_is_abstain():
+    assert eval_run.classify("anything", is_live=True, is_abstain=True) == "live"
 
 
 # ═══════════════ H1 — judge grade parsing (word-boundary, ordered) ═══════════════

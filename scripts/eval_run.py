@@ -22,19 +22,7 @@ from bot.config import config
 from bot.services.database import Database
 from bot.services.knowledge_base import KnowledgeBase
 from bot.services.moderation import RateLimiter
-from bot.core.message_handler import MessageRequest, _CLARIFY_MSG
-from bot.core.live_query import LIVE_NOT_FOUND_MSG
-
-# Abstain/non-answer markers — imported/shared so the classifier can't silently drift from the
-# templates again (the old text-prefix coupling misclassified live answers as kb and abstentions as
-# answered). Both canned abstains (_KB_MISS_RESPONSE, _useful_abstain) share the "For accurate
-# information" block; the live-miss, rag-error, and UnifiedRouter CLARIFY paths have distinct text.
-_ABSTAIN_MARKS = (
-    "For accurate information, please:",
-    LIVE_NOT_FOUND_MSG,
-    "I encountered an error processing your question",
-    _CLARIFY_MSG,                                  # a clarify request didn't answer → non-answer
-)
+from bot.core.message_handler import MessageRequest
 
 
 def load_questions(path: str) -> list[tuple[str, str]]:
@@ -52,13 +40,13 @@ def load_questions(path: str) -> list[tuple[str, str]]:
     return out
 
 
-def classify(answer: str, is_live: bool = False) -> str:
-    """Coverage class from a STRUCTURED signal + robust abstain markers (not a text prefix).
-    is_live wins (the njit.edu fallback flag is authoritative); then any abstain marker → deflect;
-    else a real KB/KG answer."""
+def classify(answer: str, is_live: bool = False, is_abstain: bool = False) -> str:
+    """Coverage class from STRUCTURED signals only (no answer-text coupling). is_live wins (the
+    njit.edu fallback flag is authoritative); is_abstain (tag-at-source on every canned non-answer)
+    or an empty answer → deflect; else a real KB/KG answer."""
     if is_live:
         return "live"
-    if not answer or any(m in answer for m in _ABSTAIN_MARKS):
+    if is_abstain or not answer:
         return "deflect"
     return "kb"
 
@@ -105,9 +93,13 @@ async def main() -> None:
                 r = await handler.handle(MessageRequest(user_id=f"eval-{i}", text=q, platform="telegram"))
                 ans = (r.text or "").strip()
                 is_live = getattr(r, "is_live", False)
-                rec = {"i": i, "cat": cat, "q": q, "answer": ans, "class": classify(ans, is_live),
+                is_abstain = getattr(r, "is_abstain", False)
+                rec = {"i": i, "cat": cat, "q": q, "answer": ans,
+                       "class": classify(ans, is_live, is_abstain),
                        "source": r.source_note, "is_deep": getattr(r, "is_deep", False),
-                       "is_live": is_live, "offer": getattr(r, "offer_live_search", False),
+                       "is_live": is_live, "is_abstain": is_abstain,
+                       "abstain_reason": getattr(r, "abstain_reason", None),
+                       "offer": getattr(r, "offer_live_search", False),
                        "secs": round(time.time() - t0, 1)}
             except Exception as e:  # noqa: BLE001
                 rec = {"i": i, "cat": cat, "q": q, "error": repr(e), "class": "error",

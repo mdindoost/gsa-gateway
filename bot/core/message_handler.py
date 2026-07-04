@@ -72,6 +72,13 @@ _CLARIFY_MSG = (
     "For example, name the department, person, or topic you mean."
 )
 
+# The RAG-pipeline hard-error reply (hoisted to a constant so the wording has a single source of
+# truth — the eval harness keys abstain-classification off is_abstain, not this text).
+_RAG_ERROR_RESPONSE = (
+    "I encountered an error processing your question. "
+    "Please try again or contact a GSA officer at gsa-pres@njit.edu"
+)
+
 # The intents the legacy handle() treats as whole-message commands (mirrors the v2.1 command layer).
 # Used only to label the LEGACY decision for shadow agreement (review F1).
 _LEGACY_COMMAND_INTENTS = {
@@ -247,6 +254,9 @@ class MessageResponse:
     offer_live_search: bool = False   # connector should attach a "search NJIT's website" offer
     is_live: bool = False             # answer came from the live njit.edu fallback (verbatim extract)
     is_deep: bool = False             # answer came from the deep-fallback chunk-rescue
+    is_abstain: bool = False          # a canned non-answer (deflect/clarify/miss/error), NOT an answer
+    abstain_reason: Optional[str] = None  # set iff is_abstain: gate1|clarify|live-miss|gate-abstain|
+    #                                       kb-miss|error|resume-error (tag-at-source; never a heuristic)
 
 
 class MessageHandler:
@@ -321,7 +331,7 @@ class MessageHandler:
                         sorry = "Sorry — I couldn't pull that up just now. Could you ask again?"
                         self.conversation_manager.add_turn(user_id, "user", clean_text)
                         self.conversation_manager.add_turn(user_id, "assistant", sorry)
-                        return MessageResponse(text=sorry)
+                        return MessageResponse(text=sorry, is_abstain=True, abstain_reason="resume-error")
                     # _idx is None → unrecognized reply → pending already cleared → fall through, route normally
             except Exception:  # noqa: BLE001 - never break the answer path; fall through to routing
                 logger.debug("followup resume pre-check failed (ignored)", exc_info=True)
@@ -350,7 +360,7 @@ class MessageHandler:
             _g1 = gate1_intent(clean_text)
             if _g1.deflect and await self._try_structured(resolved_query) is None:
                 logger.debug("answer-gate G1 deflect cue=%s q=%r", _g1.cue, clean_text[:80])
-                return MessageResponse(text=_KB_MISS_RESPONSE)
+                return MessageResponse(text=_KB_MISS_RESPONSE, is_abstain=True, abstain_reason="gate1")
 
         # ── Kavosh v2.1 UnifiedRouter ─────────────────────────────────────────
         # ROUTER_V21 + SHADOW: compute the new decision and only LOG it (answer still comes
@@ -712,7 +722,7 @@ class MessageHandler:
         if fam == "LIVE":
             return await self._answer_explicit_live(req, text)
         if fam == "CLARIFY":
-            return MessageResponse(text=_CLARIFY_MSG)
+            return MessageResponse(text=_CLARIFY_MSG, is_abstain=True, abstain_reason="clarify")
         # OTHER / anything unexpected → RAG (never fabricate)
         return await self._rag_pipeline(req, text, INTENT_QUESTION)
 
@@ -746,7 +756,7 @@ class MessageHandler:
         just searched). Empty result → the shared 'found nothing' message."""
         live = await self.live_search(topic)
         if live is None:
-            return MessageResponse(text=LIVE_NOT_FOUND_MSG)
+            return MessageResponse(text=LIVE_NOT_FOUND_MSG, is_abstain=True, abstain_reason="live-miss")
         text = live.text
         question_id: Optional[int] = None
         if self.db:
@@ -942,6 +952,7 @@ class MessageHandler:
             used_office = False
             attempted_live = False   # auto-fire ran this turn (regardless of result)
             is_canned_deflection = False   # tag-at-source: our own "no info" reply
+            abstain_reason: Optional[str] = None   # tag-at-source reason when is_canned_deflection
             # base_q = the resolved/expanded query (main's contextual-rewrite); used for the
             # primary-miss signal, the office tier, and live — so a rewritten follow-up drives all
             # three. clean_text stays the original for compose/log/history.
@@ -1044,6 +1055,7 @@ class MessageHandler:
                                 source_note = None
                                 used_ai = False
                                 is_canned_deflection = True
+                                abstain_reason = "gate-abstain"
                                 attempted_live = True  # suppress the live-search offer on a gate abstain
                                 logger.debug("faithfulness-gate abstain why=%s q=%r", _why, base_q[:80])
                 else:
@@ -1064,6 +1076,7 @@ class MessageHandler:
             else:
                 response_text = _KB_MISS_RESPONSE
                 is_canned_deflection = True
+                abstain_reason = "kb-miss"
 
             # Office answers surface the authoritative njit.edu page as the verify-link (RA6),
             # mirroring the live-fallback's source_url note. Skip on an abstain (the gate set
@@ -1118,13 +1131,10 @@ class MessageHandler:
                 offer_live_search=offer_live_search,
                 is_live=used_live,
                 is_deep=used_deep,
+                is_abstain=is_canned_deflection,
+                abstain_reason=abstain_reason if is_canned_deflection else None,
             )
 
         except Exception as exc:
             logger.error("MessageHandler._rag_pipeline error: %s", exc, exc_info=True)
-            return MessageResponse(
-                text=(
-                    "I encountered an error processing your question. "
-                    "Please try again or contact a GSA officer at gsa-pres@njit.edu"
-                )
-            )
+            return MessageResponse(text=_RAG_ERROR_RESPONSE, is_abstain=True, abstain_reason="error")
