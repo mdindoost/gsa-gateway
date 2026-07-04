@@ -365,3 +365,7 @@ parking
 # The financial-aid case is a known-good live target (a real answerable njit.edu page).
 when do I defend my qualifying exam in the data science phd
 how do I apply for financial aid at njit
+
+# A15b — topic→people trustworthiness. Determiner fix: "study the brain" must route to the KG
+# people_by_research_area skill (11 real NJIT people), NOT fall to RAG and assert a seminar visitor.
+which professors study the brain

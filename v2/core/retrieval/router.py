@@ -38,7 +38,7 @@ _LOOSE_PEOPLE = frozenset({"faculty", "professor", "professors", "researcher", "
 # loose-verb / bare-in: a people word … a loose connector … <topic> (determiner KEPT here).
 _LOOSE_CONNECTOR = re.compile(
     r"\b(?:faculty|professors?|researchers?|academics?|people|who|anyone)\b.*?"
-    r"\b(?:in|doing|study|studies|studying|focus(?:es|ing)?\s+(?:on|in)|"
+    r"\b(?P<c>in|doing|study|studies|studying|focus(?:es|ing)?\s+(?:on|in)|"
     r"works?\s+(?:on|in)|working(?:\s+(?:on|in))?|works?)\s+(?P<t>\S.*?)\s*$", re.I)
 _DET_LEAD = re.compile(r"^(?:the|a|an)\s+", re.I)
 # a bare candidate that is ONLY a generic facet/people-qualifier word is never a real area — it would
@@ -482,10 +482,16 @@ def _extract_area_loose(q_for_area: str) -> str | None:
             cand = _DET_LEAD.sub("", " ".join(toks[:-1])).strip(" .,?")
             if cand:
                 return cand
-    # loose-verb / bare-in — determiner kept
+    # loose-verb / bare-in. A15b: after a TOPIC VERB (study/works on/focus/doing) the determiner is
+    # just grammar → STRIP it so "study the brain" → "brain" validates. After the bare locational "in"
+    # KEEP it, so the facet idioms "in the news"/"in the department" stay det-kept → won't validate →
+    # RAG (Fable R2 — determiner-keep was protecting exactly those; a blanket strip re-opened "news"
+    # → "fake news detection").
     m = _LOOSE_CONNECTOR.search(s)
     if m:
         cand = m.group("t").strip(" .,?")
+        if m.group("c").lower() != "in":
+            cand = _DET_LEAD.sub("", cand).strip(" .,?")
         if cand:
             return cand
     return None
