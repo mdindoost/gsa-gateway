@@ -26,6 +26,15 @@ def test_profile_junior_no_office_row():
     assert "Active since" in html
 
 
+def test_profile_teaching_interests_row():
+    # Houle's KG teaching string carries a "Teaching Interests;" section that must
+    # render as its own row, not be dropped in favour of the single course.
+    html = render.render_profile(db.get_faculty("meh43"))
+    assert "<span class=\"about-k\">Teaching interests</span>" in html
+    assert "Data Structures &amp; Algorithms" in html          # was previously dropped
+    assert "Data Mining" in html
+
+
 def test_profile_degraded_education_omits_row():
     f = db.get_faculty("oria")             # education == "Ph.D." only
     html = render.render_profile(f)

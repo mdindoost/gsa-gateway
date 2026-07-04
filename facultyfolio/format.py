@@ -106,6 +106,24 @@ def _course_num(code: str) -> int:
     return int(m.group(2)) if m else 0
 
 
+def format_teaching_interests(raw: str) -> list:
+    """Extract the free-text 'Teaching Interests;' section the crawler emits
+    (distinct from 'Past Courses;'). Mechanical: locate the literal section
+    label, take up to the next section marker, comma-split, acronym-preserving
+    title-case. Returns [] when no interests section is present.
+    """
+    s = clean_mojibake(raw)
+    m = re.search(r"Teaching Interests;?\s*(.*?)(?:;?\s*Past Courses\b|$)",
+                  s, flags=re.I | re.S)
+    if not m:
+        return []
+    body = m.group(1).strip().strip(";").strip()
+    if not body:
+        return []
+    items = [smart_titlecase(p.strip()) for p in body.split(",")]
+    return [i for i in items if i]
+
+
 def format_teaching(raw: str) -> list:
     """Two-pass mechanical grouping (spec §7 B4).
 

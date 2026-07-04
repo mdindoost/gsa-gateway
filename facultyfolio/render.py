@@ -89,6 +89,7 @@ def render_profile(f: dict, photo_ref: str = None) -> str:
         "appointment": _appointment(f),
         "education": F.format_education(f.get("education_raw") or ""),
         "contact": _contact(f),
+        "teaching_interests": F.format_teaching_interests(f.get("teaching_raw") or ""),
         "teaching": F.format_teaching(f.get("teaching_raw") or ""),
         "about_source": config.ABOUT_SOURCE,
         "heading": config.FIXED_HEADING,

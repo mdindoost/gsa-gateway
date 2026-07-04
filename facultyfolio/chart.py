@@ -1,13 +1,18 @@
 """Citations-per-year bar chart — pure function, cites_per_year dict -> SVG string.
 
-Geometry matches the reference (spec §6): viewBox 0 0 660 134, baseline y=116,
-max bar height 108. The latest year is dimmed as "partial" ONLY when it equals the
-sync year, and is excluded from the peak so it never reads as a decline.
+Geometry (spec §6): viewBox 0 0 660 158. A 22px top band gives the peak value
+label full headroom (no clipping); the plot area is 118px tall on an y=140
+baseline, with 18px below for the year axis. The latest year is dimmed as
+"partial" ONLY when it equals the sync year, and is excluded from the peak so it
+never reads as a decline.
 """
 
 _W = 660.0
-_BASE = 116.0
-_MAXH = 108.0
+_TOPPAD = 22.0      # headroom above the tallest bar for the peak value label
+_MAXH = 118.0       # plot height (taller than the original 108)
+_BASE = _TOPPAD + _MAXH   # baseline y = 140
+_VH = 158.0         # viewBox height: baseline + 18px year-axis band
+_AXY = _BASE + 14   # year-axis label baseline
 _GAP = 4.0          # gap=4, N=20 -> width 29.2, matching the koutis reference exactly
 
 
@@ -39,9 +44,9 @@ def render_chart(cites_per_year: dict, sync_year: int):
     scale = _MAXH / peak
 
     parts = [
-        f'<svg viewBox="0 0 660 134" role="img" '
+        f'<svg viewBox="0 0 660 {_fmt(_VH)}" role="img" '
         f'aria-label="Citations per year from {years[0]} to {years[-1]}, peaking at {peak}.">',
-        '<line x1="0" y1="116" x2="660" y2="116" stroke="var(--hair)" stroke-width="1"/>',
+        f'<line x1="0" y1="{_fmt(_BASE)}" x2="660" y2="{_fmt(_BASE)}" stroke="var(--hair)" stroke-width="1"/>',
     ]
     peak_x = None
     peak_labelled = False
@@ -67,15 +72,15 @@ def render_chart(cites_per_year: dict, sync_year: int):
         )
 
     # axis labels: first (start), peak (centered), last (end)
-    parts.append(f'<text class="axl" x="0" y="130">{years[0]}</text>')
+    parts.append(f'<text class="axl" x="0" y="{_fmt(_AXY)}">{years[0]}</text>')
     if peak_x is not None:
-        parts.append(f'<text class="axl" x="{_fmt(peak_x)}" y="130" text-anchor="middle">'
+        parts.append(f'<text class="axl" x="{_fmt(peak_x)}" y="{_fmt(_AXY)}" text-anchor="middle">'
                      f'{_peak_year(years, vals, peak, partial_year)}</text>')
-    parts.append(f'<text class="axl" x="660" y="130" text-anchor="end">{years[-1]}</text>')
-    # peak value label above the peak bar
+    parts.append(f'<text class="axl" x="660" y="{_fmt(_AXY)}" text-anchor="end">{years[-1]}</text>')
+    # peak value label above the peak bar (the _TOPPAD band guarantees it clears y=0)
     if peak_x is not None:
         peak_top = _BASE - peak * scale
-        parts.append(f'<text class="peaklab" x="{_fmt(peak_x)}" y="{_fmt(peak_top - 4)}" '
+        parts.append(f'<text class="peaklab" x="{_fmt(peak_x)}" y="{_fmt(peak_top - 6)}" '
                      f'text-anchor="middle">{peak}</text>')
     parts.append("</svg>")
     return "\n".join(parts)
