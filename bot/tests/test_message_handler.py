@@ -108,11 +108,15 @@ async def test_clear_history_clears_session(handler):
 
 
 @pytest.mark.asyncio
-async def test_help_returns_command_list(handler):
+async def test_help_is_conversational_no_dead_commands(handler):
+    """QW-A10: help must NOT advertise the retired v1 slash commands (/events /contact /resources);
+    it points users to plain-language questions + the one real command, /qrcode."""
     handler.intent_detector.detect.return_value = (INTENT_HELP, 0.9)
     req = MessageRequest(user_id="123", text="help", platform="telegram")
     resp = await handler.handle(req)
-    assert "/events" in resp.text or "events" in resp.text.lower()
+    for dead in ("/events", "/contact", "/resources"):
+        assert dead not in resp.text
+    assert "/qrcode" in resp.text
 
 
 @pytest.mark.asyncio

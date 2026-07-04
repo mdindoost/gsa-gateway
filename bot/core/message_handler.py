@@ -46,7 +46,22 @@ _KB_MISS_RESPONSE = (
     "For accurate information, please:\n"
     "- Visit the GSA office at Campus Center 110A (weekdays 11AM–5PM)\n"
     "- Email us at gsa-pres@njit.edu\n"
-    "- Use /contact to find the right officer"
+    "- Or just ask me here — try naming the office, person, or topic you mean"
+)
+
+# Help text — a module constant so it is testable and can't drift. All-conversational: the ONLY real
+# command is /qrcode (the v1 /events /contact /resources lookups were cut in the v1→v2 migration; QW-A10).
+_HELP_RESPONSE = (
+    "Here's how to use GSA Gateway:\n\n"
+    "Just ask me your question naturally — no commands needed. For example:\n"
+    '- "who is the GSA treasurer"\n'
+    '- "CS faculty who work on AI"\n'
+    '- "when is the travel award deadline"\n'
+    '- "how do I book a room for my club"\n\n'
+    "The one command I have is **/qrcode** (a branded QR to share the bot).\n\n"
+    "Tips:\n"
+    "- Ask follow-up questions naturally — I remember our conversation\n"
+    "- Type 'clear' to reset our conversation"
 )
 
 # Deterministic clarify template (v2.1 UnifiedRouter CLARIFY family). Abstention is BUILT-but-OFF
@@ -98,6 +113,14 @@ def _strip_doc_citations(text: str) -> str:
     t = re.sub(r"(?i)according to doc_id\s*\d+\s*(?:\([^)]*\))?\s*[:,-]?\s*", "", t)
     # bare or parenthesised "doc_id N" tokens
     t = re.sub(r"(?i)\(?\bdoc_id\s*\d+\b\)?", "", t)
+    # QW-A16: granite4:tiny-h often emits a MALFORMED citation — "According to document
+    # **[: Mathematical Sciences]**" — copying the [doc_id N: name] label but DROPPING the id, so the
+    # doc_id subs above miss it. Strip the bracket WITH any flanking markdown emphasis FIRST (order
+    # matters), then the now bracket-less "according to document" connector. The bracket pattern is
+    # tight — only whitespace or "doc_id N" may precede the internal colon — so "[Note: …]",
+    # "[Source: url]", "[10:30]" are UNTOUCHED (they carry other text before the colon).
+    t = re.sub(r"[*_]{0,3}\[\s*(?:doc_?id\s*\d*)?\s*:\s*[^\]]*\][*_]{0,3}", "", t)
+    t = re.sub(r"(?i)\baccording to (?:the )?document\b\s*[:,-]?\s*", "", t)
     # tidy doubled spaces and misplaced punctuation
     t = re.sub(r"\s{2,}", " ", t).replace(" .", ".").replace(" ,", ",").strip()
     return t
@@ -381,19 +404,7 @@ class MessageHandler:
             )
 
         if intent == INTENT_HELP:
-            return MessageResponse(
-                text=(
-                    "Here's how to use GSA Gateway:\n\n"
-                    "Just type your question naturally!\n\n"
-                    "Commands:\n"
-                    "- /events — see upcoming events\n"
-                    "- /contact [role] — find GSA contacts\n"
-                    "- /resources [category] — campus resources\n\n"
-                    "Tips:\n"
-                    "- Ask follow-up questions naturally\n"
-                    "- Type 'clear' to reset our conversation"
-                )
-            )
+            return MessageResponse(text=_HELP_RESPONSE)
 
         if intent == INTENT_IDENTITY:
             model_name = self.ollama.model if self.ollama else None
@@ -695,7 +706,14 @@ class MessageHandler:
             raw = await self.ollama.generate(
                 prompt=usr_p, system=sys_p,
                 options={"temperature": 0.0, "num_predict": 256}, fmt="json",
-            ) or ""
+            )
+            # QW-A2: generate() returns None on a TRANSPORT failure (timeout/HTTP≠200/conn-error) OR an
+            # EMPTY model response (it coerces "".strip() -> None). Either way the checker is UNREACHABLE
+            # — NOT a deterministic out-of-domain garbage verdict — so KEEP the already-composed answer,
+            # exactly like the gate-exception path (never-withhold hard line). A NON-empty unparseable
+            # response stays non-None → parse_gate2 → still abstains (the France / out-of-domain guard).
+            if raw is None:
+                return True, "gate2-transport-keep"
             v = parse_gate2(raw)
             outcome, reason = faith.decide_after_gate2(v.label, v.quote, passages, parsed=v.parsed)
         elif outcome == "gate2":
@@ -721,7 +739,7 @@ class MessageHandler:
             "For accurate information, please:\n"
             "- Visit the GSA office at Campus Center 110A (weekdays 11AM–5PM)\n"
             "- Email us at gsa-pres@njit.edu\n"
-            "- Use /contact to find the right officer"
+            "- Or just ask me here — try naming the office, person, or topic you mean"
         )
 
     async def _rag_pipeline(

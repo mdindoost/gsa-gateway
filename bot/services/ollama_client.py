@@ -250,7 +250,13 @@ class OllamaClient:
                     "misaligned; direct the student to the Source link above for exact numbers.]"
                 )
             lines.append(chunk.text)
-            lines.append(f"[Relevance: {chunk.relevance_score:.0%}]")
+            # QW-A14: keyword-only (FTS) hits reach here with similarity==0.0 (the shim coerces
+            # `c.similarity or 0.0`) — do NOT show them the imputed 0.7 "relevance" as a real score.
+            # Truthiness is deliberate: keyword hits are 0.0, NOT None, so `is not None` would be wrong.
+            if getattr(chunk, "similarity", 0.0):
+                lines.append(f"[Relevance: {chunk.similarity:.0%}]")
+            else:
+                lines.append("[Match: keyword only]")
         lines.append("\n=== END OF DOCUMENTS ===")
         return "\n".join(lines)
 
