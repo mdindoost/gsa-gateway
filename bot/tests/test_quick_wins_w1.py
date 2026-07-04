@@ -41,6 +41,8 @@ def _make_handler(ollama=None, *, top_relevance=0.3):
     retriever.top_relevance = MagicMock(return_value=top_relevance)
     retriever.retrieve = AsyncMock(return_value=[_make_chunk()])
     retriever.corpus_ready = MagicMock(return_value=False)
+    if ollama is not None:                       # QW-A6: prefit is sync; mirror it (returns given chunks)
+        ollama.prefit = MagicMock(side_effect=lambda q, ch, h=None: ch)
     return MessageHandler(
         retriever=retriever, ollama=ollama, conversation_manager=cm,
         intent_detector=intent_detector, db=MagicMock(), rate_limiter=rate_limiter,

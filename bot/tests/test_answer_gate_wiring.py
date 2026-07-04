@@ -52,6 +52,11 @@ def _make_handler(ollama=None, *, top_relevance=0.9):
     retriever.retrieve = AsyncMock(return_value=[_make_chunk()])
     retriever.corpus_ready = MagicMock(return_value=False)  # disable deep-fallback
 
+    # QW-A6: the gate now asks ollama.prefit() for the fitted context; prefit is SYNC, so a bare
+    # AsyncMock would return a coroutine. Mirror the real behavior: prefit returns the chunks it's given.
+    if ollama is not None:
+        ollama.prefit = MagicMock(side_effect=lambda q, ch, h=None: ch)
+
     return MessageHandler(
         retriever=retriever,
         ollama=ollama,

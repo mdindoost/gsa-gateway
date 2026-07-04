@@ -322,6 +322,17 @@ class OllamaClient:
         logger.info("context budget: prefix-truncated rank-1 page to fit")
         return [truncated]
 
+    def prefit(self, question: str, chunks: list, conversation_history=None) -> list:
+        """QW-A6: return the SAME fitted chunks generate_answer would use (system prompt from history +
+        _fit_chunks at num_predict=512). Lets the caller show the post-generation faithfulness gate the
+        exact context the model saw — so a grounded value past char 1200 on the deep tier isn't missed —
+        WITHOUT a generate_answer return-type change or any stashed per-call state (which would race
+        across concurrent users). Idempotent: same inputs → same fitted set generate_answer computes."""
+        if not chunks:
+            return []
+        system_prompt = self._build_system_prompt(conversation_history)
+        return self._fit_chunks(chunks, system_prompt, question, num_predict=512)
+
     def _build_system_prompt(self, conversation_history=None) -> str:
         system_prompt = BASE_SYSTEM_PROMPT
         if conversation_history:
@@ -351,7 +362,9 @@ class OllamaClient:
         if not chunks:
             return None
         system_prompt = self._build_system_prompt(conversation_history)
-        fitted = self._fit_chunks(chunks, system_prompt, question, num_predict=512)
+        # QW-A6: fit via the shared prefit() so the faithfulness gate (which also calls prefit) sees the
+        # EXACT same context — the two views can never drift on a future fit-logic change (Fable).
+        fitted = self.prefit(question, chunks, conversation_history)
         if not fitted:
             logger.warning("Ollama generate: no chunk fits context budget; returning None")
             return None

@@ -769,13 +769,23 @@ class MessageHandler:
         (the broad deflection detector over-triggered on njit.edu pointers under temp>0 variance)."""
         if not answer or faith.is_explicit_nonanswer(answer):
             return False, "self-abstain"
-        passages = [(getattr(c, "text", "") or "")[:1200] for c in chunks[:5]]
-        outcome, reason = faith.assess_pre_gate2(question, answer, passages)
+        # QW-A6: the DETERMINISTIC checks (answer-type grounding) see the FULL text of the chunks the
+        # model actually saw (the caller passes the FITTED chunks) — a grounded count/rate/money/date
+        # past char 1200 on the deep-fallback tier (whole parent pages) must not be missed. Pure Python,
+        # no prompt-size risk. (chunks here = the fitted set from OllamaClient.prefit; capped at 8.)
+        full_passages = [(getattr(c, "text", "") or "") for c in chunks[:8]]
+        outcome, reason = faith.assess_pre_gate2(question, answer, full_passages)
         if outcome == "gate2" and self.ollama:
-            sys_p, usr_p = gate2_prompt(question, passages)
+            # Gate-2 is an LLM call — BOUND its per-passage window AND pass num_ctx. Without num_ctx the
+            # request runs at the Ollama server default (~2k) and a long context front-truncates the
+            # SYSTEM prompt (Gate-2's own instructions) → non-JSON → parsed=False → false-abstain, which
+            # would INVERT this fix (Fable). The bounded window keeps the prompt well inside num_ctx.
+            g2_passages = [p[:1200] for p in full_passages[:5]]
+            sys_p, usr_p = gate2_prompt(question, g2_passages)
             raw = await self.ollama.generate(
                 prompt=usr_p, system=sys_p,
-                options={"temperature": 0.0, "num_predict": 256}, fmt="json",
+                options={"temperature": 0.0, "num_predict": 256,
+                         "num_ctx": getattr(self.ollama, "num_ctx", None) or 8192}, fmt="json",
             )
             # QW-A2: generate() returns None on a TRANSPORT failure (timeout/HTTP≠200/conn-error) OR an
             # EMPTY model response (it coerces "".strip() -> None). Either way the checker is UNREACHABLE
@@ -785,7 +795,7 @@ class MessageHandler:
             if raw is None:
                 return True, "gate2-transport-keep"
             v = parse_gate2(raw)
-            outcome, reason = faith.decide_after_gate2(v.label, v.quote, passages, parsed=v.parsed)
+            outcome, reason = faith.decide_after_gate2(v.label, v.quote, g2_passages, parsed=v.parsed)
         elif outcome == "gate2":
             outcome = "answer"  # no LLM available -> never withhold (answer-biased, like parse_gate2)
         return outcome == "answer", reason
@@ -1010,7 +1020,10 @@ class MessageHandler:
                     # and fall through to the generic error — default to KEEP on any exception (senior #7).
                     if botcfg.ANSWER_GATE_ENABLED and intent not in (INTENT_FOOD, INTENT_SOCIAL):
                         try:
-                            _keep, _why = await self._faithfulness_gate(base_q, response_text, chunks)
+                            # QW-A6: judge against the SAME fitted context the model saw (prefit), not
+                            # raw chunks[:5][:1200] — else a grounded value past char 1200 false-abstains.
+                            _fitted = self.ollama.prefit(compose_question, chunks, history) or chunks
+                            _keep, _why = await self._faithfulness_gate(base_q, response_text, _fitted)
                         except Exception:
                             logger.exception("faithfulness-gate error; keeping composed answer")
                             _keep, _why = True, "gate-error-keep"
