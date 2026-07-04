@@ -24,6 +24,19 @@ ACTIVE_SINCE_LABEL = "Active since"            # 4th stat (NOT "Publishing since
 ABOUT_SOURCE = "Crawled from the NJIT department profile · not written or generated"
 NJIT_PROFILE_TMPL = "https://people.njit.edu/profile/{slug}"
 
+# --- college display names (identity proper-nouns, NOT content curation) ------
+# The KG stores colleges by acronym ("YWCC"); the reference design shows the full
+# name. This is a closed set of ~6 NJIT college proper-nouns (identity display),
+# distinct from the forbidden venue/course meaning-dictionaries. Fallback = node name.
+# FLAG: confirm with owner at the Koutis-review checkpoint.
+COLLEGE_NAMES = {
+    "YWCC": "Ying Wu College of Computing",
+    "NCE": "Newark College of Engineering",
+    "CSLA": "College of Science and Liberal Arts",
+    "MTSM": "Martin Tuchman School of Management",
+    "HCAD": "Hillier College of Architecture and Design",
+}
+
 # --- visibility hook (default publish; a slug here is never emitted) ----------
 SUPPRESSED: set = set()
 
