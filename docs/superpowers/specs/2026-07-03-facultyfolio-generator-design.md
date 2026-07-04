@@ -102,7 +102,7 @@ Research → About → Scholarly activity → Publications → Recognition.
 
 | Element | Rule |
 |---|---|
-| **Photo** | **Source order (owner): Google Scholar → NJIT people-card → monogram.** (1) Use the Scholar photo if present and NOT the grey silhouette (detect by URL `avatar_scholar_128.png` **and** byte-hash of the known default). (2) Else the **NJIT people-card photo URL** captured into the node by the gather step (§4a) — only ~28/57 CS have a usable Scholar photo, so this recovers the other ~29. (3) Else a **first-party initials monogram** (SVG, site type system) on the `--hair` circle. Chosen URL is downloaded → `assets/photos/<slug>.jpg`, referenced locally (never hotlink googleusercontent — it rotates/404s; the committed jpg is the durable copy). Never ship the grey silhouette. |
+| **Photo** | **Source order (owner): Google Scholar → NJIT people-card → monogram.** (1) Use the Scholar photo if present and NOT the grey silhouette (detect by URL `avatar_scholar_128.png` **and** byte-hash of the known default). (2) Else the **NJIT people-card headshot**, discovered by fetching the profile page at photo-resolution time (§4a) — only ~28/57 CS have a usable Scholar photo, so this recovers the other ~29. (3) Else a **first-party initials monogram** (SVG, site type system) on the `--hair` circle. Chosen URL is downloaded → `assets/photos/<slug>.jpg`, referenced locally (never hotlink googleusercontent — it rotates/404s; the committed jpg is the durable copy). Never ship the grey silhouette. |
 | **Name** | Node `name` run through the **name-normalizer** (§7): single-comma "Surname, Given" → "Given Surname" (verified: 10/57 CS nodes are "Last, First", incl. the exemplar `Koutis, Ioannis`). The normalized name is also the source for monogram initials and `<title>`. |
 | **Title** | From the **home** role edge (`category='faculty'`) `attrs.titles`, joined with `, ` (e.g. "Professor, Department Chair"). If `titles` is empty (verified: some joint roles, e.g. `Hoover, Amy`, have `titles: []`) → **omit the title line** (no empty `<p class="title">`). |
 | **Department block** | Home dept = home role's Org name (plain, e.g. "Computer Science"); if a `category='joint'` role exists, add a line "Joint appointment · <Org>"; then "<College> · NJIT" from the org tree (college = parent Org, e.g. "Ying Wu College of Computing"). Dept name links to that dept's leaderboard (`../cs/index.html`). |
@@ -121,22 +121,21 @@ Research → About → Scholarly activity → Publications → Recognition.
 | **Publications** | Heading always "Selected work" (true for everyone — even Koutis's list is a selection; never "full list"). Two lists: Most-cited (`top_cited`) / Most-recent (`newest`), JS toggle. Each row: citation count ("—" if 0) · title (linked to the pub's `url`/`citation_for_view`; if absent, render the title **unlinked** — never `href="#"`) · formatted venue. Sub-line "Live from Google Scholar · sortable" (drop the sample's hand-added editorial flavour like "spanning physics & ML"). If Scholar but no pubs (rare) → fold into the metrics box. |
 | **Recognition** | Fixed claim-hook, identical for all (the pattern that proves the empty-state model). |
 
-### 4a. NJIT people-card photo capture (gather step — crawl-layer, gated write)
+### 4a. Photo sourcing — assets, NOT the DB (owner, 2026-07-03)
 
-Only ~28/57 CS faculty have a usable Scholar photo; the NJIT profile page usually has a headshot,
-but **0 are captured today**. Per the hard-line (*crawl brings data into the DB; the generator only
-reads it*), photo sourcing is split:
+Only ~28/57 CS faculty have a usable Scholar photo; the NJIT profile page usually has a headshot.
+**Photos are output assets, not knowledge-graph data — nothing goes into the DB.** The hard-line
+(*crawl brings data into the DB; generator reads it*) governs KB/KG content served by Kavosh; a
+headshot rendered onto a static page is an asset, so it lives only in the output repo.
 
-- **Gather (one-shot, now — NOT the generator):** `scripts/capture_njit_photos.py` fetches each CS
-  faculty's `people.njit.edu/profile/<slug>`, **mechanically** extracts the headshot `<img>` URL
-  (structural selector; no interpretation), and writes it to the node as `attrs.profiles.njit_photo`
-  (`{url}`) — MERGE, never clobber. **Gated:** `hardened_backup` + dry-run default + `--commit`; owner
-  reviews the found URLs before the commit. Project UA, no personal email ([[feedback_outbound_personal_data]]).
-  Idempotent + re-runnable (a future scheduled recrawl can also refresh it). This is a KG data-bringing
-  op, kept strictly separate from serving.
-- **Serve (generator, read-only):** `photos.py` reads Scholar-or-`njit_photo` URL from the DB and
-  downloads the chosen image to the committed output asset (§4 Photo). No live-fetch decisions in the
-  generator beyond producing its own static asset.
+- `photos.py` resolves the source in order — **Scholar (already a URL in the DB) → NJIT people-card →
+  monogram** — and downloads the chosen image to `assets/photos/<slug>.jpg`. The **committed jpg is
+  the durable copy** (no URL persisted anywhere; googleusercontent rotation is moot once the jpg is saved).
+- The **NJIT-card URL is discovered at fetch time**: fetch `people.njit.edu/profile/<slug>`,
+  **mechanically** extract the headshot `<img>` (structural selector, no interpretation), download it.
+  Done only when Scholar is missing/silhouette. Project UA, no personal email ([[feedback_outbound_personal_data]]).
+- **Idempotent + cached:** if `assets/photos/<slug>.jpg` already exists, skip all fetching. So the
+  NJIT page is fetched at most once per faculty, never on a rebuild. No gated DB write, no manifest.
 
 ---
 

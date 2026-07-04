@@ -275,54 +275,39 @@ def test_no_llm_prose_leaks():
 
 ---
 
-### Task 7a: `scripts/capture_njit_photos.py` — gather NJIT card photo URLs (gated DB write) [spec §4a]
+### Task 7: `photos.py` — Scholar→NJIT→monogram, saved as assets (NO DB) [spec §4, §4a]
 
-**Files:** Create `scripts/capture_njit_photos.py`; Test `facultyfolio/tests/test_capture_photos.py` (parser unit test only — no live fetch in tests)
-
-**Interfaces:**
-- Produces: `extract_photo_url(html, base)->str|None` (pure parser), `main(--commit)` (gated writer of `attrs.profiles.njit_photo`).
-
-- [ ] **Step 1: Failing parser test** (pure, on a saved NJIT profile HTML fixture):
-```python
-from scripts.capture_njit_photos import extract_photo_url
-def test_extract_headshot():
-    html = open("facultyfolio/tests/fixtures/njit_profile_sample.html").read()
-    url = extract_photo_url(html, "https://people.njit.edu")
-    assert url and url.startswith("http") and any(url.lower().endswith(e) for e in (".jpg",".jpeg",".png"))
-```
-- [ ] **Step 2: Run — expect FAIL.**
-- [ ] **Step 3: Implement:** `extract_photo_url` = structural selector for the profile headshot `<img>` (mechanical, no interpretation); `main` fetches each CS slug's page (project UA), extracts, and MERGES `attrs.profiles.njit_photo={url}` into the node; **gated** — `hardened_backup` + dry-run default + `--commit`; prints the found-URL table on dry-run.
-- [ ] **Step 4: Run parser test — expect PASS.** Then **dry-run `main`**, show the owner the URL table, get `--commit` approval (do NOT commit the DB write without it).
-- [ ] **Step 5: Commit** the SCRIPT `feat(facultyfolio): gated NJIT people-card photo-URL capture` (the DB write is a separate gated live op, not a repo commit).
-
-### Task 7b: `photos.py` — Scholar→NJIT→monogram + download [spec §4]
-
-**Files:** Create `facultyfolio/photos.py`; Test `facultyfolio/tests/test_photos.py`
+**Files:** Create `facultyfolio/photos.py`; Test `facultyfolio/tests/test_photos.py` (+ `fixtures/njit_profile_sample.html`)
 
 **Interfaces:**
-- Produces: `ensure_photo(slug, scholar_photo_url, njit_photo_url, name, out_dir)->str` (returns relative ref `../assets/photos/<slug>.jpg` OR a `monogram:<INITIALS>` sentinel the template renders as SVG).
+- Produces: `extract_njit_headshot(html, base)->str|None` (pure parser), `ensure_photo(slug, scholar_photo_url, njit_profile_url, name, out_dir)->str` (returns `../assets/photos/<slug>.jpg` OR a `monogram:<INITIALS>` sentinel the template renders as SVG). **No DB writes; the committed jpg is the only durable store.**
 
 - [ ] **Step 1: Failing tests**
 ```python
 from facultyfolio import photos
 SIL = "https://scholar.google.com/citations/images/avatar_scholar_128.png"
+def test_extract_njit_headshot():
+    html = open("facultyfolio/tests/fixtures/njit_profile_sample.html").read()
+    url = photos.extract_njit_headshot(html, "https://people.njit.edu")
+    assert url and url.startswith("http") and any(url.lower().endswith(e) for e in (".jpg",".jpeg",".png"))
 def test_scholar_first(tmp_path, monkeypatch):
-    # real scholar url wins; stub fetch to write bytes
+    # real (non-silhouette) scholar url wins; stub _download to write bytes
     ...
 def test_silhouette_falls_to_njit(tmp_path, monkeypatch):
-    ref = photos.ensure_photo("oria", SIL, "https://people.njit.edu/img/oria.jpg", "Vincent Oria", tmp_path)
-    assert "oria.jpg" in ref            # NJIT used, not monogram
-def test_no_photo_anywhere_monogram(tmp_path):
+    # scholar is silhouette → fetch njit profile → extract → download; assert oria.jpg saved, not monogram
+    ...
+def test_no_photo_anywhere_monogram(tmp_path, monkeypatch):
+    # silhouette scholar + njit page has no headshot → monogram
     ref = photos.ensure_photo("calvin", SIL, None, "James Calvin", tmp_path)
     assert ref == "monogram:JC"
-def test_cached_not_redownloaded(tmp_path, monkeypatch):
-    # second call must not re-fetch (idempotency)
+def test_cached_not_refetched(tmp_path, monkeypatch):
+    # if <out>/photos/<slug>.jpg exists, ensure_photo does zero network calls (idempotency)
     ...
 ```
 - [ ] **Step 2: Run — expect FAIL.**
-- [ ] **Step 3: Implement:** order Scholar (non-silhouette) → NJIT → monogram; detect silhouette by URL `avatar_scholar_128.png` and/or byte-hash; download (project UA, no personal email — [[feedback_outbound_personal_data]]) to `<out>/photos/<slug>.jpg`, skip if exists; monogram = `f"monogram:{initials(name)}"`.
+- [ ] **Step 3: Implement:** if `<out>/photos/<slug>.jpg` exists → return its ref (no network). Else order: Scholar (non-silhouette; detect silhouette by URL `avatar_scholar_128.png` and/or byte-hash) → else fetch the NJIT profile page + `extract_njit_headshot` (structural `<img>` selector, mechanical) → else `f"monogram:{initials(name)}"`. Download the chosen URL (project UA, no personal email — [[feedback_outbound_personal_data]]) to `<out>/photos/<slug>.jpg`. NO DB access anywhere in this module.
 - [ ] **Step 4: Run — expect PASS.**
-- [ ] **Step 5: Commit** `feat(facultyfolio): photo resolution (scholar→njit→monogram) + download`
+- [ ] **Step 5: Commit** `feat(facultyfolio): photo resolution (scholar→njit→monogram), saved as assets`
 
 ---
 
