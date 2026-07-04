@@ -328,3 +328,18 @@ who is the njit registrar
 president office hours
 registrar office hours
 former gsa president
+
+# router F — ambiguous bare role/officer → abstain-hint (deflect) or data-driven role answer
+officers
+who are the officers
+treasurer
+secretary
+njit officers
+officers at njit
+dean
+chair
+director
+coordinator
+chancellor
+njit dean
+what is a dean

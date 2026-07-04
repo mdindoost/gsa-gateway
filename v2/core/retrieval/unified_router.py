@@ -24,7 +24,8 @@ _COMMAND_INTENTS = {
 # the deterministic resolver directly with ZERO classifier encode — common KG intents stay at
 # zero added latency (spec §8). On a miss we fall through to encode + classify.
 _FASTPATH_CUE = re.compile(
-    r"\b(faculty|professors?|officers?|e-?board|department|departments|"
+    r"\b(faculty|professors?|officers?|e-?board|executive board|treasurer|secretary|vp|"
+    r"coordinator|counsel|cfo|chief of staff|department|departments|"
     r"who teaches|teaches in|people (?:in|at|of)|staff (?:of|at|in)|"
     r"chair|dean|director|provost|citations?|cited|h-?index|i10)\b", re.I)
 

@@ -173,9 +173,10 @@ don't hit a bad live-fallback answer.
 `associate provost`.
 
 **Branch 1 — MUST NOT fire on root (branch-1 org test stays strict `org is None`):**
-`njit dean` → `(1,'njit')` → NOT org-less → branch 1 skips → `None`→RAG unchanged. The root-org
-clause is officer-branch-only; the role branch genuinely has deans via subtree, so root is a real
-scope, not an ambiguity.
+`njit dean` → today routes to `people_by_role('dean', org_id=1)` via the role branch's bare-org
+fallback (an EARLIER branch) → F never sees it → **unchanged**. Even if it fell through, branch 1's
+strict `org is None` test excludes root. The root-org clause is officer-branch-only; the role branch
+genuinely has deans via subtree, so root is a real scope, not an ambiguity.
 
 **MUST NOT fire — already routed by an earlier branch:**
 `who is the provost` (role branch, person-cue) · `who is my dean` (role branch) · `who is the
@@ -223,8 +224,9 @@ downstream behavior is out of this change's control).
 **Branch 1 fires** → `Route("people_by_role", {"role_head": w, "org_id": None})`: `dean`/`chair`/
 `coordinator`/`director`; `cfo` → `role_head="chief financial officer"` (synonym) (assert route only —
 answer text is the shipped skill's).
-**Branch-1 stays strict `org is None`:** `njit dean` → **`None`** (root ≠ org-less for roles; must NOT
-fire branch 1). This is the key non-regression the branch-asymmetric org test buys.
+**Branch-1 stays strict `org is None`:** `njit dean` → **`people_by_role('dean', 1)`** unchanged (role
+branch's bare-org fallback, an earlier branch; must NOT become branch-2 or None). This is the key
+non-regression the branch-asymmetric org test buys.
 **Org-test exclusions (no F fire — stay as today):** `president`, `vice president` (org 52, non-root),
 `provost`, `registrar`, `dean of students`.
 **Already-routed (F must not intercept):** `who is the provost` → `people_by_role('provost', 1)`;

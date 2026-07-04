@@ -73,6 +73,9 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         # No DB query — a deterministic decline (mirrors person_disambig). field/metric come straight
         # from the route so format_answer can name the metric + offer the highest-ranked alternative.
         return {"skill": skill, "field_key": a["field_key"], "metric_key": a["metric_key"]}
+    if skill == "ambiguous_officers":
+        # No DB query — a deterministic officer-ambiguity deflection (router thread F, branch 2).
+        return {"skill": skill}
     if skill == "link_of_person":
         r = entity.link_of_person(conn, a["entity_id"], a["field_key"])
         return {"skill": skill, "field_key": a["field_key"], **r}
@@ -141,7 +144,9 @@ _DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric", "
                                    # CLARIFY lists (senior review #10): a "which did you mean?" roster
                                    # must render VERBATIM from the KG — LLM rewording could drop/alter
                                    # a candidate, defeating the disambiguation.
-                                   "person_disambig", "org_disambig"})
+                                   "person_disambig", "org_disambig",
+                                   # F branch 2: the officer-ambiguity hint renders VERBATIM.
+                                   "ambiguous_officers"})
 
 
 def is_deterministic(result: dict) -> bool:
@@ -305,6 +310,14 @@ def format_answer(result: dict) -> str:
         return (f"I can only rank people by highest {noun} (e.g. most cited, top h-index), not "
                 f"lowest — and my Scholar coverage is partial, so a 'least {noun}' ranking wouldn't "
                 f"be meaningful. Want the most {noun} instead?")
+
+    if skill == "ambiguous_officers":
+        # Deterministic + TERMINAL (in _DETERMINISTIC_SKILLS → no LLM). An org-less "officers" ask is
+        # genuinely ambiguous; abstain with a name-the-org hint (open-world: club-officer data is
+        # manually partial, so a static "e.g." avoids a false-completeness claim). Non-GSA example
+        # first — GSA-equal, no ranking implied. Never "" (that would fall to the live-fallback F kills).
+        return ('I\'m not sure which organization you mean — try naming it, '
+                'e.g. "GWICS officers" or "GSA officers".')
 
     if skill == "link_of_person":
         # Deterministic + TERMINAL: a present URL or an honest-empty line — never "" (which would

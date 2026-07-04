@@ -73,6 +73,12 @@ _OFFICER_TITLE_RX = re.compile(_OFFICER_TITLE, re.I)
 # fire, so "former gsa president" / "gsa president salary" fall through to RAG.
 _TERSE_OFFICER_STOP = frozenset({"the", "a", "an", "of", "for", "in", "at", "to",
                                  "who", "is", "are", "and", "s", "'s"})
+# F (thread F): tokens allowed to remain after stripping the DISPATCH regex (+ the org phrase, for the
+# officer branch) from a bare role/officer fragment. Superset of the terse-officer stop set + person-
+# ask words ("who's"/"whos"/"my"/"our") so "who are the officers"/"who is my dean" reduce to empty;
+# DELIBERATELY EXCLUDES wh-words what/how/why/when/where so "what is a dean" (definitional) keeps
+# residue and falls to RAG rather than deflecting.
+_F_STOP = _TERSE_OFFICER_STOP | {"my", "our", "who's", "whos"}
 
 # "who works at/in <org>", "people in <org>", "<org> staff/team" -> the full roster.
 _PEOPLE = re.compile(
@@ -383,6 +389,13 @@ def _officer_org(conn: sqlite3.Connection, text: str, org_id: int | None,
     if alt is not None and _org_answers_title(conn, alt[0], collision):
         return alt
     return org_id, org_phrase
+
+
+def _is_root_org(conn: sqlite3.Connection, org_id: int) -> bool:
+    """True iff ``org_id`` is the university root (no parent). Used by F's officer branch to treat
+    "njit officers" (root, no true officers) like an org-less ambiguous ask."""
+    row = conn.execute("SELECT parent_id FROM organizations WHERE id=?", (org_id,)).fetchone()
+    return row is not None and row[0] is None
 
 
 # Generic org words shared by many units — must NOT drive a fuzzy match on their own.
@@ -753,4 +766,26 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         if isinstance(person, dict):
             return Route(_person_skill(q),
                          {"entity_id": person["entity_id"], "name": person["name"]})
+
+    # ── F: genuinely-ambiguous bare role/officer fragment → abstain-hint. TERMINAL, runs LAST so
+    # every confident branch above already declined (that IS the confidence check). Two-way dispatch
+    # by which vocab matched; the org test is branch-ASYMMETRIC — role: strict org-less; officer:
+    # org-less OR root-with-no-true-officers (the "njit officers" AFROTC-sibling fix). Strip ONLY the
+    # dispatch regex so a both-tokens query ("director secretary") self-blocks on residue.
+    if not _OFFICER_PROCESS.search(q):
+        role_m = _ROLE_VOCAB_RX.search(q)
+        if role_m and org_id is None:                       # branch 1 — role vocab, strictly org-less
+            residue = _ROLE_VOCAB_RX.sub(" ", q)
+            if not [t for t in re.findall(r"[a-z0-9'\-]+", residue) if t not in _F_STOP]:
+                w = role_m.group(1).lower()
+                return Route("people_by_role",
+                             {"role_head": _ROLE_SYNONYM.get(w, w), "org_id": None})
+        off_m = _OFFICER_TITLE_RX.search(q)
+        if off_m and (org_id is None                        # branch 2 — officer title, org-less OR
+                      or (_is_root_org(conn, org_id)         #   root-with-no-true-officers
+                          and not _has_true_officers(conn, org_id))):
+            residue = re.sub(r"\b" + re.escape(org_phrase) + r"\b", " ", q) if org_phrase else q
+            residue = _OFFICER_TITLE_RX.sub(" ", residue)
+            if not [t for t in re.findall(r"[a-z0-9'\-]+", residue) if t not in _F_STOP]:
+                return Route("ambiguous_officers", {})
     return None
