@@ -335,6 +335,26 @@ def count_people_by_research_area(conn: sqlite3.Connection, area: str,
     return len(_research_entities(conn, area, org_id))
 
 
+def is_listed_research_area(conn: sqlite3.Connection, area: str,
+                            org_id: int | None = None) -> bool:
+    """True iff ≥1 person LISTS ``area`` (or a synonym) as a research-area TAG VALUE — a WORD-BOUNDARY
+    match INSIDE a `metadata.areas` tag (so "neuroscience" hits the tag "computational neuroscience"),
+    read from the tags directly via `_area_rows` (NEVER search_text) so a person NAME or an incidental
+    token can't validate. The A15 loose-area validator: a topic is 'real' iff someone tags it. Because a
+    matched tag lives on a `type='research_areas'` item, its search_text contains the term too → the
+    skill's FTS (people_by_research_area, a superset over 3 types) is guaranteed to return ≥1 (the ⊂
+    guarantee). Uses the same expand_area synonyms as the skill."""
+    pats = [re.compile(r"\b" + re.escape(t.casefold()) + r"\b")
+            for t in expand_area(area) if (t or "").strip()]
+    if not pats:
+        return False
+    for val, _eid in _area_rows(conn, org_id):
+        v = (val or "").casefold()
+        if any(p.search(v) for p in pats):
+            return True
+    return False
+
+
 def _area_rows(conn: sqlite3.Connection, org_id: int | None) -> list[tuple[str, str]]:
     """(area_value, entity_id) for every tag on active research_areas items, optionally
     scoped to an org subtree. Reads metadata.areas via json_each."""

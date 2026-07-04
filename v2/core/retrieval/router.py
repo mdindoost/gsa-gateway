@@ -30,6 +30,25 @@ _AREA_TRIGGER = re.compile(
     r"researchers?\s+(?:in|on|of)|studies|studying|specializ(?:es|ing)\s+in|"
     r"expert(?:ise)?\s+in)\s+(.+)")
 
+# ── A15 loose-area (validated) — natural topic→people phrasings the strict trigger misses.
+# Two surfaces on the ORG-STRIPPED query; each candidate is VALIDATED against real area tags by
+# the caller (never trusted raw). See _extract_area_loose + the loose branch in route().
+_LOOSE_PEOPLE = frozenset({"faculty", "professor", "professors", "researcher", "researchers",
+                           "academic", "academics"})
+# loose-verb / bare-in: a people word … a loose connector … <topic> (determiner KEPT here).
+_LOOSE_CONNECTOR = re.compile(
+    r"\b(?:faculty|professors?|researchers?|academics?|people|who|anyone)\b.*?"
+    r"\b(?:in|doing|study|studies|studying|focus(?:es|ing)?\s+(?:on|in)|"
+    r"works?\s+(?:on|in)|working(?:\s+(?:on|in))?|works?)\s+(?P<t>\S.*?)\s*$", re.I)
+_DET_LEAD = re.compile(r"^(?:the|a|an)\s+", re.I)
+# a bare candidate that is ONLY a generic facet/people-qualifier word is never a real area — it would
+# dump on 'research'/'work' or hijack via a word that ALSO appears inside a real tag ("new" in "new
+# product development", "international" in "International Finance"). Multi-word topics ("international
+# relations faculty") are NOT stopped — only the bare qualifier. (Fable R2, live-DB measured.)
+_AREA_FACET_STOP = frozenset({"research", "researches", "research area", "research areas",
+                              "work", "works", "study", "studies",
+                              "new", "recent", "current", "former", "international", "retired"})
+
 # Enumeration of the research-area facet ("what research areas does CS cover").
 _ENUM_AREAS = re.compile(
     r"\b(?:research areas?|areas? of research|"
@@ -444,6 +463,34 @@ def _extract_area(q: str, org_phrase: str | None) -> str | None:
     return area or None
 
 
+def _extract_area_loose(q_for_area: str) -> str | None:
+    """A15: surface a candidate research-area topic from a people-noun phrasing the strict
+    _AREA_TRIGGER missed. Returns the RAW candidate (NOT validated — the caller checks it against
+    real area tags + the fuzzy-org / facet guards). No DB. Two surfaces:
+      • topic-first  "<topic> <people-noun>"  (people-noun FINAL, ≤4 tokens, no rank cue) — determiner
+        STRIPPED ("the neuroscience faculty" → "neuroscience").
+      • loose-verb / bare-in  "faculty in X / doing X / study X"  — determiner KEPT ("faculty in the
+        news" → "the news" → won't validate → RAG)."""
+    s = re.sub(r"\s+", " ", (q_for_area or "")).strip()
+    s = re.sub(r"\s+(?:in|at|of|within)$", "", s).strip()   # dangling prep left by the org-strip
+    if not s:
+        return None
+    toks = s.split()
+    # topic-first — people-noun is the LAST token
+    if 2 <= len(toks) <= 4 and toks[-1] in _LOOSE_PEOPLE:
+        if not _RANK_CUE.search(s) and not _DESC_DIR.search(s):
+            cand = _DET_LEAD.sub("", " ".join(toks[:-1])).strip(" .,?")
+            if cand:
+                return cand
+    # loose-verb / bare-in — determiner kept
+    m = _LOOSE_CONNECTOR.search(s)
+    if m:
+        cand = m.group("t").strip(" .,?")
+        if cand:
+            return cand
+    return None
+
+
 def _parse_topn(q: str) -> int:
     """N from 'top N' / 'N most'; 1 for a bare 'most'/'highest'."""
     m = _TOPN.search(q)
@@ -583,6 +630,18 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         # names roster + 'no areas listed' line when nobody does — so the LLM is never handed a
         # bare name list to invent areas for (the fabrication bug). Anti-fabrication, not RAG.
         return Route("faculty_areas_in_department", {"org_id": org_id})
+
+    # ── A15: VALIDATED loose-area (topic→people phrasings the strict trigger missed) ───────────────
+    # Runs only when strict `area` didn't fire. A candidate routes to the KG area skill ONLY IF it is a
+    # REAL research-area tag (someone LISTS it), is NOT a facet word, and does NOT fuzzy-match an org
+    # (else an org name like "management" would hijack a scope query). Any miss → None → RAG (unchanged).
+    if not area:
+        _loose = _extract_area_loose(q_for_area)
+        if _loose and _loose.lower() not in _AREA_FACET_STOP and not fuzzy_org(conn, _loose):
+            if skills.is_listed_research_area(conn, _loose, org_id):
+                if "how many" in q or "how much" in q:
+                    return Route("count_people_by_research_area", {"area": _loose, "org_id": org_id})
+                return Route("people_by_research_area", {"area": _loose, "org_id": org_id})
 
     # ── metric queries (Scholar citations / h-index / i10) ─────────────────────────
     # Registry-driven (profile_fields.match_metric): only words registered as a Metric alias match,

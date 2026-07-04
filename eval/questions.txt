@@ -159,6 +159,14 @@ What are the research areas of professors in the math department?
 Research areas of the faculty in computer science
 What research areas does computer science cover?
 
+# A15 topic->people (natural phrasings must reach the KG area skill, not RAG)
+neuroscience faculty
+faculty in machine learning
+professors who study cryptography
+professors doing robotics
+list faculty in computer vision
+who works on graph theory
+
 # external profiles (links on identity, Scholar metrics on research — active once profile data is entered)
 Who is Ioannis Koutis?
 What is Ioannis Koutis's Google Scholar?
