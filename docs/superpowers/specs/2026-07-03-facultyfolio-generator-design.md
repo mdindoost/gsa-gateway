@@ -217,7 +217,7 @@ All input-agnostic; no maintained lookup tables. Two shared helpers used below:
   multiple of 4). **Group-by-4 is invalid** (it shears 3-field records). Use a **year-anchored split:**
   strip the prefix `^Education of .*?:\s*`; split on `;`; walk fields into a buffer; when a field
   matches `^\d{4}$` (a year), **close a record**: `degree = buffer[0]`, `year = the year token`,
-  `institution = buffer[1]` (if present), `field = buffer[2:]` joined (may be empty); reset buffer.
+  `institution = buffer[1]` (if present), `field = buffer[2:]` joined by `", "` (may be empty); reset buffer.
   A trailing buffer that never hits a year is **dropped**. Render each valid record (has institution
   **and** year) as "Degree [Field ,] Institution (Year)" joined by " · " — field segment omitted when
   absent (→ "Ph.D., Stanford University (1990)"). If **no** valid record survives → the whole row is
