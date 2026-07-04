@@ -183,6 +183,18 @@ LIVE_OPTIN = os.getenv("LIVE_OPTIN", "").strip().lower() in ("1","true","yes","o
 # selective Gate-2 answerability call. (ANSWER_GATE_BAND removed — senior review #11.)
 ANSWER_GATE_ENABLED = os.getenv("ANSWER_GATE_ENABLED", "0").strip().lower() in ("1","true","yes","on")
 
+# --- A15b — topic→people trustworthiness (two behavior-changing flags, both DEFAULT OFF = today) ---
+# MISS_SIGNAL_SKIP_UNSCORED (A11): the miss-signal (top_relevance) must skip an UNSCORED injected
+#   profile card at rank-0 and read the first chunk that actually carries a cross-encoder score —
+#   else a person-topic query falsely trips primary_miss → spurious deep-fallback/live. Flip after
+#   an eval.sh kb/live/deflect diff is clean.
+# PERSON_SCOPE_GUARD_ENABLED: on a person-seeking query, trim the compose context to chunks that
+#   carry an NJIT-Person entity_id (drop seminar/external-visitor pages) so a non-NJIT person can
+#   never be asserted as faculty. Fail-open, activates only when ≥1 entity chunk is in the pool.
+# Terminal state = BOTH on (split only for independent eval-diffing); rollout is order-robust.
+MISS_SIGNAL_SKIP_UNSCORED = os.getenv("MISS_SIGNAL_SKIP_UNSCORED", "").strip().lower() in ("1","true","yes","on")
+PERSON_SCOPE_GUARD_ENABLED = os.getenv("PERSON_SCOPE_GUARD_ENABLED", "").strip().lower() in ("1","true","yes","on")
+
 # FOLLOWUP_RESUME_ENABLED (default OFF): register a pending-action on offers/clarifies and resume it
 # next turn. Off ⇒ no pending is set and the pre-check is skipped (pure current behavior). Flip in
 # .env + restart to enable; backout = 0 (or revert).

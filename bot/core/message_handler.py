@@ -1004,7 +1004,11 @@ class MessageHandler:
             # base_q = the resolved/expanded query (main's contextual-rewrite); used for the
             # primary-miss signal, the office tier, and live — so a rewritten follow-up drives all
             # three. clean_text stays the original for compose/log/history.
-            relevance = self.retriever.top_relevance(base_q, chunks) if (self.retriever and chunks) else None
+            # A11: skip an unscored injected profile card at rank-0 so a person-topic query's
+            # miss-signal reflects the real top chunk (else a false primary_miss → spurious fallback).
+            relevance = (self.retriever.top_relevance(base_q, chunks,
+                            skip_unscored=botcfg.MISS_SIGNAL_SKIP_UNSCORED)
+                         if (self.retriever and chunks) else None)
             primary_miss = (not chunks) or (relevance is not None and relevance < botcfg.LIVE_THRESHOLD)
             if primary_miss and self.retriever:
                 office_chunks = await self.retriever.retrieve(

@@ -107,18 +107,37 @@ class V2RetrieverShim:
         finally:
             conn.close()
 
-    def top_relevance(self, query, chunks):
-        """Cross-encoder relevance of the best chunk (0..1), the gate signal for the live
-        njit.edu fallback. Prefers the ce_score already computed on the matched chunk during
+    @staticmethod
+    def _chunk_ce(chunk):
+        """The cross-encoder score already on a chunk (metadata ce_score, else the v2 field), or
+        None when the chunk was never reranked (e.g. an INJECTED profile card at rank-0)."""
+        pre = (getattr(chunk, "metadata", None) or {}).get("ce_score")
+        if pre is None:
+            pre = getattr(chunk, "ce_score", None)     # finding #14: v2 RetrievedChunk field
+        return pre
+
+    def top_relevance(self, query, chunks, skip_unscored: bool = False):
+        """Cross-encoder relevance of the best chunk (0..1), the gate signal for the office/deep/
+        live fallback ladder. Prefers the ce_score already computed on the matched chunk during
         rerank (no second CE pass, and not the CE-truncated full doc); falls back to a direct
-        score. None if it cannot judge."""
+        score. None if it cannot judge.
+
+        A11 (skip_unscored): the retriever entity-diversifies and INJECTS a profile card at rank-0
+        with NO ce_score — reading chunks[0] then reports ~0.0 and falsely trips primary_miss. When
+        skip_unscored is set, use the first chunk that actually carries a score (unscored is NOT
+        irrelevant). If NO chunk is scored, fall through to today's first-chunk reranker pass."""
         if not chunks:
             return None
-        pre = (getattr(chunks[0], "metadata", None) or {}).get("ce_score")
-        if pre is None:
-            pre = getattr(chunks[0], "ce_score", None)     # finding #14: v2 RetrievedChunk field
-        if pre is not None:
-            return pre
+        if skip_unscored:
+            for c in chunks:
+                ce = self._chunk_ce(c)
+                if ce is not None:
+                    return ce
+            # no chunk scored → today's tail path (rerank chunks[0])
+        else:
+            pre = self._chunk_ce(chunks[0])
+            if pre is not None:
+                return pre
         if not self.reranker:
             return None
         try:
