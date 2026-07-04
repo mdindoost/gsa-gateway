@@ -340,7 +340,15 @@ class MessageHandler:
         if mode != "free":
             structured = await self._try_structured(resolved_query, user_id=user_id, clean_text=clean_text)
             if structured is not None:
-                return MessageResponse(text=structured)
+                # QW-A8: log the structured/KG answer so the connectors attach the 👍/👎/🔄 keyboard and
+                # the tier is measurable. This LEGACY path is reached only when the v2.1 router returned
+                # None/COMMAND (rare under ROUTER_V21=1), so the specific skill isn't in scope here → a
+                # coarse "kg" tag. The primary path (_answer_decision) logs the granular "kg:{skill}".
+                qid = self.db.log_question(
+                    user_id=user_id, question=clean_text, matched_topic="kg",
+                    confidence=100.0, guild_id=req.guild_id, platform=req.platform,
+                ) if self.db else None
+                return MessageResponse(text=structured, question_id=qid)
 
         # Detect intent
         if self.intent_detector:
@@ -634,7 +642,16 @@ class MessageHandler:
                 from v2.core.retrieval.router import Route
                 self._register_and_record(req.user_id, req.text.strip(),
                                           Route(skill=decision.skill, args=dict(decision.args or {})), text)
-                return MessageResponse(text=text)
+                # QW-A8: log + attach a question_id so the KG tier gets the 👍/👎/🔄 keyboard and is
+                # measurable (this is the LIVE primary path; the skill is in scope → granular tag).
+                # A12 interaction (accepted + pinned in tests): the 🔄 button re-runs pure RAG at temp
+                # 0.7, bypassing the router — a deterministic KG answer can be retried into a semantic
+                # one. Kept per buttons-on-every-answer; a router-aware retry is deferred to A12.
+                qid = self.db.log_question(
+                    user_id=req.user_id, question=req.text, matched_topic=f"kg:{decision.skill}",
+                    confidence=100.0, guild_id=req.guild_id, platform=req.platform,
+                ) if self.db else None
+                return MessageResponse(text=text, question_id=qid)
             return await self._rag_pipeline(req, text, INTENT_QUESTION, resolved_query=resolved_query)
         if fam == "RAG":
             rag_intent = INTENT_FOOD if decision.source == "food" else INTENT_QUESTION

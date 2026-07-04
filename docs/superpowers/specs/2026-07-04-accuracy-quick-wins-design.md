@@ -210,8 +210,16 @@ errors land). Violates the "buttons on every answer" rule (universal since 2026-
    the A12 ledger + a test PINNING current retry behavior so the choice is recorded. (Fixing retry to route
    through the full stack is A12's job, deferred.)
 
-**Fix.** Log at the two `req`-in-scope points with `matched_topic=f"kg:{rt.skill}"`, `confidence=100.0`;
-`_try_structured` returns `(text, skill)`; attach `question_id` to the `MessageResponse`.
+**Fix (REFINED at build — lower blast radius than the `(text, skill)` return-type change; flagged to Fable).**
+The spec's `(text, skill)` return-type change would break 3+ existing tests that mock `_try_structured` as a
+STRING (`test_answer_gate_wiring:211`, `test_handler_shadow_agreement:20,27`) — Fable verified the prod call
+sites but not the test doubles. Instead, NO return-type change:
+- **Primary path `_answer_decision` (KG branch)** already has `decision.skill` in scope → log
+  `matched_topic=f"kg:{decision.skill}"` (granular) + attach `question_id`. This is the LIVE path under
+  ROUTER_V21=1, so KG answers get the specific-skill tag.
+- **Legacy `_try_structured` path** (handle() `:341`, reached only when the v2.1 router returns None/COMMAND)
+  logs a coarse `matched_topic="kg"` + attaches `question_id`. `_try_structured` still returns a string.
+Both `confidence=100.0`, `guild_id`/`platform` from `req`. Zero test breakage; same user-facing win.
 
 **Tests.** A KG answer produces a `question_id` + a `log_question` row tagged `kg:<skill>`; the connector
 renders the feedback keyboard. `person_disambig` answers also log (`kg:person_disambig`) + get buttons —
