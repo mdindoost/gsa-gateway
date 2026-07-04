@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-03
 **Author:** Mohammad Dindoost (owner) + Claude (design), Fable (design review)
-**Status:** Design — rev 3 (folded re-review: B5 year-anchored parse + B4 precision); awaiting owner sign-off before build
+**Status:** Design — rev 4, **APPROVED-FOR-BUILD** (senior-eng: build-ready; Fable: GO). Building Koutis-first; 3 Fable QA gates apply before the all-CS fan-out.
 **Scope of first build:** ~57 NJIT Computer Science faculty → profile pages + CS leaderboard
 
 ---
@@ -91,7 +91,12 @@ Research → About → Scholarly activity → Publications → Recognition.
   Recognition), never a vanished section.
 - **Rows/elements are individual facts** → a missing fact is invisible, so **omit it silently**
   (no `Office: —` dead rows).
-- **Empty-state budget:** an empty-state must carry the claim hook / real disambiguation; ≤ 2 per page.
+- **Empty-state budget:** an empty-state must carry the claim hook / real disambiguation; ≤ 2 per
+  page **excluding the always-on Recognition hook** (it is positive-framed — "add your awards" — not a
+  "we don't have this" gap, so it never counts toward the budget). Worst real case = a no-Scholar +
+  no-areas faculty member → Research(hook) + Scholarly-activity(hook) + Recognition = 2 gap-hooks +
+  the positive one, within budget. This combination (~18 no-Scholar CS faculty overlap with no-areas)
+  MUST be visually reviewed on the single thinnest real CS page before fan-out (see §12 / §9 gate).
 
 ### Per-section / per-element rules
 
@@ -110,7 +115,7 @@ Research → About → Scholarly activity → Publications → Recognition.
 | **About source label** | Always present under the block. |
 | **Scholarly-activity heading** | **Fixed for everyone: "Impact & trajectory"** (Koutis's neutral sample heading). Never Kieran's data-driven "An ascending trajectory" (§3.2). |
 | **Metrics (3 stats)** | If Scholar exists: Citations / h-index / i10-index at full size regardless of magnitude (482 renders identically to 2,791 — the fairness the uniform skeleton buys). Each shows "N since <recent_since_year>". Numbers formatted with thousands commas. |
-| **4th stat** | **Always "Publishing since <first cites_per_year>· N years active".** Department rank is **never** shown on a personal page (rank is zero-sum; a blank rank slot is decodable as "bottom half"). Rank lives only on the leaderboard. |
+| **4th stat** | **Always "Active since <first cites_per_year year> · N years active".** (Label is "Active since", NOT the sample's "Publishing since" — the first `cites_per_year` key is the first year with *citations*, not first *publication*; "Active since" is the honest claim for a product selling honesty. Owner to confirm the wording at the Koutis-review checkpoint.) Department rank is **never** shown on a personal page (rank is zero-sum; a blank rank slot is decodable as "bottom half"). Rank lives only on the leaderboard. |
 | **Citations-per-year chart** | Render iff Scholar exists **and** ≥ 4 years of `cites_per_year` data. Below 4 years → omit the chart (the metrics card just ends after the stat row; section still has content). See §6 for geometry. |
 | **Missing Scholar entirely** | The Scholarly-activity section still renders, collapsed to **one** hook box: "No Google Scholar profile is linked for <name> yet — is this you? Claim this page to connect it." (Metrics + chart + publications fold into this single box — strongest claim-funnel trigger.) |
 | **Publications** | Heading always "Selected work" (true for everyone — even Koutis's list is a selection; never "full list"). Two lists: Most-cited (`top_cited`) / Most-recent (`newest`), JS toggle. Each row: citation count ("—" if 0) · title (linked to the pub's `url`/`citation_for_view`; if absent, render the title **unlinked** — never `href="#"`) · formatted venue. Sub-line "Live from Google Scholar · sortable" (drop the sample's hand-added editorial flavour like "spanning physics & ML"). If Scholar but no pubs (rare) → fold into the metrics box. |
@@ -181,7 +186,11 @@ All input-agnostic; no maintained lookup tables. Two shared helpers used below:
   monogram initials.
 - **`smart_titlecase(s)`**: title-case each word, but **preserve a token unchanged if it is all-caps
   and ≤ 3 chars** (AI, ML, DES, ALG stay as-is) so casing never mangles acronyms
-  ("EXPLAINABLE AI" → "Explainable AI", not "Explainable Ai"). [B4]
+  ("EXPLAINABLE AI" → "Explainable AI", not "Explainable Ai"). [B4] **Accepted limitation (Fable):** the
+  rule cannot mechanically tell an acronym ("AI") from a truncated registrar word ("ADV"/"DES"/"ALG"),
+  so "ADV DATA STRUCT-ALG DES" renders as "ADV Data Struct-Alg DES" — shouty-but-honest. This is the
+  unavoidable cost of the no-dictionary choice; **the real all-CS teaching output is eyeballed before
+  fan-out** and, if shouty fragments are common, accepted knowingly rather than discovered live.
 
 - **Venue** (`top_cited`/`newest` rows): (1) strip mojibake/HTML entities; (2) if a parenthetical
   acronym is present, keep it (`…(FOCS)…` → `FOCS`); (3) pattern-strip ordinal/organizer noise
@@ -295,9 +304,11 @@ Faculty-Folio/
   - office: short form ("4105 GITC").
 - **`chart.py`** — peak excludes partial year; **partial ⇔ latest==sync year** (Eskandari fixture: latest 2021, sync 2026 → 2021 is a full bar, peak-eligible, no "(partial)"); **`peak==0` → chart omitted** (no div-by-zero); heights scale to peak; ≥4-year gate; missing intermediate years = gaps. [B2,B3]
 - **`render.py`** — pure-function golden: Koutis dict → HTML has the right sections; **degradation
-  cases** as fixtures: junior (Kieran — no office row, Publishing-since stat, joint-appointment line),
+  cases** as fixtures: junior (Kieran — no office row, "Active since" stat, joint-appointment line),
   degraded education (Oria — no education row), grey-silhouette photo → monogram, missing-Scholar →
-  single hook box + rail drops "Scholar", zero research areas → hook, empty `titles` → no title line.
+  single hook box + rail drops "Scholar", zero research areas → hook, empty `titles` → no title line,
+  and **the combined worst case — no-Scholar AND no-areas — asserting exactly 2 gap-hooks + Recognition
+  (within budget), not an indictment wall** (Fable gate).
 - **Trust-boundary test:** assert no `type='about'` content and no `created_by!='crawler'` prose ever
   reaches the dict/HTML (verified double-safe: `about` excluded by type AND the 4 `about|dashboard`
   rows by created_by).
@@ -305,6 +316,12 @@ Faculty-Folio/
   cached by slug; a rotated googleusercontent URL is not treated as a changed asset).
 - **Read-only test:** the `db.py` connection (`mode=ro`) rejects a write attempt.
 - **Build first against Koutis, confirm against the reference design, then fan out to all CS.**
+
+**Pre-fan-out visual-QA gates (Fable — before generating all 57):** (1) render + eyeball the *single
+thinnest* real CS page (a no-Scholar, no-areas faculty member) to confirm it reads dignified, not as a
+wall of gaps; (2) eyeball the real all-CS *teaching* output for shouty `smart_titlecase` fragments and
+accept them knowingly if common; (3) owner confirms the "Active since" 4th-stat wording on the Koutis
+page. These gate the fan-out step, not the Koutis-first build.
 
 ---
 
