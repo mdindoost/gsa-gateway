@@ -5,11 +5,30 @@ KOUTIS = {"2007": 8, "2008": 13, "2009": 37, "2010": 62, "2011": 107, "2012": 97
           "2021": 140, "2022": 151, "2023": 174, "2024": 194, "2025": 251, "2026": 152}
 
 
+import re
+
+
 def test_peak_excludes_partial():
     svg = C.render_chart(KOUTIS, 2026)
     assert 'class="bar peak"' in svg and ">251<" in svg          # 2025 is the peak, labelled
     assert "2026: 152 (partial)" in svg                          # latest == sync -> partial
-    assert 'viewBox="0 0 660 134"' in svg
+    assert 'viewBox="0 0 660 158"' in svg                        # taller plot + top headroom
+
+
+def test_peak_label_inside_viewbox():
+    # the peak value label must sit fully below the top edge (y=0) — no clipping.
+    svg = C.render_chart(KOUTIS, 2026)
+    m = re.search(r'<text class="peaklab"[^>]*\by="([\d.]+)"', svg)
+    assert m, "peak label present"
+    # baseline minus the 10px font's ascent must clear y=0
+    assert float(m.group(1)) - 10 >= 0
+
+
+def test_bars_taller_than_before():
+    # peak bar now uses the full 118px plot height (was 108)
+    svg = C.render_chart(KOUTIS, 2026)
+    m = re.search(r'<rect class="bar peak"[^>]*\bheight="([\d.]+)"', svg)
+    assert m and float(m.group(1)) == 118.0
 
 
 def test_partial_only_when_latest_eq_sync():

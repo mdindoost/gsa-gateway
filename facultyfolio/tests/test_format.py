@@ -51,6 +51,30 @@ def test_format_teaching_special_topics():
     assert F.format_teaching(raw) == ["Explainable AI (CS 485 / CS 698 / CS 785)"]
 
 
+def test_format_teaching_interests():
+    # KG string carries a "Teaching Interests;" section AND a "Past Courses;" section.
+    raw = ("Courses taught by Michael Houle (Computer Science): Teaching Interests; "
+           "Machine Learning, Data Mining, Data Structures & Algorithms; Past Courses; "
+           "DS 675: MACHINE LEARNING")
+    assert F.format_teaching_interests(raw) == [
+        "Machine Learning", "Data Mining", "Data Structures & Algorithms"]
+    # the courses row is unaffected — still parses only the DS 675 course
+    assert F.format_teaching(raw) == ["Machine Learning"]
+
+
+def test_format_teaching_interests_absent():
+    # most faculty have only a Past Courses section -> no interests row
+    assert F.format_teaching_interests("Past Courses; CS 675: MACHINE LEARNING") == []
+    assert F.format_teaching_interests("") == []
+
+
+def test_format_teaching_interests_only():
+    # a faculty listing interests but no courses
+    raw = "Courses taught by X (CS): Teaching Interests; Robotics, Computer Vision"
+    assert F.format_teaching_interests(raw) == ["Robotics", "Computer Vision"]
+    assert F.format_teaching(raw) == []
+
+
 def test_format_education_4field():
     raw = ("Education of Ioannis Koutis (Computer Science): Ph.D.; Carnegie Mellon University; "
            "Computer Science; 2007; Diploma; University of Patras; Computer Engineering and Informatics; 1998")
