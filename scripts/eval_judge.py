@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -25,14 +26,27 @@ _SYS = (
 )
 
 
+def grade_reply(raw: str) -> str:
+    """Map the judge's free-text reply to correct/partial/wrong. ORDERED word-boundary checks:
+    'INCORRECT'/'WRONG' first (so INCORRECT doesn't match the CORRECT substring), then PARTIAL(LY),
+    then a bare CORRECT; anything else defaults to wrong."""
+    u = (raw or "").upper()
+    if re.search(r"\b(?:WRONG|INCORRECT)\b|\bNOT\s+CORRECT\b", u):
+        return "wrong"
+    if re.search(r"\bPARTIAL(?:LY)?\b", u):
+        return "partial"
+    if re.search(r"\bCORRECT\b", u):
+        return "correct"
+    return "wrong"
+
+
 async def judge_record(oc, r: dict) -> str:
     """Grade ONE result record. deflect/error pass through; otherwise ask the local model
-    and map its one-word reply to correct/partial/wrong (default wrong)."""
+    and map its reply to correct/partial/wrong (default wrong)."""
     if r.get("class") in ("deflect", "error"):
         return r["class"]
-    raw = await oc.generate(f"QUESTION: {r['q']}\n\nANSWER: {r.get('answer','')[:1200]}", _SYS)
-    u = (raw or "").upper()
-    return "correct" if "CORRECT" in u else "partial" if "PARTIAL" in u else "wrong"
+    raw = await oc.generate(f"QUESTION: {r['q']}\n\nANSWER: {r.get('answer','')[:4000]}", _SYS)
+    return grade_reply(raw)
 
 
 async def main() -> None:

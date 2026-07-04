@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # X-ray a question through the whole answer pipeline:
-#   router -> fused RRF pool -> cross-encoder reranked (with CE scores) -> final top-5
-#   -> heads-up -> (optional) LLM answer.
+#   router (live UnifiedRouter) -> fused RRF pool -> cross-encoder reranked (with CE scores)
+#   -> final top-5 -> (optional --answer) the full real pipeline incl. the WS4 faithfulness gate.
 #
 # Usage:
 #   bash scripts/ask.sh "who do I contact about a billing hold"

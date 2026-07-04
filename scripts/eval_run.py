@@ -22,10 +22,19 @@ from bot.config import config
 from bot.services.database import Database
 from bot.services.knowledge_base import KnowledgeBase
 from bot.services.moderation import RateLimiter
-from bot.core.message_handler import MessageRequest
+from bot.core.message_handler import MessageRequest, _CLARIFY_MSG
+from bot.core.live_query import LIVE_NOT_FOUND_MSG
 
-_DEFLECT = "wasn't able to find specific information"
-_LIVE = "From NJIT's website:"
+# Abstain/non-answer markers — imported/shared so the classifier can't silently drift from the
+# templates again (the old text-prefix coupling misclassified live answers as kb and abstentions as
+# answered). Both canned abstains (_KB_MISS_RESPONSE, _useful_abstain) share the "For accurate
+# information" block; the live-miss, rag-error, and UnifiedRouter CLARIFY paths have distinct text.
+_ABSTAIN_MARKS = (
+    "For accurate information, please:",
+    LIVE_NOT_FOUND_MSG,
+    "I encountered an error processing your question",
+    _CLARIFY_MSG,                                  # a clarify request didn't answer → non-answer
+)
 
 
 def load_questions(path: str) -> list[tuple[str, str]]:
@@ -43,12 +52,26 @@ def load_questions(path: str) -> list[tuple[str, str]]:
     return out
 
 
-def classify(answer: str) -> str:
-    if not answer or _DEFLECT in answer:
-        return "deflect"
-    if answer.startswith(_LIVE):
+def classify(answer: str, is_live: bool = False) -> str:
+    """Coverage class from a STRUCTURED signal + robust abstain markers (not a text prefix).
+    is_live wins (the njit.edu fallback flag is authoritative); then any abstain marker → deflect;
+    else a real KB/KG answer."""
+    if is_live:
         return "live"
+    if not answer or any(m in answer for m in _ABSTAIN_MARKS):
+        return "deflect"
     return "kb"
+
+
+def cleanup_eval_rows(db, n: int) -> int:
+    """Remove the analytics rows this eval created — matched by the hashed synthetic user_ids
+    (eval-0 … eval-{n-1}), NEVER by an id range. Returns the rows deleted. executemany so an
+    arbitrarily large n never hits SQLite's bound-variable limit."""
+    from bot.services.database import hash_user_id
+    hashes = [(hash_user_id(f"eval-{i}"),) for i in range(n)]
+    cur = db.conn.executemany("DELETE FROM questions WHERE user_id_hash=?", hashes)
+    db.conn.commit()
+    return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
 
 
 async def main() -> None:
@@ -75,26 +98,35 @@ async def main() -> None:
     handler = asst.message_handler
 
     out = open(args.out, "w", encoding="utf-8")
-    for i, (cat, q) in enumerate(qs):
-        t0 = time.time()
-        try:
-            r = await handler.handle(MessageRequest(user_id=f"eval-{i}", text=q, platform="telegram"))
-            ans = (r.text or "").strip()
-            rec = {"i": i, "cat": cat, "q": q, "answer": ans, "class": classify(ans),
-                   "source": r.source_note, "is_deep": getattr(r, "is_deep", False),
-                   "secs": round(time.time() - t0, 1)}
-        except Exception as e:  # noqa: BLE001
-            rec = {"i": i, "cat": cat, "q": q, "error": repr(e), "class": "error",
-                   "secs": round(time.time() - t0, 1)}
-        out.write(json.dumps(rec) + "\n")
-        out.flush()
-        print(f"[{i+1}/{len(qs)}] {rec['class']:7} {rec['secs']:>4}s  {q[:55]}", flush=True)
-    out.close()
-    if asst.embedder:
-        await asst.embedder.close()
-    if asst.ollama:
-        await asst.ollama.close()
-    db.close()
+    try:
+        for i, (cat, q) in enumerate(qs):
+            t0 = time.time()
+            try:
+                r = await handler.handle(MessageRequest(user_id=f"eval-{i}", text=q, platform="telegram"))
+                ans = (r.text or "").strip()
+                is_live = getattr(r, "is_live", False)
+                rec = {"i": i, "cat": cat, "q": q, "answer": ans, "class": classify(ans, is_live),
+                       "source": r.source_note, "is_deep": getattr(r, "is_deep", False),
+                       "is_live": is_live, "offer": getattr(r, "offer_live_search", False),
+                       "secs": round(time.time() - t0, 1)}
+            except Exception as e:  # noqa: BLE001
+                rec = {"i": i, "cat": cat, "q": q, "error": repr(e), "class": "error",
+                       "secs": round(time.time() - t0, 1)}
+            out.write(json.dumps(rec) + "\n")
+            out.flush()
+            print(f"[{i+1}/{len(qs)}] {rec['class']:7} {rec['secs']:>4}s  {q[:55]}", flush=True)
+    finally:
+        # Delete ONLY this eval's synthetic analytics rows, scoped by user_id_hash — NEVER by an
+        # id-watermark (the bots run against the same live DB; a watermark delete would wipe real
+        # students' questions logged during the run). In finally so a crash can't skip it, and a
+        # generous range self-heals rows left by any previously-crashed eval run. [Fable C5/H3/L1]
+        cleanup_eval_rows(db, n=max(len(qs), 2000))
+        out.close()
+        if asst.embedder:
+            await asst.embedder.close()
+        if asst.ollama:
+            await asst.ollama.close()
+        db.close()
     print("RUN DONE", flush=True)
 
 

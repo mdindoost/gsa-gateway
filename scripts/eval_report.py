@@ -49,6 +49,8 @@ def main() -> int:
     correct_pct = 100 * acc["correct"] / na if na else 0
 
     print(f"\n=== EVAL REPORT — {n} questions ===")
+    print("  (coverage now classifies off the is_live flag + shared abstain markers — live>0 and "
+          "answered% is lower than pre-2026-07-04 runs; not a regression, the old counts were wrong.)")
     print(f"COVERAGE: {cov['kb']} KB · {cov['live']} live · {cov['deflect']} deflected · "
           f"{cov.get('error', 0)} error   ({answered_pct:.0f}% answered)")
     if na:
@@ -62,8 +64,8 @@ def main() -> int:
     for cat, c in sorted(bycat.items()):
         print(f"  {cat:24} {c['kb']:>3} / {c['live']:>3} / {c['deflect']:>3}")
 
-    print("\n=== GAPS (deflected or judged wrong — the targeted to-do) ===")
-    gaps = [r for r in recs if r["class"] == "deflect" or r.get("judge") == "wrong"]
+    print("\n=== GAPS (deflected, errored, or judged wrong — the targeted to-do) ===")
+    gaps = [r for r in recs if r["class"] in ("deflect", "error") or r.get("judge") == "wrong"]
     for r in gaps:
         print(f"  [{r['class']}/{r.get('judge', '-')}] {r['q']}")
     if not gaps:
