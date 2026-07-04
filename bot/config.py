@@ -166,6 +166,15 @@ OFFICE_THRESHOLD = float(os.getenv("OFFICE_THRESHOLD", str(LIVE_THRESHOLD)))
 # 1/227 questions (a deflect -> correct improvement) with 0 regressions.
 RETRIEVAL_DEEP_FALLBACK = os.getenv("RETRIEVAL_DEEP_FALLBACK", "").strip().lower() in ("1","true","yes","on")
 DEEP_FALLBACK_THRESHOLD = float(os.getenv("DEEP_FALLBACK_THRESHOLD", "0.30"))
+# A1 — gate the live tier. Two independent flags, both DEFAULT OFF = today's behavior (byte-identical).
+# LIVE_RELEVANCE_GATE (answer-quality bundle): relevance-gate every live extract via the WS4 Gate-2
+#   answerability judge (off-target page dropped), fetch up to 3 pages (was 2), and on no
+#   grounded+relevant page degrade to an honest TOP-3-LINKS list instead of a bare "not found".
+# LIVE_OPTIN (consent bundle): stop AUTO-firing live on a KB miss; deflect + OFFER instead (Telegram
+#   button / an "ask: search njit for X" hint elsewhere). Explicit "search njit for X" + a tapped
+#   offer stay direct (already consented). Recommended flip order: RELEVANCE_GATE first, then OPTIN.
+LIVE_RELEVANCE_GATE = os.getenv("LIVE_RELEVANCE_GATE", "").strip().lower() in ("1","true","yes","on")
+LIVE_OPTIN = os.getenv("LIVE_OPTIN", "").strip().lower() in ("1","true","yes","on")
 
 # --- Answer-gate (WS4 — post-generation faithfulness / answerability gate) ---
 # ANSWER_GATE_ENABLED defaults OFF so a commit is inert until an env flip + restart. The old

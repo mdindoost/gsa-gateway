@@ -358,3 +358,10 @@ game development lab
 transcripts
 library hours
 parking
+
+# A1 — gated live tier (relevance-gate + opt-in). The qual-exam case is the concrete failure the
+# relevance-gate targets (KB miss → live returned the DS-PhD program-overview, NOT qual-exam timing);
+# it should now drop off-target and degrade to closest-links rather than serve a confident non-answer.
+# The financial-aid case is a known-good live target (a real answerable njit.edu page).
+when do I defend my qualifying exam in the data science phd
+how do I apply for financial aid at njit

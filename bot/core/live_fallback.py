@@ -24,6 +24,14 @@ class LiveAnswer:
     source_url: str
 
 
+@dataclass
+class LiveLinks:
+    """A1 off-target degrade: the relevance-gate found no page that ANSWERS the question, so hand
+    back the top njit.edu links honestly instead of a confident wrong extract (zero LLM in this path —
+    URLs are verbatim from Brave). Rendered by the caller as 'closest pages: 1)…2)…3)…'."""
+    urls: list[str]
+
+
 def _format(spans: list[str], source_url: str) -> str:
     # Source is carried on LiveAnswer.source_url and rendered ONCE by the caller (source_note /
     # platform footer / the offer-tap reply) — do NOT embed it here, or it prints twice.
@@ -31,7 +39,11 @@ def _format(spans: list[str], source_url: str) -> str:
     return f"🌐 Live from NJIT's website (fetched live): {body}"
 
 
-async def maybe_answer_live(question, *, search_fn, fetch_fn, generate, max_pages: int = 2):
+async def maybe_answer_live(question, *, search_fn, fetch_fn, generate,
+                            relevance_ok=None, degrade_links: bool = False, max_pages: int = 3):
+    """KB-miss → njit.edu extractive answer. `relevance_ok(question, spans)->bool` (async, optional):
+    an off-target page whose verbatim spans don't ANSWER the question is skipped (A1). On no
+    grounded+relevant page: `degrade_links` → LiveLinks(top-3 URLs); else None (nothing found)."""
     try:
         urls = await asyncio.to_thread(search_fn, question)
     except Exception:
@@ -52,6 +64,16 @@ async def maybe_answer_live(question, *, search_fn, fetch_fn, generate, max_page
             logger.warning("live LLM extract failed", exc_info=True)
             continue
         ans = ground_spans(raw or "", page_text, final_url or url)
-        if ans is not None:
-            return LiveAnswer(text=_format(ans.spans, ans.source_url), source_url=ans.source_url)
+        if ans is None:
+            continue
+        if relevance_ok is not None:
+            try:
+                if not await relevance_ok(question, ans.spans):
+                    continue                       # grounded but OFF-TARGET — try the next page
+            except Exception:
+                logger.warning("live relevance gate faulted — keeping (never-withhold)", exc_info=True)
+        return LiveAnswer(text=_format(ans.spans, ans.source_url), source_url=ans.source_url)
+    # no page yielded a grounded + relevant answer
+    if degrade_links and urls:
+        return LiveLinks(urls=list(urls[:3]))
     return None

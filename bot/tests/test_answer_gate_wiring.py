@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import bot.config as botcfg
 from bot.core.message_handler import MessageHandler, MessageRequest, _KB_MISS_RESPONSE
+from bot.core.live_fallback import LiveAnswer
 from bot.services.intent_detector import (
     INTENT_QUESTION,
     INTENT_SOCIAL,
@@ -246,9 +247,12 @@ async def test_gate2_not_in_context_routes_to_live(monkeypatch):
 
     h = _make_handler(ollama=ollama, top_relevance=0.3)
 
-    live_result = MagicMock()
-    live_result.text = "NJIT registration info from live search."
-    live_result.source_url = "https://www.njit.edu/registrar"
+    # live_search's contract is LiveAnswer | LiveLinks | None (A1); the handler branches on
+    # isinstance, so a real LiveAnswer is required (a bare MagicMock is neither type).
+    live_result = LiveAnswer(
+        text="NJIT registration info from live search.",
+        source_url="https://www.njit.edu/registrar",
+    )
     h.live_search = AsyncMock(return_value=live_result)
 
     req = MessageRequest(

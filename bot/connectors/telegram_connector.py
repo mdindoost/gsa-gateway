@@ -19,7 +19,8 @@ from telegram.ext import filters
 
 import bot.config as botcfg
 from bot.connectors.base import BasePlatform
-from bot.core.message_handler import MessageHandler, MessageRequest
+from bot.core.message_handler import MessageHandler, MessageRequest, _live_links_text
+from bot.core.live_fallback import LiveLinks
 from bot.core.live_query import LIVE_NOT_FOUND_MSG
 from bot.core.answer_render import telegram_footer_html
 from bot.core.modes import ConversationModeStore, ModeDispatcher, ModeRegistry
@@ -512,6 +513,11 @@ class TelegramConnector(BasePlatform):
 
         if live is None:
             await query.message.reply_text(LIVE_NOT_FOUND_MSG)
+            return
+        if isinstance(live, LiveLinks):
+            # A1 off-target degrade: no page ANSWERED, so hand back the closest links honestly
+            # (extractive integrity — no confident wrong extract). Plain text; URLs are verbatim.
+            await query.message.reply_text(_live_links_text(live.urls))
             return
         html_text = _tg_html(live.text) + telegram_footer_html(
             source_note=getattr(live, "source_url", None), used_ai=True, is_live=True

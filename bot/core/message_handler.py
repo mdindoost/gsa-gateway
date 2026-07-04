@@ -28,7 +28,7 @@ from bot.services.retriever import SOURCE_FRIENDLY_NAMES
 from bot.core.context_rewrite import resolve_query
 from bot.core.deflection import looks_like_deflection
 from bot.core.live_query import parse_explicit_live_search, LIVE_NOT_FOUND_MSG
-from bot.core.live_fallback import maybe_answer_live
+from bot.core.live_fallback import maybe_answer_live, LiveAnswer, LiveLinks
 from v2.integration.njit_search import search as brave_search
 from v2.core.ingestion.explore import http_fetch
 from v2.core.retrieval.route_shadow import log_shadow
@@ -78,6 +78,14 @@ _RAG_ERROR_RESPONSE = (
     "I encountered an error processing your question. "
     "Please try again or contact a GSA officer at gsa-pres@njit.edu"
 )
+
+
+def _live_links_text(urls: list[str]) -> str:
+    """A1 off-target degrade: an honest 'closest pages' list when no live page ANSWERS the question.
+    Verbatim Brave njit.edu URLs, no LLM — claims proximity, not answers."""
+    lines = "\n".join(f"{i}. {u}" for i, u in enumerate(urls, 1))
+    return ("I couldn't find a direct answer on NJIT's website. "
+            "The closest pages I found:\n" + lines)
 
 # The intents the legacy handle() treats as whole-message commands (mirrors the v2.1 command layer).
 # Used only to label the LEGACY decision for shadow agreement (review F1).
@@ -739,16 +747,52 @@ class MessageHandler:
     async def live_search(self, question: str):
         """The single seam to the live njit.edu extractive fallback. Constructs the provider
         wiring + feature-gate in ONE place, so the auto-fire path and the connector offer-tap
-        path can't drift. Returns a LiveAnswer or None (None when the feature is off / no key /
-        no Ollama — so a stale tapped button degrades gracefully instead of crashing)."""
+        path can't drift. Returns a LiveAnswer, a LiveLinks (A1 off-target degrade, only under
+        LIVE_RELEVANCE_GATE), or None (feature off / no key / no Ollama — a stale tapped button
+        degrades gracefully instead of crashing)."""
         if not (botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY and self.ollama):
             return None
+        # A1: LIVE_RELEVANCE_GATE turns on the answer-quality bundle — relevance-gate each extract,
+        # fetch up to 3 pages (was 2), and degrade to top-3 links when none answers. Flag off = today.
+        gate_on = botcfg.LIVE_RELEVANCE_GATE
         return await maybe_answer_live(
             question,
             search_fn=brave_search,
             fetch_fn=http_fetch,
             generate=lambda system, user: self.ollama.generate(user, system),
+            relevance_ok=(self._live_relevance_ok if gate_on else None),
+            degrade_links=gate_on,
+            max_pages=(3 if gate_on else 2),
         )
+
+    async def _live_relevance_ok(self, question: str, spans: list[str]) -> bool:
+        """A1 relevance-gate: do these verbatim live spans actually ANSWER the question? Reuses the
+        WS4 Gate-2 answerability judge (the same one KB answers pass) on the RAW spans. Answer-biased
+        on ANY uncertainty (transport/parse/exception → KEEP; PARTIALLY_SUPPORTED → serve), so live is
+        DROPPED only on a confident not-answered (the qual-exam→program-overview case)."""
+        passages = [s for s in (spans or []) if s]
+        if not passages or not self.ollama:
+            return True
+        try:
+            sys_p, usr_p = gate2_prompt(question, passages)
+            raw = await self.ollama.generate(
+                prompt=usr_p, system=sys_p,
+                options={"temperature": 0.0, "num_predict": 256,
+                         "num_ctx": getattr(self.ollama, "num_ctx", None) or 8192}, fmt="json")
+            if raw is None:                        # transport/empty → keep (QW-A2, never-withhold)
+                return True
+            v = parse_gate2(raw)
+            if not v.parsed:                       # parse-fail → KEEP (B4 answer-bias; Fable R1)
+                # decide_after_gate2 maps parsed=False → abstain (the France leak-guard for KB
+                # compose). That guard does NOT transfer to live: the spans ARE verbatim njit.edu
+                # page text, so keeping on a judge-malfunction is exactly flag-off behavior with
+                # zero new fabrication risk — a DROP must require a CONFIDENT not-answered.
+                return True
+            outcome, _ = faith.decide_after_gate2(v.label, v.quote, passages, parsed=v.parsed)
+            return outcome == "answer"
+        except Exception:                          # gate fault → keep (never-withhold)
+            logger.debug("live relevance gate faulted — keeping", exc_info=True)
+            return True
 
     async def _answer_explicit_live(self, req: MessageRequest, topic: str) -> MessageResponse:
         """Run a direct live njit.edu search for an explicit 'search njit for X' request.
@@ -757,6 +801,9 @@ class MessageHandler:
         live = await self.live_search(topic)
         if live is None:
             return MessageResponse(text=LIVE_NOT_FOUND_MSG, is_abstain=True, abstain_reason="live-miss")
+        if isinstance(live, LiveLinks):            # A1: no page answered → honest top-3 links
+            return MessageResponse(text=_live_links_text(live.urls), is_abstain=True,
+                                   abstain_reason="live-offtarget")
         text = live.text
         question_id: Optional[int] = None
         if self.db:
@@ -953,6 +1000,7 @@ class MessageHandler:
             attempted_live = False   # auto-fire ran this turn (regardless of result)
             is_canned_deflection = False   # tag-at-source: our own "no info" reply
             abstain_reason: Optional[str] = None   # tag-at-source reason when is_canned_deflection
+            live_offtarget = False   # A1: live searched but no page answered → top-3-links degrade shown
             # base_q = the resolved/expanded query (main's contextual-rewrite); used for the
             # primary-miss signal, the office tier, and live — so a rewritten follow-up drives all
             # three. clean_text stays the original for compose/log/history.
@@ -988,15 +1036,28 @@ class MessageHandler:
                     elapsed_ms,
                 )
             if (primary_miss and not used_office and botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
-                    and self.ollama and self.retriever):
+                    and self.ollama and self.retriever and not botcfg.LIVE_OPTIN):
+                # A1: LIVE_OPTIN suppresses the AUTO-fire — a genuine miss OFFERS instead (below),
+                # never searches without consent. Flag off = today's auto-fire.
                 attempted_live = True
-                live = await self.live_search(base_q)   # single seam (provider wiring + gate)
-                if live is not None:
+                live = await self.live_search(base_q)   # LiveAnswer | LiveLinks | None
+                if isinstance(live, LiveAnswer):
                     response_text = live.text
                     source_note = live.source_url
                     used_ai = True
                     used_live = True
                     logger.info("live njit.edu fallback answered from %s", live.source_url)
+                elif isinstance(live, LiveLinks) and not chunks:
+                    # Off-target with NO local material → the honest top-3-links deflection.
+                    response_text = _live_links_text(live.urls)
+                    is_canned_deflection = True
+                    abstain_reason = "live-offtarget"
+                    live_offtarget = True
+                    logger.info("live njit.edu off-target — offered %d closest links", len(live.urls))
+                # NB: LiveLinks WITH weak chunks present falls through untouched (Fable R2). Today
+                # the same state (live→None) composes + WS4-gates those weak chunks, which can still
+                # keep a good answer (B1: the gate judges weak answers, not the threshold). Turning
+                # on LIVE_RELEVANCE_GATE must not newly convert an answerable turn into a deflection.
 
             # Generate — compose FIRST, then run the post-generation faithfulness / answerability
             # gate (WS4) on the composed answer. The gate is deterministic answer-type grounding
@@ -1005,8 +1066,8 @@ class MessageHandler:
             # Gate-2 answerability verdict only for the non-typed factual residual. It replaces the
             # brittle pre-generation quote_grounded/fact_shaped gate (which false-abstained on
             # markdown — the Chrome-River bug — while leaking grounded-but-irrelevant fabrications).
-            if used_live:
-                pass
+            if used_live or live_offtarget:
+                pass                                # live answered, or its off-target links are shown
             elif chunks and self.ollama:
                 # Compose sees the ORIGINAL wording for fidelity, plus the resolved query (when a
                 # follow-up was rewritten) so the question it answers matches the retrieved chunks
@@ -1040,23 +1101,31 @@ class MessageHandler:
                             _keep, _why = True, "gate-error-keep"
                         if not _keep:
                             # never-withhold: try an untried answering tier (live njit.edu) BEFORE
-                            # abstaining — a deflect here withholds nothing a tier could supply.
+                            # abstaining — UNLESS opt-in (then we OFFER instead of auto-searching).
                             if (not attempted_live and botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
-                                    and self.ollama and self.retriever):
+                                    and self.ollama and self.retriever and not botcfg.LIVE_OPTIN):
                                 attempted_live = True
                                 live = await self.live_search(base_q)
-                                if live is not None:
+                                if isinstance(live, LiveAnswer):
                                     response_text = live.text
                                     source_note = live.source_url
                                     used_live = True
                                     logger.info("faithfulness-gate->live answered from %s", live.source_url)
-                            if not used_live:
+                                elif isinstance(live, LiveLinks):
+                                    response_text = _live_links_text(live.urls)
+                                    is_canned_deflection = True
+                                    abstain_reason = "live-offtarget"
+                                    live_offtarget = True
+                            if not used_live and not live_offtarget:
                                 response_text = self._useful_abstain(base_q, chunks)
                                 source_note = None
                                 used_ai = False
                                 is_canned_deflection = True
                                 abstain_reason = "gate-abstain"
-                                attempted_live = True  # suppress the live-search offer on a gate abstain
+                                # suppress the offer ONLY when we actually auto-tried live (not under
+                                # opt-in — else the promised abstain+offer never renders — Fable B2).
+                                if not botcfg.LIVE_OPTIN:
+                                    attempted_live = True
                                 logger.debug("faithfulness-gate abstain why=%s q=%r", _why, base_q[:80])
                 else:
                     best = chunks[0]
@@ -1097,6 +1166,18 @@ class MessageHandler:
                 botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
                 and is_deflection and not used_live and not attempted_live
             )
+            # A1/N2 — cross-platform opt-in. Telegram renders `offer_live_search` as a tappable
+            # button (connector-side); Discord/GroupMe have no button, so when opt-in is on and we
+            # would offer, append a one-line text hint pointing at the universal explicit-search
+            # path. Platform-gated so Telegram doesn't get button + hint (double-offer).
+            if (botcfg.LIVE_OPTIN and offer_live_search and req.platform != "telegram"):
+                # O1: single quotes (not markdown bold) — GroupMe renders no markdown, so `**…**`
+                # would show literal asterisks; quotes delimit the command cleanly on all platforms.
+                response_text = (
+                    f"{response_text}\n\n"
+                    "Want me to check NJIT's website? Reply: "
+                    f"'search njit for {clean_text.rstrip('?!. ')}'"
+                )
 
             # Update conversation memory
             if self.conversation_manager:
