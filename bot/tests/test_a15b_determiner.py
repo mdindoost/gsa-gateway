@@ -37,9 +37,14 @@ def test_who_studies_neuroscience_still_routes(conn):
     "faculty in the news",
     "faculty in the department",
     "professors in the meeting",
+    # R-FIX: multi-word LOCATIONAL connectors ending in "in" must ALSO keep the determiner, else
+    # they strip → "news"/"field" validate (against "fake news detection" / a "field" tag) → mis-route.
+    "faculty working in the news",
+    "researchers works in the news",
+    "researchers working in the field",
 ])
 def test_facet_phrases_still_fall_to_rag(conn, q):
-    # stripped form ("news"/"department"/"meeting") is not a research-area tag → None → RAG
+    # det-kept ("the news"/"the field"/…) is not a research-area tag → None → RAG
     assert router.route(conn, q) is None
 
 

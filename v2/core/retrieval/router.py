@@ -520,7 +520,11 @@ def _extract_area_loose(q_for_area: str) -> str | None:
     m = _LOOSE_CONNECTOR.search(s)
     if m:
         cand = m.group("t").strip(" .,?")
-        if m.group("c").lower() != "in":
+        # Strip the determiner only when the connector is NOT locational. The final token "in"
+        # marks a location/facet ("in", "working in", "works in", "focusing in") → keep the
+        # determiner so "in the news"/"in the field" stay det-kept → RAG (Fable R2 + R-FIX). Topic
+        # verbs (study/works on/working/doing/focuses on — none end in the token "in") → strip.
+        if not m.group("c").lower().rstrip().endswith("in"):
             cand = _DET_LEAD.sub("", cand).strip(" .,?")
         if cand:
             return cand

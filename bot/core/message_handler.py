@@ -1077,6 +1077,11 @@ class MessageHandler:
                 try:
                     from v2.core.retrieval.router import is_person_seeking
                     if is_person_seeking(base_q):
+                        # Presence of entity_id == an active NJIT Person, by the crawler invariant:
+                        # entity_id is stamped ONLY on NJIT Person chunks, reconcile drops departed
+                        # people's KB, and retrieval filters is_active=1 — so a stale/external stamp
+                        # can't reach this pool. A future ingester that stamps a non-person/external
+                        # entity_id would silently admit pollution here (O1 — keep that invariant).
                         stamped = [c for c in chunks
                                    if (getattr(c, "metadata", {}) or {}).get("entity_id")]
                         if stamped:
