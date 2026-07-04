@@ -129,3 +129,15 @@ def test_c5_cleanup_generous_range_is_safe_when_no_eval_rows(tmp_path):
     assert eval_run.cleanup_eval_rows(db, n=2000) == 0      # nothing to delete, real row untouched
     assert db.conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0] == 1
     db.close()
+
+
+def test_judge_loader_skips_malformed_line(tmp_path):
+    # a single corrupt record (e.g. from an interrupted/overlapping eval_run) must NOT crash the
+    # whole accuracy pass — skip it, keep the valid records.
+    p = tmp_path / "results.jsonl"
+    p.write_text('{"q":"a","class":"kb","answer":"x"}\n'
+                 '{"q":"b" "class" broken\n'
+                 '\n'
+                 '{"q":"c","class":"deflect"}\n', encoding="utf-8")
+    recs = eval_judge._load_records(p)
+    assert [r["q"] for r in recs] == ["a", "c"]

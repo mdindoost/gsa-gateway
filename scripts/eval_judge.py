@@ -49,9 +49,27 @@ async def judge_record(oc, r: dict) -> str:
     return grade_reply(raw)
 
 
+def _load_records(src: Path) -> list[dict]:
+    """Read results.jsonl defensively: SKIP a malformed line (with a warning) instead of letting one
+    corrupt record — e.g. from an interrupted/overlapping eval_run — crash the whole accuracy pass."""
+    recs, bad = [], 0
+    for i, line in enumerate(open(src, encoding="utf-8"), 1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            recs.append(json.loads(line))
+        except json.JSONDecodeError as e:
+            bad += 1
+            print(f"  [warn] skipping malformed results.jsonl line {i}: {e}", file=sys.stderr, flush=True)
+    if bad:
+        print(f"  [warn] judged {len(recs)} records, skipped {bad} malformed line(s)", flush=True)
+    return recs
+
+
 async def main() -> None:
     src = REPO / "eval" / "results.jsonl"
-    recs = [json.loads(l) for l in open(src, encoding="utf-8")]
+    recs = _load_records(src)
     oc = OllamaClient()
     out = open(REPO / "eval" / "results_judged.jsonl", "w", encoding="utf-8")
     for r in recs:
