@@ -3,10 +3,12 @@
 **Date:** 2026-07-03
 **Author:** Kavosh maintenance (Mohammad Dindoost, owner) — design decisions delegated to and
 ruled by Fable (binding, per `feedback_delegate_opinions_to_fable`).
-**Status:** Fable APPROVED → pending senior-eng + RAG review → owner spec review → TDD build
-**Scope:** one file — `v2/core/retrieval/router.py` (a new terminal branch) + one small handler in
-`v2/core/retrieval/structured_answer.py` (the static `ambiguous_officers` deflection) +
-`eval/questions.txt`.
+**Status:** Fable APPROVED (design) → senior-eng + RAG reviews folded → Fable adjudicated (binding, all
+findings accepted, RAG #1 scoped to officer-branch-only) → TDD build.
+**Scope:** `v2/core/retrieval/router.py` (a new terminal branch) + `v2/core/retrieval/structured_answer.py`
+(the static `ambiguous_officers` deflection — `run()` + `format_answer()` + `_DETERMINISTIC_SKILLS`) +
+`v2/core/retrieval/unified_router.py` (extend `_FASTPATH_CUE` so the live path reaches `route()` for the
+full officer catch-set — senior-eng B1) + `eval/questions.txt`.
 **Workstream:** short-query correctness + follow-up (thread F). A shipped (`d7ef41f`), D+E shipped
 (`96af18c`). B (remove v1 LLM expander) follows, independent.
 
@@ -57,55 +59,75 @@ person-cue path that answers "who is the provost" / "who is my dean"), E's terse
 catches ONLY queries that fall to `None` today, making regression on any currently-routed query
 **structurally impossible**.
 
-### One uniform gate, two-way dispatch
+### The gate: shared conjuncts + a branch-asymmetric org test, two-way dispatch
 
-The gate is a single three-conjunct check (NOT two independent per-branch checks):
+**Dispatch first** on which regex the query matches — role-vocab or officer-title — then apply that
+branch's gate. (Dispatch is role-vocab-first; the residue check strips ONLY the dispatch regex, so
+the two branches are mutually exclusive — see below.)
 
-1. an `_OFFICER_TITLE_RX` **or** `_ROLE_VOCAB_RX` token is present in `q`, **and**
-2. `_find_org(conn, q)` → **`(None, None)`** (no org resolved), **and**
-3. after stripping the matched token, **zero non-stopword residue** remains **and** no process cue
-   (`_OFFICER_PROCESS`) is present.
+**Shared conjuncts (both branches):**
+1. the branch's regex (`_ROLE_VOCAB_RX` for branch 1, `_OFFICER_TITLE_RX` for branch 2) matches, **and**
+2. no process cue (`_OFFICER_PROCESS`) is present, **and**
+3. after stripping the **dispatch regex** span (and, for branch 2, the resolved org phrase — see its
+   org test), **zero non-stopword residue** remains under `_F_STOP`.
 
-Conjunct 2 is the load-bearing mechanism: **every bare-office slug resolves an org and is therefore
-excluded from F.** `president`/`vice president` → org 52, `provost` → org 53, `registrar` → org 24,
-`dean of students` → org 20, `vice provost`/`associate provost` → their offices (all verified). These
-stay in D's territory (`None` → RAG today), unchanged. F owns only genuinely **org-less** fragments.
+**Branch-1 (role) org test — strict `org is None`:**
+`_find_org(conn, q)` → `(None, None)`. Every bare-office slug resolves an org and is therefore
+excluded from branch 1: `provost` → org 53, `registrar` → org 24, `dean of students` → org 20,
+`vice provost`/`associate provost` → their offices (all verified). These stay in D's territory
+(`None` → RAG today), unchanged. **`njit dean` (root) also stays `None`→RAG** — branch 1 never
+extends to the root; the role branch genuinely *has* deans via the subtree, so a root scope is a real
+answer, not an ambiguity. Branch 1 owns only genuinely **org-less** role fragments.
 
-Dispatch on which regex matched:
+**Branch-2 (officer) org test — `org is None` OR (`org is root` AND `not _has_true_officers(org)`):**
+the root-org clause is the RAG-review fix for the verified `njit officers` / `officers at njit` →
+AFROTC sibling of the founding bug. Those resolve `(1, 'njit')`; `_has_true_officers(root)` is
+`False` (verified), so the clause fires. Because an org phrase IS present here, branch 2's residue
+check also strips the resolved `org_phrase` (mirrors E's terse-officer branch) so `njit officers` →
+strip `njit`+`officers` → zero residue → fires. **This clause is officer-specific by design**
+(`_has_true_officers` is an officer-answerability fact, meaningless for roles) — it is NOT applied to
+branch 1. Bare-office slugs `president`/`vice president` → org 52 (not root) → still excluded.
 
-- **Role-vocab match** (`_ROLE_VOCAB_RX`: `dean`, `chair`, `director`, `coordinator`, `associate
-  dean`, `executive director`, `cfo`→`chief financial officer`, …) →
+**Dispatch results:**
+
+- **Branch 1 — role-vocab match** (`dean`, `chair`, `director`, `coordinator`, `associate dean`,
+  `executive director`, `cfo`→`chief financial officer`, …) →
   **`Route("people_by_role", {"role_head": _ROLE_SYNONYM.get(w, w), "org_id": None})`**.
-  Reuses the SHIPPED skill + its data-driven hint verbatim (structured_answer.py:229-243), which is
-  three-way on holder count: >25 → "N hold X, narrow by org — e.g. …"; 2–25 → "N hold X: [listed]";
-  ==1 → confident "Name — Title (Org)."; 0 → "" → RAG. Byte-identical to what "who is the &lt;role&gt;"
-  already produces — the consistency goal, zero new hint text.
-- **Officer-title match** (`_OFFICER_TITLE_RX`: `officers`, `officer`, `treasurer`, `secretary`,
-  `vp`, `e-board`, `executive board`; president/vice president excluded by conjunct 2) →
-  **`Route("ambiguous_officers", {})`** — a NEW terminal deflection handled in `structured_answer.py`
-  with **no DB query**, added to the deterministic-skill set (so the hint is never LLM-composed;
-  mirrors `metric_descending_unsupported`). Static hint:
-  > *"I'm not sure which organization you mean — try naming it, e.g. "GSA officers" or "GWICS
+  Reuses the SHIPPED skill and its data-driven output (structured_answer.py:229-243): three-way on
+  holder count — >25 → "N hold X, narrow by org — e.g. …"; 2–25 → "N hold X: [listed]"; ==1 →
+  "Name — Title (Org)."; 0 → "" → RAG. **This output is LLM-COMPOSED** (`people_by_role` is NOT in
+  `_DETERMINISTIC_SKILLS`) — grounded + anti-fab-rephrased at temp 0, identical to what "who is the
+  &lt;role&gt;" already produces. Same Facts, same compose path; not verbatim.
+- **Branch 2 — officer-title match** (`officers`, `officer`, `treasurer`, `secretary`, `vp`,
+  `e-board`, `executive board`; president/vice president excluded by the org test) →
+  **`Route("ambiguous_officers", {})`** — a NEW terminal deflection with **no DB query**, wired at
+  THREE sites (`run()` → `format_answer()` → `_DETERMINISTIC_SKILLS`), mirroring
+  `metric_descending_unsupported` exactly. Its hint is **verbatim** (deterministic-skill → no
+  compose). Static hint, non-GSA example first:
+  > *"I'm not sure which organization you mean — try naming it, e.g. "GWICS officers" or "GSA
   > officers"."*
 
-Precedence between the two: a query that contained BOTH a role-vocab token AND an officer-title token
-(e.g. "director secretary") would leave the second token as non-stopword residue after stripping the
-first → **conjunct 3 fails → no fire**. So no single org-less query reaches both branches; the zero-
-residue guard makes the dispatch order immaterial. The build dispatches role-vocab first, then
-officer-title, and a test asserts a bare token never matches both branches.
+**Mutual exclusion (F4 — correctness-load-bearing):** the residue check strips ONLY the **dispatch**
+regex (`_ROLE_VOCAB_RX.sub` for branch 1, else `_OFFICER_TITLE_RX.sub` for branch 2), never both. So a
+query with BOTH a role token AND an officer token (e.g. "director secretary") leaves the other token
+as non-stopword residue → conjunct 3 fails → no fire. Stripping both would wrongly fire it. A test
+asserts a bare token never satisfies both branches.
 
-### Why the split is principled (GSA-equal by construction)
+### Why the split is principled (open-world completeness + GSA-equal)
 
-- `_ROLE_VOCAB` **deliberately excludes** club titles (president/treasurer/secretary — router.py:92-94)
-  and contains only dense academic titles no club holds. So branch 1 → `people_by_role(role, None)`
-  **cannot surface a GSA/club row** — verified live for every role-vocab word. GSA-neutral by
-  construction, and the holder-count logic self-selects: a role spread across many orgs becomes a
-  narrow-by-org hint; a unique role becomes a direct answer (not a hardcoded default — nothing to be
-  ambiguous against).
-- Officer-title words are the collision-prone/sparse/club-scoped set. Routing them to
-  `people_by_role` would either read as "these are the only presidents" or, for a GSA-only treasurer,
-  fire the 1-row branch as a silent GSA-default. And `officers`/`e-board` have no title head →
-  empty → RAG → the AFROTC garbage. So branch 2 is a static deflection that never queries.
+- **Branch 1 enumerates because academic-title coverage is crawler-COMPLETE.** `_ROLE_VOCAB`
+  deliberately excludes club titles (president/treasurer/secretary — router.py:92-94) and holds only
+  dense academic titles no club holds, all gathered by the crawler. So `people_by_role(role, None)`
+  listing real orgs is an HONEST total, and it **cannot surface a GSA/club row** — verified live for
+  every role-vocab word. GSA-neutrality here is **structural for routing**; result-set neutrality is
+  data-contingent and enforced by the CI 1-row-never-GSA assertion (§5), run against the live DB.
+- **Branch 2 is static because club-officer data is manually PARTIAL.** Officer/deprep roles live on
+  exactly 5 orgs today (GSA / GWICS / Grad BME Society / Iranian Cultural Assoc / Sanskar), maintained
+  by hand (gsanjit.com is Wix / non-crawlable; only some clubs ingested). Enumerating "the orgs with
+  officers" would make a **false-completeness claim** — many NJIT clubs with officers aren't in the
+  KG. A static "e.g. …" honestly signals "name *your* org" without implying the list is exhaustive.
+  (And `officers`/`e-board` have no title head → routing them to `people_by_role` → empty → RAG → the
+  AFROTC garbage.) The non-GSA-first example ordering keeps the optics GSA-equal — no ranking implied.
 
 ### The F residue stop-set
 
@@ -117,22 +139,23 @@ person-identity ask (F's target); "what is a X" is definitional (RAG's).
 
 ### The confidence gate, restated
 
-There is no score. The "confidence gate" IS the three structural conjuncts plus the positional fact
-that F runs last: every deterministic branch already declined (the confidence check in a scoreless
-router), an ambiguity-bearing token is present, no org anchors it, and nothing else is in the query.
-Binary, provable, each conjunct independently unit-testable. No probabilistic threshold — a threshold
-would be a score-shaped guess.
+There is no score. The "confidence gate" IS the structural conjuncts plus the positional fact that F
+runs last: every deterministic branch already declined (the confidence check in a scoreless router),
+an ambiguity-bearing token is present, the branch's org test holds (no org, or root-with-no-officers
+for branch 2), no process cue, and nothing else is in the query. Binary, provable, each conjunct
+independently unit-testable. No probabilistic threshold — a threshold would be a score-shaped guess.
 
 ---
 
 ## 3. Verified catch-sets (live DB, 2026-07-03)
 
-**Branch 2 — static `ambiguous_officers` deflection (org-less officer words):**
+**Branch 2 — static `ambiguous_officers` deflection (org-less OR root-with-no-officers officer words):**
 `officers` · `officer` · `who are the officers` · `treasurer` · `secretary` · `vp` · `e-board` ·
-`executive board`.
+`executive board` · **`njit officers` (root, no true officers)** · **`officers at njit` (root)**.
 
-**Branch 2 — MUST NOT fire (resolve an org → D's territory, `None`→RAG unchanged):**
-`president` (org 52) · `vice president` (org 52).
+**Branch 2 — MUST NOT fire (resolve a NON-root org → D's territory, `None`→RAG unchanged):**
+`president` (org 52) · `vice president` (org 52) · `ywcc officers` (college-scoped — D's territory;
+build MUST verify it does not itself hit AFROTC-class garbage, else that's a logged D follow-up).
 
 **Branch 1 — `people_by_role(role, None)` (org-less role words, ≥1 holder):**
 `dean` (18) · `chair` (21) · `director` (51→narrow-hint) · `coordinator` (6) · `associate dean` (24)
@@ -148,6 +171,11 @@ don't hit a bad live-fallback answer.
 **OUT of F via conjunct 2 (org-resolve → deferred to D, unchanged):**
 `president` · `vice president` · `provost` · `registrar` · `dean of students` · `vice provost` ·
 `associate provost`.
+
+**Branch 1 — MUST NOT fire on root (branch-1 org test stays strict `org is None`):**
+`njit dean` → `(1,'njit')` → NOT org-less → branch 1 skips → `None`→RAG unchanged. The root-org
+clause is officer-branch-only; the role branch genuinely has deans via subtree, so root is a real
+scope, not an ambiguity.
 
 **MUST NOT fire — already routed by an earlier branch:**
 `who is the provost` (role branch, person-cue) · `who is my dean` (role branch) · `who is the
@@ -169,11 +197,14 @@ president` (process) · `officer training program` · `money` / `fund` (no role/
   probing shows RAG/live returns garbage for them (it did NOT for these — the AFROTC case was the
   org-less "officers"), that is a **D** extension, logged, not folded into F.
 - **`chancellor` (0 holders) → RAG.** Accepted; harmless (not officer-garbage). Not force-deflected.
+  Branch 1 has NO static floor — a role word that drops to 0 holders (e.g. a departure zeroes the
+  1-holder `general counsel`/`cfo`/`athletic director`) silently reopens the empty→RAG→live path. A
+  standing zero-holder eval probe (§5) catches such a data change; branch-1 safety is data-conditional
+  (branch-2's static deflection is not).
 - **Non-role bare nouns (`fund`, `money`, `aid`, `deadline`)** stay with RAG — no curated word-list.
-- **`NJIT officers` / `officers at NJIT`** — `_find_org` resolves the university root, so conjunct 2
-  fails → still `None`→RAG (not org-less). F v1 does not cover org-resolved officer asks. Documented;
-  if live probing shows garbage, a follow-up may extend conjunct 2 to
-  `org is None OR (org is root AND not _has_true_officers)`. NOT built now.
+- **`NJIT officers` / `officers at NJIT` — NOW SHIPPED** (root-org clause on the branch-2 org test);
+  the founding "officers → AFROTC" goal is met for the org-less AND the root form. Non-root college
+  officer asks (`ywcc officers`) remain D's territory (logged watch, §3).
 - **Not resumable.** Thread A's PendingAction machinery must NOT register F's deflection — confirm
   `resumable_action()` (structured_answer.py:506) excludes `ambiguous_officers` by default; assert
   it in a test.
@@ -186,35 +217,51 @@ TDD. Unit tests against `route()`'s return — `is None` or the exact `Route(ski
 "→ RAG" (per SE finding: under `ROUTER_V21=1` a `None` first hits the LLM slot-extractor; that
 downstream behavior is out of this change's control).
 
-**Branch 2 fires:** each of `officers`, `officer`, `who are the officers`, `treasurer`, `secretary`,
-`vp`, `e-board`, `executive board` → `Route("ambiguous_officers", {})`.
-**Branch 1 fires:** `dean`/`chair`/`coordinator` → `Route("people_by_role", {"role_head": w,
-"org_id": None})`; `cfo` → `role_head="chief financial officer"` (synonym); `director` likewise
-(assert route only — answer text is the shipped skill's).
-**Conjunct-2 exclusions (no F fire — stay as today):** `president`, `vice president`, `provost`,
-`registrar`, `dean of students`.
+**Branch 2 fires** → `Route("ambiguous_officers", {})`: `officers`, `officer`, `who are the officers`,
+`treasurer`, `secretary`, `vp`, `e-board`, `executive board`, **`njit officers`** (root clause),
+**`officers at njit`** (root clause).
+**Branch 1 fires** → `Route("people_by_role", {"role_head": w, "org_id": None})`: `dean`/`chair`/
+`coordinator`/`director`; `cfo` → `role_head="chief financial officer"` (synonym) (assert route only —
+answer text is the shipped skill's).
+**Branch-1 stays strict `org is None`:** `njit dean` → **`None`** (root ≠ org-less for roles; must NOT
+fire branch 1). This is the key non-regression the branch-asymmetric org test buys.
+**Org-test exclusions (no F fire — stay as today):** `president`, `vice president` (org 52, non-root),
+`provost`, `registrar`, `dean of students`.
 **Already-routed (F must not intercept):** `who is the provost` → `people_by_role('provost', 1)`;
 `who is my dean` → `people_by_role('dean', None)`; `GSA officers` → `officers_in_org(gsa)`; `dean of
 YWCC` → role branch; `njit president` → D.
 **Residue/process guards (→ None):** `what is a dean` (non-stopword `what`), `president office hours`,
 `dean's list requirements`, `officer training program`, `how to impeach the president` (process cue),
 `money`, `fund`.
-**Answer-layer test:** `ambiguous_officers` in `is_deterministic` set (no compose); its formatted
-text is the exact static hint; `resumable_action()` returns None for it.
-**Data-audit tests (Fable's must-nail):** for every `_ROLE_VOCAB` word, the 1-row confident branch
-(structured_answer.py:239-241) never fires with a club/GSA org in the org column (assert, so a future
-data change — e.g. a GSA "director" — can't silently turn bare "director" into a GSA-default); and
-document each word's holder count incl. the zero-holder `chancellor`.
-**ROUTER_V21 parity:** F behaves identically under `ROUTER_V21=1` in shadow and flipped modes — the
-UnifiedRouter KG family invokes `route()` and treats `ambiguous_officers` as terminal (distinct call
-sites message_handler.py:293 vs :479).
+**Mutual-exclusion test (F4):** `director secretary` → **None** (strip dispatch regex only → the other
+token is non-stopword residue → no fire); assert no bare token satisfies both branch predicates.
+**`ambiguous_officers` answer-layer tests (F2 — the three wiring sites):** `run()` returns the skill
+dict; `format_answer()` returns the exact static hint string; `ambiguous_officers ∈ _DETERMINISTIC_SKILLS`
+(so `is_deterministic(result)` is True → no compose); `resumable_action()` returns None for it. Guard
+against the terminal `return ""` regression (empty → live-fallback = the bug it kills).
+**Live-path integration test (senior-eng B1 — THE real fix, not just `route()` unit tests):** under
+`ROUTER_V21=1`, drive `UnifiedRouter.decide()` on EACH branch-2 word (`officers`, `treasurer`,
+`secretary`, `vp`, `executive board`, `njit officers`) and assert it reaches KG → `ambiguous_officers`
+(i.e. `_FASTPATH_CUE` now covers them, or they classify KG). Without this the cue-set can silently
+regress and re-open the gap.
+**Data-audit tests (Fable's must-nail, live-DB fixture):** for every `_ROLE_VOCAB` word, the 1-row
+confident branch (structured_answer.py:239-241) never fires with a club/GSA org in the org column
+(assert — so a future GSA "director"/"coordinator" can't silently become a GSA-default); document each
+word's holder count incl. the zero-holder `chancellor`. These are live-DB integration checks (51
+directors / 18 deans / 0 chancellors are live facts), not toy-DB unit tests.
 
-**Eval additions** (`eval/questions.txt`, per `feedback_grow_correctness_suite`) — both fire and
-must-not probes: `officers` · `who are the officers` · `treasurer` · `secretary` · `dean` · `chair` ·
-`director` · `coordinator` · `president` (deferred-to-D, must-not-AFROTC) · `provost` (org-resolve) ·
-`what is a dean` · `president office hours` · `money`. Each F fire must classify as **deflect** in
-`scripts/eval.sh` (verify the classifier keys off the deflection shape). Buttons (👍/👎/🔄) on the
-hint per `feedback_structured_no_buttons` — confirm deflections already get them via the normal path.
+**Eval additions** (`eval/questions.txt`, per `feedback_grow_correctness_suite`):
+- **Branch-2 fires — expect DEFLECT:** `officers` · `who are the officers` · `treasurer` · `secretary`
+  · `njit officers` · `officers at njit`.
+- **Branch-1 fires — expect a real ANSWER (NOT deflect — F5 correction):** `dean` · `chair` ·
+  `director` · `coordinator`.
+- **Zero-holder standing probe (RAG #2):** `chancellor` (guards against a role word silently turning
+  into a live-fallback answer on a data change).
+- **Must-not / deferred probes:** `president` (deferred-to-D, must-not-AFROTC) · `njit dean` (must
+  stay a role answer / None, not branch-2) · `provost` (org-resolve) · `what is a dean` · `president
+  office hours` · `money`.
+Buttons (👍/👎/🔄) on the hint per `feedback_structured_no_buttons` — confirm deflections already get
+them via the normal answer path.
 
 ---
 
@@ -222,28 +269,34 @@ hint per `feedback_structured_no_buttons` — confirm deflections already get th
 
 | Goal | Status |
 |---|---|
-| Kill the "officers → AFROTC" confident-wrong path | **ship** (branch 2 static deflection) |
+| Kill the "officers → AFROTC" confident-wrong path (org-less AND root forms) | **ship — FULLY** (branch 2 + root-org clause covers `officers`/`who are the officers`/`njit officers`/`officers at njit`) |
 | Bare officer words (`treasurer`/`secretary`/`vp`/`e-board`) → abstain-hint | **ship** (branch 2) |
-| Bare role words (`dean`/`chair`/`director`/`coordinator`) → data-driven narrow-by-org answer | **ship** (branch 1 reuses `people_by_role`) |
-| GSA-equal (no club row surfaced, no GSA default) | **ship** (structural — vocab excludes club titles; deflection never queries) |
-| Residue/process/definitional forms → RAG | **ship** (conjunct 3 + `what` excluded) |
-| No regression on currently-routed queries | **ship** (end-of-route placement) |
+| …reach `route()` on the LIVE path (not just unit tests) | **ship** (`_FASTPATH_CUE` extended + live-path integration test — senior-eng B1) |
+| Bare role words (`dean`/`chair`/`director`/`coordinator`) → data-driven narrow-by-org answer | **ship** (branch 1 reuses `people_by_role`; LLM-composed, not verbatim) |
+| GSA-equal | **ship** — structural for ROUTING (vocab excludes club titles; deflection never queries); result-set neutrality is data-contingent, enforced by the CI 1-row-never-GSA assertion against live DB |
+| Residue/process/definitional forms → RAG | **ship** (conjunct 3 + `what` excluded; dispatch-regex-only strip) |
+| No regression on currently-routed queries | **ship** (end-of-route placement; branch-1 org test stays strict `org is None` → `njit dean` unchanged) |
 | Role-office-collision words (`provost`/`registrar`) | **deferred** — resolve an org, stay in D's territory (as D+E scoped) |
 | Bare `president`/`vice president` (org 52) | **deferred** — D follow-up if live shows garbage |
-| Org-resolved officer asks (`NJIT officers`) | **deferred** — conjunct-2 extension, not built |
-| `chancellor` (0 holders) | **accepted** → RAG |
+| Non-root college officer asks (`ywcc officers`) | **deferred/watch** — D's territory; build verifies it isn't itself AFROTC-garbage |
+| `chancellor` (0 holders) & 1-holder roles | **accepted** → RAG; standing zero-holder eval probe guards data drift |
 
 ---
 
 ## 7. Guiding-principle compliance
 
 - **Deterministic routing, no LLM in the router** — pure rule-based; no model call. `ambiguous_officers`
-  is deterministic (no compose); branch-1 reuses the existing deterministic skill. ✓
-- **Never guess; a confident-wrong answer is the dangerous failure** — F converts the org-less
-  ambiguous fragments (the class that produced AFROTC) into an honest abstain-hint or a data-driven
-  narrow-by-org answer; every fire path is guarded, residue/process/definitional forms fall to RAG. ✓
-- **GSA-equal, no bias table** — no curated word-list; branch 1 is GSA-neutral by construction;
-  branch-2 examples pair GSA with a non-GSA club (GWICS) and never show GSA alone. ✓
+  is deterministic/verbatim (in `_DETERMINISTIC_SKILLS`, no compose); branch-1 reuses the existing
+  `people_by_role` skill, whose answer IS LLM-composed (grounded + anti-fab, temp 0) — identical to the
+  shipped "who is the &lt;role&gt;" path, not a new model call in the router. ✓
+- **Never guess; a confident-wrong answer is the dangerous failure** — F converts the org-less (and
+  root-with-no-officers) ambiguous officer fragments — the exact class that produced AFROTC — into an
+  honest abstain-hint, and bare role fragments into a data-driven narrow-by-org answer; every fire path
+  is guarded, residue/process/definitional forms fall to RAG. ✓
+- **GSA-equal, no bias table** — no curated word-list. Branch 1 is GSA-neutral for routing (vocab
+  excludes club titles) with the 1-row-never-GSA CI assertion as the result-set backstop; branch 2 is
+  static (open-world completeness — club data is manually partial, so enumerating would falsely imply a
+  total) and leads with a NON-GSA example (`GWICS` before `GSA`), never showing GSA alone. ✓
 - **Bare-office slugs owned by D, not F** — the single `_find_org → None` conjunct defers president/
   provost/registrar uniformly. ✓
 - **No flag** — a pure narrowing of the `None` fall-through; backout = revert one commit. ✓
