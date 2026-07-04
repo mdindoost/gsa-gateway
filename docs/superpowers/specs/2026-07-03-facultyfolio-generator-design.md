@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-03
 **Author:** Mohammad Dindoost (owner) + Claude (design), Fable (design review)
-**Status:** Design — awaiting senior-eng review + owner sign-off before build
+**Status:** Design — rev 2 (folded senior-eng review B1–B6); awaiting focused re-review + owner sign-off before build
 **Scope of first build:** ~57 NJIT Computer Science faculty → profile pages + CS leaderboard
 
 ---
@@ -10,16 +10,22 @@
 ## 1. Purpose
 
 Generate a public static site — one HTML page per NJIT faculty member plus per-department
-leaderboards — directly from the existing GSA knowledge graph. The design is **fixed** by two
+leaderboards — directly from the existing GSA knowledge graph. The **visual design** (layout, tokens, type, spacing, section order) is **fixed** by two
 hand-built reference pages (`docs/samplepages/koutis.html`, `docs/samplepages/kieran.html`);
 this generator **generalizes those into a data-driven generator, it does not redesign them**.
+The reference pages were hand-*prettified at the data level* (abbreviated venues, expanded/dropped
+course names, reordered education), so **generated string content deliberately diverges from the
+samples for teaching, education, and venue** (see §7) — the samples are a *visual* spec, not a
+content spec. Everything the generator emits is a strict-mechanical transform of real KG values.
 
 The product's entire value proposition is **trustworthy, honest, non-embarrassing, professional**.
 Every design decision below serves that.
 
-**Read-only against the DB.** The generator never writes the KG, crawlers, or Kavosh. It reads
-`gsa_gateway.db` and emits static files into a separate output tree that becomes the public
-`Faculty-Folio` GitHub Pages repo (output only — no DB, no logic, no secrets in that tree).
+**Read-only against the DB — enforced, not by convention.** `db.py` opens the connection
+read-only at the driver level: `sqlite3.connect("file:gsa_gateway.db?mode=ro", uri=True)` plus
+`PRAGMA query_only=ON`, so a bug *cannot* write. The generator never writes the KG, crawlers, or
+Kavosh. It reads `gsa_gateway.db` and emits static files into a separate output tree that becomes
+the public `Faculty-Folio` GitHub Pages repo (output only — no DB, no logic, no secrets in that tree).
 
 ---
 
@@ -92,20 +98,22 @@ Research → About → Scholarly activity → Publications → Recognition.
 | Element | Rule |
 |---|---|
 | **Photo** | Download the Scholar photo → `assets/photos/<slug>.jpg`, reference locally (never hotlink googleusercontent — it rotates/404s). If the Scholar photo is Google's grey silhouette default (detect by URL `avatar_scholar_128.png` **and** byte-hash of the known default) or download fails → render a **first-party initials monogram** (SVG, site type system) on the `--hair` circle. Never ship the grey silhouette. |
-| **Name / title** | Name from node; title from the **home** role edge (`category='faculty'`) `attrs.titles`, joined with `, ` (e.g. "Professor, Department Chair"). |
+| **Name** | Node `name` run through the **name-normalizer** (§7): single-comma "Surname, Given" → "Given Surname" (verified: 10/57 CS nodes are "Last, First", incl. the exemplar `Koutis, Ioannis`). The normalized name is also the source for monogram initials and `<title>`. |
+| **Title** | From the **home** role edge (`category='faculty'`) `attrs.titles`, joined with `, ` (e.g. "Professor, Department Chair"). If `titles` is empty (verified: some joint roles, e.g. `Hoover, Amy`, have `titles: []`) → **omit the title line** (no empty `<p class="title">`). |
 | **Department block** | Home dept = home role's Org name (plain, e.g. "Computer Science"); if a `category='joint'` role exists, add a line "Joint appointment · <Org>"; then "<College> · NJIT" from the org tree (college = parent Org, e.g. "Ying Wu College of Computing"). Dept name links to that dept's leaderboard (`../cs/index.html`). |
 | **Social icons** | Render only the links that exist: email (always, `mailto:`), then website, Google Scholar, GitHub, ORCID, LinkedIn — each iff present in `attrs.profiles` (website also matches Scholar `homepage`). Fixed icon set + order; omit absent ones. |
-| **Research areas** | Section always renders. Tags from `researches` edges, **verbatim** (mojibake-clean + trim only — do NOT shorten "Algebraic algorithms for computationally hard problems"). First tag dot is red (`--nav-active`), rest blue (CSS `:first-child`). If zero areas → hook empty-state: "Research areas aren't listed on public profiles yet — claim this page to add them." |
+| **Research areas** | Section always renders. Tags from **`is_active=1` `researches` edges** (reconcile churn leaves inactive rows — filter them). Surface form **verbatim** (mojibake-clean + trim only — do NOT shorten "Algebraic algorithms for computationally hard problems"), BUT **mechanically de-duplicate near-dup nodes** on a normalized key (case-fold + strip non-alphanumerics), keeping the first surface form (verified dups: `159 "Spatio-temporal Databases"` vs `1983 "Spatio Temporal Databases"`). **Deterministic order = edge id ascending** (so builds reproduce; red-dot `:first-child` is then stable). First tag dot red (`--nav-active`), rest blue. If zero areas → hook empty-state: "Research areas aren't listed on public profiles yet — claim this page to add them." |
 | **About → Appointment row** | Always (title + dept + college assembled from structured fields). |
 | **About → Education row** | Render **only if** the parsed education has degree **+ institution** (min). A lone "Ph.D." with no institution/year → **omit the row** (adds nothing beyond what the title implies; looks like a parse failure). Never pad. |
 | **About → Office/contact row** | Render iff `office` **or** `phone` present. Value = office (cleaned, e.g. "4105 GITC") · email · phone (each bit only if present). If neither office nor phone → omit row (email still in social icon). |
 | **About → Teaching row** | Render iff teaching courses exist (see §7 formatter). |
 | **About source label** | Always present under the block. |
+| **Scholarly-activity heading** | **Fixed for everyone: "Impact & trajectory"** (Koutis's neutral sample heading). Never Kieran's data-driven "An ascending trajectory" (§3.2). |
 | **Metrics (3 stats)** | If Scholar exists: Citations / h-index / i10-index at full size regardless of magnitude (482 renders identically to 2,791 — the fairness the uniform skeleton buys). Each shows "N since <recent_since_year>". Numbers formatted with thousands commas. |
 | **4th stat** | **Always "Publishing since <first cites_per_year>· N years active".** Department rank is **never** shown on a personal page (rank is zero-sum; a blank rank slot is decodable as "bottom half"). Rank lives only on the leaderboard. |
 | **Citations-per-year chart** | Render iff Scholar exists **and** ≥ 4 years of `cites_per_year` data. Below 4 years → omit the chart (the metrics card just ends after the stat row; section still has content). See §6 for geometry. |
 | **Missing Scholar entirely** | The Scholarly-activity section still renders, collapsed to **one** hook box: "No Google Scholar profile is linked for <name> yet — is this you? Claim this page to connect it." (Metrics + chart + publications fold into this single box — strongest claim-funnel trigger.) |
-| **Publications** | Heading always "Selected work" (true for everyone — even Koutis's list is a selection; never "full list"). Two lists: Most-cited (`top_cited`) / Most-recent (`newest`), JS toggle. Each row: citation count ("—" if 0) · title (linked to `citation_for_view` URL) · formatted venue. Sub-line "Live from Google Scholar · sortable" (drop the sample's hand-added editorial flavour like "spanning physics & ML"). If Scholar but no pubs (rare) → fold into the metrics box. |
+| **Publications** | Heading always "Selected work" (true for everyone — even Koutis's list is a selection; never "full list"). Two lists: Most-cited (`top_cited`) / Most-recent (`newest`), JS toggle. Each row: citation count ("—" if 0) · title (linked to the pub's `url`/`citation_for_view`; if absent, render the title **unlinked** — never `href="#"`) · formatted venue. Sub-line "Live from Google Scholar · sortable" (drop the sample's hand-added editorial flavour like "spanning physics & ML"). If Scholar but no pubs (rare) → fold into the metrics box. |
 | **Recognition** | Fixed claim-hook, identical for all (the pattern that proves the empty-state model). |
 
 ---
@@ -119,8 +127,12 @@ Research → About → Scholarly activity → Publications → Recognition.
   leaderboards in `/cs/`, both one level deep). Include kieran's extra `.edu` rule for completeness.
 - **Shell (`base.html`):** dark sticky nav (Home / Publications / Teaching + `FacultyFolio` wordmark,
   red active-tab underline); provenance rail ("Crawled from public sources · Synced <date> ·
-  Scholar + NJIT-<DEPT> · Is this you? Claim this page →"); the 300px + 1fr grid; footer. Identical
-  to the reference.
+  <sources> · Is this you? Claim this page →"); the 300px + 1fr grid; footer. Identical
+  to the reference. **Nav "Teaching" tab** has no on-page anchor (teaching is an About row) →
+  point it at `#` knowingly (do not fabricate a section).
+- **Provenance `<sources>` token is conditional:** "Scholar + NJIT-<DEPT>" when Scholar exists,
+  else just "NJIT-<DEPT>" (don't claim Scholar for the ~18 no-Scholar CS faculty). **Sync-date**
+  and the "Scholar" token are omitted together when there's no Scholar record.
 - **Sync date:** from Scholar `updated_at` (e.g. `2026-06-30` → "Synced 30 Jun 2026"). Per page.
 - **Fonts — self-hosted** (spec requirement; the reference hotlinks Google Fonts, we do NOT across
   ~57+ pages): vendor woff2 for the exact weights used — Fraunces 500/600, Inter 400/500/600,
@@ -135,10 +147,17 @@ Research → About → Scholarly activity → Publications → Recognition.
 Inline SVG, `viewBox="0 0 660 134"`, baseline `y=116`, max bar height `108` (peak bar reaches
 `y=8`). Deterministic geometry from `cites_per_year`:
 
-- `peak = max value among NON-partial (full) years`. `scale = 108 / peak`. `height_i = value_i·scale`.
-- **Partial year = the latest year** (mid-year snapshot); rendered `class="bar partial"` (dimmed,
-  opacity .55) and **excluded from the peak** so a partial year never reads as a decline or a new peak.
-- Bars: `N` years across width 660. `step = (660 - gap·(N-1)) / N` is derived so bars fill the width;
+- **Render gate:** chart renders iff Scholar exists AND ≥ 4 years of data AND `peak > 0`. If
+  `peak ≤ 0` (all-zero `cites_per_year`) → **omit the chart** (fall through to the "<4 years" branch —
+  the metrics card just ends after the stat row). No divide-by-zero. [B3]
+- **Partial year:** the latest year is "partial" **only if** it equals the sync year, i.e.
+  `max(cites_per_year keys) == int(updated_at[:4])`. A latest-data-year earlier than the sync year is a
+  **complete** year (e.g. Eskandari's latest is 2021, sync 2026) → rendered as a full bar, **eligible
+  for peak**, no "(partial)" tooltip. [B2] The partial year, when it exists, is `class="bar partial"`
+  (dimmed .55) and **excluded from the peak** so it never reads as a decline or a new peak.
+- `peak = max value among the NON-partial years`. `scale = 108 / peak`. `height_i = value_i·scale`.
+- **Missing intermediate years** in the dict are treated as gaps (no bar / height 0), not errors.
+- Bars: `N` years (min..max span) across width 660. `step = (660 - gap·(N-1)) / N` fills the width;
   gap chosen to visually match the samples (≈ constant small gap). `rx=1.5`. `bar peak` on the peak
   year (accent fill), `bar` otherwise (accent-soft).
 - Axis labels: first year (start-anchored), peak year (centered under peak bar), last/partial year
@@ -154,23 +173,44 @@ real, which is the point.*
 
 ## 7. Mechanical formatters (`format.py`, Option A strict — pure)
 
-All input-agnostic; no maintained lookup tables.
+All input-agnostic; no maintained lookup tables. Two shared helpers used below:
+- **`normalize_name(s)`** [B1]: if `s` matches `^([^,]+),\s+(.+)$` (exactly one comma) → "`\2 \1`"
+  ("Koutis, Ioannis" → "Ioannis Koutis"); otherwise return `s` unchanged. Multi-comma names
+  (rare, e.g. "…, Jr") are left verbatim. Also the source of monogram initials.
+- **`smart_titlecase(s)`**: title-case each word, but **preserve a token unchanged if it is all-caps
+  and ≤ 3 chars** (AI, ML, DES, ALG stay as-is) so casing never mangles acronyms
+  ("EXPLAINABLE AI" → "Explainable AI", not "Explainable Ai"). [B4]
 
 - **Venue** (`top_cited`/`newest` rows): (1) strip mojibake/HTML entities; (2) if a parenthetical
   acronym is present, keep it (`…(FOCS)…` → `FOCS`); (3) pattern-strip ordinal/organizer noise
   (`\d+(st|nd|rd|th)\s+Annual`, `IEEE Symposium on`, `Proceedings of the`, `arXiv preprint`, …) — by
   regex, never a venue list; (4) collapse duplicate year tokens; append the single year → `FOCS 2010`.
   If no acronym → longest clean title segment before the first comma + year. `arXiv:…` → "arXiv <year>".
-- **Research areas:** mojibake-clean + trim; render **verbatim** (no shortening — that's editorial).
-- **Teaching:** (1) split the run-on on `((CS|DS|IT|…)\s?\d{3}):` boundaries (structural regex);
-  (2) title-case the SHOUTING (`INTRO TO MACHINE LEARNING-HONORS` → "Intro To Machine
-  Learning-Honors") — pure casing; (3) keep course code + title (do NOT hand-rewrite abbreviations);
-  (4) **dedupe by normalized course number** — `CS 610` appears once; cross-listed `CS 675 / DS 675`
-  collapse to one entry showing both codes. Dedupe on the number = mechanical; dropping a course for
-  looking minor = forbidden. Strip a leading "Past Courses;" marker.
-- **Education:** parse the `;`-delimited crawler string into records
-  (`degree; institution; field; year`). Render "Degree Field, Institution (Year)" joined by " · ".
-  A record missing institution → the whole row is omitted per §4 (degree-only is not enough).
+  **Accepted divergence [B4/venue]:** a venue with no parenthetical acronym (e.g. Koutis pub #2,
+  "Proceedings of the 2011 IEEE 52st Annual Symposium on Foundations of…") cannot yield "FOCS 2011"
+  (that needs a dictionary, forbidden) → the mechanical output is an honest extractive fragment, not
+  the sample's hand-abbreviation. Stated, tested (§12), and acceptable.
+- **Research areas:** mojibake-clean + trim; render surface form **verbatim** (no shortening — that's
+  editorial); near-dup collapse is done at the edge-read in §4, not here.
+- **Teaching** [B4/B5] — strip the provenance prefix first (`^Courses taught by .*?:\s*`) and a
+  leading `Past Courses;?\s*` marker. Then:
+  1. **Parse** (code, raw-title) pairs by splitting on the `([A-Z]{2,4}\s?\d{3})\s*:` boundary
+     (structural regex; any dept prefix). Clean each title: strip a leading special-topics marker
+     `^ST:?\s*`, then `smart_titlecase`.
+  2. **Pass 1 — collapse title-variants per code:** group by normalized course number; per code the
+     canonical title is the **longest** cleaned title (tie → lexicographically first). Resolves the
+     verified same-number collision `CS 610: "DATA STRUCTURE & ALG"` vs `"DATA STRUCTURES AND ALGORITHMS"`.
+  3. **Pass 2 — group cross-listings by title:** group codes by normalized canonical title; render
+     "`<Title>` (`CODE1 / CODE2 / …`)", codes sorted. Reproduces the reference's structural grouping
+     (485/698/785 "Explainable AI" → one entry) **mechanically**, via two deterministic grouping passes
+     — no lookup, no course dropped. **Accepted divergence:** abbreviations are NOT expanded
+     ("ADV DATA STRUCT-ALG DES" stays), and no course is dropped, so output differs from the
+     hand-curated sample. Stated per §1.
+- **Education** [B5]: strip the prefix `^Education of .*?:\s*`, split on `;`, **chunk into groups of 4**
+  (`degree; institution; field; year`). A chunk with `< 4` fields → **drop that record** (never let a
+  missing field misalign subsequent records). Render "Degree Field, Institution (Year)" joined by " · ".
+  If **no** record survives with an institution → the whole row is omitted per §4 (degree-only like
+  Oria's "Education of Vincent Oria (Computer Science): Ph.D." → omit).
 - **Office:** trim the long form to a short campus form (e.g. strip "Guttenberg Information
   Technologies Center" → keep "GITC" via the same parenthetical-acronym rule); mechanical only.
 - **Numbers:** thousands separators.
@@ -197,8 +237,9 @@ footer, type). **Will be shown to the owner before fanning out.**
 
 - Header: department name + prominent coverage line "Ranked among 39 of 57 faculty with Google
   Scholar data" + axis label "by total citations" (explicitly one lens, not the definitive ranking).
-- Body: ranked rows (rank · name · total citations · h-index), each linking to `../p/<slug>.html`.
-- Uses the shared shell; provenance rail scoped to the department.
+- Body: ranked rows (rank · name [normalized, §7] · total citations · h-index), each linking to
+  `../p/<slug>.html`.
+- Uses the shared shell; provenance rail scoped to the department. Suppressed faculty excluded.
 
 ---
 
@@ -231,19 +272,27 @@ Faculty-Folio/
 
 ## 12. Testing strategy (TDD)
 
-- **`db.py`** — golden test against **Koutis (node 33)**: assert the faculty dict (name, title
-  "Associate Professor", office, email, 4 profile links [scholar/linkedin/github/website], 5 research
-  areas, education 2 records, teaching, full scholar bag).
-- **`format.py`** — unit tests per formatter: venue (`FOCS 2010` from the raw string), teaching
-  (dedupe cross-listed `CS 675 / DS 675`), education (degree+institution → row; degree-only → omit),
-  office (short form).
-- **`chart.py`** — peak excludes partial year; heights scale to peak; ≥4-year gate.
-- **`render.py`** — pure-function golden: Koutis dict → HTML contains the right sections; **degradation
-  cases** as fixtures: junior (Kieran — no office row, Publishing-since stat), degraded education
-  (Oria — no education row), grey-silhouette photo → monogram, missing-Scholar → single hook box,
-  zero research areas → hook.
+- **`db.py`** — golden test against **Koutis (node 33)**: dict `name == "Ioannis Koutis"`
+  (**normalized** from the stored `"Koutis, Ioannis"` — this was the B1 bug; assert the normalization,
+  not the raw), title "Associate Professor", office, email, 4 profile links [scholar/linkedin/github/
+  website], research areas (deduped, active-only), education 2 records, teaching, full scholar bag.
+- **`format.py`** — unit tests per formatter:
+  - `normalize_name`: "Koutis, Ioannis" → "Ioannis Koutis"; "Kieran Murphy" → unchanged; monogram initials "IK". [B1]
+  - venue: "(FOCS)…" → "FOCS 2010"; **no-acronym branch** (Koutis pub #2) → asserts the honest fragment, not "FOCS 2011". [B4]
+  - teaching: cross-listed `CS 675 / DS 675` → one "Machine Learning (CS 675 / DS 675)"; same-number variant `CS 610` → single canonical (longest) title; `ST: EXPLAINABLE AI` → "Explainable AI" (acronym preserved, ST: stripped); 485/698/785 → one grouped entry; prefix stripped. [B4]
+  - education: prefix-strip + group-by-4; degree+institution → row; **lone "Ph.D." (Oria, prefix present)** → omit; a short chunk drops one record without misaligning the rest. [B5]
+  - office: short form ("4105 GITC").
+- **`chart.py`** — peak excludes partial year; **partial ⇔ latest==sync year** (Eskandari fixture: latest 2021, sync 2026 → 2021 is a full bar, peak-eligible, no "(partial)"); **`peak==0` → chart omitted** (no div-by-zero); heights scale to peak; ≥4-year gate; missing intermediate years = gaps. [B2,B3]
+- **`render.py`** — pure-function golden: Koutis dict → HTML has the right sections; **degradation
+  cases** as fixtures: junior (Kieran — no office row, Publishing-since stat, joint-appointment line),
+  degraded education (Oria — no education row), grey-silhouette photo → monogram, missing-Scholar →
+  single hook box + rail drops "Scholar", zero research areas → hook, empty `titles` → no title line.
 - **Trust-boundary test:** assert no `type='about'` content and no `created_by!='crawler'` prose ever
-  reaches the dict/HTML.
+  reaches the dict/HTML (verified double-safe: `about` excluded by type AND the 4 `about|dashboard`
+  rows by created_by).
+- **Idempotency test:** build twice → **byte-identical** output (deterministic area order; photo
+  cached by slug; a rotated googleusercontent URL is not treated as a changed asset).
+- **Read-only test:** the `db.py` connection (`mode=ro`) rejects a write attempt.
 - **Build first against Koutis, confirm against the reference design, then fan out to all CS.**
 
 ---
@@ -285,3 +334,17 @@ Faculty-Folio/
 - No DB writes, no KG/crawler/Kavosh changes.
 - No dynamic server; pure static output.
 - No LLM anywhere in the generator.
+
+---
+
+## 16. Revision log — senior-eng review (rev 2)
+
+Folded 6 blocking findings (all grounded in live rows); architecture + trust boundary were approved as-is.
+- **B1** name inversion — nodes store "Last, First" (10/57 incl. Koutis). Added `normalize_name`; fixed §4 name, monogram source, §12 golden fixture.
+- **B2** chart partial-year — partial now requires latest year == sync year (§6), so complete older-latest years (Eskandari) aren't wrongly dimmed/excluded.
+- **B3** chart `peak==0` divide-by-zero — omit chart when peak ≤ 0 (§6).
+- **B4** teaching formatter — acronym-preserving title-case, `ST:` strip, two-pass grouping (collapse variants per code, then group cross-listings by title); accepted content divergence from samples (§1, §7).
+- **B5** education/teaching prefix-strip + group-by-4 + short-chunk-drop (§7).
+- **B6** near-duplicate ResearchArea nodes — mechanical dedup on a normalized key + `is_active=1` edge filter + deterministic edge-id order (§4).
+
+Non-blocking adopted: read-only connection at driver level (§1); empty-`titles` omit; fixed "Impact & trajectory" heading; conditional "Scholar +" provenance token; unlinked-title pub fallback; deterministic area order; idempotency + read-only tests (§12). Manual-title provenance nit (Oria's "Department Chair" from `manual_note`) — accepted: it is still crawled/structured KG data, not generated prose; the "Crawled from public sources" rail stands.
