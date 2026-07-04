@@ -160,38 +160,6 @@ BASE_SYSTEM_PROMPT = (
     "fabrication. Refer to a person by name or use 'they/them'."
 )
 
-_EXPAND_SYSTEM = (
-    "You are a query rewriter for a university chatbot. "
-    "Rewrite the student's short message as a clear, specific question about "
-    "NJIT GSA (Graduate Student Association) services, events, funding, or workshops. "
-    "Output ONLY the rewritten question — no explanation, no preamble, no punctuation at the end."
-)
-
-_EXPAND_EXAMPLES = (
-    "Examples:\n"
-    "Input: MMI → What is the MMI Workshop Series at NJIT?\n"
-    "Input: funding → What funding opportunities are available for NJIT graduate students through GSA?\n"
-    "Input: travel → How can I apply for a GSA travel award?\n"
-    "Input: events → What GSA events are coming up at NJIT?\n"
-    "Input: contact → How can I contact a GSA officer at NJIT?\n"
-    "Input: fun → What social events does GSA organize for graduate students?\n"
-    "Input: 3MRP → What is the Three Minute Research Presentation competition?\n"
-    "Input: workshop → What is the MMI Workshop Series at NJIT?\n"
-    "Input: Fernando → Who is Fernando Vera Buschmann and what is his role at GSA NJIT?\n"
-    "Input: Mohammad → Who is Mohammad Dindoost and what is his role at GSA NJIT?\n"
-    "Input: Mohith → Who is Mohith Oduru and what is his role at GSA NJIT?\n"
-    "Input: mohith gsa → Who is Mohith Oduru and what is his role at GSA NJIT?\n"
-    "Input: Durvish → Who is Durvish Paliwal and what is his role at GSA NJIT?\n"
-    "Input: Nistha → Who is Nistha Chauhan and what is her role at GSA NJIT?\n"
-    "Input: Ritwik → Who is Ritwik Reddy Kolan and what is his role at GSA NJIT?\n"
-    "Input: president → Who is the GSA president at NJIT?\n"
-    "Input: vp finances → Who is the GSA VP of Finances at NJIT?\n"
-    "Input: vp programming → Who is the GSA VP of Programming at NJIT?\n"
-    "Input: vp communications → Who is the GSA VP of Communications at NJIT?\n"
-    "Input: vp public relations → Who is the GSA VP of Public Relations at NJIT?\n"
-    "Input: officers → Who are the GSA officers at NJIT?\n"
-)
-
 _ANSWER_INSTRUCTIONS = (
     "Instructions: Answer the student's question using ONLY the documents above. "
     "Cite which document you used. If the documents don't contain the answer, say so "
@@ -480,37 +448,6 @@ class OllamaClient:
         except Exception as exc:  # noqa: BLE001 - fall back to deterministic facts
             logger.warning("Ollama compose failed: %s", exc)
             return None
-
-    async def expand_query(self, query: str) -> str:
-        """Rewrite a short/vague query into a full question for better retrieval.
-        Always returns a string — falls back to the original query on any failure.
-        """
-        prompt = f"{_EXPAND_EXAMPLES}\nInput: {query} →"
-        payload = {
-            "model": self.model,
-            "system": _EXPAND_SYSTEM,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 60,
-                "stop": ["\n", "Input:"],
-            },
-        }
-        try:
-            session = await self._get_session()
-            async with session.post(
-                self.generate_url,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                if resp.status != 200:
-                    return query
-                data = await resp.json()
-                expanded = data.get("response", "").strip().strip("\"'")
-                return expanded if expanded else query
-        except Exception:
-            return query
 
     async def rewrite_with_context(self, history: str, message: str) -> str:
         """Resolve a conversation follow-up into a standalone question using history (temp 0.0).

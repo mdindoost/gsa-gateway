@@ -402,3 +402,32 @@ async def test_free_mode_skips_rewrite(handler):
     await handler.handle(MessageRequest(user_id="u1", text="what is his position", platform="discord"))
 
     handler.ollama.rewrite_with_context.assert_not_called()   # free mode → no rewrite
+
+
+@pytest.mark.asyncio
+async def test_short_query_not_gsa_reframed(handler):
+    """Thread B: the v1 LLM expander is removed. A short (<=3-word) non-officer query must be
+    retrieved VERBATIM (base_q), never rewritten into a GSA-framed question. Even if the ollama
+    client somehow still exposes an `expand_query`, the handler must NOT call it."""
+    handler.intent_detector.detect.return_value = (INTENT_QUESTION, 0.9)
+    captured = {}
+
+    async def capture_retrieve(*args, query=None, **kwargs):
+        captured["query"] = query
+        chunk = MagicMock()
+        chunk.text = "…"; chunk.source_file = "x.md"; chunk.section_title = "s"
+        chunk.relevance_score = 0.85
+        return [chunk]
+
+    handler.retriever.retrieve = capture_retrieve
+    handler.ollama = AsyncMock()
+    handler.ollama.generate_answer = AsyncMock(return_value="ok")
+    # A GSA-reframing expander (the removed v1 behavior). If the handler still called it, the
+    # retriever would receive this string instead of the raw query.
+    handler.ollama.expand_query = AsyncMock(
+        return_value="What GSA services relate to machine learning?")
+
+    await handler.handle(MessageRequest(user_id="u1", text="machine learning", platform="discord"))
+
+    assert captured.get("query") == "machine learning"   # base_q, NOT the GSA reframe
+    handler.ollama.expand_query.assert_not_called()

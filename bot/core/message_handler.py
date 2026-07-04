@@ -780,7 +780,6 @@ class MessageHandler:
             # Expand short/officer queries. Retrieval is built from the context-resolved query
             # (`base_q`); clean_text stays original for compose/log/history.
             base_q = resolved_query or clean_text
-            words = base_q.split()
             core = base_q.strip("?!.,").strip().lower()
             matched_officer = next(
                 (name for name in _OFFICER_FIRST_NAMES if name in core.split() or core == name),
@@ -796,11 +795,13 @@ class MessageHandler:
                     f"Contact information and role for {matched_officer.title()}"
                 )
                 contact_filter = "contact"
-            elif self.ollama and len(words) <= 3 and intent not in (INTENT_FOOD, INTENT_SOCIAL):
-                # history-less short-query expansion — only when NOT already context-resolved
-                expanded = await self.ollama.expand_query(base_q)
-                if expanded and expanded.lower() != base_q.lower():
-                    search_query = expanded
+            # NOTE: the v1 LLM short-query expander was REMOVED here (thread B, 2026-07-03). It
+            # rewrote every short (<=3-word) query into a GSA-framed question, which mis-framed
+            # non-GSA queries on the now university-wide corpus (e.g. "game development lab",
+            # "computer science phd" -> GSA). Short queries now retrieve on base_q verbatim; this
+            # reverses the 2026-06-22 [SE4] "WRAP don't replace" decision (the wrapper was safe on a
+            # GSA-centric corpus, but became the bias it was meant to avoid once the corpus went
+            # NJIT-wide). See docs/superpowers/specs/2026-07-03-remove-v1-expander-design.md.
 
             # Retrieve
             if intent == INTENT_FOOD:
