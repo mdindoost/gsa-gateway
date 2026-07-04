@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} — FacultyFolio{% endblock %}
+
+{% block rail %}
+  <div class="rail">
+    <span><span class="dot"></span>Crawled from public sources</span>
+    {% if sync_label %}<span class="sep">·</span><span>{{ sync_label }}</span>{% endif %}
+    <span class="sep">·</span>
+    <span>{{ sources }}</span>
+    <a class="claim" href="#">Is this you? Claim this page →</a>
+  </div>
+{% endblock %}
+
+{% block body %}
+  <div class="grid">
+
+    <aside class="card">
+      {% if photo_ref.startswith('monogram:') %}
+      <svg class="photo" viewBox="0 0 150 150" role="img" aria-label="{{ name }}">
+        <rect width="150" height="150" rx="75" fill="var(--hair)"/>
+        <text x="75" y="82" text-anchor="middle" font-family="var(--f-display)" font-size="52" fill="var(--mute)">{{ photo_ref[9:] }}</text>
+      </svg>
+      {% else %}
+      <img class="photo" src="{{ photo_ref }}" alt="{{ name }}">
+      {% endif %}
+      <h1>{{ name }}</h1>
+      {% if title %}<p class="title">{{ title }}</p>{% endif %}
+      <p class="dept">
+        <a href="../cs/index.html">{{ home_dept }}</a>
+        {% if joint_dept %}<span class="uni">Joint appointment · {{ joint_dept }}</span>{% endif %}
+        {% if college %}<span class="uni">{{ college }} · NJIT</span>{% endif %}
+      </p>
+      <div class="social">
+        {% if email %}<a href="mailto:{{ email }}" title="Email"><svg viewBox="0 0 24 24"><path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z"/></svg></a>{% endif %}
+        {% if profiles.website and profiles.website.url %}<a href="{{ profiles.website.url }}" title="Website"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.9 6h-2.8a15.7 15.7 0 0 0-1.4-3.6A8 8 0 0 1 18.9 8zM12 4c.8 1.2 1.5 2.5 1.9 4h-3.8c.4-1.5 1.1-2.8 1.9-4zM4.3 14a7.8 7.8 0 0 1 0-4h3.2a16.6 16.6 0 0 0 0 4H4.3zm.8 2h2.8c.3 1.3.8 2.5 1.4 3.6A8 8 0 0 1 5.1 16zm2.8-8H5.1a8 8 0 0 1 4.2-3.6A15.7 15.7 0 0 0 7.9 8zM12 20c-.8-1.2-1.5-2.5-1.9-4h3.8c-.4 1.5-1.1 2.8-1.9 4zm2.3-6H9.7a14.7 14.7 0 0 1 0-4h4.6a14.7 14.7 0 0 1 0 4zm.3 5.6c.6-1.1 1.1-2.3 1.4-3.6h2.8a8 8 0 0 1-4.2 3.6zM16.5 14a16.6 16.6 0 0 0 0-4h3.2a7.8 7.8 0 0 1 0 4h-3.2z"/></svg></a>{% endif %}
+        {% if profiles.scholar and profiles.scholar.url %}<a href="{{ profiles.scholar.url }}" title="Google Scholar"><svg viewBox="0 0 24 24"><path d="M12 2 1 8l11 6 9-4.9V17h2V8L12 2zM5 13.2V17c0 1.7 3.1 3 7 3s7-1.3 7-3v-3.8l-7 3.8-7-3.8z"/></svg></a>{% endif %}
+        {% if profiles.github and profiles.github.url %}<a href="{{ profiles.github.url }}" title="GitHub"><svg viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12a10 10 0 0 0 6.8 9.5c.5 0 .7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8 0-.7.3-1.1.6-1.4-2.2-.2-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7 0-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.8-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 22 12 10 10 0 0 0 12 2z"/></svg></a>{% endif %}
+        {% if profiles.linkedin and profiles.linkedin.url %}<a href="{{ profiles.linkedin.url }}" title="LinkedIn"><svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM8.3 18.3H5.7V9.8h2.6v8.5zM7 8.6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm11.3 9.7h-2.6v-4.1c0-1 0-2.3-1.4-2.3s-1.6 1.1-1.6 2.2v4.2h-2.6V9.8h2.5v1.2h.1a2.8 2.8 0 0 1 2.5-1.4c2.7 0 3.2 1.8 3.2 4.1v4.6z"/></svg></a>{% endif %}
+      </div>
+    </aside>
+
+    <main class="content">
+
+      <section>
+        <p class="eyebrow">Research</p>
+        <h2>Areas of focus</h2>
+        <div class="rule"></div>
+        {% if areas %}
+        <div class="areas">
+          {% for a in areas %}<span class="area"><span class="d"></span>{{ a }}</span>{% endfor %}
+        </div>
+        {% else %}
+        <div class="hook"><span class="ic">🔬</span><span class="txt">Research areas aren't listed on public profiles yet — <a href="#">claim this page</a> to add them.</span></div>
+        {% endif %}
+      </section>
+
+      <section>
+        <p class="eyebrow">About</p>
+        <h2>Background</h2>
+        <div class="rule"></div>
+        <div class="about">
+          <div class="about-row"><span class="about-k">Appointment</span><span class="about-v">{{ appointment }}</span></div>
+          {% if education %}<div class="about-row"><span class="about-k">Education</span><span class="about-v">{{ education|join(' · ') }}</span></div>{% endif %}
+          {% if contact %}<div class="about-row"><span class="about-k">Office</span><span class="about-v">{{ contact }}</span></div>{% endif %}
+          {% if teaching %}<div class="about-row"><span class="about-k">Teaching</span><span class="about-v">{{ teaching|join(' · ') }}</span></div>{% endif %}
+        </div>
+        <p class="about-src">{{ about_source }}</p>
+      </section>
+
+      <section>
+        <p class="eyebrow">Scholarly activity</p>
+        <h2>{{ heading }}</h2>
+        <div class="rule"></div>
+        {% if scholar %}
+        <div class="metrics">
+          <div class="m-top">
+            <div class="m"><span class="k">Citations</span><span class="v">{{ cites }}</span><span class="since">{{ recent_cites }} since {{ since_year }}</span></div>
+            <div class="m"><span class="k">h-index</span><span class="v">{{ h }}</span><span class="since">{{ recent_h }} since {{ since_year }}</span></div>
+            <div class="m"><span class="k">i10-index</span><span class="v">{{ i10 }}</span><span class="since">{{ recent_i10 }} since {{ since_year }}</span></div>
+            <div class="m rank"><span class="k">{{ active_since_label }}</span><span class="v">{{ active_since }}</span><span class="since">{{ years_active }} years active</span></div>
+          </div>
+          {% if chart_svg %}
+          <div class="chart-wrap">
+            <div class="chart-lab"><span>Citations per year</span><span>Google Scholar</span></div>
+            {{ chart_svg|safe }}
+          </div>
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="hook"><span class="ic">📊</span><span class="txt">No Google Scholar profile is linked for {{ name }} yet — is this you? <a href="#">Claim this page</a> to connect it.</span></div>
+        {% endif %}
+      </section>
+
+      {% if scholar and (top_cited or newest) %}
+      <section id="pubs">
+        <p class="eyebrow">Publications</p>
+        <h2>Selected work</h2>
+        <div class="rule"></div>
+        <div class="pub-head">
+          <span class="cnt">Live from Google Scholar · sortable</span>
+          <div class="toggle">
+            <button class="on" data-sort="cited">Most cited</button>
+            <button data-sort="recent">Most recent</button>
+          </div>
+        </div>
+        <div id="pub-cited">
+          {% for p in top_cited %}
+          <article class="pub" data-cites="{{ p.cites }}" data-year="{{ p.year }}">
+            <div class="pub-cite"><span class="pc-n">{{ p.cites_disp }}</span><span class="pc-l">citations</span></div>
+            <div class="pub-main">{% if p.url %}<a class="pub-t" href="{{ p.url }}">{{ p.title }}</a>{% else %}<span class="pub-t">{{ p.title }}</span>{% endif %}<div class="pub-v">{{ p.venue }}</div></div>
+          </article>
+          {% endfor %}
+        </div>
+        <div id="pub-recent" style="display:none;">
+          {% for p in newest %}
+          <article class="pub" data-cites="{{ p.cites }}" data-year="{{ p.year }}">
+            <div class="pub-cite"><span class="pc-n">{{ p.cites_disp }}</span><span class="pc-l">citations</span></div>
+            <div class="pub-main">{% if p.url %}<a class="pub-t" href="{{ p.url }}">{{ p.title }}</a>{% else %}<span class="pub-t">{{ p.title }}</span>{% endif %}<div class="pub-v">{{ p.venue }}</div></div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section>
+        <p class="eyebrow">Recognition</p>
+        <h2>Awards &amp; honors</h2>
+        <div class="rule"></div>
+        <div class="hook">
+          <span class="ic">🏆</span>
+          <span class="txt">Awards aren't in our public data yet — things like NSF grants and best-paper awards aren't crawlable. <a href="#">Claim this page</a> to add them.</span>
+        </div>
+      </section>
+
+    </main>
+  </div>
+{% endblock %}
+
+{% block script %}
+<script>
+  document.querySelectorAll('.toggle button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('.toggle button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      const s=b.dataset.sort;
+      document.getElementById('pub-cited').style.display  = s==='cited' ?'block':'none';
+      document.getElementById('pub-recent').style.display = s==='recent'?'block':'none';
+    });
+  });
+</script>
+{% endblock %}
