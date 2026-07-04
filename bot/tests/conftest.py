@@ -7,7 +7,6 @@ import pytest
 
 from bot.services.database import Database
 from bot.services.knowledge_base import FAQEntry, KnowledgeBase
-from bot.services.search import SearchService
 
 
 # ── Database fixture ──────────────────────────────────────────────────────────
@@ -64,12 +63,6 @@ def kb(sample_faq, tmp_path) -> KnowledgeBase:
     knowledge_base = KnowledgeBase(data_dir=tmp_path)
     knowledge_base.faq_entries = list(sample_faq)
     return knowledge_base
-
-
-@pytest.fixture
-def search_svc(kb) -> SearchService:
-    """SearchService backed by the sample knowledge base."""
-    return SearchService(kb)
 
 
 # ── Discord interaction mock ──────────────────────────────────────────────────

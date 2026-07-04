@@ -15,8 +15,8 @@
      KnowledgeBase   Database          RateLimiter
      (data files)    (SQLite)          (in-memory)
           │              │
-     SearchService   SummaryService
-     (rapidfuzz)
+     [SearchService  SummaryService
+      REMOVED v1]
           │
     (optional)
     OllamaClient
@@ -44,12 +44,10 @@
 - `resources.yml` → dict of `list[Resource]`
 - `get_searchable_texts()` returns a flat list for the search service
 
-### bot/services/search.py — SearchService
-- Uses `rapidfuzz.process.extract` with `fuzz.token_set_ratio`
-- Default min_confidence = 60.0 (configurable per-instance)
-- `search(query)` → FAQ results
-- `search_events(name)` → event results  
-- `search_contacts(role)` → single best match
+### bot/services/search.py — SearchService — REMOVED 2026-07-03
+The v1 rapidfuzz `SearchService` was deleted as dead code (instantiated in `main.py` but never
+called; the chat path uses the v2 hybrid retriever). This section is retained only as a historical
+pointer — the module no longer exists.
 
 ### bot/services/database.py — Database
 - Thin wrapper around `sqlite3`
@@ -84,6 +82,7 @@ Rate limit check → denied? → ephemeral error
 Channel allowlist check → denied? → ephemeral error
     │
     ▼
+[v1 flow — REMOVED 2026-07-03; the live path is the v2 hybrid retriever]
 search_svc.search(question, limit=3)
     │
     ├── score < 60 for best match?

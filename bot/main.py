@@ -60,7 +60,6 @@ class GSABot(commands.Bot):
         # Core services — set in setup_hook
         self.db = None
         self.kb = None
-        self.search_svc = None
         self.rate_limiter = None
         self.ollama = None
         self.config = config
@@ -88,7 +87,6 @@ class GSABot(commands.Bot):
         from bot.services.database import Database
         from bot.services.knowledge_base import KnowledgeBase
         from bot.services.moderation import RateLimiter
-        from bot.services.search import SearchService
 
         self.db = Database(config.database_path)
         self.db.connect()
@@ -98,7 +96,6 @@ class GSABot(commands.Bot):
         self.kb = KnowledgeBase(data_dir=config.data_dir)
         self.kb.load()
 
-        self.search_svc = SearchService(self.kb)
         self.rate_limiter = RateLimiter(max_calls=5, period_seconds=60)
 
         # ── Assistant brain (shared with the Telegram process via build_assistant) ──

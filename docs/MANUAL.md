@@ -557,7 +557,7 @@ EXTENSIONS = [
 Available services inside any cog:
 - `self.bot.db` — database (SQLite CRUD)
 - `self.bot.kb` — knowledge base (loaded FAQ, events, contacts, resources)
-- `self.bot.search_svc` — fuzzy search
+- `self.bot.kb` — (v1 `search_svc` fuzzy search was removed 2026-07-03; use the v2 retriever)
 - `self.bot.rate_limiter` — per-user rate limiter
 - `self.bot.ollama` — Ollama client (check `config.ollama_enabled` first)
 
