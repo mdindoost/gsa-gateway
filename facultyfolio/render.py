@@ -100,3 +100,20 @@ def render_profile(f: dict, photo_ref: str = None) -> str:
     if sch:
         ctx.update(_scholar_ctx(sch))
     return _env.get_template("profile.html").render(**ctx)
+
+
+def render_leaderboard(org_name: str, ranked: list, coverage: tuple) -> str:
+    n, m = coverage
+    rows = [
+        {
+            "rank": r["rank"],
+            "name": r["name"],
+            "slug": r["slug"],
+            "citations": F.commafy(r["citations"]),
+            "h_index": r["h_index"] if r["h_index"] is not None else "—",
+        }
+        for r in ranked
+    ]
+    return _env.get_template("leaderboard.html").render(
+        org_name=org_name, rows=rows, coverage_n=n, coverage_m=m,
+    )

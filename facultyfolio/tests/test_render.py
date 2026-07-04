@@ -59,3 +59,14 @@ def test_no_llm_prose_leaks():
     # even if an 'about' bio were somehow attached, render only reads the crawler fields
     html = render.render_profile(_koutis())
     assert "not written or generated" in html
+
+
+def test_leaderboard():
+    from facultyfolio import rank, config
+    lst = rank.ranked_list(config.CS_ORG_ID)
+    cov = rank.coverage(config.CS_ORG_ID)
+    html = render.render_leaderboard("Computer Science", lst, cov)
+    assert "39 of 57" in html and "faculty with Google Scholar data" in html
+    assert "by total citations" in html
+    assert "../p/" in html                       # rows link to profiles
+    assert html.count('class="lb-row"') == 39

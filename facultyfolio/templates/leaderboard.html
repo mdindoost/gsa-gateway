@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ org_name }} — FacultyFolio{% endblock %}
+
+{% block rail %}
+  <div class="rail">
+    <span><span class="dot"></span>Crawled from public sources</span>
+    <span class="sep">·</span>
+    <span>Ranked by Google Scholar</span>
+    <a class="claim" href="#">Is this you? Claim your page →</a>
+  </div>
+{% endblock %}
+
+{% block body %}
+  <div class="lb">
+    <section>
+      <p class="eyebrow">Leaderboard</p>
+      <h2>{{ org_name }}</h2>
+      <div class="rule"></div>
+      <p class="lb-cover">Ranked among <strong>{{ coverage_n }} of {{ coverage_m }}</strong> faculty with Google Scholar data · <span class="lb-axis">by total citations</span></p>
+      <div class="lb-table">
+        {% for r in rows %}
+        <a class="lb-row" href="../p/{{ r.slug }}.html">
+          <span class="lb-rank">{{ r.rank }}</span>
+          <span class="lb-name">{{ r.name }}</span>
+          <span class="lb-cite"><span class="lb-num">{{ r.citations }}</span><span class="lb-lab">citations</span></span>
+          <span class="lb-h"><span class="lb-num">{{ r.h_index }}</span><span class="lb-lab">h-index</span></span>
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+{% endblock %}
