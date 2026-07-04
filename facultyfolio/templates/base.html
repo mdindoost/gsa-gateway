@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}FacultyFolio{% endblock %}</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-in">
+      <a href="#" class="active">Home</a>
+      <a href="#pubs">Publications</a>
+      <a href="#">Teaching</a>
+      <span class="brand">FacultyFolio</span>
+    </div>
+  </nav>
+
+  {% block rail %}{% endblock %}
+
+  {% block body %}{% endblock %}
+
+  <footer>
+    <span>FacultyFolio · auto-generated from the GSA knowledge graph</span>
+    <span>GSA Gateway · Kavosh v2.1</span>
+  </footer>
+
+{% block script %}{% endblock %}
+</body>
+</html>

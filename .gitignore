@@ -110,3 +110,9 @@ autoeval/report_run_*.md
 autoeval/codex_raw/
 logs/autoeval.out
 logs/autoeval.pid
+
+# FacultyFolio generated output — pages + downloaded headshots belong in the
+# separate public Pages repo, NEVER in this code repo. (Self-hosted fonts +
+# style.css under facultyfolio/assets/ ARE committed; photos are not.)
+/Faculty-Folio/
+facultyfolio/assets/photos/
