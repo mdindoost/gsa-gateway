@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-03
 **Author:** Mohammad Dindoost (owner) + Claude (design), Fable (design review)
-**Status:** Design — rev 2 (folded senior-eng review B1–B6); awaiting focused re-review + owner sign-off before build
+**Status:** Design — rev 3 (folded re-review: B5 year-anchored parse + B4 precision); awaiting owner sign-off before build
 **Scope of first build:** ~57 NJIT Computer Science faculty → profile pages + CS leaderboard
 
 ---
@@ -104,7 +104,7 @@ Research → About → Scholarly activity → Publications → Recognition.
 | **Social icons** | Render only the links that exist: email (always, `mailto:`), then website, Google Scholar, GitHub, ORCID, LinkedIn — each iff present in `attrs.profiles` (website also matches Scholar `homepage`). Fixed icon set + order; omit absent ones. |
 | **Research areas** | Section always renders. Tags from **`is_active=1` `researches` edges** (reconcile churn leaves inactive rows — filter them). Surface form **verbatim** (mojibake-clean + trim only — do NOT shorten "Algebraic algorithms for computationally hard problems"), BUT **mechanically de-duplicate near-dup nodes** on a normalized key (case-fold + strip non-alphanumerics), keeping the first surface form (verified dups: `159 "Spatio-temporal Databases"` vs `1983 "Spatio Temporal Databases"`). **Deterministic order = edge id ascending** (so builds reproduce; red-dot `:first-child` is then stable). First tag dot red (`--nav-active`), rest blue. If zero areas → hook empty-state: "Research areas aren't listed on public profiles yet — claim this page to add them." |
 | **About → Appointment row** | Always (title + dept + college assembled from structured fields). |
-| **About → Education row** | Render **only if** the parsed education has degree **+ institution** (min). A lone "Ph.D." with no institution/year → **omit the row** (adds nothing beyond what the title implies; looks like a parse failure). Never pad. |
+| **About → Education row** | Render **only if** ≥1 valid education record survives the year-anchored parse (§7) — a record needs an **institution + year** (degree alone is not enough). A lone "Ph.D." (Oria) yields no valid record → **omit the row** (adds nothing beyond what the title implies; looks like a parse failure). Never pad. |
 | **About → Office/contact row** | Render iff `office` **or** `phone` present. Value = office (cleaned, e.g. "4105 GITC") · email · phone (each bit only if present). If neither office nor phone → omit row (email still in social icon). |
 | **About → Teaching row** | Render iff teaching courses exist (see §7 formatter). |
 | **About source label** | Always present under the block. |
@@ -174,9 +174,11 @@ real, which is the point.*
 ## 7. Mechanical formatters (`format.py`, Option A strict — pure)
 
 All input-agnostic; no maintained lookup tables. Two shared helpers used below:
-- **`normalize_name(s)`** [B1]: if `s` matches `^([^,]+),\s+(.+)$` (exactly one comma) → "`\2 \1`"
-  ("Koutis, Ioannis" → "Ioannis Koutis"); otherwise return `s` unchanged. Multi-comma names
-  (rare, e.g. "…, Jr") are left verbatim. Also the source of monogram initials.
+- **`normalize_name(s)`** [B1]: if `s` matches `^([^,]+),\s+([^,]+)$` (exactly one comma — group 2
+  anchored to exclude interior commas so "Smith, John, Jr" is left verbatim, not mangled) → "`\2 \1`"
+  ("Koutis, Ioannis" → "Ioannis Koutis"); otherwise return `s` unchanged. (Verified: all 10 CS
+  "Last, First" nodes are single-comma; zero Person nodes have ≥2 commas today.) Also the source of
+  monogram initials.
 - **`smart_titlecase(s)`**: title-case each word, but **preserve a token unchanged if it is all-caps
   and ≤ 3 chars** (AI, ML, DES, ALG stay as-is) so casing never mangles acronyms
   ("EXPLAINABLE AI" → "Explainable AI", not "Explainable Ai"). [B4]
@@ -197,20 +199,29 @@ All input-agnostic; no maintained lookup tables. Two shared helpers used below:
   1. **Parse** (code, raw-title) pairs by splitting on the `([A-Z]{2,4}\s?\d{3})\s*:` boundary
      (structural regex; any dept prefix). Clean each title: strip a leading special-topics marker
      `^ST:?\s*`, then `smart_titlecase`.
-  2. **Pass 1 — collapse title-variants per code:** group by normalized course number; per code the
-     canonical title is the **longest** cleaned title (tie → lexicographically first). Resolves the
-     verified same-number collision `CS 610: "DATA STRUCTURE & ALG"` vs `"DATA STRUCTURES AND ALGORITHMS"`.
+  2. **Pass 1 — collapse title-variants per code:** group by the **full normalized code
+     (prefix + number, e.g. `CS 675` ≠ `DS 675` — NOT the bare digits, or cross-listings collapse and
+     a code is lost)**; per code the canonical title is the **longest** cleaned title
+     (tie → lexicographically first). Resolves the verified same-number collision
+     `CS 610: "DATA STRUCTURE & ALG"` vs `"DATA STRUCTURES AND ALGORITHMS"`.
   3. **Pass 2 — group cross-listings by title:** group codes by normalized canonical title; render
-     "`<Title>` (`CODE1 / CODE2 / …`)", codes sorted. Reproduces the reference's structural grouping
-     (485/698/785 "Explainable AI" → one entry) **mechanically**, via two deterministic grouping passes
-     — no lookup, no course dropped. **Accepted divergence:** abbreviations are NOT expanded
-     ("ADV DATA STRUCT-ALG DES" stays), and no course is dropped, so output differs from the
-     hand-curated sample. Stated per §1.
-- **Education** [B5]: strip the prefix `^Education of .*?:\s*`, split on `;`, **chunk into groups of 4**
-  (`degree; institution; field; year`). A chunk with `< 4` fields → **drop that record** (never let a
-  missing field misalign subsequent records). Render "Degree Field, Institution (Year)" joined by " · ".
-  If **no** record survives with an institution → the whole row is omitted per §4 (degree-only like
-  Oria's "Education of Vincent Oria (Computer Science): Ph.D." → omit).
+     "`<Title>` (`CODE1 / CODE2 / …`)", codes sorted within the entry, and **entries ordered by the
+     group's lowest course number** (deterministic — required for the §12 byte-identical idempotency
+     test). Reproduces the reference's structural grouping (485/698/785 "Explainable AI" → one entry)
+     **mechanically**, via two deterministic grouping passes — no lookup, no course dropped.
+     **Accepted divergence:** abbreviations are NOT expanded ("ADV DATA STRUCT-ALG DES" stays), and no
+     course is dropped, so output differs from the hand-curated sample. Stated per §1.
+- **Education** [B5 — rev 3]: records are **variable-length** — the `field` component is optional, so
+  a record is `degree; institution; [field;] year` (verified: James Calvin / Perl are 3-field
+  `degree; institution; year`; Koutis / Kumar Mani are 4-field — 12 of 46 CS strings are not a
+  multiple of 4). **Group-by-4 is invalid** (it shears 3-field records). Use a **year-anchored split:**
+  strip the prefix `^Education of .*?:\s*`; split on `;`; walk fields into a buffer; when a field
+  matches `^\d{4}$` (a year), **close a record**: `degree = buffer[0]`, `year = the year token`,
+  `institution = buffer[1]` (if present), `field = buffer[2:]` joined (may be empty); reset buffer.
+  A trailing buffer that never hits a year is **dropped**. Render each valid record (has institution
+  **and** year) as "Degree [Field ,] Institution (Year)" joined by " · " — field segment omitted when
+  absent (→ "Ph.D., Stanford University (1990)"). If **no** valid record survives → the whole row is
+  omitted per §4 (Oria's "…: Ph.D." has no year → no record closes → row omitted, matching intent).
 - **Office:** trim the long form to a short campus form (e.g. strip "Guttenberg Information
   Technologies Center" → keep "GITC" via the same parenthetical-acronym rule); mechanical only.
 - **Numbers:** thousands separators.
@@ -280,7 +291,7 @@ Faculty-Folio/
   - `normalize_name`: "Koutis, Ioannis" → "Ioannis Koutis"; "Kieran Murphy" → unchanged; monogram initials "IK". [B1]
   - venue: "(FOCS)…" → "FOCS 2010"; **no-acronym branch** (Koutis pub #2) → asserts the honest fragment, not "FOCS 2011". [B4]
   - teaching: cross-listed `CS 675 / DS 675` → one "Machine Learning (CS 675 / DS 675)"; same-number variant `CS 610` → single canonical (longest) title; `ST: EXPLAINABLE AI` → "Explainable AI" (acronym preserved, ST: stripped); 485/698/785 → one grouped entry; prefix stripped. [B4]
-  - education: prefix-strip + group-by-4; degree+institution → row; **lone "Ph.D." (Oria, prefix present)** → omit; a short chunk drops one record without misaligning the rest. [B5]
+  - education: prefix-strip + **year-anchored split**; 4-field (Koutis → "Ph.D. Computer Science, Carnegie Mellon University (2007)") AND **3-field (James Calvin → "Ph.D., Stanford University (1990) · M.S., …") both parse correctly**; **lone "Ph.D." (Oria, prefix present)** → row omitted (no year closes a record). [B5]
   - office: short form ("4105 GITC").
 - **`chart.py`** — peak excludes partial year; **partial ⇔ latest==sync year** (Eskandari fixture: latest 2021, sync 2026 → 2021 is a full bar, peak-eligible, no "(partial)"); **`peak==0` → chart omitted** (no div-by-zero); heights scale to peak; ≥4-year gate; missing intermediate years = gaps. [B2,B3]
 - **`render.py`** — pure-function golden: Koutis dict → HTML has the right sections; **degradation
@@ -348,3 +359,5 @@ Folded 6 blocking findings (all grounded in live rows); architecture + trust bou
 - **B6** near-duplicate ResearchArea nodes — mechanical dedup on a normalized key + `is_active=1` edge filter + deterministic edge-id order (§4).
 
 Non-blocking adopted: read-only connection at driver level (§1); empty-`titles` omit; fixed "Impact & trajectory" heading; conditional "Scholar +" provenance token; unlinked-title pub fallback; deterministic area order; idempotency + read-only tests (§12). Manual-title provenance nit (Oria's "Department Chair" from `manual_note`) — accepted: it is still crawled/structured KG data, not generated prose; the "Crawled from public sources" rail stands.
+
+**Rev 3 — focused re-review:** B1–B4, B6 confirmed build-ready. **B5 reworked** — education records are variable-length (`field` optional; 3- or 4-field); group-by-4 sheared ~26% of CS rows (James Calvin/Perl are 3-field). Replaced with a **year-anchored record split** (§7). Folded two B4 precision points: Pass-1 key = full code (prefix+number, `CS 675`≠`DS 675`); teaching entries ordered by lowest course number (idempotency). B1 regex anchored (group 2 excludes interior commas). Added the James-Calvin 3-field education fixture to §12.
