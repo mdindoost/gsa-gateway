@@ -495,6 +495,15 @@ def _person_skill(q: str) -> str:
     return "entity_card"
 
 
+def _with_origin(rt: Route, skill: str, args: dict | None = None) -> Route:
+    """A9: tag a person_disambig Route with the skill+args that PRODUCED it, so the resume runs the
+    ORIGINALLY-asked question (metric/contact/research/…) instead of a generic bio card. No-op on any
+    other Route; `setdefault` so the first (most specific) producer wins and can't be double-tagged."""
+    if isinstance(rt, Route) and rt.skill == "person_disambig":
+        rt.args.setdefault("origin", {"skill": skill, "args": dict(args or {})})
+    return rt
+
+
 def route(conn: sqlite3.Connection, question: str) -> Route | None:
     q = question.strip().lower().rstrip("?").strip()
     org_id, org_phrase = _find_org(conn, q)
@@ -516,7 +525,8 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     if _PAPER_NOUN.search(q):
         person = _resolve_person(conn, q, named)
         if isinstance(person, Route):
-            return person
+            return _with_origin(person, "papers_of_person",
+                                {"mode": _paper_mode(q), "n": _parse_topn(q)})
         if isinstance(person, dict):
             return Route("papers_of_person",
                          {"entity_id": person["entity_id"], "name": person["name"],
@@ -534,12 +544,14 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     _year_cue = bool(_year_in and _CITE_CTX.search(q) and "since" not in q)
     _growth_cue = bool(_GROWTH_CUE.search(q))
     if _peak_cue or _year_cue or _growth_cue:
+        # A9: mode/year depend only on q-cues (in scope above) → compute BEFORE the disambig return
+        # so origin.args can carry them (Fable req #3).
+        mode = "peak" if _peak_cue else ("growth" if _growth_cue else "year")
+        year = int(_year_in.group(1)) if (mode == "year" and _year_in) else None
         person = _resolve_person(conn, q, named)
         if isinstance(person, Route):
-            return person
+            return _with_origin(person, "citation_trend_of_person", {"mode": mode, "year": year})
         if isinstance(person, dict):
-            mode = "peak" if _peak_cue else ("growth" if _growth_cue else "year")
-            year = int(_year_in.group(1)) if (mode == "year" and _year_in) else None
             return Route("citation_trend_of_person",
                          {"entity_id": person["entity_id"], "name": person["name"],
                           "mode": mode, "year": year})
@@ -620,7 +632,8 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
                                   "org_defaulted": True})
         person = _resolve_person(conn, q, named)
         if isinstance(person, Route):
-            return person
+            return _with_origin(person, "metric_of_person",
+                                {"field_key": field_key, "metric_key": metric.key})
         if isinstance(person, dict):
             return Route("metric_of_person",
                          {"entity_id": person["entity_id"], "name": person["name"],
@@ -634,7 +647,7 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
         field_key, _field = lm
         person = _resolve_person(conn, q, named)
         if isinstance(person, Route):
-            return person
+            return _with_origin(person, "link_of_person", {"field_key": field_key})
         if isinstance(person, dict):
             return Route("link_of_person",
                          {"entity_id": person["entity_id"], "name": person["name"],
@@ -735,7 +748,7 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     if _RESEARCH_CUE.search(q):
         person = _resolve_person(conn, q, named)
         if isinstance(person, Route):
-            return person
+            return _with_origin(person, "research_of_person", {})
         if isinstance(person, dict):
             return Route("research_of_person",
                          {"entity_id": person["entity_id"], "name": person["name"]})
@@ -750,7 +763,7 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
                      {"entity_id": named[0]["entity_id"], "name": named[0]["name"]})
     if len(named) > 1 and (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q)
                            or _CONTACT_CUE.search(q) or _TITLE_CUE.search(q)):
-        return Route("person_disambig", {"candidates": named})
+        return _with_origin(Route("person_disambig", {"candidates": named}), _person_skill(q), {})
 
     # surname-only: "professor Wang" / "who is Wang" / "Koutis's email" / "koutis info" /
     # bare "koutis". The trigger is person-directed (intent / attribute / title prefix / an
@@ -762,7 +775,7 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
             or len(qn_toks) == 1):
         person = _resolve_surname(conn, q)
         if isinstance(person, Route):
-            return person
+            return _with_origin(person, _person_skill(q), {})
         if isinstance(person, dict):
             return Route(_person_skill(q),
                          {"entity_id": person["entity_id"], "name": person["name"]})

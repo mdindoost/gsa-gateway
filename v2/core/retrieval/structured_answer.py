@@ -534,5 +534,12 @@ def resumable_action(rt: Route) -> list[tuple[str, Route]] | None:
                         "org_defaulted": a.get("org_defaulted", False)}))]
     if skill == "person_disambig":
         cands = rt.args.get("candidates") or []
+        origin = rt.args.get("origin")           # A9: resume the ORIGINALLY-asked skill, not a bio card
+        if origin:
+            return [(c["name"],
+                     Route(origin["skill"],
+                           {**(origin.get("args") or {}),
+                            "entity_id": c["entity_id"], "name": c["name"]}))   # resolved id/name win
+                    for c in cands] or None
         return [(c["name"], Route("entity_card", {"entity_id": c["entity_id"]})) for c in cands] or None
     return None

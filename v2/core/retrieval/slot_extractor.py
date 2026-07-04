@@ -391,7 +391,7 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
             cand_name = st[1][0]["name"] if st[1] else ""
             if not _identity_cued(message, cand_name):
                 return None                      # foreign residual ('mmi …') ⇒ fragment, abstain
-            return Route("person_disambig", {"candidates": st[1]})
+            return srouter._with_origin(Route("person_disambig", {"candidates": st[1]}), skill, {})  # A9
         if st[0] != "ok":
             return None
         # entity_card is the bare-identity catch-all → guard against firing on a fragment that only
@@ -410,7 +410,7 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
             cand_name = st[1][0]["name"] if st[1] else ""
             if not _identity_cued(message, cand_name):
                 return None                      # foreign residual ('mmi …') ⇒ fragment, abstain
-            return Route("person_disambig", {"candidates": st[1]})
+            return srouter._with_origin(Route("person_disambig", {"candidates": st[1]}), skill, {})  # A9
         if st[0] != "ok":
             return None
         return Route(skill, {"entity_id": st[1], "name": st[2]})
@@ -443,7 +443,8 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
             return Route("metric_of_person", {"entity_id": st[1], "name": st[2],
                                               "field_key": "scholar", "metric_key": mk})
         if st[0] == "ambiguous":
-            return Route("person_disambig", {"candidates": st[1]})
+            return srouter._with_origin(Route("person_disambig", {"candidates": st[1]}),   # A9
+                                        "metric_of_person", {"field_key": "scholar", "metric_key": mk})
         return None
 
     if skill == "link_of_person":
@@ -454,7 +455,8 @@ def resolve_and_validate(conn, skill: str, slots: dict, message: str) -> Route |
         if st[0] == "ok":
             return Route("link_of_person", {"entity_id": st[1], "name": st[2], "field_key": fk})
         if st[0] == "ambiguous":
-            return Route("person_disambig", {"candidates": st[1]})
+            return srouter._with_origin(Route("person_disambig", {"candidates": st[1]}),   # A9
+                                        "link_of_person", {"field_key": fk})
         return None
 
     # role lookup (org optional; scope-climb like route())
