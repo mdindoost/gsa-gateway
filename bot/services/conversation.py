@@ -15,6 +15,10 @@ class ConversationTurn:
     content: str
     timestamp: datetime
     source_files: list[str] = field(default_factory=list)
+    # A3: the PEOPLE this turn's structured answer named (empty for user turns / non-person answers).
+    # Tag-at-source evidence for context_rewrite's antecedent-ambiguity gate. Spec:
+    # docs/superpowers/specs/2026-07-04-a3-antecedent-ambiguity-design.md
+    person_names: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -117,6 +121,7 @@ class ConversationManager:
         content: str,
         source_files: Optional[list[str]] = None,
         channel_id: Optional[str] = None,
+        person_names: Optional[list[str]] = None,
     ) -> None:
         session = self.get_or_create_session(user_id, channel_id=channel_id)
         turn = ConversationTurn(
@@ -124,6 +129,7 @@ class ConversationManager:
             content=content,
             timestamp=datetime.now(timezone.utc),
             source_files=source_files or [],
+            person_names=person_names or [],
         )
         session.turns.append(turn)
         session.message_count += 1
@@ -149,7 +155,11 @@ class ConversationManager:
         turns = session.turns
         if max_turns is not None:
             turns = turns[-(max_turns * 2):]
-        return [{"role": t.role, "content": t.content} for t in turns]
+        # person_names (A3) rides along so the antecedent-ambiguity gate can read the roster size
+        # of the immediately-preceding assistant turn. Existing consumers index role/content and
+        # ignore the extra key — backward compatible.
+        return [{"role": t.role, "content": t.content, "person_names": list(t.person_names)}
+                for t in turns]
 
     def clear_session(self, user_id: str) -> None:
         if user_id in self.sessions:

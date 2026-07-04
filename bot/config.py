@@ -200,6 +200,17 @@ PERSON_SCOPE_GUARD_ENABLED = os.getenv("PERSON_SCOPE_GUARD_ENABLED", "").strip()
 # .env + restart to enable; backout = 0 (or revert).
 FOLLOWUP_RESUME_ENABLED = os.getenv("FOLLOWUP_RESUME_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
 
+# ANTECEDENT_GUARD_ENABLED (A3, default OFF): guard against a confident WRONG-person rewrite when a
+# roster sits in history and a bare singular pronoun ("his/her") follow-up lets the LLM pick an
+# arbitrary name. Two layers: (1) tag-at-source + a pre-LLM gate that CLARIFIES ("which one?") when
+# the immediately-preceding assistant turn named ≥2 people; (2) a verify_rewrite backstop that
+# passes-through when the picked name is a member of a ≥3-name list-chain with no standalone
+# occurrence. Off ⇒ gate/backstop no-op and resolve_query returns the old resolution (zero behavior
+# change). NOTE: person_names tags are ALWAYS written on turns regardless of this flag — they are
+# inert when off (no consumer reads them). Flip in .env + restart to enable.
+# Spec: docs/superpowers/specs/2026-07-04-a3-antecedent-ambiguity-design.md
+ANTECEDENT_GUARD_ENABLED = os.getenv("ANTECEDENT_GUARD_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+
 
 # --- Kavosh v2.1 unified router (Phase 1b) ---
 # ROUTER_V21 master switch (default OFF). When on, the UnifiedRouter is built + consulted.

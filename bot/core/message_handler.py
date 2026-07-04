@@ -264,7 +264,7 @@ class MessageResponse:
     is_deep: bool = False             # answer came from the deep-fallback chunk-rescue
     is_abstain: bool = False          # a canned non-answer (deflect/clarify/miss/error), NOT an answer
     abstain_reason: Optional[str] = None  # set iff is_abstain: gate1|clarify|live-miss|gate-abstain|
-    #                                       kb-miss|error|resume-error (tag-at-source; never a heuristic)
+    #                       kb-miss|error|resume-error|ambiguous-antecedent (tag-at-source; never a heuristic)
 
 
 class MessageHandler:
@@ -330,10 +330,12 @@ class MessageHandler:
                         self.conversation_manager.add_turn(user_id, "assistant", ack)
                         return MessageResponse(text=ack)
                     if _idx is not None:
-                        _resumed = await self._resume_pending(_pending.options[_idx])
-                        if _resumed is not None:
+                        _res = await self._resume_pending(_pending.options[_idx])
+                        if _res is not None:
+                            _resumed, _resumed_names = _res
                             self.conversation_manager.add_turn(user_id, "user", clean_text)
-                            self.conversation_manager.add_turn(user_id, "assistant", _resumed[:500])
+                            self.conversation_manager.add_turn(user_id, "assistant", _resumed[:500],
+                                                               person_names=_resumed_names)  # A3 tag
                             return MessageResponse(text=_resumed)
                         # recognized but execution FAILED → graceful stop; NEVER fall through to route the token
                         sorry = "Sorry — I couldn't pull that up just now. Could you ask again?"
@@ -347,7 +349,14 @@ class MessageHandler:
         if mode != "free" and self.ollama and self.conversation_manager:
             _max_turns = getattr(self.config, "conversation_max_turns", 5)
             _hist = self.conversation_manager.get_history(user_id, max_turns=_max_turns)
-            resolved_query, _ = await resolve_query(clean_text, _hist, self.ollama)
+            _rr = await resolve_query(clean_text, _hist, self.ollama)
+            resolved_query = _rr.query
+            # A3 layer 1: a bare "his/her" follow-up after a ≥2-person roster is an unresolvable
+            # antecedent → CLARIFY instead of guessing one arbitrary name (honest-partial). v1 records
+            # no pending; the user re-asks with a name and routes normally.
+            if _rr.clarify_text is not None:
+                return MessageResponse(text=_rr.clarify_text, is_abstain=True,
+                                       abstain_reason="ambiguous-antecedent")
 
         # ── Explicit "search njit for X" ──────────────────────────────────────
         # The user literally asked to go to the live njit.edu site, so honor it directly —
@@ -570,8 +579,11 @@ class MessageHandler:
                 # FINAL answer verbatim — never handed to the LLM to restate.
                 # Metric answers are themselves deterministic (numbers must not be reworded) →
                 # flag so the caller skips LLM compose entirely.
+                # A3: person_names_of(result) computed HERE (the result dict dies with the thread);
+                # threaded out so _register_and_record can tag the assistant turn.
                 return (rt, facts, structured_answer.deterministic_suffix(result),
-                        structured_answer.is_deterministic(result))
+                        structured_answer.is_deterministic(result),
+                        structured_answer.person_names_of(result))
             finally:
                 conn.close()
 
@@ -582,10 +594,10 @@ class MessageHandler:
             return None
         if not ran:
             return None
-        rt, facts, suffix, deterministic = ran
+        rt, facts, suffix, deterministic, person_names = ran
         composed = await self._compose_structured(text, facts, suffix, deterministic)
         if user_id is not None:                      # main :290 path → register + record
-            self._register_and_record(user_id, clean_text or text, rt, composed)
+            self._register_and_record(user_id, clean_text or text, rt, composed, person_names)
         return composed
 
     async def _compose_structured(self, text: str, facts: str, suffix: str,
@@ -606,7 +618,7 @@ class MessageHandler:
             out = f"{out}\n\n{suffix}"
         return out
 
-    def _register_and_record(self, user_id, clean_text, rt, text) -> None:
+    def _register_and_record(self, user_id, clean_text, rt, text, person_names=None) -> None:
         """Side-effect chokepoint for BOTH structured paths (_answer_decision + _try_structured):
         register a resumable pending action AND record the answer in history (Bug 1 / G6). The WHOLE
         body is flag-gated so flag-off is truly zero-behavior-change — with the flag off, structured
@@ -626,13 +638,15 @@ class MessageHandler:
                                            {"skill": r.skill, "args": r.args}) for (label, r) in resumable],
                     created_at=datetime.now(timezone.utc)))
             cm.add_turn(user_id=user_id, role="user", content=clean_text)
-            cm.add_turn(user_id=user_id, role="assistant", content=(text or "")[:500])
+            cm.add_turn(user_id=user_id, role="assistant", content=(text or "")[:500],
+                        person_names=person_names or [])   # A3 tag-at-source
         except Exception:  # noqa: BLE001 - never break the answer path
             logger.debug("followup register_and_record failed (ignored)", exc_info=True)
 
-    async def _resume_pending(self, option) -> "Optional[str]":
+    async def _resume_pending(self, option) -> "Optional[tuple[str, list]]":
         """Execute a pending option's structured resume, bypassing the router (deterministic).
-        Returns composed text, or None on any failure (caller → graceful stop)."""
+        Returns (composed_text, person_names) or None on any failure (caller → graceful stop).
+        person_names (A3) lets the resumed assistant turn be tagged at :333-337."""
         if option.action != "structured":
             return None
         skill = option.payload.get("skill"); args = option.payload.get("args") or {}
@@ -643,12 +657,14 @@ class MessageHandler:
             return None
         if not ran:
             return None
-        facts, suffix, deterministic = ran        # _structured_from_route returns a 3-tuple (unchanged)
-        return await self._compose_structured(option.label, facts, suffix, deterministic)
+        facts, suffix, deterministic, person_names = ran
+        text = await self._compose_structured(option.label, facts, suffix, deterministic)
+        return text, person_names
 
     def _structured_from_route(self, skill: str, args: dict):
         """SQL body for a DECIDED skill/args (no route() — the UnifiedRouter already resolved it).
-        Thread target. Returns (facts, suffix, deterministic) or None (empty → caller falls to RAG)."""
+        Thread target. Returns (facts, suffix, deterministic, person_names) or None (empty → caller
+        falls to RAG). person_names (A3) is computed here where the result dict lives."""
         import sqlite3
         from v2.core.retrieval import structured_answer
         from v2.core.retrieval.router import Route
@@ -663,7 +679,8 @@ class MessageHandler:
             if not facts:
                 return None
             return (facts, structured_answer.deterministic_suffix(result),
-                    structured_answer.is_deterministic(result))
+                    structured_answer.is_deterministic(result),
+                    structured_answer.person_names_of(result))
         finally:
             conn.close()
 
@@ -708,11 +725,12 @@ class MessageHandler:
                 logger.warning("router-v21 structured run errored, falling to RAG: %s", exc)
                 ran = None
             if ran:
-                facts, suffix, deterministic = ran
+                facts, suffix, deterministic, person_names = ran
                 text = await self._compose_structured(text, facts, suffix, deterministic)
                 from v2.core.retrieval.router import Route
                 self._register_and_record(req.user_id, req.text.strip(),
-                                          Route(skill=decision.skill, args=dict(decision.args or {})), text)
+                                          Route(skill=decision.skill, args=dict(decision.args or {})),
+                                          text, person_names)
                 # QW-A8: log + attach a question_id so the KG tier gets the 👍/👎/🔄 keyboard and is
                 # measurable (this is the LIVE primary path; the skill is in scope → granular tag).
                 # A12 interaction (accepted + pinned in tests): the 🔄 button re-runs pure RAG at temp

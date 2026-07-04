@@ -97,25 +97,29 @@ def test_rewrite_discarded_when_intent_changed_to_non_question():
 # ── Unit 4: orchestrator (gate → LLM rewrite → verify) ────────────────────────
 def test_resolve_standalone_skips_llm():
     llm = _StubLLM("should not be used")
-    out, rewritten = _run(resolve_query("who is the GSA president", _HIST, llm))
+    _rr = _run(resolve_query("who is the GSA president", _HIST, llm))
+    out, rewritten = _rr.query, _rr.rewritten
     assert out == "who is the GSA president" and rewritten is False and llm.calls == 0
 
 
 def test_resolve_followup_good_rewrite():
     llm = _StubLLM("what is Mark Cartwright's position")
-    out, rewritten = _run(resolve_query("what is his position", _HIST, llm))
+    _rr = _run(resolve_query("what is his position", _HIST, llm))
+    out, rewritten = _rr.query, _rr.rewritten
     assert out == "what is Mark Cartwright's position" and rewritten is True and llm.calls == 1
 
 
 def test_resolve_followup_hallucinated_entity_passthrough():
     llm = _StubLLM("what is Vincent Oria's position")   # Oria NOT in history
-    out, rewritten = _run(resolve_query("what is his position", _HIST, llm))
+    _rr = _run(resolve_query("what is his position", _HIST, llm))
+    out, rewritten = _rr.query, _rr.rewritten
     assert out == "what is his position" and rewritten is False
 
 
 def test_resolve_no_history_skips_llm():
     llm = _StubLLM("x")
-    out, rewritten = _run(resolve_query("what is his position", [], llm))
+    _rr = _run(resolve_query("what is his position", [], llm))
+    out, rewritten = _rr.query, _rr.rewritten
     assert out == "what is his position" and rewritten is False and llm.calls == 0
 
 
@@ -124,7 +128,8 @@ def test_resolve_llm_failure_passthrough():
         calls = 0
         async def rewrite_with_context(self, h, m):
             raise RuntimeError("ollama down")
-    out, rewritten = _run(resolve_query("what is his position", _HIST, _Boom()))
+    _rr = _run(resolve_query("what is his position", _HIST, _Boom()))
+    out, rewritten = _rr.query, _rr.rewritten
     assert out == "what is his position" and rewritten is False
 
 

@@ -154,6 +154,51 @@ def is_deterministic(result: dict) -> bool:
     return result.get("skill") in _DETERMINISTIC_SKILLS
 
 
+# ── A3: person-name extraction (tag-at-source for the antecedent-ambiguity guard) ──
+# Single source of truth for "which PEOPLE did this structured answer name". The bot layer tags
+# the assistant turn with this so context_rewrite's pre-LLM gate can tell a roster (≥2 people) from
+# a single-person answer WITHOUT re-parsing free text. Rows are heterogeneous per skill; the
+# UNKNOWN-skill default is [] (never `rows` — a non-person roster like areas/orgs must not leak in).
+# Spec: docs/superpowers/specs/2026-07-04-a3-antecedent-ambiguity-design.md
+_PN_STRING_ROW = frozenset({"faculty_in_department", "people_by_research_area", "people_by_area_tag"})
+_PN_NAMEFIRST_ROW = frozenset({"officers_in_org", "people_in_org", "role_in_org", "people_by_role"})
+_PN_SINGLE_NAME = frozenset({"entity_card", "metric_of_person", "contact_of_person", "title_of_person"})
+
+
+def person_names_of(result: dict) -> list[str]:
+    """The list of PERSON names a structured result names (may be empty). Person-bearing skills
+    only; area/org/count skills and unknown skills → []. Errs toward MORE names (the >25 or ranked
+    branches hold more people than the text displays) — a longer list only makes the guard clarify,
+    which is the safe direction."""
+    if not isinstance(result, dict):
+        return []
+    skill = result.get("skill")
+    rows = result.get("rows")
+    if skill in _PN_SINGLE_NAME:
+        n = result.get("name")
+        return [n] if n else []
+    if skill == "research_of_person":
+        n = (result.get("research") or {}).get("name")
+        return [n] if n else []
+    if skill == "person_disambig":                       # candidates are PEOPLE
+        return [c["name"] for c in (result.get("candidates") or []) if isinstance(c, dict) and c.get("name")]
+    if skill == "org_disambig":                          # candidates are ORGS → not people
+        return []
+    if skill == "top_people_by_metric":                  # result["ranked"] = [(name, value), …]
+        return [r[0] for r in (result.get("ranked") or []) if isinstance(r, (tuple, list)) and r and r[0]]
+    if skill == "faculty_areas_in_department":           # rows=(name,[areas]); roster=names fallback
+        names = [r[0] for r in (rows or []) if isinstance(r, (tuple, list)) and r and r[0]]
+        names += [r for r in (result.get("roster") or []) if isinstance(r, str) and r]
+        return names
+    if skill in _PN_STRING_ROW:                          # rows = list of name strings
+        return [r for r in (rows or []) if isinstance(r, str) and r]
+    if skill in _PN_NAMEFIRST_ROW:                       # rows = (name, …) tuples
+        return [r[0] for r in (rows or []) if isinstance(r, (tuple, list)) and r and r[0]]
+    if skill == "people_by_name":                        # rows = dicts with "name"
+        return [h["name"] for h in (rows or []) if isinstance(h, dict) and h.get("name")]
+    return []                                            # areas/counts/orgs/unsupported → not a person roster
+
+
 def _fmt_metrics(field_key: str, present: dict) -> str:
     """Render the present metrics of a field via the registry templates, in registry order:
     {"citations":2774,"h_index":26} -> "2,774 citations, h-index 26"."""
@@ -541,5 +586,8 @@ def resumable_action(rt: Route) -> list[tuple[str, Route]] | None:
                            {**(origin.get("args") or {}),
                             "entity_id": c["entity_id"], "name": c["name"]}))   # resolved id/name win
                     for c in cands] or None
-        return [(c["name"], Route("entity_card", {"entity_id": c["entity_id"]})) for c in cands] or None
+        # A3: carry the resolved name into the card so person_names_of can tag the resumed turn
+        # (entity_card reads a.get("name")); untagged, the ambiguity gate would fall back to a stale roster.
+        return [(c["name"], Route("entity_card", {"entity_id": c["entity_id"], "name": c["name"]}))
+                for c in cands] or None
     return None
