@@ -369,3 +369,7 @@ how do I apply for financial aid at njit
 # A15b — topic→people trustworthiness. Determiner fix: "study the brain" must route to the KG
 # people_by_research_area skill (11 real NJIT people), NOT fall to RAG and assert a seminar visitor.
 which professors study the brain
+# A15b guard (verified un-tagged → RAG, so they exercise the person-scope guard, not the KG route):
+# each has ≥1 stamped NJIT-person chunk + seminar/pdf pollution → guard keeps the real person.
+which faculty study earthquakes
+which professors study the immune system

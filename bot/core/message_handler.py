@@ -1001,6 +1001,7 @@ class MessageHandler:
             is_canned_deflection = False   # tag-at-source: our own "no info" reply
             abstain_reason: Optional[str] = None   # tag-at-source reason when is_canned_deflection
             live_offtarget = False   # A1: live searched but no page answered → top-3-links degrade shown
+            guard_answered = False   # A15b: the person-scope guard produced a terminal answer/abstain
             # base_q = the resolved/expanded query (main's contextual-rewrite); used for the
             # primary-miss signal, the office tier, and live — so a rewritten follow-up drives all
             # three. clean_text stays the original for compose/log/history.
@@ -1063,6 +1064,50 @@ class MessageHandler:
                 # keep a good answer (B1: the gate judges weak answers, not the threshold). Turning
                 # on LIVE_RELEVANCE_GATE must not newly convert an answerable turn into a deflection.
 
+            # ── A15b person-scope guard (post-ladder, pre-compose) ──────────────────────────
+            # On a person-LISTING query, a compose chunk WITHOUT an NJIT-Person entity_id (a seminar
+            # abstract, an external-visitor page) must never stand in as the person answer. Keep only
+            # stamped person chunks; if the settled pool has ZERO stamped person chunks, do NOT compose
+            # from the pollution — degrade to live (the guard OWNS this attempt, since the ladder may
+            # not have run when primary_miss was False — Fable R1), then honest-abstain. Fail-open (any
+            # fault → chunks untouched). Skipped once live/office already answered. Only trims a
+            # person-seeking pool, so non-person prose RAG is structurally untouched. Flag-gated.
+            if (botcfg.PERSON_SCOPE_GUARD_ENABLED and chunks and not used_live and not live_offtarget
+                    and not used_office):
+                try:
+                    from v2.core.retrieval.router import is_person_seeking
+                    if is_person_seeking(base_q):
+                        stamped = [c for c in chunks
+                                   if (getattr(c, "metadata", {}) or {}).get("entity_id")]
+                        if stamped:
+                            if len(stamped) < len(chunks):
+                                logger.info("person-scope guard: kept %d/%d NJIT-person chunks",
+                                            len(stamped), len(chunks))
+                            chunks = stamped
+                        else:
+                            # No confirmable NJIT person in a person-listing pool → never assert the
+                            # unstamped pollution. Re-invoke live (guard-owned), then honest-abstain.
+                            logger.info("person-scope guard: 0 NJIT-person chunks in a person-seeking "
+                                        "pool — degrading (live→abstain)")
+                            if (not attempted_live and botcfg.LIVE_ENABLED and botcfg.BRAVE_API_KEY
+                                    and self.ollama and self.retriever and not botcfg.LIVE_OPTIN):
+                                attempted_live = True
+                                live = await self.live_search(base_q)
+                                if isinstance(live, LiveAnswer):
+                                    response_text = live.text; source_note = live.source_url
+                                    used_ai = True; used_live = True; guard_answered = True
+                                elif isinstance(live, LiveLinks):
+                                    response_text = _live_links_text(live.urls)
+                                    is_canned_deflection = True; abstain_reason = "live-offtarget"
+                                    live_offtarget = True; guard_answered = True
+                            if not used_live and not live_offtarget:
+                                response_text = self._useful_abstain(base_q, chunks)
+                                source_note = None; used_ai = False
+                                is_canned_deflection = True; abstain_reason = "person-scope-abstain"
+                                guard_answered = True
+                except Exception:
+                    logger.exception("person-scope guard faulted; passing through (fail-open)")
+
             # Generate — compose FIRST, then run the post-generation faithfulness / answerability
             # gate (WS4) on the composed answer. The gate is deterministic answer-type grounding
             # (count/rate/money/date must carry a GROUNDED value of the expected type) + a
@@ -1070,8 +1115,8 @@ class MessageHandler:
             # Gate-2 answerability verdict only for the non-typed factual residual. It replaces the
             # brittle pre-generation quote_grounded/fact_shaped gate (which false-abstained on
             # markdown — the Chrome-River bug — while leaking grounded-but-irrelevant fabrications).
-            if used_live or live_offtarget:
-                pass                                # live answered, or its off-target links are shown
+            if used_live or live_offtarget or guard_answered:
+                pass                                # live answered, off-target links, or guard abstained
             elif chunks and self.ollama:
                 # Compose sees the ORIGINAL wording for fidelity, plus the resolved query (when a
                 # follow-up was rewritten) so the question it answers matches the retrieved chunks

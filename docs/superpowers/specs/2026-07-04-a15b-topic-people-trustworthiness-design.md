@@ -203,8 +203,11 @@ frequency (eval-diff-gated). The determiner fix only adds KG recall for real tag
 - shared person-seeking predicate w/ contact-exclusions — IN (Commit 3b)
 - entity-scoped trim at compose choke-point, activation rule, fail-open — IN (Commit 3c, flagged)
 - honest-partial → live (guard-owned re-invoke, R1) → abstain degrade — IN (Commit 3d)
-- linkage-coverage audit gating guard aggressiveness — IN (Commit 0)
-- post-compose name-verify TELEMETRY-ONLY — IN (Commit 4)
+- linkage-coverage audit gating guard aggressiveness — ✅ DONE (Commit 0: 45% stamped / 0% demote-risk)
+- post-compose name-verify TELEMETRY-ONLY — **DEFERRED (loudly)**: it's log-only (changes NO answer) and adds
+  fragile name-extraction surface; shipping the behavior-changing guard first keeps the diff focused. The
+  accepted narrowing residual (a real NJIT person on-keyword but off-topic) is therefore currently UNMEASURED —
+  this telemetry is the way to measure it and is the first follow-up. Not silently dropped.
 - **NARROWED (named, not dropped — R2):** roadmap's "wrong-TOPIC people" → this ships a non-NJIT-IDENTITY guard;
   topic-fit verification of surviving *NJIT* persons is DEFERRED to Commit 4 telemetry (accepted residual above)
 - seminar/colloquium page typing at the crawler — DEFERRED (redundant negative signal; data producer is

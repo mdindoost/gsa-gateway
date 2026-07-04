@@ -182,6 +182,8 @@ class RetrievedChunk:
     verified: bool = True          # False = first-layer LLM draft, not authoritative
     ce_score: float | None = None  # cross-encoder relevance of the MATCHED CHUNK; None = not reranked / cannot judge
     pdf_table_degraded: bool = False  # True = dense-numeric-table text; figures may be col-misaligned
+    entity_id: str | None = None   # NJIT-Person node key (people.njit.edu/profile/<slug>) when this chunk is
+                                   # person-derived; None for prose/seminar/external pages (A15b person-scope guard)
 
 
 def _meta(metadata) -> dict:
@@ -613,6 +615,7 @@ class V2Retriever:
                 source_url=r["source_url"], verified=_meta_verified(r["metadata"]),
                 ce_score=ce_by_iid.get(iid),
                 pdf_table_degraded=bool(_meta(r["metadata"]).get("pdf_table_degraded", False)),
+                entity_id=_meta_entity_id(r["metadata"]),
             ))
 
         logger.debug(

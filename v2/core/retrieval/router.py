@@ -205,6 +205,36 @@ _PERSON_INTENT = re.compile(
 # ~557/629/634/643); scoped to the metric ranking/decline branch only (see person_cue below).
 _METRIC_WHO_HAS = re.compile(r"\bwho\s+ha(?:s|ve)\b")
 _PERSON_ATTR = re.compile(r"\b(e-?mail|office|phone|number|title|position|bio)\b")
+
+# ── A15b person-scope guard predicate ──────────────────────────────────────────
+# Does this query ask to IDENTIFY / LIST NJIT people (faculty/researchers who do X), as opposed to
+# a policy question that merely MENTIONS faculty, or a contact/office request? Consumed by the
+# compose guard in message_handler to decide whether to trim to NJIT-Person chunks. Kept HERE so the
+# people-noun vocabulary shares ONE source with the router (Fable — no drift). Three surfaces:
+#   (a) WH + people-noun  ("which professors …", "what faculty …")
+#   (b) people-noun + a research/study cue  ("faculty studying X", "professors who research X")
+#   (c) "who studies/researches/works on …"  (person-listing with no explicit people-noun)
+_PS_PEOPLE = r"professors?|faculty|researchers?|profs?|instructors?|lecturers?|academics?|scientists?|pis?"
+_PS_RESEARCH = r"research(?:es|ing|er)?|works?\s+on|working\s+on|study(?:ing|ies)?|studies|specializ|focus(?:es|ing)?\s+on|expert"
+_PERSON_SEEK = re.compile(
+    rf"\b(?:who|which|what)\b[^?]*\b(?:{_PS_PEOPLE})\b"
+    rf"|\b(?:{_PS_PEOPLE})\b[^?]*\b(?:{_PS_RESEARCH})\b"
+    rf"|\bwho\s+(?:studies|study|researches?|research|works?\s+on|working\s+on)\b", re.I)
+# Contact/office shapes are answered by prose, NOT the people-list guard — the biggest false-positive
+# class. Excluded outright.
+_PERSON_SEEK_EXCL = re.compile(
+    r"\b(?:contact|e-?mail|reach|phone|call|office\s+hours?|whose\s+office|talk\s+to|"
+    r"get\s+in\s+touch|who\s+do\s+i|how\s+do\s+i|how\s+can\s+i|how\s+to)\b", re.I)
+
+
+def is_person_seeking(text: str) -> bool:
+    """True when `text` asks to identify/list NJIT faculty/researchers (see _PERSON_SEEK). Contact/
+    office/how-to shapes return False. Used ONLY by the A15b compose guard, never for routing."""
+    if not text:
+        return False
+    if _PERSON_SEEK_EXCL.search(text):
+        return False
+    return bool(_PERSON_SEEK.search(text))
 # Looser "more about this person" cues that FOLLOW a bare surname ("koutis info",
 # "koutis all info", "koutis details") — distinct from _PERSON_INTENT's "info ON <name>".
 _INFO_CUE = re.compile(r"\b(info|information|details|profile|bio|background|everything)\b")

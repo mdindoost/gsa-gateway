@@ -177,6 +177,7 @@ class V2RetrieverShim:
             relevance_score=rel,
             metadata={"org_path": c.org_path, "source": c.source,
                       "ce_score": getattr(c, "ce_score", None),
+                      "entity_id": getattr(c, "entity_id", None),   # A15b person-scope guard signal
                       "pdf_table_degraded": getattr(c, "pdf_table_degraded", False)},
             item_id=c.item_id,        # v2 RetrievedChunk always has it
             source_url=getattr(c, "source_url", None),
