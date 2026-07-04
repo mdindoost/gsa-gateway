@@ -431,3 +431,29 @@ async def test_short_query_not_gsa_reframed(handler):
 
     assert captured.get("query") == "machine learning"   # base_q, NOT the GSA reframe
     handler.ollama.expand_query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_officer_first_name_not_gsa_reframed(handler):
+    """Follow-up: the is_officer_query hack is gone. A bare officer first name is retrieved
+    VERBATIM (base_q), not rewritten into "Who is {Name} at GSA NJIT?…", and no 'contact' source
+    filter is applied (that plumbing is removed too)."""
+    handler.intent_detector.detect.return_value = (INTENT_QUESTION, 0.9)
+    captured = {}
+
+    async def capture_retrieve(*args, query=None, source_type_filter=None, **kwargs):
+        captured["query"] = query
+        captured["filter"] = source_type_filter
+        chunk = MagicMock()
+        chunk.text = "…"; chunk.source_file = "x.md"; chunk.section_title = "s"
+        chunk.relevance_score = 0.85
+        return [chunk]
+
+    handler.retriever.retrieve = capture_retrieve
+    handler.ollama = AsyncMock()
+    handler.ollama.generate_answer = AsyncMock(return_value="ok")
+
+    await handler.handle(MessageRequest(user_id="u1", text="fernando", platform="discord"))
+
+    assert captured.get("query") == "fernando"       # NOT "Who is Fernando at GSA NJIT?…"
+    assert captured.get("filter") is None            # contact_filter plumbing removed

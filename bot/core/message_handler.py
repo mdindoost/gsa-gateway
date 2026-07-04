@@ -49,10 +49,6 @@ _KB_MISS_RESPONSE = (
     "- Use /contact to find the right officer"
 )
 
-_OFFICER_FIRST_NAMES = {
-    "fernando", "mohammad", "mohith", "durvish", "nistha", "ritwik",
-}
-
 # Deterministic clarify template (v2.1 UnifiedRouter CLARIFY family). Abstention is BUILT-but-OFF
 # in Phase 1b, so this is reached only if a classifier ever returns CLARIFY directly.
 _CLARIFY_MSG = (
@@ -777,31 +773,23 @@ class MessageHandler:
                 max_turns = getattr(self.config, "conversation_max_turns", 5)
                 history = self.conversation_manager.get_history(user_id, max_turns=max_turns)
 
-            # Expand short/officer queries. Retrieval is built from the context-resolved query
-            # (`base_q`); clean_text stays original for compose/log/history.
+            # Retrieval is built from the context-resolved query (`base_q`); clean_text stays
+            # original for compose/log/history.
             base_q = resolved_query or clean_text
-            core = base_q.strip("?!.,").strip().lower()
-            matched_officer = next(
-                (name for name in _OFFICER_FIRST_NAMES if name in core.split() or core == name),
-                None,
-            )
-            is_officer_query = matched_officer is not None
             search_query = base_q
-            contact_filter = None
-
-            if is_officer_query:
-                search_query = (
-                    f"Who is {matched_officer.title()} at GSA NJIT? "
-                    f"Contact information and role for {matched_officer.title()}"
-                )
-                contact_filter = "contact"
-            # NOTE: the v1 LLM short-query expander was REMOVED here (thread B, 2026-07-03). It
-            # rewrote every short (<=3-word) query into a GSA-framed question, which mis-framed
-            # non-GSA queries on the now university-wide corpus (e.g. "game development lab",
-            # "computer science phd" -> GSA). Short queries now retrieve on base_q verbatim; this
-            # reverses the 2026-06-22 [SE4] "WRAP don't replace" decision (the wrapper was safe on a
-            # GSA-centric corpus, but became the bias it was meant to avoid once the corpus went
-            # NJIT-wide). See docs/superpowers/specs/2026-07-03-remove-v1-expander-design.md.
+            # NOTE: two v1 GSA-framing hacks were REMOVED from this spot (2026-07-03):
+            #  (1) the LLM short-query expander (thread B) — rewrote every short (<=3-word) query into
+            #      a GSA-framed question, mis-framing non-GSA queries on the now university-wide corpus
+            #      ("game development lab"/"computer science phd" -> GSA). Reverses the 2026-06-22 [SE4]
+            #      "WRAP don't replace" decision (safe on a GSA-centric corpus; became the bias once
+            #      the corpus went NJIT-wide). See …/specs/2026-07-03-remove-v1-expander-design.md.
+            #  (2) is_officer_query — matched 6 hardcoded GSA officer FIRST names and rewrote to
+            #      "Who is {Name} at GSA NJIT? Contact…" + a 'contact' source filter. A GSA/owner-
+            #      privileging hack (hardcoded "mohammad" -> Dindoost despite 4 Mohammads in the KG)
+            #      that a live measurement showed didn't even resolve the officers. Short queries now
+            #      retrieve on base_q verbatim.
+            # Optional future enhancement (logged, YAGNI): deterministic first-name resolution
+            # (unique -> person, ambiguous -> person_disambig clarify) in the router.
 
             # Retrieve
             if intent == INTENT_FOOD:
@@ -844,7 +832,7 @@ class MessageHandler:
                 chunks = await self.retriever.retrieve(
                     query=search_query,
                     conversation_history=history,
-                    source_type_filter=contact_filter,
+                    source_type_filter=None,
                 )
 
             # Primary miss → LOCAL office tier BEFORE the live njit.edu fallback (precedence
