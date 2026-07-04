@@ -63,13 +63,21 @@ enforcing topic-fit check is an explicit deferred item, not a silent drop.
 
 ## Scope — three coordinated changes, one branch, sequenced commits
 
-### Commit 0 (build-time, no ship) — linkage-coverage audit (Fable Q4)
-Over the person-seeking questions in `eval/questions.txt`, measure the fraction of top-5 retrieved chunks that
-are *about* an NJIT person yet **lack** an `entity_id`. This (a) calibrates how aggressive the guard can safely
-be, and (b) quantifies the deeper data gap ("extend entity-linkage to loose prose"). **Gate:** if coverage is
-high → ship the guard as designed (Commit 3). If low → the guard demote must be *soft* (see Commit 3 degrade)
-and the audit number becomes the evidence for a separate data-linkage thread. The audit result is recorded in
-this spec before Commit 3 is built.
+### Commit 0 (build-time, no ship) — linkage-coverage audit (Fable Q4) — ✅ DONE 2026-07-04
+Ran the REAL retriever over 8 person-seeking RAG queries (scratchpad/a15b_audit2.py), reading `entity_id` from
+the DB by `item_id` (the shim strips it today). Result over 40 top-5 chunks:
+- **45% STAMPED** (DB `entity_id`) → guard KEEPS — every one a real NJIT person (Kallioniemi, Garnier, Swissler,
+  Crespo, Ancis, Oza, Venerus, Buffone, Mahgoub).
+- **0% unstamped person-ish type** → **ZERO demote-risk.** Every profile/about/research_statement/teaching/
+  research_areas chunk carried a stamp; there is NO loose-NJIT-person-prose-without-a-stamp in these pools.
+- **55% unstamped non-person** (pdf/policy/faq/"Click Here") → safe HARD DROP.
+**GATE RESULT → HARD DROP (not soft-demote).** Because person-about chunks are 100% stamped, the guard hard-drops
+unstamped chunks with no coverage loss — the softer demote-below-survivors fallback is NOT needed. Queries with 0
+stamped chunks in the top-5 (e.g. "who studies memory and cognition") → the ≥1-entity activation rule stands the
+guard down → normal ladder handles them. One accepted edge: a `faq`-type "Who is Prof. X?" chunk is unstamped and
+would be dropped, but the person's own stamped profile chunk carries the answer, so no NJIT person is lost. The
+0% person-ish-unstamped number is ALSO the evidence that the deeper "extend entity-linkage to loose prose" data
+thread is NOT needed now.
 
 ### Commit 1 — A11: miss-signal reads the first SCORED chunk
 `V2RetrieverShim.top_relevance` (`retriever_shim.py:110`) must **skip chunks with no real `ce_score`** (the
