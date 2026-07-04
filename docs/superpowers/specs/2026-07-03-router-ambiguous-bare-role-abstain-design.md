@@ -81,7 +81,7 @@ Dispatch on which regex matched:
   ==1 → confident "Name — Title (Org)."; 0 → "" → RAG. Byte-identical to what "who is the &lt;role&gt;"
   already produces — the consistency goal, zero new hint text.
 - **Officer-title match** (`_OFFICER_TITLE_RX`: `officers`, `officer`, `treasurer`, `secretary`,
-  `vp`, `e-board`, `executive board`; president/vp excluded by conjunct 2) →
+  `vp`, `e-board`, `executive board`; president/vice president excluded by conjunct 2) →
   **`Route("ambiguous_officers", {})`** — a NEW terminal deflection handled in `structured_answer.py`
   with **no DB query**, added to the deterministic-skill set (so the hint is never LLM-composed;
   mirrors `metric_descending_unsupported`). Static hint:
