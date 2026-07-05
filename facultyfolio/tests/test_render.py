@@ -20,11 +20,24 @@ def test_profile_koutis_sections():
     assert config.ASSISTANT_VERSION in html   # footer tracks identity source, not a re-hardcoded string
 
 
-def test_profile_junior_no_office_row():
-    f = db.get_faculty("km982")            # Kieran — no office/phone, joint appointment
-    html = render.render_profile(f)
+def test_about_rows_fixed_shows_all_with_not_listed():
+    f = {"education_raw": "", "teaching_raw": ""}     # nothing -> all 4 rows grayed
+    rows = render.about_rows(f, "Fixed")
+    assert [r["label"] for r in rows] == ["Education", "Office", "Teaching interests", "Teaching"]
+    assert all(r["present"] is False and r["value"] == "Not listed" for r in rows)
+
+
+def test_about_rows_adaptive_omits_empty():
+    f = {"education_raw": "", "teaching_raw": ""}
+    assert render.about_rows(f, "Adaptive") == []    # nothing present -> no rows
+
+
+def test_profile_no_office_shows_not_listed_fixed():
+    # Fixed default: Kieran has no office -> the Office row is PRESENT but grayed "Not listed"
+    html = render.render_profile(db.get_faculty("km982"))
     assert "Joint appointment" in html
-    assert "<span class=\"about-k\">Office</span>" not in html          # office row omitted
+    assert "<span class=\"about-k\">Office</span>" in html              # row now shown
+    assert "about-row off" in html and "Not listed" in html            # grayed placeholder
     assert "Active since" in html
 
 
@@ -53,10 +66,12 @@ def test_profile_teaching_interests_row():
     assert "Data Mining" in html
 
 
-def test_profile_degraded_education_omits_row():
-    f = db.get_faculty("oria")             # education == "Ph.D." only
-    html = render.render_profile(f)
-    assert "<span class=\"about-k\">Education</span>" not in html
+def test_profile_degraded_education_not_listed_fixed():
+    # Fixed default: Oria's education ("Ph.D." only) yields no rendered value -> "Not listed"
+    html = render.render_profile(db.get_faculty("oria"))
+    assert "<span class=\"about-k\">Education</span>" in html
+    # the Education row is grayed with the placeholder
+    assert "Not listed" in html
 
 
 def test_missing_scholar_single_hook():

@@ -4,9 +4,9 @@ from facultyfolio import config, paths
 
 
 def test_flag_defaults():
-    # current behavior is preserved as Adaptive everywhere EXCEPT the social-icons pilot
+    # SOCIAL_ICONS and ABOUT_ROWS are the Fixed pilots; the rest keep the Adaptive default
     assert config.flag("SOCIAL_ICONS") == "Fixed"
-    assert config.flag("ABOUT_ROWS") == "Adaptive"
+    assert config.flag("ABOUT_ROWS") == "Fixed"
     assert config.flag("SCHOLAR_METRICS") == "Adaptive"
     assert config.flag("PUBLICATIONS") == "Adaptive"
     assert config.flag("NAV") == "Adaptive"

@@ -28,6 +28,7 @@ ASSISTANT_VERSION = _identity.version_label()          # e.g. "Kavosh v2.5"
 FIXED_HEADING = "Impact & trajectory"          # Scholarly-activity section heading, all faculty
 ACTIVE_SINCE_LABEL = "Active since"            # 4th stat (NOT "Publishing since" — honesty, spec §4)
 ABOUT_SOURCE = "Crawled from the NJIT department profile · not written or generated"
+ABOUT_EMPTY_LABEL = "Not listed"               # Fixed-mode placeholder for a missing about-row
 NJIT_PROFILE_TMPL = "https://people.njit.edu/profile/{slug}"
 
 # --- college display names (identity proper-nouns, NOT content curation) ------
@@ -53,7 +54,7 @@ COLLEGE_NAMES = {
 # Override any flag at build time with FACULTYFOLIO_<NAME> (e.g. FACULTYFOLIO_NAV=Fixed).
 _FLAG_DEFAULTS = {
     "SOCIAL_ICONS": "Fixed",
-    "ABOUT_ROWS": "Adaptive",
+    "ABOUT_ROWS": "Fixed",
     "SCHOLAR_METRICS": "Adaptive",
     "PUBLICATIONS": "Adaptive",
     "NAV": "Adaptive",

@@ -203,6 +203,8 @@
   .about-row:last-child{border-bottom:none;}
   .about-k{font-family:var(--f-mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); padding-top:2px;}
   .about-v{font-size:14.5px; color:var(--ink-2); line-height:1.5;}
+  /* Fixed mode: a row the person has no data for -> shown but grayed ("Not listed"). */
+  .about-row.off .about-v{color:var(--faint); font-style:italic;}
   .about-src{font-family:var(--f-mono); font-size:10.5px; color:var(--faint); margin:10px 0 0; padding-left:2px;}
 
   /* metrics + chart card */
