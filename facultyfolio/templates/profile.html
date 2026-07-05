@@ -67,10 +67,7 @@
         <div class="rule"></div>
         <div class="about">
           <div class="about-row"><span class="about-k">Appointment</span><span class="about-v">{{ appointment }}</span></div>
-          {% if education %}<div class="about-row"><span class="about-k">Education</span><span class="about-v">{{ education|join(' · ') }}</span></div>{% endif %}
-          {% if contact %}<div class="about-row"><span class="about-k">Office</span><span class="about-v">{{ contact }}</span></div>{% endif %}
-          {% if teaching_interests %}<div class="about-row"><span class="about-k">Teaching interests</span><span class="about-v">{{ teaching_interests|join(', ') }}</span></div>{% endif %}
-          {% if teaching %}<div class="about-row"><span class="about-k">Teaching</span><span class="about-v">{{ teaching|join(' · ') }}</span></div>{% endif %}
+          {% for r in about_rows %}<div class="about-row{% if not r.present %} off{% endif %}"><span class="about-k">{{ r.label }}</span><span class="about-v">{{ r.value }}</span></div>{% endfor %}
         </div>
         <p class="about-src">{{ about_source }}</p>
       </section>

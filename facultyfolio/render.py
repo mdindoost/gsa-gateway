@@ -63,6 +63,29 @@ def social_icons(f: dict, mode: str) -> list:
     return out
 
 
+def about_rows(f: dict, mode: str) -> list:
+    """The Background block's optional rows (Appointment is separate — always shown).
+
+    Fixed    -> all rows every page; a missing one is grayed with config.ABOUT_EMPTY_LABEL.
+    Adaptive -> only rows that have data (the original omit-when-empty behavior).
+    """
+    items = [
+        ("Education", " · ".join(F.format_education(f.get("education_raw") or ""))),
+        ("Office", _contact(f) or ""),
+        ("Teaching interests", ", ".join(F.format_teaching_interests(f.get("teaching_raw") or ""))),
+        ("Teaching", " · ".join(F.format_teaching(f.get("teaching_raw") or ""))),
+    ]
+    out = []
+    for label, val in items:
+        present = bool(val)
+        if mode == "Adaptive" and not present:
+            continue
+        out.append({"label": label,
+                    "value": val if present else config.ABOUT_EMPTY_LABEL,
+                    "present": present})
+    return out
+
+
 def _appointment(f: dict) -> str:
     lead = f"{f['title']}, {f['home_dept']}" if f.get("title") else (f.get("home_dept") or "")
     if f.get("joint_dept"):
@@ -135,10 +158,7 @@ def render_profile(f: dict, photo_ref: str = None) -> str:
         "photo_ref": photo_ref,
         "areas": f.get("areas") or [],
         "appointment": _appointment(f),
-        "education": F.format_education(f.get("education_raw") or ""),
-        "contact": _contact(f),
-        "teaching_interests": F.format_teaching_interests(f.get("teaching_raw") or ""),
-        "teaching": F.format_teaching(f.get("teaching_raw") or ""),
+        "about_rows": about_rows(f, config.flag("ABOUT_ROWS")),
         "about_source": config.ABOUT_SOURCE,
         "heading": config.FIXED_HEADING,
         "active_since_label": config.ACTIVE_SINCE_LABEL,
