@@ -10,6 +10,30 @@ from .db import connect
 from .format import normalize_name
 
 
+_FACULTY_LABEL = "Faculty"                       # catch-all for rank-less titles (Director, empty)
+
+
+def rank_of(title: str):
+    """Map a title string to (rank_index, rank_label) on config.RANK_LADDER.
+
+    Pass 1: "Department Chair" -> group 0 (heads the unit, overrides professorial rank).
+    Pass 2: professorial phrases, longest-first (substring-safe: "Associate Professor" is
+            searched before bare "Professor"; resolves compounds like "…, Associate Dean").
+    Pass 3: a bare "Dean" -> Professor (a dean holds a full professorship).
+    Else  : the "Faculty" catch-all (index just past the ladder).
+    """
+    t = (title or "").lower()
+    ladder = config.RANK_LADDER
+    if "department chair" in t:
+        return 0, ladder[0]
+    for phrase in sorted(ladder[1:], key=len, reverse=True):        # professorial, longest-first
+        if phrase.lower() in t:
+            return ladder.index(phrase), phrase
+    if "dean" in t:
+        return ladder.index("Professor"), "Professor"
+    return len(ladder), _FACULTY_LABEL
+
+
 def _members(conn, org_id):
     """(slug, name, scholar-dict|{}) for active home faculty of the org."""
     rows = conn.execute(

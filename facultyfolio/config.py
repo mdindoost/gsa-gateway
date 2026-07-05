@@ -74,6 +74,21 @@ def flag(name: str) -> str:
     return val
 
 
+# --- academic rank ladder (closed ordinal scale, like COLLEGE_NAMES — not curation) --
+# Seniority order for the leaderboard's "By rank/title" view. Chair heads the unit; a Dean maps
+# to Professor (see rank.rank_of); rank-less titles fall to a "Faculty" catch-all (index past the
+# ladder). The substring-safe professorial match order is DERIVED in rank.py (longest-first).
+RANK_LADDER = [
+    "Department Chair",
+    "Distinguished Professor",
+    "Professor",
+    "Associate Professor",
+    "Assistant Professor",
+    "Senior University Lecturer",
+    "University Lecturer",
+]
+LEADERBOARD_DEFAULT_VIEW = "rank"              # "rank" | "citations" | "az"
+
 # --- per-person photo overrides (mechanism (c); drop-in file also supported) --
 # Pin a specific photo for a person. Value is one of: "njit" (force the NJIT card),
 # "scholar" (force Google Scholar), a URL (fetch exactly that), or a local file path.
