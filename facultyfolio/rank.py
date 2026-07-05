@@ -61,6 +61,55 @@ def roster(org_id) -> list:
     return out
 
 
+def _surname(name: str) -> str:
+    return (name or "").split()[-1].casefold() if (name or "").split() else ""
+
+
+def by_rank(roster) -> list:
+    """Group the roster into ladder buckets, seniority order (empty groups dropped).
+
+    Members within a group sort by surname, then full name, then slug (byte-stable).
+    The 'Faculty' catch-all (rank-less titles) sorts last, after the ladder.
+    """
+    groups = {}
+    for row in roster:
+        groups.setdefault((row["rank_index"], row["rank_label"]), []).append(row)
+    out = []
+    for (index, label) in sorted(groups):                      # ladder order = ascending index
+        members = sorted(groups[(index, label)],
+                         key=lambda r: (_surname(r["name"]), r["name"].casefold(), r["slug"]))
+        out.append({"index": index, "label": label, "members": members})
+    return out
+
+
+def by_citations(roster) -> list:
+    """Scholar faculty ranked by citations desc (1..N), then the no-Scholar tail A–Z.
+
+    None-safe: no-Scholar rows sort last (citations is None -> True). Each Scholar row
+    gets a 1-based `rank_num`; unranked rows get `rank_num=None`.
+    """
+    ordered = sorted(
+        roster,
+        key=lambda r: (r["citations"] is None, -(r["citations"] or 0), r["name"].casefold(), r["slug"]),
+    )
+    n = 0
+    out = []
+    for r in ordered:
+        row = dict(r)
+        if r["citations"] is None:
+            row["rank_num"] = None
+        else:
+            n += 1
+            row["rank_num"] = n
+        out.append(row)
+    return out
+
+
+def by_name(roster) -> list:
+    """All faculty A–Z by surname, then full name, then slug (byte-stable)."""
+    return sorted(roster, key=lambda r: (_surname(r["name"]), r["name"].casefold(), r["slug"]))
+
+
 def _members(conn, org_id):
     """(slug, name, scholar-dict|{}) for active home faculty of the org."""
     rows = conn.execute(

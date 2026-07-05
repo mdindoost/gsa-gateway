@@ -39,6 +39,59 @@ def test_roster_full_department():
         assert rank.rank_of(row["title"]) == (row["rank_index"], row["rank_label"])
 
 
+def _row(slug, name, title, citations=None, h=None, areas=None):
+    idx, label = rank.rank_of(title)
+    return {"slug": slug, "name": name, "title": title, "rank_index": idx,
+            "rank_label": label, "citations": citations, "h_index": h, "areas": areas or []}
+
+
+_FIXTURE = [
+    _row("chair1", "Cathy Chair", "Professor, Department Chair", 500),
+    _row("dean1", "Dan Dean", "Dean, Ying Wu College of Computing", 900),
+    _row("prof_b", "Bob Prof", "Professor", 300),
+    _row("li2", "Jing Li", "Associate Professor"),                     # no Scholar
+    _row("li1", "Ann Li", "Associate Professor", 100),
+    _row("asst1", "Amy Assistant", "Assistant Professor", 50),
+    _row("lect1", "Leo Lecturer", "University Lecturer"),              # no Scholar, catch-less
+    _row("dir1", "Della Director", "First Year CS Education, Director"),  # -> Faculty
+]
+
+
+def test_by_rank_chair_first_dean_in_professor_group():
+    groups = rank.by_rank(_FIXTURE)
+    assert groups[0]["label"] == "Department Chair"                    # Chair heads
+    prof = next(g for g in groups if g["label"] == "Professor")
+    assert {m["slug"] for m in prof["members"]} == {"dean1", "prof_b"}  # Dean folded into Professor
+    # Professor group members sorted by surname: Dean(D) before Prof(P)
+    assert [m["slug"] for m in prof["members"]] == ["dean1", "prof_b"]
+    assert groups[-1]["label"] == "Faculty"                            # catch-all last
+
+
+def test_by_rank_slug_tiebreak_within_group():
+    assoc = next(g for g in rank.by_rank(_FIXTURE) if g["label"] == "Associate Professor")
+    # both surname "Li" -> tie broken by full name then slug: Ann Li (li1) before Jing Li (li2)
+    assert [m["slug"] for m in assoc["members"]] == ["li1", "li2"]
+
+
+def test_by_citations_ranked_then_tail():
+    lst = rank.by_citations(_FIXTURE)
+    ranked = [r for r in lst if r["rank_num"] is not None]
+    tail = [r for r in lst if r["rank_num"] is None]
+    # ranked in citation-desc order, contiguous 1..N
+    assert [r["slug"] for r in ranked] == ["dean1", "chair1", "prof_b", "li1", "asst1"]
+    assert [r["rank_num"] for r in ranked] == [1, 2, 3, 4, 5]
+    # no-Scholar tail A–Z by FULL name, all rank_num None, sorted after ranked
+    assert [r["slug"] for r in tail] == ["dir1", "li2", "lect1"]       # Della/Jing/Leo by name
+    assert lst[-1]["rank_num"] is None                                 # None never crashes, sorts last
+
+
+def test_by_name_surname_order():
+    lst = rank.by_name(_FIXTURE)
+    assert [r["slug"] for r in lst] == [
+        "asst1", "chair1", "dean1", "dir1", "lect1", "li1", "li2", "prof_b",
+    ]  # Assistant, Chair, Dean, Director, Lecturer, Li, Li, Prof — surname A–Z, slug breaks Li tie
+
+
 def test_cs_coverage():
     N, M = rank.coverage(config.CS_ORG_ID)
     assert (N, M) == (39, 57)
