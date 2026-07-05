@@ -34,9 +34,18 @@ def photos_ensure(slug, scholar_photo_url, name, assets_dir):
 
 
 def build_leaderboard(out_root: str) -> str:
-    ranked = rank.ranked_list(config.CS_ORG_ID)
+    roster = rank.roster(config.CS_ORG_ID)
     coverage = rank.coverage(config.CS_ORG_ID)
-    html = render.render_leaderboard("Computer Science", ranked, coverage)
+    views = {
+        "rank": rank.by_rank(roster),
+        "citations": rank.by_citations(roster),
+        "az": rank.by_name(roster),
+    }
+    stats = rank.leaderboard_stats(roster, coverage)
+    # photos are already cached from the profile pass, so this is ref-lookup, no network.
+    assets_dir = paths.assets_dir(out_root)
+    photo_map = {r["slug"]: photos_ensure(r["slug"], None, r["name"], assets_dir) for r in roster}
+    html = render.render_leaderboard("Computer Science", views, stats, coverage, photo_map)
     path = paths.leaderboard_path(out_root)
     _write(path, html)
     return path

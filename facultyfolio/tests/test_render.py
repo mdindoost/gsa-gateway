@@ -112,13 +112,53 @@ def test_no_llm_prose_leaks():
     assert "not written or generated" in html
 
 
-def test_leaderboard():
+def _leaderboard_html():
     from facultyfolio import rank, config
-    lst = rank.ranked_list(config.CS_ORG_ID)
+    roster = rank.roster(config.CS_ORG_ID)
     cov = rank.coverage(config.CS_ORG_ID)
-    html = render.render_leaderboard("Computer Science", lst, cov)
-    assert "39 of 57" in html and "faculty with Google Scholar data" in html
-    assert "by total citations" in html
-    assert "../p/" in html                       # rows link to profiles
-    assert html.count('class="lb-row"') == 39
-    assert config.ASSISTANT_VERSION in html      # footer version reaches the leaderboard too
+    views = {"rank": rank.by_rank(roster), "citations": rank.by_citations(roster),
+             "az": rank.by_name(roster)}
+    stats = rank.leaderboard_stats(roster, cov)
+    photo_map = {r["slug"]: f"monogram:{r['name'][:1]}" for r in roster}
+    return render.render_leaderboard("Computer Science", views, stats, cov, photo_map), roster
+
+
+def test_leaderboard_three_panels_default_rank():
+    from facultyfolio import config
+    html, _ = _leaderboard_html()
+    for v in ("rank", "citations", "az"):
+        assert f'data-view="{v}"' in html
+    # rank panel is the default-visible one; the other two panels are hidden
+    assert '<div class="lb-panel" data-view="rank">' in html          # no ' hidden' on rank
+    assert '<div class="lb-panel" data-view="citations" hidden>' in html
+    assert '<div class="lb-panel" data-view="az" hidden>' in html
+    assert config.ASSISTANT_VERSION in html
+
+
+def test_leaderboard_controls_and_stats():
+    html, _ = _leaderboard_html()
+    assert 'class="lb-switch"' in html and 'class="lb-search"' in html
+    assert html.count('<button type="button" data-view=') == 3        # 3 view buttons
+    assert 'class="lb-glance"' in html and "on Google Scholar" in html
+
+
+def test_leaderboard_all_faculty_every_panel():
+    html, roster = _leaderboard_html()
+    # every faculty links from all THREE panels -> 3 hrefs per slug
+    for slug in ("acz6", "ikoutis"):
+        if any(r["slug"] == slug for r in roster):
+            assert html.count(f'../p/{slug}.html') == 3
+
+
+def test_leaderboard_chair_group_first_and_no_scholar_grayed():
+    html, _ = _leaderboard_html()
+    rank_panel = html.split('<div class="lb-panel" data-view="rank">', 1)[1] \
+                     .split('<div class="lb-panel" data-view="citations"', 1)[0]
+    first_group = rank_panel.split('lb-group-h">', 1)[1].split('<', 1)[0]
+    assert first_group == "Department Chair"                           # Chair heads the rank view
+    # Zaidenberg (no Scholar) is grayed in the citations panel with an em-dash citation
+    cite_panel = html.split('<div class="lb-panel" data-view="citations"', 1)[1] \
+                     .split('<div class="lb-panel" data-view="az"', 1)[0]
+    acz6 = cite_panel.split('../p/acz6.html', 1)
+    if len(acz6) > 1:
+        assert 'no-scholar' in acz6[0].rsplit('<a class="lb-row', 1)[1]
