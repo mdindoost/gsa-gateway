@@ -12,6 +12,15 @@
 {% endblock %}
 
 {% block body %}
+  {%- macro social_svg(key) -%}
+  {%- if key == 'email' -%}<svg viewBox="0 0 24 24"><path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z"/></svg>
+  {%- elif key == 'scholar' -%}<svg viewBox="0 0 24 24"><path d="M12 2 1 8l11 6 9-4.9V17h2V8L12 2zM5 13.2V17c0 1.7 3.1 3 7 3s7-1.3 7-3v-3.8l-7 3.8-7-3.8z"/></svg>
+  {%- elif key == 'website' -%}<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.9 6h-2.8a15.7 15.7 0 0 0-1.4-3.6A8 8 0 0 1 18.9 8zM12 4c.8 1.2 1.5 2.5 1.9 4h-3.8c.4-1.5 1.1-2.8 1.9-4zM4.3 14a7.8 7.8 0 0 1 0-4h3.2a16.6 16.6 0 0 0 0 4H4.3zm.8 2h2.8c.3 1.3.8 2.5 1.4 3.6A8 8 0 0 1 5.1 16zm2.8-8H5.1a8 8 0 0 1 4.2-3.6A15.7 15.7 0 0 0 7.9 8zM12 20c-.8-1.2-1.5-2.5-1.9-4h3.8c-.4 1.5-1.1 2.8-1.9 4zm2.3-6H9.7a14.7 14.7 0 0 1 0-4h4.6a14.7 14.7 0 0 1 0 4zm.3 5.6c.6-1.1 1.1-2.3 1.4-3.6h2.8a8 8 0 0 1-4.2 3.6zM16.5 14a16.6 16.6 0 0 0 0-4h3.2a7.8 7.8 0 0 1 0 4h-3.2z"/></svg>
+  {%- elif key == 'linkedin' -%}<svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM8.3 18.3H5.7V9.8h2.6v8.5zM7 8.6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm11.3 9.7h-2.6v-4.1c0-1 0-2.3-1.4-2.3s-1.6 1.1-1.6 2.2v4.2h-2.6V9.8h2.5v1.2h.1a2.8 2.8 0 0 1 2.5-1.4c2.7 0 3.2 1.8 3.2 4.1v4.6z"/></svg>
+  {%- elif key == 'github' -%}<svg viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12a10 10 0 0 0 6.8 9.5c.5 0 .7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8 0-.7.3-1.1.6-1.4-2.2-.2-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7 0-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.8-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 22 12 10 10 0 0 0 12 2z"/></svg>
+  {%- elif key == 'orcid' -%}<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM8.1 5.9a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4zM7.2 9.5h1.8v8H7.2zm3.6 0h3.5c3.3 0 4.8 2.4 4.8 4s-1.5 4-4.8 4h-3.5zm1.8 1.6v4.8h1.6c2.3 0 2.8-1.7 2.8-2.4 0-1.2-.7-2.4-2.9-2.4z"/></svg>
+  {%- endif -%}
+  {%- endmacro -%}
   <div class="grid">
 
     <aside class="card">
@@ -31,11 +40,7 @@
         {% if college %}<span class="uni">{{ college }} · NJIT</span>{% endif %}
       </p>
       <div class="social">
-        {% if email %}<a href="mailto:{{ email }}" title="Email"><svg viewBox="0 0 24 24"><path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z"/></svg></a>{% endif %}
-        {% if profiles.website and profiles.website.url %}<a href="{{ profiles.website.url }}" title="Website"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.9 6h-2.8a15.7 15.7 0 0 0-1.4-3.6A8 8 0 0 1 18.9 8zM12 4c.8 1.2 1.5 2.5 1.9 4h-3.8c.4-1.5 1.1-2.8 1.9-4zM4.3 14a7.8 7.8 0 0 1 0-4h3.2a16.6 16.6 0 0 0 0 4H4.3zm.8 2h2.8c.3 1.3.8 2.5 1.4 3.6A8 8 0 0 1 5.1 16zm2.8-8H5.1a8 8 0 0 1 4.2-3.6A15.7 15.7 0 0 0 7.9 8zM12 20c-.8-1.2-1.5-2.5-1.9-4h3.8c-.4 1.5-1.1 2.8-1.9 4zm2.3-6H9.7a14.7 14.7 0 0 1 0-4h4.6a14.7 14.7 0 0 1 0 4zm.3 5.6c.6-1.1 1.1-2.3 1.4-3.6h2.8a8 8 0 0 1-4.2 3.6zM16.5 14a16.6 16.6 0 0 0 0-4h3.2a7.8 7.8 0 0 1 0 4h-3.2z"/></svg></a>{% endif %}
-        {% if profiles.scholar and profiles.scholar.url %}<a href="{{ profiles.scholar.url }}" title="Google Scholar"><svg viewBox="0 0 24 24"><path d="M12 2 1 8l11 6 9-4.9V17h2V8L12 2zM5 13.2V17c0 1.7 3.1 3 7 3s7-1.3 7-3v-3.8l-7 3.8-7-3.8z"/></svg></a>{% endif %}
-        {% if profiles.github and profiles.github.url %}<a href="{{ profiles.github.url }}" title="GitHub"><svg viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12a10 10 0 0 0 6.8 9.5c.5 0 .7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8 0-.7.3-1.1.6-1.4-2.2-.2-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7 0-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.8-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 22 12 10 10 0 0 0 12 2z"/></svg></a>{% endif %}
-        {% if profiles.linkedin and profiles.linkedin.url %}<a href="{{ profiles.linkedin.url }}" title="LinkedIn"><svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM8.3 18.3H5.7V9.8h2.6v8.5zM7 8.6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm11.3 9.7h-2.6v-4.1c0-1 0-2.3-1.4-2.3s-1.6 1.1-1.6 2.2v4.2h-2.6V9.8h2.5v1.2h.1a2.8 2.8 0 0 1 2.5-1.4c2.7 0 3.2 1.8 3.2 4.1v4.6z"/></svg></a>{% endif %}
+        {% for ic in social_icons %}{% if ic.active %}<a href="{{ ic.url }}" title="{{ ic.title }}">{{ social_svg(ic.key) }}</a>{% else %}<span class="off" title="{{ ic.title }} — not listed" aria-disabled="true">{{ social_svg(ic.key) }}</span>{% endif %}{% endfor %}
       </div>
     </aside>
 

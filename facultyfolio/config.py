@@ -43,6 +43,36 @@ COLLEGE_NAMES = {
     "HCAD": "Hillier College of Architecture and Design",
 }
 
+# --- display-mode flags ------------------------------------------------------
+# Each configurable page component renders in one of two modes:
+#   "Adaptive" = the original behavior — show a thing only when its data exists.
+#   "Fixed"    = show the FULL set on every page; gray the ones the person lacks.
+# The current code is always the "Adaptive" option (never deleted). Defaults are
+# decided one component at a time; only SOCIAL_ICONS is Fixed so far — the rest
+# default Adaptive so adding a flag is a zero-visual-change commit until it's flipped.
+# Override any flag at build time with FACULTYFOLIO_<NAME> (e.g. FACULTYFOLIO_NAV=Fixed).
+_FLAG_DEFAULTS = {
+    "SOCIAL_ICONS": "Fixed",
+    "ABOUT_ROWS": "Adaptive",
+    "SCHOLAR_METRICS": "Adaptive",
+    "PUBLICATIONS": "Adaptive",
+    "NAV": "Adaptive",
+    "LEADERBOARD_ROSTER": "Adaptive",
+}
+_FLAG_VALUES = ("Fixed", "Adaptive")
+
+
+def flag(name: str) -> str:
+    """Resolve a display-mode flag: env override FACULTYFOLIO_<NAME> else default.
+    Raises KeyError for an unknown flag, ValueError for an invalid value."""
+    if name not in _FLAG_DEFAULTS:
+        raise KeyError(f"unknown display flag {name!r}")
+    val = os.environ.get(f"FACULTYFOLIO_{name}", _FLAG_DEFAULTS[name])
+    if val not in _FLAG_VALUES:
+        raise ValueError(f"flag {name}={val!r} must be one of {_FLAG_VALUES}")
+    return val
+
+
 # --- visibility hook (default publish; a slug here is never emitted) ----------
 SUPPRESSED: set = set()
 

@@ -183,6 +183,8 @@
   .card .social{display:flex; justify-content:center; gap:12px; margin-top:22px;}
   .card .social a{width:40px; height:40px; border-radius:50%; border:1px solid var(--hair); display:flex; align-items:center; justify-content:center; color:var(--ink-2); text-decoration:none; transition:.15s;}
   .card .social a:hover{border-color:var(--accent); color:var(--accent);}
+  /* Fixed mode: a profile the person lacks -> present but grayed, non-interactive. */
+  .card .social span.off{width:40px; height:40px; border-radius:50%; border:1px solid var(--hair); display:flex; align-items:center; justify-content:center; color:var(--faint); opacity:.4; cursor:default;}
   .card .social svg{width:17px; height:17px; fill:currentColor;}
 
   /* right content */
