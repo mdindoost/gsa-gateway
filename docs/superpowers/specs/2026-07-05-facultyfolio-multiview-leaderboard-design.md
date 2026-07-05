@@ -60,10 +60,15 @@ Assistant Professor (9), Senior University Lecturer (15), University Lecturer (7
   So "Professor, Department Chair" → rank 0 (top), not Professor.
 - **Pass 2 — professorial rank, longest-phrase-first:** otherwise match against the rank **phrases
   ordered by specificity** (longest first): `Distinguished Professor` · `Associate Professor` ·
-  `Assistant Professor` · `Senior University Lecturer` · `University Lecturer` · `Professor` ·
-  `Lecturer`. First phrase that appears (case-insensitive, word-boundary) sets the rank. This keeps
-  "Associate Professor" from mis-matching bare "Professor" and resolves compounds ("Distinguished
-  Professor, Associate Dean…" → Distinguished Professor). No phrase present → **Other**.
+  `Assistant Professor` · `Senior University Lecturer` · `University Lecturer` · `Professor`. First
+  phrase that appears (case-insensitive, word-boundary) sets the rank. This keeps "Associate
+  Professor" from mis-matching bare "Professor" and resolves compounds ("Distinguished Professor,
+  Associate Dean…" → Distinguished Professor; "Professor, Department Chair" is already Pass-1 Chair).
+- **Pass 3 — Dean → Professor (owner):** if still unmatched AND the title contains "Dean" (the bare
+  "Dean, Ying Wu College of Computing" case — a dean holds a full professorship), rank as **Professor**.
+  (Compound "…, Associate Dean" titles never reach here — their professorial rank matched in Pass 2.)
+- **Else → "Faculty"** — a neutral catch-all group (NOT "Other") for the 2 rank-less titles (a Director,
+  an empty title), placed after the lecturer groups. There is no "Dean at the bottom".
 
 This is a small **closed academic-rank ordering** — the same category of allowed identity/ordering
 config as `COLLEGE_NAMES` (proper nouns) and the affiliated fix's `_ROLE_RANK`, NOT a content-curation
@@ -92,6 +97,26 @@ so the default is one-line configurable).
 - Grayed no-Scholar rows reuse the established `.off`/muted treatment.
 - Coverage/eyebrow wording per view: citations keeps "Ranked among 39 of 57 with Google Scholar";
   rank/A–Z show a neutral "57 faculty" line.
+
+## Page add-ons (owner picked all four)
+All four are cheap, client-side or build-time, and reuse existing data:
+- **Live search box** — one text input filters the visible rows across all views by name / title /
+  research-area text (client-side, case-insensitive substring on data-attributes). Empty query = all.
+- **At-a-glance strip** — a summary line built at render time from the roster: total faculty, the
+  per-rank counts (from `by_rank` group sizes), and "N on Google Scholar" (from `coverage`). Pure Python.
+- **Photo thumbnails in rows** — each row shows the person's cached photo (monogram fallback). Requires
+  the leaderboard build to resolve a `photo_ref` per person (call `photos.ensure_photo` per slug, same
+  as `build_one`; cached → no new fetches). Same monogram SVG treatment as the profile card.
+- **Research-area tags in rows** — up to a few area chips per person (from `db.get_faculty(...)["areas"]`,
+  already deduped/ordered). Shown in the rank & A–Z rows (40/57 have areas; the rest show none). This
+  extends the "name + title" rows with descriptive tags (NOT metrics — the no-metrics rule stands).
+
+**Row content, final:**
+- **Rank & A–Z views:** photo · name · title · area tags. No citation/h-index.
+- **Citations view:** photo · name · title · citations · h-index (grayed tail = no numbers).
+
+Search + the switcher are the only JS; both trivial (filter rows, toggle panels). Keep sort/group/stats
+in Python. The roster carries `data-name/​data-title/​data-areas` on each row so search is a pure DOM filter.
 
 ## Implementation notes (folded from the senior design review — must-fix)
 1. **Within-group sort = A–Z** (rank view shows no metrics): `key=(surname, name.casefold(), slug)`.
@@ -129,20 +154,24 @@ so the default is one-line configurable).
 ## Goals checklist (to verify at build end)
 - [ ] Three views: By rank/title (default), By citations, A–Z
 - [ ] Every view shows all 57 (Zaidenberg reachable in each)
-- [ ] Rank ladder + longest-phrase-first matching + Other bucket, in config
-- [ ] Client-side toggle (pre-rendered, JS show/hide), default configurable
+- [ ] Rank ladder in config; Chair→group 0, Dean→Professor, longest-phrase-first, "Faculty" catch-all
+- [ ] Rank & A–Z rows: photo · name · title · area tags (NO metrics); citations view has the metrics
+- [ ] Live search box (name/title/area, client-side)
+- [ ] At-a-glance strip (totals · per-rank counts · N on Scholar)
+- [ ] Photo thumbnails (cached, monogram fallback) + research-area tags in rows
+- [ ] Client-side view toggle (pre-rendered, JS show/hide), default configurable
 - [ ] Citations view preserves 1..39 ranking + grayed no-Scholar tail
+- [ ] Byte-stable idempotent rebuild (slug tie-break everywhere)
 - [ ] Supersedes Task 6 flag (noted)
 
 ## Decisions (owner)
 - ✅ Department **Chair heads the directory** (group 0, above Distinguished Professor).
 - ✅ **Rank & A–Z views: name + title only, no metrics**; metrics only in the citations view.
 - ✅ **Within a rank group: A–Z** by surname (follows from no-metrics).
-- ⏳ **Open — the Dean.** "Dean, Ying Wu College of Computing" has no professorial rank in the title,
-   so it currently falls to **"Other" (bottom)**. Options: (a) leave in Other; (b) give the Dean a
-   leadership slot too — but note a Dean leads the COLLEGE, not the CS department, so in a *department*
-   directory the Chair is the unit head and the Dean is arguably just faculty-with-uncaptured-rank.
-   Default if unspecified: Other-at-bottom. Owner to confirm.
+- ✅ **Dean = Professor** (owner): the Dean is faculty, not a bottom bucket — Pass 3 maps a bare "Dean"
+   title to the Professor group; the Dean sorts A–Z there and appears normally in A–Z/citations views.
+- ✅ **Add-ons: all four** — live search box, at-a-glance strip, photo thumbnails, research-area tags.
+- No "Other" bucket; a neutral "Faculty" catch-all holds only the 2 truly rank-less titles (Director, empty).
 
 ## Related
 [[project_faculty_page_builder]] (the generator), the display-flags plan (Task 6 superseded),
