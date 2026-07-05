@@ -1,14 +1,17 @@
 #!/usr/bin/env python
-"""One-time migration: widen the ``edges.category`` CHECK constraint to also allow
-'officer' and 'deprep' (GSA officer / DepRep roles).
+"""General migration: widen the ``edges.category`` CHECK constraint to the current
+schema's allowed set. Historically added 'officer'/'deprep' (GSA officer / DepRep roles);
+now also 'affiliated' (cross-listing / courtesy faculty — see the 2026-07-05 affiliated-
+faculty design). Keep this as THE one widen-the-edges-CHECK migration — extend the CHECK +
+the ``needs_migration`` sentinel when a new category is added to ``schema.py::EDGES``.
 
 SQLite cannot ALTER a CHECK constraint, so this rebuilds the STRICT ``edges`` table the
 documented way — create new table → copy rows → drop old → rename → recreate indexes —
 inside one transaction with ``foreign_key_check``. ``edges`` has no inbound FKs and no
 triggers (verified), so the rebuild is self-contained.
 
-Idempotent: if the constraint already allows 'officer', it does nothing. Dry-run by
-default; ``--commit`` takes a hardened backup first.
+Idempotent: if the constraint already allows the newest category ('affiliated'), it does
+nothing. Dry-run by default; ``--commit`` takes a hardened backup first.
 """
 from __future__ import annotations
 
@@ -42,7 +45,7 @@ CREATE TABLE edges_new (
     created_at       TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
     CHECK (category IS NULL OR category IN
-           ('faculty','staff','admin','advisor','joint','emeritus','officer','deprep'))
+           ('faculty','staff','admin','advisor','joint','emeritus','officer','deprep','affiliated'))
 ) STRICT;
 """
 _COLS = ("id,src_id,type,dst_id,category,area_source,source_section,attrs,source,"
@@ -55,10 +58,12 @@ _INDEXES = [
 
 
 def needs_migration(conn: sqlite3.Connection) -> bool:
-    """True iff the live edges table's CHECK does not yet allow 'officer'."""
+    """True iff the live edges table's CHECK does not yet allow the newest category
+    ('affiliated'). The sentinel is always the most-recently-added value — the live DB
+    already contains 'officer'/'deprep', so testing those would no-op forever."""
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='edges'").fetchone()
-    return bool(row) and "'officer'" not in row[0]
+    return bool(row) and "'affiliated'" not in row[0]
 
 
 def migrate(conn: sqlite3.Connection) -> None:
@@ -101,7 +106,7 @@ def main(argv=None) -> int:
     conn = get_connection(args.db)
     before = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
     if not needs_migration(conn):
-        print(f"edges.category already allows 'officer'/'deprep' — nothing to do "
+        print(f"edges.category already allows 'affiliated' — nothing to do "
               f"({before} rows).")
         return 0
     print(f"edges needs CHECK widening: {before} rows to preserve, 3 indexes to recreate.")

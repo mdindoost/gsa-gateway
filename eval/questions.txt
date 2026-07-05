@@ -384,3 +384,9 @@ is he working on machine learning
 # Gap #2 — unresolvable-pronoun clarify. A bare "he/his" with no antecedent must CLARIFY ("who do you
 # mean?"), not silently drop the pronoun and answer a generic question (UNRESOLVED_PRONOUN_CLARIFY_ENABLED).
 is he working on machine learning
+
+# affiliated-faculty fix (2026-07-05): a cross-listed person must NOT appear in the wrong home roster,
+# and a person's card must show a cross-listing as affiliated, never as a home dept (no fabricated org).
+who are the MTSM faculty
+who is Guiling Wang
+what is Ali Akansu's title

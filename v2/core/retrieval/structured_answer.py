@@ -152,7 +152,11 @@ _DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric", "
                                    "ambiguous_officers",
                                    # Gap #1: a person-scoped research yes/no is a deterministic fact —
                                    # basis-aware wording must not be reworded (would risk over-claim).
-                                   "does_person_research_area"})
+                                   "does_person_research_area",
+                                   # Affiliated-faculty: the "(affiliated)"/"(joint appointment)" marker
+                                   # on a title is load-bearing (home vs cross-listing) — the LLM must not
+                                   # reword it away. No greeting on this surface, so verbatim loses nothing.
+                                   "title_of_person"})
 
 
 def is_deterministic(result: dict) -> bool:

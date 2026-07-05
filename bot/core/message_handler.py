@@ -188,7 +188,17 @@ def _compose_preserves_facts(facts: str, composed: str) -> bool:
     """True unless the composed answer DROPPED a fact from a counted-roster Facts. Checks (over a
     counted roster only): (a) every email survives, (b) every 3+-digit run survives, (c) every list
     item's tail token survives (a truncated tail loses its items' last tokens). Non-roster Facts →
-    True (trust compose; protects the greeting). Over-triggers are safe: the caller keeps Facts verbatim."""
+    True (trust compose; protects the greeting). Over-triggers are safe: the caller keeps Facts verbatim.
+
+    ALSO (affiliated-faculty): a home-vs-affiliated/joint distinction is load-bearing — if an
+    "(affiliated)"/"(joint appointment)" marker in the Facts is dropped/reduced by compose (dropping it
+    reads MORE authoritative, re-introducing the over-claim), keep verbatim Facts. This runs for ALL
+    Facts — an entity_card never matches the roster lead-in below. Count-aware so a person with two
+    marked edges can't false-pass when one marker survives and the other is dropped (Fable)."""
+    cf_facts, cf_comp = facts.casefold(), composed.casefold()
+    for marker in ("(affiliated)", "(joint appointment)"):
+        if cf_comp.count(marker) < cf_facts.count(marker):
+            return False
     if not _A4A_ROSTER_LEADIN_RX.search(facts):
         return True
     comp_cf = composed.casefold()

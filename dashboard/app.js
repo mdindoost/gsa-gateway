@@ -485,7 +485,8 @@ function renderPeople() {
         <label class="form-label">Role type</label>
         <select id="pf-role-type" class="set-input">
           ${(function() {
-            const ROLE_LABELS = { officer: "Officer", deprep: "Dept Rep", staff: "Staff", advisor: "Advisor", admin: "Admin" };
+            const ROLE_LABELS = { officer: "Officer", deprep: "Dept Rep", staff: "Staff", advisor: "Advisor", admin: "Admin",
+                                  faculty: "Faculty", joint: "Joint appointment", emeritus: "Emeritus", affiliated: "Affiliated" };
             const editLabel = editRow ? (ROLE_LABELS[editRow.edit_category] || "Officer") : null;
             return ["Officer","Dept Rep","Staff","Advisor","Admin"].map((rt) =>
               `<option${(editRow ? rt === editLabel : rt === "Officer") ? " selected" : ""}>${esc(rt)}</option>`

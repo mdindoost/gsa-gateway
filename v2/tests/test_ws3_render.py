@@ -65,7 +65,13 @@ def test_orgs_by_type_empty():
     assert "don't have" in out.lower()
 
 
-def test_all_three_compose_not_deterministic():
-    # owner decision: contact/title/orgs COMPOSE (keep the greeting) — must NOT be verbatim-only
-    for skill in ("contact_of_person", "title_of_person", "orgs_by_type"):
+def test_contact_orgs_compose_not_deterministic():
+    # owner decision: contact/orgs COMPOSE (keep the greeting) — must NOT be verbatim-only.
+    # (title_of_person moved to deterministic 2026-07-05: it now carries the load-bearing
+    # affiliated/joint marker, which the LLM must not reword — see affiliated-faculty design.)
+    for skill in ("contact_of_person", "orgs_by_type"):
         assert not sa.is_deterministic({"skill": skill})
+
+
+def test_title_of_person_now_deterministic():
+    assert sa.is_deterministic({"skill": "title_of_person"}) is True

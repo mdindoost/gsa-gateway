@@ -37,7 +37,21 @@ from v2.core.people import profile_fields
 
 # Lower rank = preferred for the "primary" role shown in disambiguation.
 _ROLE_RANK = {"faculty": 0, "admin": 1, "officer": 2, "joint": 3,
-              "staff": 4, "advisor": 5, "emeritus": 6}
+              "staff": 4, "advisor": 5, "emeritus": 6, "affiliated": 7}
+
+# A non-home appointment is rendered with a marker so it never reads as a home dept (the whole point
+# of the affiliated/joint tiers). SHARED by entity_card + title_of_person so the two never drift.
+_CATEGORY_MARKER = {"joint": "joint appointment", "affiliated": "affiliated"}
+
+
+def _org_label(oname: str, category: str | None, title_is_category: bool) -> str:
+    """'MTSM (affiliated)' / 'Data Science (joint appointment)' for a non-home appointment; the bare
+    org for home ``faculty`` and everything else. Suppresses the marker when the title IS the bare
+    category fallback (avoids the ugly 'affiliated — MTSM (affiliated)' for a title-less edge)."""
+    marker = _CATEGORY_MARKER.get(category or "")
+    if marker and not title_is_category:
+        return f"{oname} ({marker})"
+    return oname
 
 # ── WS2 fuzzy person resolution (FALLBACK ONLY) ──────────────────────────────────────────────────
 # Cutoffs are conservative: a "did you mean…?" (CLARIFY) or ABSTAIN always beats a confident wrong
@@ -417,9 +431,11 @@ def title_of_person(conn: sqlite3.Connection, entity_id: str) -> dict:
     for eattrs, cat, oname in conn.execute(
             "SELECT e.attrs, e.category, o.name FROM edges e JOIN nodes o ON o.id=e.dst_id "
             "WHERE e.src_id=? AND e.type='has_role' AND e.is_active=1 ORDER BY o.name", (nid,)):
-        titles = (json.loads(eattrs) if eattrs else {}).get("titles") or [cat]
+        attrs_titles = (json.loads(eattrs) if eattrs else {}).get("titles")
+        titles = attrs_titles or [cat]
+        org_label = _org_label(oname, cat, title_is_category=not attrs_titles)
         for t in titles:
-            pair = (t, oname)
+            pair = (t, org_label)
             if t and pair not in seen:
                 seen.add(pair)
                 out.append(pair)
@@ -532,9 +548,11 @@ def entity_card(conn: sqlite3.Connection, entity_id: str) -> str:
     for eattrs, cat, oname in conn.execute(
             "SELECT e.attrs, e.category, o.name FROM edges e JOIN nodes o ON o.id=e.dst_id "
             "WHERE e.src_id=? AND e.type='has_role' AND e.is_active=1 ORDER BY o.name", (nid,)):
-        titles = (json.loads(eattrs) if eattrs else {}).get("titles") or [cat]
+        attrs_titles = (json.loads(eattrs) if eattrs else {}).get("titles")
+        titles = attrs_titles or [cat]
+        org_label = _org_label(oname, cat, title_is_category=not attrs_titles)
         for t in titles:
-            line = f"{t} — {oname}"
+            line = f"{t} — {org_label}"
             if line not in seen:
                 seen.add(line)
                 lines.append(line)
