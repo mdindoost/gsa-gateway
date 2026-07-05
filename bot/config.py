@@ -211,6 +211,16 @@ FOLLOWUP_RESUME_ENABLED = os.getenv("FOLLOWUP_RESUME_ENABLED", "0").strip().lowe
 # Spec: docs/superpowers/specs/2026-07-04-a3-antecedent-ambiguity-design.md
 ANTECEDENT_GUARD_ENABLED = os.getenv("ANTECEDENT_GUARD_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
 
+# UNRESOLVED_PRONOUN_CLARIFY_ENABLED (Gap #2, default OFF): the twin of A3. When a BARE singular-personal
+# pronoun follow-up ("is he working on ML?") cannot be resolved (LLM+verify pass it through unchanged),
+# CLARIFY ("who do you mean?") instead of silently dropping the pronoun and answering a generic question.
+# Post-LLM (so untagged-prose antecedents the LLM CAN resolve never clarify); bare-only (an in-message
+# antecedent like "who is X and what's his Y" never nags). Off ⇒ resolve_query returns the old passthrough
+# (zero behavior change). Flip in .env + restart to enable.
+# Spec: docs/superpowers/specs/2026-07-04-gap2-unresolvable-pronoun-clarify-design.md
+UNRESOLVED_PRONOUN_CLARIFY_ENABLED = os.getenv(
+    "UNRESOLVED_PRONOUN_CLARIFY_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+
 
 # --- Kavosh v2.1 unified router (Phase 1b) ---
 # ROUTER_V21 master switch (default OFF). When on, the UnifiedRouter is built + consulted.

@@ -187,6 +187,22 @@ def _preceding_person_turn_names(history_turns) -> list[str]:
     return []
 
 
+# ── Gap #2: unresolvable-antecedent clarify (post-LLM twin of A3 layer 1) ─────
+def _bare_singular_pronoun(message: str) -> bool:
+    """True iff a singular-personal pronoun appears with NO content word before it — the pronoun IS the
+    referential subject, not an anaphor to an IN-MESSAGE antecedent ("who is X and what's HIS Y"). Uses
+    the content-word set (not capitalization), so it's lowercase-proof."""
+    m = _SINGULAR_PERSONAL.search(message or "")
+    return bool(m) and not _content_words(message[:m.start()])
+
+
+def _unresolved_clarify(message: str) -> str:
+    """The Gap #2 clarify — echoes the pronoun, asks for the name (no candidates: it's unresolvable)."""
+    m = _SINGULAR_PERSONAL.search(message or "")
+    pron = m.group(0).lower() if m else "that person"
+    return f'I\'m not sure who "{pron}" refers to here — could you tell me the name?'
+
+
 def ambiguity_clarify(message: str, history_turns) -> str | None:
     """Return a CLARIFY prompt iff the message is a bare singular-personal-pronoun follow-up AND the
     immediately-preceding assistant turn named ≥2 people (an unresolvable antecedent). Else None."""
@@ -257,6 +273,7 @@ class RewriteResult:
     query: str
     rewritten: bool
     clarify_text: str | None = None
+    clarify_reason: str = "ambiguous-antecedent"   # abstain_reason the handler emits; Gap #2 overrides
 
 
 async def resolve_query(message: str, history_turns, llm) -> RewriteResult:
@@ -270,7 +287,16 @@ async def resolve_query(message: str, history_turns, llm) -> RewriteResult:
     and verify_rewrite runs the roster-pick backstop."""
     import bot.config as botcfg
     message = message or ""
-    if not is_follow_up(message) or not history_turns or llm is None:
+    if not is_follow_up(message):
+        return RewriteResult(message, False)
+    clarify_on = botcfg.UNRESOLVED_PRONOUN_CLARIFY_ENABLED
+    if not history_turns or llm is None:
+        # No context to resolve against. A BARE singular-personal pronoun here is unresolvable → clarify
+        # (Gap #2, insertion point 1). llm is None = system-degraded, NOT ambiguity → stay passthrough.
+        if clarify_on and llm is not None and _bare_singular_pronoun(message):
+            logger.info("context_rewrite[gap2]: clarify unresolved pronoun, no history (msg=%r)", message)
+            return RewriteResult(message, False, clarify_text=_unresolved_clarify(message),
+                                 clarify_reason="unresolved-antecedent")
         return RewriteResult(message, False)
     guard_on = botcfg.ANTECEDENT_GUARD_ENABLED
     if guard_on:                              # layer 1: pre-LLM ambiguity gate → clarify
@@ -285,6 +311,17 @@ async def resolve_query(message: str, history_turns, llm) -> RewriteResult:
         return RewriteResult(message, False)
     verified = verify_rewrite(message, resolved or "", history_text, guard_enabled=guard_on)
     rewritten = verified.strip().lower() != message.strip().lower()
+    # Gap #2 (insertion point 2): if a BARE singular-personal pronoun SURVIVES in the resolved query, the
+    # reference was NOT resolved → clarify. Bareness of the RESULT is the robust signal (independent of
+    # `rewritten`): a cosmetic-only rewrite ("is he…" -> "Is he…?") still leaves a leading bare pronoun,
+    # while a real resolution ("is he…" -> "Is Koutis…") puts a name before any residual pronoun (so a
+    # co-reference "…with his students" is no longer bare → no clarify). Empty `resolved` = system noise,
+    # not "can't resolve" → passthrough, no clarify.
+    if clarify_on and (resolved or "").strip() and _bare_singular_pronoun(verified):
+        logger.info("context_rewrite[gap2]: clarify unresolved pronoun (msg=%r resolved=%r)",
+                    message, verified)
+        return RewriteResult(message, False, clarify_text=_unresolved_clarify(verified),
+                             clarify_reason="unresolved-antecedent")
     if rewritten:
         logger.info("context_rewrite: %r -> %r", message, verified)
         _log_unverified_lowercase(message, verified, history_text)

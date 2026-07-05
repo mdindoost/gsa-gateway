@@ -356,7 +356,7 @@ class MessageHandler:
             # no pending; the user re-asks with a name and routes normally.
             if _rr.clarify_text is not None:
                 return MessageResponse(text=_rr.clarify_text, is_abstain=True,
-                                       abstain_reason="ambiguous-antecedent")
+                                       abstain_reason=_rr.clarify_reason)
 
         # ── Explicit "search njit for X" ──────────────────────────────────────
         # The user literally asked to go to the live njit.edu site, so honor it directly —
