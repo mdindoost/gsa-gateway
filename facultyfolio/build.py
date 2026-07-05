@@ -5,7 +5,7 @@ does no network I/O and produces byte-identical output.
 """
 import os
 
-from . import assets, config, db, rank, render
+from . import assets, config, db, paths, rank, render
 
 
 def _write(path: str, html: str) -> None:
@@ -19,11 +19,10 @@ def build_one(slug: str, out_root: str) -> str:
     faculty = db.get_faculty(slug)
     if faculty["suppressed"]:
         return ""
-    assets_dir = os.path.join(out_root, "assets")
     scholar = faculty.get("scholar") or {}
-    photo_ref = photos_ensure(slug, scholar.get("photo"), faculty["name"], assets_dir)
+    photo_ref = photos_ensure(slug, scholar.get("photo"), faculty["name"], paths.assets_dir(out_root))
     html = render.render_profile(faculty, photo_ref=photo_ref)
-    path = os.path.join(out_root, "p", f"{slug}.html")
+    path = paths.profile_path(out_root, slug)
     _write(path, html)
     return path
 
@@ -38,7 +37,7 @@ def build_leaderboard(out_root: str) -> str:
     ranked = rank.ranked_list(config.CS_ORG_ID)
     coverage = rank.coverage(config.CS_ORG_ID)
     html = render.render_leaderboard("Computer Science", ranked, coverage)
-    path = os.path.join(out_root, "cs", "index.html")
+    path = paths.leaderboard_path(out_root)
     _write(path, html)
     return path
 

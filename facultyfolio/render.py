@@ -20,6 +20,49 @@ _env = Environment(
 _env.globals["assistant_version"] = config.ASSISTANT_VERSION
 
 
+# Fixed lineup of every profile type, in display order. Present -> active link;
+# absent -> grayed (Fixed mode) or omitted (Adaptive mode). The SVG glyphs live in
+# the template keyed by this same `key`.
+_SOCIAL_ORDER = [
+    ("email", "Email"),
+    ("scholar", "Google Scholar"),
+    ("website", "Website"),
+    ("linkedin", "LinkedIn"),
+    ("github", "GitHub"),
+    ("orcid", "ORCID"),
+]
+
+
+def social_icons(f: dict, mode: str) -> list:
+    """Build the ordered social-icon list for a faculty dict.
+
+    Fixed   -> all 6 types every page (missing ones inactive/grayed).
+    Adaptive-> only the types the person actually has.
+    Dedup (both modes): if a profile's URL was already claimed by an earlier icon in
+    the order (e.g. a Website whose URL IS the Scholar URL), it's not a distinct link —
+    grayed in Fixed, omitted in Adaptive — so no two icons point to the same place.
+    """
+    profiles = f.get("profiles") or {}
+    email = f.get("email")
+    seen = set()                              # profile URLs already claimed by an earlier icon
+
+    out = []
+    for key, title in _SOCIAL_ORDER:
+        if key == "email":
+            u = f"mailto:{email}" if email else None
+        else:
+            u = (profiles.get(key) or {}).get("url") or None
+            if u and u in seen:
+                u = None                      # duplicate of an earlier profile link
+            elif u:
+                seen.add(u)
+        active = bool(u)
+        if mode == "Adaptive" and not active:
+            continue
+        out.append({"key": key, "title": title, "url": u, "active": active})
+    return out
+
+
 def _appointment(f: dict) -> str:
     lead = f"{f['title']}, {f['home_dept']}" if f.get("title") else (f.get("home_dept") or "")
     if f.get("joint_dept"):
@@ -86,6 +129,7 @@ def render_profile(f: dict, photo_ref: str = None) -> str:
         "college": f.get("college"),
         "email": f.get("email"),
         "profiles": f.get("profiles") or {},
+        "social_icons": social_icons(f, config.flag("SOCIAL_ICONS")),
         "photo_ref": photo_ref,
         "areas": f.get("areas") or [],
         "appointment": _appointment(f),

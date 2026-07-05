@@ -2,11 +2,13 @@
 import os
 import shutil
 
+from . import paths
+
 _SRC = os.path.join(os.path.dirname(__file__), "assets")
 
 
 def copy_assets(out_root: str) -> None:
-    dst = os.path.join(out_root, "assets")
+    dst = paths.assets_dir(out_root)          # single source of truth for output locations
     os.makedirs(os.path.join(dst, "fonts"), exist_ok=True)
     shutil.copy2(os.path.join(_SRC, "style.css"), os.path.join(dst, "style.css"))
     src_fonts = os.path.join(_SRC, "fonts")
