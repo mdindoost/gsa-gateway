@@ -44,6 +44,9 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         return {"skill": skill, "research": entity.research_of_person(conn, a["entity_id"]),
                 "metrics": profile_fields.render_metrics(_person_attrs(conn, a["entity_id"])),
                 "scholar_push": _push_research_lines(conn, a["entity_id"])}
+    if skill == "does_person_research_area":
+        return {"skill": skill,
+                **skills.does_person_research_area(conn, a["entity_id"], a["area"], a.get("name"))}
     if skill == "entity_card":
         return {"skill": skill, "name": a.get("name"),
                 "card": entity.entity_card(conn, a["entity_id"]),
@@ -146,7 +149,10 @@ _DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric", "
                                    # a candidate, defeating the disambiguation.
                                    "person_disambig", "org_disambig",
                                    # F branch 2: the officer-ambiguity hint renders VERBATIM.
-                                   "ambiguous_officers"})
+                                   "ambiguous_officers",
+                                   # Gap #1: a person-scoped research yes/no is a deterministic fact —
+                                   # basis-aware wording must not be reworded (would risk over-claim).
+                                   "does_person_research_area"})
 
 
 def is_deterministic(result: dict) -> bool:
@@ -162,7 +168,8 @@ def is_deterministic(result: dict) -> bool:
 # Spec: docs/superpowers/specs/2026-07-04-a3-antecedent-ambiguity-design.md
 _PN_STRING_ROW = frozenset({"faculty_in_department", "people_by_research_area", "people_by_area_tag"})
 _PN_NAMEFIRST_ROW = frozenset({"officers_in_org", "people_in_org", "role_in_org", "people_by_role"})
-_PN_SINGLE_NAME = frozenset({"entity_card", "metric_of_person", "contact_of_person", "title_of_person"})
+_PN_SINGLE_NAME = frozenset({"entity_card", "metric_of_person", "contact_of_person", "title_of_person",
+                             "does_person_research_area"})
 
 
 def person_names_of(result: dict) -> list[str]:
@@ -309,6 +316,26 @@ def format_answer(result: dict) -> str:
         if rp["areas"]:
             return f"{rp['name']}'s research areas: {', '.join(rp['areas'])}."
         return f"{rp['name']}'s research: {rp['statement']}"
+
+    if skill == "does_person_research_area":
+        # Deterministic (in _DETERMINISTIC_SKILLS → no LLM). Basis-aware so a PROSE-only match never
+        # claims the person 'lists' the area (anti-fabrication / honest-partial). Plain, no greeting.
+        name, area, areas = result["name"], result["area"], result["person_areas"]
+        if result["answer"] == "yes":
+            if result["basis"] == "tag":       # tag-confirmed: echo the REAL matched tag, list the rest
+                tag = result["matched_area"] or area
+                others = [a for a in areas if a != tag]
+                extra = f" Their listed areas: {', '.join(others)}." if others else ""
+                return f"Yes — {tag} is among {name}'s listed research areas.{extra}"
+            # prose-only: the area appears in the profile text but is not a discrete tag — say exactly that.
+            extra = f" Their listed research areas: {', '.join(areas)}." if areas else ""
+            return f"Yes — {area} appears in {name}'s research profile.{extra}"
+        if result["answer"] == "no":           # has areas, area not among them — LIST them (the hedge)
+            return (f"I don't see {area} among {name}'s listed research areas. "
+                    f"Their listed areas: {', '.join(areas)}.")
+        # unknown → honest-partial: no areas on file, so we can't confirm (never a false 'no').
+        return (f"I don't have research areas listed for {name}, "
+                f"so I can't confirm whether they work on {area}.")
 
     if skill == "metric_of_person":
         name, found, allm = result["name"], result["found"], result["all"]

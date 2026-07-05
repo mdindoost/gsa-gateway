@@ -572,6 +572,44 @@ def _resolve_person(conn: sqlite3.Connection, q: str, named: list[dict]) -> dict
     return _resolve_surname(conn, q)
 
 
+# A subject-inversion auxiliary — the shape a person+area yes/no takes ("IS koutis working on ML",
+# "DOES koutis research graph theory"). `area` already implies an area-trigger verb was captured, so
+# the aux is all we need to detect the person-scoped intent. False positives are harmless — they fall
+# through to the population branch when no subject resolves.
+_PERSON_AREA_PRED = re.compile(r"\b(?:is|are|does|do|did|has|have|was|were)\b", re.I)
+_AUX_LEAD = re.compile(r"^\s*(?:is|are|does|do|did|has|have|was|were)\s+", re.I)
+
+
+def _resolve_person_scoped(conn: sqlite3.Connection, q_for_area: str, area: str,
+                           named: list[dict]) -> dict | Route | None:
+    """Resolve the SUBJECT of a person+area yes/no. A full name wins (like _resolve_person). Otherwise
+    isolate the subject span — everything before the area-introducing verb, minus a leading auxiliary —
+    and resolve surnames on THAT short span, bypassing _resolve_surname's >4-token guard (that guard
+    stops long meta-sentences being surname-mined; here the subject is already structurally isolated).
+    Pronoun subjects ('he'/'she'/'they') resolve to NOBODY — never an arbitrary faculty surnamed 'He'."""
+    if len(named) == 1:
+        return {"entity_id": named[0]["entity_id"], "name": named[0]["name"]}
+    if len(named) > 1:
+        return Route("person_disambig", {"candidates": named})
+    m = _AREA_TRIGGER.search(q_for_area)
+    subject = (q_for_area[:m.start()] if m else q_for_area.replace(area, " "))
+    subject = _AUX_LEAD.sub("", _NAME_PREFIX.sub("", subject)).strip()
+    if _PRONOUN_SUBJ.search(subject):          # unresolvable pronoun → clarify/fall-through, never guess
+        return None
+    hits: list[dict] = []
+    for tok in _qtokens(subject):
+        cands = entity.persons_by_lastname(conn, tok)
+        if len(cands) >= 2:
+            return Route("person_disambig", {"candidates": cands})
+        if len(cands) == 1:
+            hits.append(cands[0])
+    if len(hits) == 1:
+        return {"entity_id": hits[0]["entity_id"], "name": hits[0]["name"]}
+    if len(hits) >= 2:
+        return Route("person_disambig", {"candidates": hits})
+    return None
+
+
 def _person_skill(q: str) -> str:
     """Which person-attribute skill a resolved-person query wants: contact vs title vs the full card.
     Contact wins over title if both cue words appear (rare)."""
@@ -655,6 +693,21 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
 
     if "how many" in q and area:
         return Route("count_people_by_research_area", {"area": area, "org_id": org_id})
+
+    # ── person + area → per-person yes/no ("is Koutis working on ML?") ──────────────────────────────
+    # MUST precede the population `if area:` branch, which would otherwise DROP the named person and
+    # dump the whole area roster. Fires only when a person is present: a full name in the query, OR a
+    # subject-inversion auxiliary ("is/does X …") that structurally isolates a subject we can resolve.
+    if area and (named or _PERSON_AREA_PRED.search(q)):
+        person = _resolve_person_scoped(conn, q_for_area, area, named)
+        if isinstance(person, Route):          # ≥2 name matches → disambiguate; resume re-runs this skill
+            return _with_origin(person, "does_person_research_area", {"area": area})
+        if isinstance(person, dict):
+            return Route("does_person_research_area",
+                         {"entity_id": person["entity_id"], "name": person["name"], "area": area})
+        # person cue but nobody resolved (e.g. an ORG subject, or an unresolvable pronoun) → fall
+        # through to the population branch below, unchanged.
+
     if area:
         return Route("people_by_research_area", {"area": area, "org_id": org_id})
 

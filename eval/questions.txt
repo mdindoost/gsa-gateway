@@ -373,3 +373,10 @@ which professors study the brain
 # each has ≥1 stamped NJIT-person chunk + seminar/pdf pollution → guard keeps the real person.
 which faculty study earthquakes
 which professors study the immune system
+
+# Gap #1 — person-scoped research yes/no (does_person_research_area). A person + area must yield a
+# per-person Yes/No, NOT the whole area roster. Consistency-with-roster + honest-partial + no false 'no'.
+is koutis working on machine learning
+does koutis work on quantum computing
+# pronoun guard: unresolvable "he" must fall through to the population answer, never a wrong person.
+is he working on machine learning

@@ -22,7 +22,7 @@ import re
 import sqlite3
 from collections import Counter
 
-from v2.core.retrieval.entity import normalize_person_name
+from v2.core.retrieval.entity import normalize_person_name, research_of_person
 
 # Hand aliases beyond what organizations.name/slug already cover.
 _ORG_ALIASES = {
@@ -333,6 +333,29 @@ def count_people_by_research_area(conn: sqlite3.Connection, area: str,
     """Count of distinct faculty matching ``area`` — same query as the list, so they
     can never disagree."""
     return len(_research_entities(conn, area, org_id))
+
+
+def does_person_research_area(conn: sqlite3.Connection, entity_id: str, area: str,
+                              name: str | None = None) -> dict:
+    """Yes/no: does ONE person research ``area``? Membership is IDENTICAL to people_by_research_area
+    (``entity_id`` ∈ ``_research_entities``), so the two can NEVER disagree — if the person shows up in
+    the population roster, the answer is 'yes'. `basis` records whether the hit is a discrete area TAG
+    (matched via the same expand_area synonyms) or profile PROSE (statement/overview), so the renderer
+    never over-claims a 'listed' area for a prose-only match. Honest-partial ('unknown', never a false
+    'no') when the person lists no areas at all. `research_of_person` supplies the person's own areas for
+    the answer text ONLY — never as the source of truth for the yes/no."""
+    in_set = entity_id in _research_entities(conn, area, org_id=None)
+    prof = research_of_person(conn, entity_id)          # {name, areas, statement}
+    pats = [re.compile(r"\b" + re.escape(t.casefold()) + r"\b")
+            for t in expand_area(area) if (t or "").strip()]
+    matched = next((pa for pa in prof["areas"]
+                    if any(p.search(pa.casefold()) for p in pats)), None)
+    answer = "yes" if in_set else ("no" if prof["areas"] else "unknown")
+    basis = "tag" if (in_set and matched) else ("prose" if in_set else None)
+    return {"entity_id": entity_id, "name": name or prof["name"], "area": area,
+            "answer": answer, "basis": basis,
+            "matched_area": matched if basis == "tag" else None,
+            "person_areas": prof["areas"]}
 
 
 def is_listed_research_area(conn: sqlite3.Connection, area: str,
