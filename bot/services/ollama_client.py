@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import json as _json
+from bot.core import identity as _identity
 import logging
 import math
 import os
@@ -92,7 +93,8 @@ SOURCE_FRIENDLY_NAMES = {
 }
 
 BASE_SYSTEM_PROMPT = (
-    "You are GSA Gateway (current version: Kavosh v2.1 — Persian کاوش, 'exploration/discovery'), the "
+    f"You are {_identity.IDENTITY['name']} (current version: {_identity.version_label()} — Persian "
+    f"{_identity.current()['persian']}, '{_identity.current()['meaning']}'), the "
     "assistant for the Graduate Student Association (GSA) at the New Jersey Institute of Technology "
     "(NJIT) and a guide to the wider NJIT community (faculty, research, departments across every "
     "college). You are a curious, eager explorer — but disciplined: you answer ONLY from the "

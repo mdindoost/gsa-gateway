@@ -125,8 +125,10 @@ SOCIAL_KEYWORDS = [
 ]
 
 IDENTITY_PATTERNS = [
-    r"who are you",
-    r"what are you",
+    # \b after 'you' so "who are your officers" / "what are your limits on X" (real GSA questions)
+    # are NOT swallowed as identity — only the assistant-directed "who/what are you".
+    r"who are you\b",
+    r"what are you\b",
     r"what'?s your name",
     r"\byour name\b",
     r"tell me about yourself",
@@ -140,6 +142,22 @@ IDENTITY_PATTERNS = [
     r"which (llm|model)",
     r"what (llm|language model)",
     r"how smart are you",
+    # broadened self-reference — creator/operator, infra, lineage, honesty. The trailing \b on the
+    # "…you" patterns is load-bearing: without it "who runs your events" / "who made your website"
+    # (real GSA questions) match "…you" inside "…your" and get hijacked.
+    r"who (made|built|created|develop(ed|s)?) you\b",
+    r"who (runs|operates|owns|maintains) you\b",
+    r"what (do|are) you (run(ning)? on|built on|powered by)",
+    r"who came before you\b",
+    r"your (history|lineage|predecessor)",
+    r"\bwere you called\b",
+    # honesty / reliability — anchored on self-reliability wording (NOT bare "limits", which
+    # collides with real GSA policy questions like "what are your limits on reimbursement").
+    r"do you (make (things|stuff) up|hallucinate|lie|ever guess)",
+    r"can i (trust|rely on) you",
+    r"are you (reliable|accurate|trustworthy)",
+    r"do you ever get .*(wrong|mistake)",
+    r"what are your limitations\b(?!\s+(on|for|to)\b)",
 ]
 
 FREE_MODE_PATTERNS = [

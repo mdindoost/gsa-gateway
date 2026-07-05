@@ -25,6 +25,7 @@ from bot.services.intent_detector import (
     INTENT_THANKS,
 )
 from bot.services.retriever import SOURCE_FRIENDLY_NAMES
+from bot.core import identity
 from bot.core.context_rewrite import resolve_query
 from bot.core.deflection import looks_like_deflection
 from bot.core.live_query import parse_explicit_live_search, LIVE_NOT_FOUND_MSG
@@ -95,8 +96,7 @@ _LEGACY_COMMAND_INTENTS = {
 }
 
 FREE_MODE_SYSTEM_PROMPT = (
-    "You are GSA Gateway (current version: Kavosh v2.1), NJIT's Graduate Student "
-    "Association assistant. The student has switched to general chat mode. Answer helpfully "
+    identity.persona_line() + " The student has switched to general chat mode. Answer helpfully "
     "and conversationally. You may answer questions beyond GSA topics, but "
     "periodically remind students you can also help with GSA events, funding, "
     "and campus resources."
@@ -450,7 +450,7 @@ class MessageHandler:
             )
             if session and len(session.turns) > 0:
                 text = (
-                    "Welcome back! Kavosh here — what else would you like to explore?\n"
+                    identity.welcome_back_line() + "\n"
                     "_(Type 'clear' to start a new conversation)_"
                 )
             else:
@@ -458,7 +458,7 @@ class MessageHandler:
                     "سلام · Hola · नमस्ते · 你好 · হ্যালো · ආයුබෝවන් · Olá · Merhaba · Hello\n"
                     "_Don't see your language? Ask Mohammad — he'll happily add it!_\n\n"
                     "Hi! I'm **GSA Gateway** — NJIT's Graduate Student Association assistant, and the "
-                    "wider NJIT community's too. _(Current version: **Kavosh v2.1** — کاوش, \"exploration.\")_\n\n"
+                    "wider NJIT community's too. " + identity.greeting_version_line() + "\n\n"
                     "What I can help you explore:\n"
                     "- 🔬 **NJIT faculty across every college** — who works on a topic, their research areas & citations\n"
                     "- 🏫 **Departments, programs & who's who** — deans, chairs, directors\n"
@@ -476,7 +476,7 @@ class MessageHandler:
             return MessageResponse(
                 text=(
                     "خداحافظ · Adiós · अलविदा · 再见 · বিদায় · Tchau · Hoşçakal · Goodbye\n\n"
-                    "It was great exploring with you! Come back anytime — Kavosh will be here.\n\n"
+                    + identity.farewell_line() + "\n\n"
                     f"For any academic questions or GSA matters, reach out to your "
                     f"VP Academic Affairs:\n"
                     f"**{vpa_name}** — {vpa_email} · md724@njit.edu"
@@ -492,36 +492,11 @@ class MessageHandler:
             return MessageResponse(text=_HELP_RESPONSE)
 
         if intent == INTENT_IDENTITY:
+            # Self-facts render deterministically from bot/core/identity.py (single source of truth);
+            # render_self picks a focused answer for narrow asks (who made you / run on / lineage /
+            # limits) else the full render. Live model, so it can never drift from what's running.
             model_name = self.ollama.model if self.ollama else None
-            if model_name:
-                text = (
-                    "I'm **GSA Gateway**, NJIT's Graduate Student Association assistant — and the wider "
-                    "NJIT community's too. You're talking to my current version, **Kavosh v2.1** "
-                    "(کاوش — *exploration, discovery*), successor to **Binesh** (*insight*), which retired "
-                    "June 15, 2026.\n\n"
-                    f"I run on **{model_name}** — a local language model on NJIT infrastructure, not a cloud "
-                    "service. Unlike ChatGPT, I'm purpose-built for NJIT: my answers come straight from "
-                    "official **GSA** documents *and* NJIT's **knowledge graph** of faculty, research, and "
-                    "departments across **every college** — not the open web, and not general topics unrelated "
-                    "to NJIT.\n\n"
-                    "What I can help you explore:\n"
-                    "- 🔬 NJIT faculty across every college — who works on a topic, their research areas & citations\n"
-                    "- 🏫 Departments, programs & who's who (deans, chairs, directors)\n"
-                    "- 🧭 Campus resources & offices\n"
-                    "- 🎓 GSA events, the MMI Workshop series, travel awards & funding\n"
-                    "- 👥 GSA officers, club/RGO rules & the constitution\n\n"
-                    "md724@njit.edu\n\n"
-                    "🛠️ Open source — explore the code or contribute on "
-                    "[GitHub](https://github.com/mdindoost/gsa-gateway)."
-                )
-            else:
-                text = (
-                    "I'm **GSA Gateway** (current version: **Kavosh v2.1** — \"exploration\"), NJIT's Graduate "
-                    "Student Association assistant and a guide to the wider NJIT community — faculty, "
-                    "research, departments, and GSA services. md724@njit.edu. "
-                    "🛠️ Open source — contribute on [GitHub](https://github.com/mdindoost/gsa-gateway)."
-                )
-            return MessageResponse(text=text)
+            return MessageResponse(text=identity.render_self(clean_text, model_name))
 
         if intent == INTENT_FREE_MODE:
             if not self.ollama:

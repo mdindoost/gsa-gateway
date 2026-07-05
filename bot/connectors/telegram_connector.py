@@ -19,6 +19,7 @@ from telegram.ext import filters
 
 import bot.config as botcfg
 from bot.connectors.base import BasePlatform
+from bot.core import identity
 from bot.core.message_handler import MessageHandler, MessageRequest, _live_links_text
 from bot.core.live_fallback import LiveLinks
 from bot.core.live_query import LIVE_NOT_FOUND_MSG
@@ -534,7 +535,8 @@ class TelegramConnector(BasePlatform):
         if not update.message:
             return
         text = (
-            "*GSA Gateway* _(version: Kavosh v2.1 — \"exploration\")_\n\n"
+            f"*{identity.IDENTITY['name']}* _(version: {identity.version_label()} — "
+            f"\"{identity.current()['meaning'].split(',')[0]}\")_\n\n"
             "Hi! I'm NJIT's Graduate Student Association assistant — and a guide to the wider "
             "NJIT community. Ask me anything in plain language: NJIT faculty and their research "
             "across every college, departments and who's who, plus GSA officers, events, funding, "

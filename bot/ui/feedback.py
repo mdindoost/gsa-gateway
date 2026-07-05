@@ -8,6 +8,7 @@ from typing import Optional
 
 import discord
 
+from bot.core import answer_render
 from bot.core.message_handler import MessageRequest
 from bot.services.intent_detector import INTENT_QUESTION
 
@@ -224,7 +225,7 @@ class FeedbackView(discord.ui.View):
         else:
             embed.description = new_resp.text[:4093] + "..."
 
-        footer_parts = ["💡 GSA Gateway · Kavosh v2.1 · Retry answer"]
+        footer_parts = [f"{answer_render.BRAND} · Retry answer"]
         if new_resp.source_note:
             footer_parts.append(f"Source: {new_resp.source_note}")
         if new_resp.used_ai:
