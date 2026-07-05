@@ -98,6 +98,20 @@ so the default is one-line configurable).
 - Coverage/eyebrow wording per view: citations keeps "Ranked among 39 of 57 with Google Scholar";
   rank/A–Z show a neutral "57 faculty" line.
 
+## Photo resolution — updated (owner)
+The directory rows use the same photos as the profile pages, so two photo changes land with this build:
+- **NJIT-first order:** `photos.ensure_photo` becomes **override → cached → NJIT card → Google Scholar →
+  monogram** (NJIT before Scholar — more consistent official headshots). Applying it needs a one-time
+  **cache clear + re-fetch** (the 50 cached photos were fetched Scholar-first); people whose NJIT card
+  has a real photo switch to it, others fall through to Scholar as before.
+- **Per-person override (mechanism (c) — both), highest priority, wins over cache/NJIT/Scholar:**
+  1. **Drop-in file** — an image at `facultyfolio/assets/photos_manual/<slug>.<ext>` (tracked in the
+     MAIN repo, source of truth, survives cache-clears/re-fetches; build copies it to the output).
+  2. **Config pick-list** — `config.PHOTO_OVERRIDES = {slug: directive}` where directive is `"njit"`
+     (force the NJIT card), `"scholar"` (force Scholar), a **URL** (fetch exactly that), or a **local
+     path**. Drop-in file beats the config entry if both exist for a slug.
+  This lets the owner pin any photo for anyone. `PHOTO_OVERRIDES` starts empty (pure NJIT-first auto).
+
 ## Page add-ons (owner picked all four)
 All four are cheap, client-side or build-time, and reuse existing data:
 - **Live search box** — one text input filters the visible rows across all views by name / title /
