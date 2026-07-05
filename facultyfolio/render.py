@@ -67,6 +67,8 @@ def _appointment(f: dict) -> str:
     lead = f"{f['title']}, {f['home_dept']}" if f.get("title") else (f.get("home_dept") or "")
     if f.get("joint_dept"):
         lead = f"{lead} — joint appointment in {f['joint_dept']}"
+    for aff in (f.get("affiliated_depts") or []):
+        lead = f"{lead} — affiliated with {aff}"
     return f"{lead}, {f['college']}." if f.get("college") else f"{lead}."
 
 
