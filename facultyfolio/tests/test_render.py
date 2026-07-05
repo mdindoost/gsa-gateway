@@ -32,6 +32,15 @@ def test_about_rows_adaptive_omits_empty():
     assert render.about_rows(f, "Adaptive") == []    # nothing present -> no rows
 
 
+def test_about_rows_adaptive_partial_mix():
+    # Adaptive: present rows kept, empty ones dropped (no "Not listed" placeholder)
+    f = {"education_raw": "", "teaching_raw": "Past Courses; CS 675: MACHINE LEARNING"}
+    rows = render.about_rows(f, "Adaptive")
+    assert [r["label"] for r in rows] == ["Teaching"]
+    assert rows[0]["present"] is True and rows[0]["value"] == "Machine Learning"
+    assert all(r["value"] != "Not listed" for r in rows)
+
+
 def test_profile_no_office_shows_not_listed_fixed():
     # Fixed default: Kieran has no office -> the Office row is PRESENT but grayed "Not listed"
     html = render.render_profile(db.get_faculty("km982"))
