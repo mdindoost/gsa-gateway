@@ -1,4 +1,4 @@
-from facultyfolio import rank, config
+from facultyfolio import rank, config, db
 
 
 def test_rank_of_buckets_real_titles():
@@ -22,6 +22,21 @@ def test_rank_of_strict_ordering():
         "University Lecturer", "Director",
     ]]
     assert order == sorted(order) and len(set(order)) == 8      # strictly increasing, all distinct
+
+
+def test_roster_full_department():
+    r = rank.roster(config.CS_ORG_ID)
+    assert len(r) == len(db.cs_faculty_slugs())            # ALL home faculty, not just Scholar
+    keys = {"slug", "name", "title", "rank_index", "rank_label", "citations", "h_index", "areas"}
+    assert all(keys <= set(row) for row in r)
+    by_slug = {row["slug"]: row for row in r}
+    # Zaidenberg has no Scholar -> present with citations None (the multi-view raison d'être)
+    assert "acz6" in by_slug and by_slug["acz6"]["citations"] is None
+    # at least one Scholar person carries an int citation count
+    assert any(isinstance(row["citations"], int) for row in r)
+    # rank fields are consistent with rank_of on the title
+    for row in r:
+        assert rank.rank_of(row["title"]) == (row["rank_index"], row["rank_label"])
 
 
 def test_cs_coverage():

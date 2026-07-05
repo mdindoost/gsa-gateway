@@ -6,6 +6,7 @@ One source of truth for the leaderboard. Rank is NOT shown on personal pages
 import json
 
 from . import config
+from . import db
 from .db import connect
 from .format import normalize_name
 
@@ -32,6 +33,32 @@ def rank_of(title: str):
     if "dean" in t:
         return ladder.index("Professor"), "Professor"
     return len(ladder), _FACULTY_LABEL
+
+
+def roster(org_id) -> list:
+    """Every in-scope faculty member as a leaderboard-ready dict (spec §4).
+
+    Unlike `ranked_list`, this includes the no-Scholar faculty (citations=None) so
+    all views can show the full department. Title comes from `get_faculty` so it
+    matches the person's profile page verbatim; rank_index/label from `rank_of`.
+    Scope is CS for now (`db.cs_faculty_slugs`); org_id is carried for future depts.
+    """
+    out = []
+    for slug in db.cs_faculty_slugs():
+        f = db.get_faculty(slug)
+        idx, label = rank_of(f["title"])
+        sch = f["scholar"] or {}
+        out.append({
+            "slug": f["slug"],
+            "name": f["name"],
+            "title": f["title"],
+            "rank_index": idx,
+            "rank_label": label,
+            "citations": sch.get("citations") if sch else None,
+            "h_index": sch.get("h_index") if sch else None,
+            "areas": f["areas"],
+        })
+    return out
 
 
 def _members(conn, org_id):
