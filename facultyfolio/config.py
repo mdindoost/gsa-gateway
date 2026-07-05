@@ -18,6 +18,12 @@ OUT_ROOT = os.environ.get(
 CS_ORG_ID = 16          # Computer Science Org node
 KOUTIS_NODE = 33        # golden test faculty
 
+# --- assistant brand/version (single source of truth: bot/core/identity.py) --
+# So the footer's "GSA Gateway · Kavosh vX" tracks the one place the version lives — a version
+# bump there re-renders here, no hardcoded copy to drift (was frozen at "v2.1").
+from bot.core import identity as _identity
+ASSISTANT_VERSION = _identity.version_label()          # e.g. "Kavosh v2.5"
+
 # --- fixed copy (never data-driven — trust boundary, spec §3.2) --------------
 FIXED_HEADING = "Impact & trajectory"          # Scholarly-activity section heading, all faculty
 ACTIVE_SINCE_LABEL = "Active since"            # 4th stat (NOT "Publishing since" — honesty, spec §4)

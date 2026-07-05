@@ -16,6 +16,8 @@ _env = Environment(
     loader=FileSystemLoader(os.path.join(os.path.dirname(__file__), "templates")),
     autoescape=select_autoescape(["html"]),
 )
+# Assistant version for the shared footer (base.html) — one source of truth (config → identity).
+_env.globals["assistant_version"] = config.ASSISTANT_VERSION
 
 
 def _appointment(f: dict) -> str:

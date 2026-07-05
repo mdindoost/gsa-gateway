@@ -16,6 +16,8 @@ def test_profile_koutis_sections():
     assert 'class="bar peak"' in html                                    # chart present
     assert "not written or generated" in html                           # provenance label
     assert "2,791" in html                                              # comma-formatted citations
+    from facultyfolio import config
+    assert config.ASSISTANT_VERSION in html   # footer tracks identity source, not a re-hardcoded string
 
 
 def test_profile_junior_no_office_row():
@@ -79,3 +81,4 @@ def test_leaderboard():
     assert "by total citations" in html
     assert "../p/" in html                       # rows link to profiles
     assert html.count('class="lb-row"') == 39
+    assert config.ASSISTANT_VERSION in html      # footer version reaches the leaderboard too

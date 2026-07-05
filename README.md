@@ -231,7 +231,12 @@ Each assistant has carried a name:
 | Generation | Name | Meaning | Status |
 |---|---|---|---|
 | v1 | **Binesh** (بینش) | "insight" | retired June 2026 |
-| v2 | **Kavosh** (کاوش) | "exploration / discovery" | **current — v2.1** |
+| v2 | **Kavosh** (کاوش) | "exploration / discovery" | **current** |
+
+> The live release number isn't pinned here — it lives in one place,
+> [`bot/core/identity.py`](bot/core/identity.py), and every surface (the bot's
+> "what version are you", the answer footer, the faculty pages) reads from it.
+> Ask the bot for the current release.
 
 ---
 
