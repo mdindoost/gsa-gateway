@@ -380,3 +380,7 @@ is koutis working on machine learning
 does koutis work on quantum computing
 # pronoun guard: unresolvable "he" must fall through to the population answer, never a wrong person.
 is he working on machine learning
+
+# Gap #2 — unresolvable-pronoun clarify. A bare "he/his" with no antecedent must CLARIFY ("who do you
+# mean?"), not silently drop the pronoun and answer a generic question (UNRESOLVED_PRONOUN_CLARIFY_ENABLED).
+is he working on machine learning
