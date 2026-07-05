@@ -74,6 +74,13 @@ def flag(name: str) -> str:
     return val
 
 
+# --- per-person photo overrides (mechanism (c); drop-in file also supported) --
+# Pin a specific photo for a person. Value is one of: "njit" (force the NJIT card),
+# "scholar" (force Google Scholar), a URL (fetch exactly that), or a local file path.
+# A drop-in image at assets/photos_manual/<slug>.<ext> beats this map. Empty = pure
+# NJIT-first auto. Override wins over cache + auto order.
+PHOTO_OVERRIDES: dict = {}
+
 # --- visibility hook (default publish; a slug here is never emitted) ----------
 SUPPRESSED: set = set()
 
