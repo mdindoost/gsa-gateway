@@ -36,8 +36,24 @@ def test_website_equal_scholar_deduped_both_modes():
     assert "website" not in [i["key"] for i in adaptive]  # duplicate -> omitted in Adaptive
 
 
+def test_website_equal_any_profile_deduped():
+    # broader dedup: website URL equal to a DIFFERENT profile's url is still not distinct
+    prof = {"linkedin": {"url": "http://dup"}, "website": {"url": "http://dup"}}
+    icons = {i["key"]: i["active"] for i in render.social_icons(_f(profiles=prof), "Fixed")}
+    assert sum(1 for k in ("website", "linkedin") if icons[k]) == 1   # exactly one stays active
+
+
+def test_email_missing_grayed_in_fixed():
+    icons = {i["key"]: i["active"] for i in render.social_icons(_f(email=None), "Fixed")}
+    assert icons["email"] is False                        # no email -> grayed, not omitted
+
+
 def test_profile_template_renders_gray_span_for_missing():
     html = render.render_profile(_f(email="x@njit.edu", profiles={"scholar": {"url": "s"}},
                                     home_dept="Computer Science", title="Prof"))
     assert 'class="off"' in html                          # missing icons rendered as gray spans
     assert 'title="ORCID' in html                         # ORCID icon present even with no data
+    # a grayed icon must NOT be a link — the <span class="off"> carries no href
+    import re
+    for span in re.findall(r'<span class="off"[^>]*>', html):
+        assert "href" not in span

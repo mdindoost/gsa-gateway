@@ -38,24 +38,24 @@ def social_icons(f: dict, mode: str) -> list:
 
     Fixed   -> all 6 types every page (missing ones inactive/grayed).
     Adaptive-> only the types the person actually has.
-    Dedup (both modes): a Website whose URL equals the Scholar URL is not a distinct
-    link (grayed in Fixed, omitted in Adaptive) — avoids two icons to the same place.
+    Dedup (both modes): if a profile's URL was already claimed by an earlier icon in
+    the order (e.g. a Website whose URL IS the Scholar URL), it's not a distinct link —
+    grayed in Fixed, omitted in Adaptive — so no two icons point to the same place.
     """
     profiles = f.get("profiles") or {}
     email = f.get("email")
-    scholar_url = (profiles.get("scholar") or {}).get("url")
-
-    def url_of(key):
-        if key == "email":
-            return f"mailto:{email}" if email else None
-        u = (profiles.get(key) or {}).get("url")
-        if key == "website" and u and u == scholar_url:
-            return None                       # duplicate of Scholar -> not distinct
-        return u
+    seen = set()                              # profile URLs already claimed by an earlier icon
 
     out = []
     for key, title in _SOCIAL_ORDER:
-        u = url_of(key)
+        if key == "email":
+            u = f"mailto:{email}" if email else None
+        else:
+            u = (profiles.get(key) or {}).get("url") or None
+            if u and u in seen:
+                u = None                      # duplicate of an earlier profile link
+            elif u:
+                seen.add(u)
         active = bool(u)
         if mode == "Adaptive" and not active:
             continue
