@@ -21,19 +21,19 @@ Scholar and hides the other 18) with **one page offering three views**, toggled 
 ## The three views
 
 ### 1. By rank/title — DEFAULT
-All faculty grouped by academic rank, groups in seniority order, a section header per group.
-Within a group, secondary sort = **citations desc, then A–Z** (so within "Professor", the most-cited
-first; no-Scholar professors A–Z after). Rows show name + title + (citations/h-index if present, else
-"—"). This reads like a department directory, not a scoreboard, and every one of the 57 appears.
+All faculty grouped by academic rank, groups in ladder order (Chair first), a section header per group.
+Rows show **name + title only — NO citation/h-index columns** (owner: metrics belong to the citations
+view). Within a group, sort **A–Z by surname** (metrics aren't shown, so an A–Z order reads cleanly).
+This is a department directory, not a scoreboard; every one of the 57 appears.
 
 ### 2. By citations
-Flat ranking by citations desc. The faculty with Scholar are ranked **1..39**; the 18 without Scholar
-are listed **after**, grayed, with **no rank number** and "—" for the metrics (same "show all, gray the
-gaps" pattern as the icon/row flags). This preserves today's ranking while still surfacing everyone.
+Flat ranking by citations desc — the ONLY view with metrics. Faculty with Scholar are ranked **1..39**;
+the 18 without Scholar are listed **after**, grayed, with **no rank number** and "—" for the metrics
+(the "show all, gray the gaps" pattern). Absence is fine — a no-Scholar person simply shows no numbers.
 
 ### 3. A–Z
-All faculty sorted alphabetically by **surname** (the KG stores "Last, First" for some — normalize via
-the existing `format.normalize_name`, sort on the surname token). Metrics shown if present, else "—".
+All faculty sorted alphabetically by **surname**, **name + title only, no metrics**. (Names are already
+`normalize_name`-flipped to "First Last" upstream, so the surname is the last token.)
 
 ## The rank ladder (grounded in the real CS titles)
 Titles actually stored on CS faculty edges (this session): Distinguished Professor (3, incl. compound),
@@ -41,24 +41,29 @@ Professor (10 + "Professor, Department Chair" / "Professor, Associate Dean…"),
 Assistant Professor (9), Senior University Lecturer (15), University Lecturer (7); plus edge cases
 "Dean, Ying Wu College of Computing", "…Director", and one empty.
 
-**Ladder (seniority order):**
+**Ladder (leadership first, then seniority) — owner: department Chair heads the directory:**
 ```
+0 Department Chair   (leads the unit — FIRST, regardless of professorial rank)
 1 Distinguished Professor
 2 Professor
 3 Associate Professor
 4 Assistant Professor
 5 Senior University Lecturer
 6 University Lecturer
-7 Other            (leadership-only titles like "Dean, …", "…Director", or empty — bucket last)
+7 Other              (e.g. a Director, or empty — bucket last;  Dean placement = open decision #1)
 ```
 
-**Matching rule (mechanical, longest-phrase-first):** to avoid "Professor" matching "Associate
-Professor", match a person's title string against the known rank **phrases ordered by specificity**
-(longest first): `Distinguished Professor` · `Associate Professor` · `Assistant Professor` ·
-`Senior University Lecturer` · `University Lecturer` · `Professor` · `Lecturer`. The first phrase that
-appears (case-insensitive, word-boundary) sets the rank; its seniority index comes from the ladder.
-Compound titles resolve correctly ("Professor, Department Chair" → Professor; "Distinguished Professor,
-Associate Dean…" → Distinguished Professor). No professorial/lecturer phrase present → **Other**.
+**Matching rule (mechanical, two-pass):**
+- **Pass 1 — leadership marker:** if the title contains the phrase **"Department Chair"** (match this
+  full phrase, NOT bare "Chair" — a bare/"Chair Stipend"/"Endowed Chair" is a *professorship honor*,
+  not unit leadership), the person is **Department Chair (rank 0)**, overriding their professorial rank.
+  So "Professor, Department Chair" → rank 0 (top), not Professor.
+- **Pass 2 — professorial rank, longest-phrase-first:** otherwise match against the rank **phrases
+  ordered by specificity** (longest first): `Distinguished Professor` · `Associate Professor` ·
+  `Assistant Professor` · `Senior University Lecturer` · `University Lecturer` · `Professor` ·
+  `Lecturer`. First phrase that appears (case-insensitive, word-boundary) sets the rank. This keeps
+  "Associate Professor" from mis-matching bare "Professor" and resolves compounds ("Distinguished
+  Professor, Associate Dean…" → Distinguished Professor). No phrase present → **Other**.
 
 This is a small **closed academic-rank ordering** — the same category of allowed identity/ordering
 config as `COLLEGE_NAMES` (proper nouns) and the affiliated fix's `_ROLE_RANK`, NOT a content-curation
@@ -88,6 +93,30 @@ so the default is one-line configurable).
 - Coverage/eyebrow wording per view: citations keeps "Ranked among 39 of 57 with Google Scholar";
   rank/A–Z show a neutral "57 faculty" line.
 
+## Implementation notes (folded from the senior design review — must-fix)
+1. **Within-group sort = A–Z** (rank view shows no metrics): `key=(surname, name.casefold(), slug)`.
+   The None-safe citations key `(citations is None, -(citations or 0), name, slug)` is used ONLY in
+   the By-citations view (where `None` must sort last without comparing to `int`).
+2. **`by_citations` grayed tail is ordered** — the 18 without Scholar sort A–Z by name then slug
+   (deterministic, byte-stable), after the ranked 1..N.
+3. **Surname sort** — names are already `normalize_name`-flipped to "First Last" before `by_name`,
+   so the surname is the **last** token: `key=(name.split()[-1].casefold(), name.casefold(), slug)`.
+   The `slug` tail resolves the real duplicate surnames (Li×2, Wang×2).
+4. **`slug` is the ultimate tie-break on EVERY sort** → idempotent, byte-stable rebuilds.
+5. **Chair marker (Pass 1)** gets the same care: match the full phrase "Department Chair" (not bare
+   "Chair"); a Chair with no other rank still sorts within group 0.
+
+## Implementation notes (should-do, folded)
+6. **One ladder, derive the match order** — store a single ordered `RANK_LADDER` of canonical labels
+   in config; derive the substring-safe professorial match order in `rank.py` by sorting labels
+   **longest-first** (if A contains B then len(A)>len(B), so A is searched first — provably safe, no
+   parallel hand-maintained list). Drop the defensive bare `"Lecturer"` phrase → unmatched = Other
+   (honest, no guessing "Teaching Lecturer" into a rank).
+7. **Build `roster` via `get_faculty` per slug** (not by extending `_members`) so each leaderboard
+   title is byte-identical to that person's profile-page title — zero duplicated title-join logic.
+8. **a11y** — add `aria-pressed` on the switcher buttons + tab semantics on the panels (cheap win
+   over the existing pub-toggle baseline).
+
 ## Testing
 - `by_rank`/`by_citations`/`by_name` pure-function tests: ladder order; compound-title resolution
   (Wang "Distinguished Professor, Associate Dean" → Distinguished; "Professor, Department Chair" →
@@ -105,11 +134,15 @@ so the default is one-line configurable).
 - [ ] Citations view preserves 1..39 ranking + grayed no-Scholar tail
 - [ ] Supersedes Task 6 flag (noted)
 
-## Open decisions (owner)
-1. **"Other" bucket** — is bucketing pure-leadership titles (Dean-only, Director) at the bottom OK, or
-   should Dean/Chair sit at the top as "Leadership"? (Default: Other-at-bottom; refine later.)
-2. **Secondary sort inside a rank group** — citations desc then A–Z (proposed), or pure A–Z?
-3. **Metrics in the rank/A–Z views** — show citations/h-index columns (else "—"), or name+title only?
+## Decisions (owner)
+- ✅ Department **Chair heads the directory** (group 0, above Distinguished Professor).
+- ✅ **Rank & A–Z views: name + title only, no metrics**; metrics only in the citations view.
+- ✅ **Within a rank group: A–Z** by surname (follows from no-metrics).
+- ⏳ **Open — the Dean.** "Dean, Ying Wu College of Computing" has no professorial rank in the title,
+   so it currently falls to **"Other" (bottom)**. Options: (a) leave in Other; (b) give the Dean a
+   leadership slot too — but note a Dean leads the COLLEGE, not the CS department, so in a *department*
+   directory the Chair is the unit head and the Dean is arguably just faculty-with-uncaptured-rank.
+   Default if unspecified: Other-at-bottom. Owner to confirm.
 
 ## Related
 [[project_faculty_page_builder]] (the generator), the display-flags plan (Task 6 superseded),
