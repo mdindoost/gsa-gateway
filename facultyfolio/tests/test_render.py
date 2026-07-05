@@ -28,6 +28,22 @@ def test_profile_junior_no_office_row():
     assert "Active since" in html
 
 
+def test_appointment_includes_affiliated():
+    f = {"name": "Guiling Wang", "title": "Distinguished Professor",
+         "home_dept": "Computer Science", "joint_dept": "Data Science",
+         "affiliated_depts": ["Martin Tuchman School of Management (MTSM)"],
+         "college": "Ying Wu College of Computing"}
+    html = render.render_profile(f)
+    assert "joint appointment in Data Science" in html
+    assert "affiliated with Martin Tuchman School of Management (MTSM)" in html
+
+
+def test_appointment_no_affiliated_unchanged():
+    # a single-home person (Koutis) renders with no dangling "affiliated"
+    html = render.render_profile(db.get_faculty(33))
+    assert "affiliated with" not in html
+
+
 def test_profile_teaching_interests_row():
     # Houle's KG teaching string carries a "Teaching Interests;" section that must
     # render as its own row, not be dropped in favour of the single course.

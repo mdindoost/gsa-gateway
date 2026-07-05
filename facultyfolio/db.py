@@ -74,6 +74,7 @@ def get_faculty(id_or_slug) -> dict:
 
         # roles
         home_dept = joint_dept = title = None
+        affiliated_depts = []
         for e in conn.execute(
             "SELECT * FROM edges WHERE src_id=? AND type='has_role' AND is_active=1 ORDER BY id",
             (node["id"],),
@@ -86,6 +87,10 @@ def get_faculty(id_or_slug) -> dict:
                 college = _college_of(conn, e["dst_id"])
             elif e["category"] == "joint" and joint_dept is None:
                 joint_dept = _org_name(conn, e["dst_id"])
+            elif e["category"] == "affiliated":
+                nm = _org_name(conn, e["dst_id"])
+                if nm and nm not in affiliated_depts:
+                    affiliated_depts.append(nm)
         college = college if home_dept else None
 
         # research areas — active edges, edge-id order, mechanical near-dup collapse
@@ -117,6 +122,7 @@ def get_faculty(id_or_slug) -> dict:
             "title": title,
             "home_dept": home_dept,
             "joint_dept": joint_dept,
+            "affiliated_depts": affiliated_depts,
             "college": college,
             "email": attrs.get("email"),
             "phone": attrs.get("phone"),
