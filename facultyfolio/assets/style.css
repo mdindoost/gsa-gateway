@@ -297,7 +297,8 @@
             overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .lb-areas{display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:44%; flex:none;}
   .lb-areas .chip{font-size:11px; padding:3px 9px; border-radius:14px; background:var(--hair-2);
-                  color:var(--ink-2); white-space:nowrap;}
+                  color:var(--ink-2); white-space:nowrap; display:inline-block; max-width:230px;
+                  overflow:hidden; text-overflow:ellipsis; vertical-align:bottom;}
   .lb-cite,.lb-h{display:flex; flex-direction:column; align-items:flex-end; min-width:74px; flex:none;}
   .lb-h{min-width:56px;}
   .lb-num{font-family:var(--f-display); font-size:17px; font-weight:600; line-height:1;}
