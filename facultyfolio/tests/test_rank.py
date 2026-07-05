@@ -92,6 +92,21 @@ def test_by_name_surname_order():
     ]  # Assistant, Chair, Dean, Director, Lecturer, Li, Li, Prof — surname A–Z, slug breaks Li tie
 
 
+def test_leaderboard_stats():
+    stats = rank.leaderboard_stats(_FIXTURE, (5, 8))                   # 5 have citations, 8 total
+    assert stats["total"] == 8 and stats["with_scholar"] == 5
+    assert sum(c for _, c in stats["groups"]) == 8                     # group counts partition the roster
+    labels = [lbl for lbl, _ in stats["groups"]]
+    assert labels[0] == "Department Chair" and labels[-1] == "Faculty"
+
+
+def test_leaderboard_stats_live():
+    r = rank.roster(config.CS_ORG_ID)
+    stats = rank.leaderboard_stats(r, rank.coverage(config.CS_ORG_ID))
+    assert stats["total"] == len(r)
+    assert sum(c for _, c in stats["groups"]) == stats["total"]
+
+
 def test_cs_coverage():
     N, M = rank.coverage(config.CS_ORG_ID)
     assert (N, M) == (39, 57)

@@ -110,6 +110,20 @@ def by_name(roster) -> list:
     return sorted(roster, key=lambda r: (_surname(r["name"]), r["name"].casefold(), r["slug"]))
 
 
+def leaderboard_stats(roster, coverage) -> dict:
+    """At-a-glance strip data (spec §5). Pure — no DB.
+
+    total / with_scholar come from `coverage` (the canonical N-of-M denominator, same
+    one the profile pages show); per-rank group counts from `by_rank(roster)`.
+    """
+    n, m = coverage
+    return {
+        "total": m,
+        "with_scholar": n,
+        "groups": [(g["label"], len(g["members"])) for g in by_rank(roster)],
+    }
+
+
 def _members(conn, org_id):
     """(slug, name, scholar-dict|{}) for active home faculty of the org."""
     rows = conn.execute(
