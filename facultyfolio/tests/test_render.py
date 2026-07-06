@@ -165,6 +165,17 @@ def test_leaderboard_chair_group_first_and_no_scholar_grayed():
     assert 'no-scholar' in before_acz6.rsplit('<a class="lb-row', 1)[1]   # her row carries the grayed class
 
 
+def test_hidden_panel_css_guard():
+    # regression: the view panels use a class+attr display rule (specificity 0,2,0) that
+    # outranks the UA [hidden]{display:none} — without an explicit [hidden] override the
+    # non-default panels stay visible and stack. Guard that the override survives.
+    import os
+    css = open(os.path.join(os.path.dirname(render.__file__), "assets", "style.css"), encoding="utf-8").read()
+    assert ".lb-panel[hidden]" in css
+    after = css.split(".lb-panel[hidden]", 1)[1].split("}", 1)[0]
+    assert "display:none" in after and "!important" in after
+
+
 def test_leaderboard_escapes_hostile_characters():
     from facultyfolio import rank
     hostile = [{"slug": "x1", "name": 'A "Quote" & <b>Bold</b>', "title": 'Prof <script>',

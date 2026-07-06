@@ -282,6 +282,9 @@
   .lb-group-h{font-family:var(--f-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
               color:var(--accent); margin:0 0 2px; padding-bottom:6px; border-bottom:1px solid var(--hair-2);}
   .lb-panel[data-view="citations"], .lb-panel[data-view="az"]{display:flex; flex-direction:column; gap:8px;}
+  /* the display rules above (specificity 0,2,0) outrank the UA [hidden]{display:none} (0,1,0),
+     so a hidden panel would still show — force hidden panels off regardless of view. */
+  .lb-panel[hidden]{display:none !important;}
 
   /* rows (flex — serves both the directory and the ranked-citations layout) */
   .lb-row{display:flex; gap:16px; align-items:center; background:var(--card); border-radius:12px;
