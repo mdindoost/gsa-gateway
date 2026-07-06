@@ -86,6 +86,7 @@ def test_profile_degraded_education_not_listed_fixed():
 def test_missing_scholar_single_hook():
     f = _koutis()
     f["scholar"] = None
+    f["awards_raw"], f["service_raw"] = [], ""       # no recognition data -> positive hook shows
     html = render.render_profile(f)
     assert html.count('class="hook"') == 2          # missing-scholar + Recognition (positive)
     assert "No Google Scholar profile" in html
@@ -96,8 +97,48 @@ def test_worst_case_no_scholar_no_areas():
     f = _koutis()
     f["scholar"] = None
     f["areas"] = []
+    f["awards_raw"], f["service_raw"] = [], ""       # nothing anywhere -> the true worst case
     html = render.render_profile(f)
     assert html.count('class="hook"') == 3          # research + scholar + recognition, within budget
+
+
+def test_recognition_renders_awards_and_service():
+    f = _koutis()
+    f["awards_raw"] = ["2022 Best Paper Award, ACM", "2019"]     # bare-year row must be dropped
+    f["service_raw"] = "Service by Ioannis Koutis (Computer Science): Program Committee, 2022"
+    html = render.render_profile(f)
+    assert '<ul class="awards">' in html
+    assert "2022 Best Paper Award, ACM" in html
+    assert html.count("<li>") >= 1 and ">2019<" not in html      # noise row de-noised
+    assert "Professional service" in html and "Program Committee, 2022" in html
+    # awards present -> the positive Recognition hook is gone (that section shows data now)
+    assert "Awards aren't in our public data" not in html
+
+
+def test_recognition_hook_when_empty():
+    f = _koutis()
+    f["awards_raw"], f["service_raw"] = [], ""
+    html = render.render_profile(f)
+    assert "Awards aren't in our public data" in html            # honest positive hook
+
+
+def test_recognition_service_only():
+    f = _koutis()
+    f["awards_raw"] = []                                          # no awards, service present
+    f["service_raw"] = "Service by Ioannis Koutis (Computer Science): Reviewer, NSF, 2022"
+    html = render.render_profile(f)
+    assert '<ul class="awards">' not in html                     # no awards list
+    assert "Professional service" in html and "Reviewer, NSF, 2022" in html
+    assert "Awards aren't in our public data" not in html        # data present -> no hook
+
+
+def test_recognition_escapes_hostile_award():
+    f = _koutis()
+    f["awards_raw"] = ["2020 <script>alert(1)</script> Award", "2019 Plain Award"]
+    f["service_raw"] = ""
+    html = render.render_profile(f)
+    assert "<script>alert(1)</script>" not in html               # autoescaped
+    assert "&lt;script&gt;" in html
 
 
 def test_monogram_when_no_photo():

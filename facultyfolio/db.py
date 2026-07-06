@@ -55,7 +55,7 @@ def _prose(conn, key, ptype):
     rows = conn.execute(
         """SELECT content FROM knowledge_items
            WHERE type=? AND is_active=1 AND created_by='crawler'
-             AND metadata LIKE ?""",
+             AND metadata LIKE ? ORDER BY id""",
         (ptype, f'%"entity_id": "{key}"%'),
     ).fetchall()
     return rows[0]["content"] if rows else ""
@@ -116,6 +116,15 @@ def get_faculty(id_or_slug) -> dict:
         teaching_raw = _prose(conn, key, "teaching")
         prose_types = [t for t in _PROSE_TYPES if _prose(conn, key, t)]
 
+        # Recognition (crawler-only): award TITLES (one row each, clean verbatim strings) +
+        # the single service prose blob. Formatting/de-noise is applied in render.py.
+        awards_raw = [r["title"] for r in conn.execute(
+            """SELECT title FROM knowledge_items
+               WHERE type='award' AND is_active=1 AND created_by='crawler'
+                 AND metadata LIKE ? ORDER BY id""",
+            (f'%"entity_id": "{key}"%',))]
+        service_raw = _prose(conn, key, "service")
+
         return {
             "slug": slug,
             "name": normalize_name(node["name"]),
@@ -131,6 +140,8 @@ def get_faculty(id_or_slug) -> dict:
             "areas": areas,
             "education_raw": education_raw,
             "teaching_raw": teaching_raw,
+            "awards_raw": awards_raw,
+            "service_raw": service_raw,
             "scholar": scholar,
             "suppressed": slug in config.SUPPRESSED,
             "_prose_types": prose_types,

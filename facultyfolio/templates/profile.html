@@ -131,10 +131,22 @@
         <p class="eyebrow">Recognition</p>
         <h2>Awards &amp; honors</h2>
         <div class="rule"></div>
-        <div class="hook">
-          <span class="ic">🏆</span>
-          <span class="txt">Awards aren't in our public data yet — things like NSF grants and best-paper awards aren't crawlable. <a href="#">Claim this page</a> to add them.</span>
-        </div>
+        {% if awards or service %}
+          {% if awards %}
+          <ul class="awards">
+            {% for a in awards %}<li>{{ a }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+          {% if service %}
+          <p class="rec-sub">Professional service</p>
+          <p class="service">{{ service }}</p>
+          {% endif %}
+        {% else %}
+          <div class="hook">
+            <span class="ic">🏆</span>
+            <span class="txt">Awards aren't in our public data yet — things like NSF grants and best-paper awards aren't crawlable. <a href="#">Claim this page</a> to add them.</span>
+          </div>
+        {% endif %}
       </section>
 
     </main>

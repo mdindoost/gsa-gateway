@@ -167,6 +167,44 @@ def format_teaching(raw: str) -> list:
     return [label for _, label in entries]
 
 
+_BARE_YEAR = re.compile(r"^\s*\d{4}\s*$")
+_LEAD_YEAR = re.compile(r"^\s*(\d{4})")
+
+
+def format_awards(titles) -> list:
+    """Crawled award strings (from the `award.title` column) → clean verbatim list.
+
+    Mechanical de-noise (Option A): drop rows that are a bare year (`^\\d{4}$` — an orphan
+    fragment the crawler's 2-column table split produced, whose year already appears in the
+    sibling full-award row); strip trailing separators; dedup case-insensitively. Order by
+    descending leading year (stable → idempotent), yearless rows kept in source order last.
+    Everything else passes through VERBATIM (no rewording).
+    """
+    cleaned, seen = [], set()
+    for t in titles or []:
+        t = clean_mojibake(t or "")
+        t = t.strip().strip(".,;·–—-").strip()      # strip trailing/leading punct (incl '.') FIRST
+        if not t or _BARE_YEAR.match(t):            # so "2019" and "2019." both drop as noise
+            continue
+        k = t.lower()
+        if t and k not in seen:
+            seen.add(k)
+            cleaned.append(t)
+    def _yk(t):
+        m = _LEAD_YEAR.match(t)
+        return (0, -int(m.group(1))) if m else (1, 0)   # yeared first (desc), yearless last
+    return sorted(cleaned, key=_yk)
+
+
+def format_service(raw: str) -> str:
+    """Crawled service prose → the person's service text, verbatim, with only the crawler's
+    structural lead-in removed (`Service (of|by) <name>[ (dept)]:`), strip-to-first-colon so
+    a missing dept parenthetical still strips. Returns '' when empty."""
+    s = clean_mojibake(raw or "")
+    s = re.sub(r"^Service (of|by) [^:]{1,160}:\s*", "", s)
+    return s.strip()
+
+
 def format_education(raw: str) -> list:
     """Year-anchored record split (spec §7 B5) — records are variable-length.
 

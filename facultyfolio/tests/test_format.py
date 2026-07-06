@@ -105,3 +105,38 @@ def test_format_office():
 def test_commafy():
     assert F.commafy(2791) == "2,791"
     assert F.commafy(482) == "482"
+
+
+def test_format_awards_denoise_and_order():
+    titles = [
+        "2019 Best Paper Award, IEEE (NCA),",   # trailing comma stripped
+        "2019",                                  # bare-year noise -> dropped
+        "2011 Gold Medal, NIT",
+        "2016 Fellowship",
+    ]
+    out = F.format_awards(titles)
+    assert "2019" not in out                     # bare-year removed
+    assert out[0] == "2019 Best Paper Award, IEEE (NCA)"   # trailing comma stripped, year-desc first
+    assert out == sorted(out, key=lambda t: -int(t[:4]))   # descending leading year
+    assert F.format_awards([]) == [] and F.format_awards(None) == []
+
+
+def test_format_awards_keeps_internal_commas_and_dedups():
+    out = F.format_awards(["2020 Award, A, B, C", "2020 Award, A, B, C"])
+    assert out == ["2020 Award, A, B, C"]        # internal commas preserved; dedup
+
+
+def test_format_awards_yearless_sorted_last():
+    out = F.format_awards(["Lifetime Achievement Award", "2020 Best Paper", "2015 Fellowship"])
+    assert out == ["2020 Best Paper", "2015 Fellowship", "Lifetime Achievement Award"]
+
+
+def test_format_awards_drops_year_with_trailing_dot():
+    assert F.format_awards(["2019.", "2019 Real Award"]) == ["2019 Real Award"]  # "2019." is noise
+
+
+def test_format_service_strips_prefix_dept_optional():
+    assert F.format_service("Service by Jane Doe (Computer Science): Program Committee, 2022") \
+        == "Program Committee, 2022"
+    assert F.format_service("Service of John Roe: Reviewer, NSF") == "Reviewer, NSF"  # no dept
+    assert F.format_service("") == ""

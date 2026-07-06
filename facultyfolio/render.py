@@ -159,6 +159,8 @@ def render_profile(f: dict, photo_ref: str = None) -> str:
         "areas": f.get("areas") or [],
         "appointment": _appointment(f),
         "about_rows": about_rows(f, config.flag("ABOUT_ROWS")),
+        "awards": F.format_awards(f.get("awards_raw")),
+        "service": F.format_service(f.get("service_raw") or ""),
         "about_source": config.ABOUT_SOURCE,
         "heading": config.FIXED_HEADING,
         "active_since_label": config.ACTIVE_SINCE_LABEL,
