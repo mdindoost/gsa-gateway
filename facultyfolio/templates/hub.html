@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ college_name }} — FacultyFolio{% endblock %}
+
+{% block rail %}
+  <div class="rail">
+    <span><span class="dot"></span>Crawled from public sources</span>
+    <a class="claim" href="#">Is this you? Claim your page →</a>
+  </div>
+{% endblock %}
+
+{% block body %}
+  <div class="lb">
+    <section>
+      <p class="eyebrow">College</p>
+      <h2>{{ college_name }}</h2>
+      <div class="rule"></div>
+      <div class="hub-cards">
+        {% for c in cards %}
+        <a class="hub-card" href="{{ c.url }}">
+          <span class="hub-name">{{ c.name }}</span>
+          <span class="hub-stats"><strong>{{ c.faculty }}</strong> faculty · <strong>{{ c.scholar }}</strong> on Google Scholar</span>
+          <span class="hub-go">View directory →</span>
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

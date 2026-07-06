@@ -183,6 +183,13 @@ def render_profile(f: dict, photo_ref: str = None) -> str:
     return _env.get_template("profile.html").render(**ctx)
 
 
+def render_hub(college_name: str, cards: list) -> str:
+    """College hub landing page: a card per department (name, faculty count, Scholar count).
+    Root-level page, so asset_root='' points at assets/ (not ../assets/)."""
+    return _env.get_template("hub.html").render(
+        college_name=college_name, cards=cards, asset_root="")
+
+
 _LB_AREA_CHIPS = 4          # chips shown per directory row; full list is on the profile + in data-areas
 
 

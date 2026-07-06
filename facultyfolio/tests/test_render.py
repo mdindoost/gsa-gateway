@@ -169,6 +169,26 @@ def test_recognition_escapes_hostile_award():
     assert "&lt;script&gt;" in html
 
 
+def test_render_hub_cards_and_counts():
+    cards = [
+        {"name": "Computer Science", "faculty": 57, "scholar": 34, "url": "computer-science/index.html"},
+        {"name": "Data Science", "faculty": 21, "scholar": 15, "url": "data-science/index.html"},
+    ]
+    html = render.render_hub("Ying Wu College of Computing", cards)
+    assert "Ying Wu College of Computing" in html
+    assert 'href="computer-science/index.html"' in html
+    assert ">57<" in html and "on Google Scholar" in html
+    assert 'href="assets/style.css"' in html          # root page -> no ../
+    from facultyfolio import config
+    assert config.ASSISTANT_VERSION in html            # shared footer
+
+
+def test_render_hub_escapes_hostile_card():
+    cards = [{"name": 'X <script>alert(1)</script>', "faculty": 1, "scholar": 0, "url": "x/index.html"}]
+    html = render.render_hub("C & <b>", cards)
+    assert "<script>alert(1)</script>" not in html and "&lt;script&gt;" in html
+
+
 def test_monogram_when_no_photo():
     f = _koutis()
     html = render.render_profile(f, photo_ref="monogram:IK")

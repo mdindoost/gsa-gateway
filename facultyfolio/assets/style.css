@@ -318,3 +318,12 @@
   .lb-lab{font-family:var(--f-mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--faint);}
   .lb-empty{font-family:var(--f-mono); font-size:13px; color:var(--mute); padding:20px 0;}
   @media (max-width:640px){ .lb-h{display:none;} .lb-areas{display:none;} }
+
+  /* --- college hub cards --- */
+  .hub-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; margin-top:22px;}
+  .hub-card{display:flex; flex-direction:column; gap:8px; padding:20px 21px; background:var(--card); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); text-decoration:none; color:inherit; transition:border-color .15s, transform .15s;}
+  .hub-card:hover{border-color:var(--accent); transform:translateY(-2px);}
+  .hub-name{font-family:var(--f-display); font-size:19px; font-weight:600; color:var(--ink);}
+  .hub-stats{font-family:var(--f-body); font-size:14px; color:var(--mute);}
+  .hub-stats strong{color:var(--ink-2);}
+  .hub-go{font-family:var(--f-mono); font-size:12px; color:var(--accent); margin-top:2px;}
