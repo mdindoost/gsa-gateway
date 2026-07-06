@@ -41,10 +41,10 @@ def roster(org_id) -> list:
     Unlike `ranked_list`, this includes the no-Scholar faculty (citations=None) so
     all views can show the full department. Title comes from `get_faculty` so it
     matches the person's profile page verbatim; rank_index/label from `rank_of`.
-    Scope is CS for now (`db.cs_faculty_slugs`); org_id is carried for future depts.
+    Enumerates the org given by `org_id` (home faculty of that dept).
     """
     out = []
-    for slug in db.cs_faculty_slugs():
+    for slug in db.faculty_slugs(org_id):
         f = db.get_faculty(slug)
         idx, label = rank_of(f["title"])
         sch = f["scholar"] or {}

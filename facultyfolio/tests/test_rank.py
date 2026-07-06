@@ -39,6 +39,13 @@ def test_roster_full_department():
         assert rank.rank_of(row["title"]) == (row["rank_index"], row["rank_label"])
 
 
+def test_roster_honors_org_id():
+    cs = rank.roster(16)
+    ds = rank.roster(73)
+    assert len(cs) == 57 and len(ds) == 21       # each org, not always CS
+    assert {r["slug"] for r in cs}.isdisjoint({r["slug"] for r in ds})   # home rosters disjoint
+
+
 def _row(slug, name, title, citations=None, h=None, areas=None):
     idx, label = rank.rank_of(title)
     return {"slug": slug, "name": name, "title": title, "rank_index": idx,
