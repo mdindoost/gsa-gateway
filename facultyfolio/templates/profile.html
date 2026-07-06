@@ -37,7 +37,7 @@
       <h1>{{ name }}</h1>
       {% if title %}<p class="title">{{ title }}</p>{% endif %}
       <p class="dept">
-        <a href="../cs/index.html">{{ home_dept }}</a>
+        {% if home_dept_segment %}<a href="../{{ home_dept_segment }}/index.html">{{ home_dept }}</a>{% else %}{{ home_dept }}{% endif %}
         {% if joint_dept %}<span class="uni">Joint appointment · {{ joint_dept }}</span>{% endif %}
         {% if college %}<span class="uni">{{ college }} · NJIT</span>{% endif %}
       </p>

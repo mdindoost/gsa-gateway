@@ -18,6 +18,9 @@ _env = Environment(
 )
 # Assistant version for the shared footer (base.html) — one source of truth (config → identity).
 _env.globals["assistant_version"] = config.ASSISTANT_VERSION
+# Depth prefix from a page to the assets dir. Profiles/leaderboards live one level
+# deep (p/, <dept>/) -> "../"; the root hub overrides to "" (render_hub).
+_env.globals["asset_root"] = "../"
 
 
 # Fixed lineup of every profile type, in display order. Present -> active link;
@@ -172,7 +175,8 @@ def render_profile(f: dict, photo_ref: str = None) -> str:
         "active_since_label": config.ACTIVE_SINCE_LABEL,
         "scholar": sch,
         "sync_label": config.sync_label(sch["updated_at"]) if sch else "",
-        "sources": "Scholar + NJIT-CS" if sch else "NJIT-CS",
+        "sources": "Scholar + NJIT" if sch else "NJIT",
+        "home_dept_segment": f.get("home_dept_segment") or "",
     }
     if sch:
         ctx.update(_scholar_ctx(sch))

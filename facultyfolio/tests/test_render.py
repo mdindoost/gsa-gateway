@@ -100,6 +100,17 @@ def test_oria_per_degree_education_renders():
     assert "École Nationale Supérieure des Télécommunications" in html and "(1994)" in html
 
 
+def test_profile_sources_label_not_cs_specific():
+    html = render.render_profile(db.get_faculty(33))            # Koutis has Scholar
+    assert "Scholar + NJIT" in html and "NJIT-CS" not in html
+
+
+def test_profile_back_link_uses_home_segment():
+    html = render.render_profile(db.get_faculty(33))            # home = Computer Science
+    assert '../computer-science/index.html' in html
+    assert '../cs/index.html' not in html
+
+
 def test_missing_scholar_single_hook():
     f = _koutis()
     f["scholar"] = None
