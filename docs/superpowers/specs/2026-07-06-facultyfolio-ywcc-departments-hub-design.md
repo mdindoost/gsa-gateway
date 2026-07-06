@@ -132,13 +132,13 @@ Parameterization first (unlocks all) → **DS pages → Informatics pages → hu
 senior-eng review of the diff → owner sign-off → **rebuild + redeploy ONCE** at the end (owner
 eyeballs all together, per the batch-rebuild rule) → memory + commit.
 
-## Goals checklist
+## Goals checklist (SHIPPED + LIVE 2026-07-06 — Pages `ad1a47f`, source main `537fc3a..HEAD`)
 
-- [ ] A. Six entry points parameterized (org-node-id driven); `roster` latent bug fixed.
-- [ ] B. YWCC hub page (dept cards + coverage).
-- [ ] C. URLs: root=hub, dept segments = org slug, `cs/` redirect stub.
-- [ ] D. Generalizability guard: slug anchor, `CS_ORG_ID` retired, `COLLEGE_NAMES` justified+flagged.
-- [ ] Tests extended; CS byte-stable except the 3 intended diffs.
+- [x] A. Six entry points parameterized (org-node-id driven); `roster` latent bug fixed.
+- [x] B. YWCC hub page (dept cards + coverage) — leadership section loudly deferred.
+- [x] C. URLs: root=hub, dept segments = org slug, `cs/` redirect stub.
+- [x] D. Generalizability guard: slug anchor, `CS_ORG_ID` build-independent, `COLLEGE_NAMES` justified+flagged.
+- [x] Tests extended (104 green); CS output changed only in the 3 intended diffs. Fable review=SHIP-WITH-CHANGES (folded), senior-eng review=SHIP (2 nits folded).
 - **DEFERRED (loud):** hub Leadership section (next step); full multi-college abstraction;
   hierarchical URL restructure (Task 7); `organizations.metadata.full_name` migration to retire
   `COLLEGE_NAMES`; multi-home producer durability (dedup guards it meanwhile).
