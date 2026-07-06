@@ -13,8 +13,9 @@ def test_build_koutis(tmp_path, monkeypatch):
 
 def test_build_all_and_leaderboard(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "photos_ensure", lambda slug, *a, **k: f"monogram:{slug[:2].upper()}")
+    from facultyfolio import db
     res = build.build_all(str(tmp_path))
-    assert res["count"] == 57
+    assert res["count"] == len(db.cs_faculty_slugs())          # a page per home faculty (self-relative)
     assert os.path.exists(os.path.join(tmp_path, "cs", "index.html"))
     assert os.path.exists(os.path.join(tmp_path, "p", "ikoutis.html"))
     assert os.path.exists(os.path.join(tmp_path, "assets", "style.css"))

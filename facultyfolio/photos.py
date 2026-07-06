@@ -1,13 +1,16 @@
-"""Photo resolution — Scholar -> NJIT people-card -> monogram (spec §4, §4a).
+"""Photo resolution — override -> cached -> NJIT people-card -> Scholar -> monogram.
 
-Photos are output ASSETS, never DB data. The chosen image is downloaded to
-assets/photos/<slug>.jpg (the durable copy); a rebuild skips any slug already saved.
-The NJIT headshot is a deterministic URL (ldapimage), so no HTML parsing is needed.
+Photos are output ASSETS, never DB data. The chosen image is written to
+assets/photos/<slug>.jpg (the durable copy); with no override a rebuild skips any slug
+already saved. Auto order is NJIT-FIRST (official headshots), Scholar as fallback. A
+per-person override (drop-in file assets/photos_manual/<slug>.* or config.PHOTO_OVERRIDES)
+wins over the cache and the auto order. The NJIT headshot is a deterministic ldapimage URL.
 """
 import hashlib
 import os
 import urllib.request
 
+from . import config
 from .format import initials
 
 UA = "GSA-Gateway-FacultyFolio/1.0 (NJIT GSA project)"        # project UA, no personal email
@@ -16,6 +19,10 @@ NJIT_IMG = "https://uws.njit.edu/ldapimage.php?format=full&uid={slug}"
 # Known "no photo" defaults, fingerprinted so we never ship them (spec §4).
 _SCHOLAR_SILHOUETTE = "avatar_scholar_128"                     # URL marker
 _NJIT_PLACEHOLDER_MD5 = "6c7ddedf95d43600e59046af39862f0c"     # ldapimage default headshot
+
+# Drop-in manual overrides (tracked in the repo, source of truth for pinned photos).
+_MANUAL_DIR = os.path.join(os.path.dirname(__file__), "assets", "photos_manual")
+_MANUAL_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 
 
 def _download(url: str):
@@ -44,20 +51,59 @@ def _try(url: str, is_njit: bool):
     return data
 
 
+def _manual_file(slug: str):
+    for ext in _MANUAL_EXTS:
+        p = os.path.join(_MANUAL_DIR, slug + ext)
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _override_bytes(slug: str, scholar_url: str):
+    """A per-person override's image bytes, or None if no override / it can't resolve.
+    Drop-in file beats the config map; config value = njit | scholar | <url> | <local path>."""
+    mf = _manual_file(slug)
+    if mf:
+        with open(mf, "rb") as fh:
+            return fh.read()
+    directive = config.PHOTO_OVERRIDES.get(slug)
+    if not directive:
+        return None
+    if directive == "njit":
+        return _try(njit_photo_url(slug), is_njit=True)
+    if directive == "scholar":
+        return _try(scholar_url, is_njit=False)
+    if directive.startswith("http://") or directive.startswith("https://"):
+        try:
+            return _download(directive)                       # explicit URL — no silhouette check
+        except Exception:
+            return None
+    if os.path.exists(directive):                             # local path
+        with open(directive, "rb") as fh:
+            return fh.read()
+    return None
+
+
 def ensure_photo(slug: str, scholar_photo_url: str, name: str, out_dir: str) -> str:
     """Resolve + save the faculty photo; return a relative ref or a monogram sentinel.
 
-    Order: cached jpg -> Scholar (non-silhouette) -> NJIT ldapimage -> monogram.
+    Order: per-person override -> cached jpg -> NJIT ldapimage -> Scholar -> monogram.
     """
     photos_dir = os.path.join(out_dir, "photos")
     os.makedirs(photos_dir, exist_ok=True)
     dest = os.path.join(photos_dir, f"{slug}.jpg")
     ref = f"../assets/photos/{slug}.jpg"
 
-    if os.path.exists(dest):                      # cached -> zero network (idempotent)
+    override = _override_bytes(slug, scholar_photo_url)        # wins over cache + auto
+    if override is not None:
+        with open(dest, "wb") as fh:
+            fh.write(override)
         return ref
 
-    data = _try(scholar_photo_url, is_njit=False) or _try(njit_photo_url(slug), is_njit=True)
+    if os.path.exists(dest):                                   # cached -> zero network (idempotent)
+        return ref
+
+    data = _try(njit_photo_url(slug), is_njit=True) or _try(scholar_photo_url, is_njit=False)
     if data:
         with open(dest, "wb") as fh:
             fh.write(data)

@@ -171,18 +171,49 @@ def render_profile(f: dict, photo_ref: str = None) -> str:
     return _env.get_template("profile.html").render(**ctx)
 
 
-def render_leaderboard(org_name: str, ranked: list, coverage: tuple) -> str:
+_LB_AREA_CHIPS = 4          # chips shown per directory row; full list is on the profile + in data-areas
+
+
+def _lb_row(r: dict, photo_map: dict) -> dict:
+    """One roster dict -> a template-ready leaderboard row (photo, formatted numbers, chips)."""
+    areas = r.get("areas") or []
+    has_scholar = r.get("citations") is not None
+    return {
+        "slug": r["slug"],
+        "name": r["name"],
+        "title": r.get("title") or "",
+        "photo_ref": photo_map.get(r["slug"]) or f"monogram:{F.initials(r['name'])}",
+        "areas": areas[:_LB_AREA_CHIPS],           # display cap (serving layer; full list one click away)
+        "data_areas": " ".join(areas),             # search matches ALL areas, not just the shown chips
+        "rank_num": r.get("rank_num"),
+        "has_scholar": has_scholar,
+        "citations": F.commafy(r["citations"]) if has_scholar else "—",
+        "h_index": r["h_index"] if r.get("h_index") is not None else "—",
+    }
+
+
+def render_leaderboard(org_name: str, roster_views: dict, stats: dict,
+                       coverage: tuple, photo_map: dict) -> str:
+    """Render the 3-view directory (rank default / citations / A–Z), all faculty shown.
+
+    roster_views = {"rank": by_rank groups, "citations": by_citations rows, "az": by_name rows}.
+    photo_map = {slug: photo_ref}; a slug absent -> monogram. Views/sorting are precomputed in
+    rank.py — this stays pure presentation.
+    """
+    if config.LEADERBOARD_DEFAULT_VIEW not in config.LEADERBOARD_VIEWS:
+        raise ValueError(
+            f"LEADERBOARD_DEFAULT_VIEW={config.LEADERBOARD_DEFAULT_VIEW!r} "
+            f"must be one of {config.LEADERBOARD_VIEWS}"
+        )
     n, m = coverage
-    rows = [
-        {
-            "rank": r["rank"],
-            "name": r["name"],
-            "slug": r["slug"],
-            "citations": F.commafy(r["citations"]),
-            "h_index": r["h_index"] if r["h_index"] is not None else "—",
-        }
-        for r in ranked
+    rank_groups = [
+        {"label": g["label"], "members": [_lb_row(x, photo_map) for x in g["members"]]}
+        for g in roster_views["rank"]
     ]
+    cite_rows = [_lb_row(x, photo_map) for x in roster_views["citations"]]
+    az_rows = [_lb_row(x, photo_map) for x in roster_views["az"]]
     return _env.get_template("leaderboard.html").render(
-        org_name=org_name, rows=rows, coverage_n=n, coverage_m=m,
+        org_name=org_name, rank_groups=rank_groups, cite_rows=cite_rows, az_rows=az_rows,
+        stats=stats, coverage_n=n, coverage_m=m,
+        default_view=config.LEADERBOARD_DEFAULT_VIEW,
     )

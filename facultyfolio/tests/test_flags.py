@@ -10,7 +10,12 @@ def test_flag_defaults():
     assert config.flag("SCHOLAR_METRICS") == "Adaptive"
     assert config.flag("PUBLICATIONS") == "Adaptive"
     assert config.flag("NAV") == "Adaptive"
-    assert config.flag("LEADERBOARD_ROSTER") == "Adaptive"
+
+
+def test_retired_leaderboard_roster_flag_gone():
+    # the multi-view leaderboard always shows the full roster; the old toggle is retired
+    with pytest.raises(KeyError):
+        config.flag("LEADERBOARD_ROSTER")
 
 
 def test_flag_env_override(monkeypatch):

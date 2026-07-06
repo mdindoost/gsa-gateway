@@ -1,11 +1,42 @@
 {% extends "base.html" %}
 {% block title %}{{ org_name }} — FacultyFolio{% endblock %}
 
+{%- macro photo_thumb(row) -%}
+  {%- if row.photo_ref.startswith('monogram:') -%}
+  <svg class="lb-photo" viewBox="0 0 40 40" role="img" aria-label="{{ row.name }}">
+    <rect width="40" height="40" rx="20" fill="var(--hair)"/>
+    <text x="20" y="26" text-anchor="middle" font-family="var(--f-display)" font-size="15" fill="var(--mute)">{{ row.photo_ref[9:] }}</text>
+  </svg>
+  {%- else -%}
+  <img class="lb-photo" src="{{ row.photo_ref }}" alt="{{ row.name }}" loading="lazy">
+  {%- endif -%}
+{%- endmacro -%}
+
+{%- macro row_dir(row) -%}
+<a class="lb-row" href="../p/{{ row.slug }}.html"
+   data-name="{{ row.name|lower }}" data-title="{{ row.title|lower }}" data-areas="{{ row.data_areas|lower }}">
+  {{ photo_thumb(row) }}
+  <span class="lb-id"><span class="lb-name">{{ row.name }}</span>{% if row.title %}<span class="lb-title">{{ row.title }}</span>{% endif %}</span>
+  {%- if row.areas %}<span class="lb-areas">{% for a in row.areas %}<span class="chip">{{ a }}</span>{% endfor %}</span>{% endif -%}
+</a>
+{%- endmacro -%}
+
+{%- macro row_cite(row) -%}
+<a class="lb-row{% if not row.has_scholar %} no-scholar{% endif %}" href="../p/{{ row.slug }}.html"
+   data-name="{{ row.name|lower }}" data-title="{{ row.title|lower }}" data-areas="{{ row.data_areas|lower }}">
+  <span class="lb-rank">{% if row.rank_num %}{{ row.rank_num }}{% else %}—{% endif %}</span>
+  {{ photo_thumb(row) }}
+  <span class="lb-id"><span class="lb-name">{{ row.name }}</span>{% if row.title %}<span class="lb-title">{{ row.title }}</span>{% endif %}</span>
+  <span class="lb-cite"><span class="lb-num">{{ row.citations }}</span><span class="lb-lab">citations</span></span>
+  <span class="lb-h"><span class="lb-num">{{ row.h_index }}</span><span class="lb-lab">h-index</span></span>
+</a>
+{%- endmacro -%}
+
 {% block rail %}
   <div class="rail">
     <span><span class="dot"></span>Crawled from public sources</span>
     <span class="sep">·</span>
-    <span>Ranked by Google Scholar</span>
+    <span>{{ coverage_n }} of {{ coverage_m }} on Google Scholar</span>
     <a class="claim" href="#">Is this you? Claim your page →</a>
   </div>
 {% endblock %}
@@ -13,20 +44,91 @@
 {% block body %}
   <div class="lb">
     <section>
-      <p class="eyebrow">Leaderboard</p>
+      <p class="eyebrow">Directory</p>
       <h2>{{ org_name }}</h2>
       <div class="rule"></div>
-      <p class="lb-cover">Ranked among <strong>{{ coverage_n }} of {{ coverage_m }}</strong> faculty with Google Scholar data · <span class="lb-axis">by total citations</span></p>
-      <div class="lb-table">
-        {% for r in rows %}
-        <a class="lb-row" href="../p/{{ r.slug }}.html">
-          <span class="lb-rank">{{ r.rank }}</span>
-          <span class="lb-name">{{ r.name }}</span>
-          <span class="lb-cite"><span class="lb-num">{{ r.citations }}</span><span class="lb-lab">citations</span></span>
-          <span class="lb-h"><span class="lb-num">{{ r.h_index }}</span><span class="lb-lab">h-index</span></span>
-        </a>
+
+      <div class="lb-glance">
+        <span class="glance-hd"><strong>{{ stats.total }}</strong> faculty</span>
+        <span class="glance-hd"><strong>{{ stats.with_scholar }}</strong> on Google Scholar</span>
+        {% for label, count in stats.groups %}<span class="glance-g">{{ count }} · {{ label }}</span>{% endfor %}
+      </div>
+
+      <div class="lb-controls">
+        <div class="lb-switch" role="group" aria-label="Sort faculty">
+          <button type="button" data-view="rank" aria-pressed="{{ 'true' if default_view=='rank' else 'false' }}">By rank / title</button>
+          <button type="button" data-view="citations" aria-pressed="{{ 'true' if default_view=='citations' else 'false' }}">By citations</button>
+          <button type="button" data-view="az" aria-pressed="{{ 'true' if default_view=='az' else 'false' }}">A–Z</button>
+        </div>
+        <input class="lb-search" type="search" placeholder="Search name, title, research area…" aria-label="Search faculty">
+      </div>
+
+      <div class="lb-panel" data-view="rank"{% if default_view != 'rank' %} hidden{% endif %}>
+        {% for g in rank_groups %}
+        <div class="lb-group">
+          <h3 class="lb-group-h">{{ g.label }}</h3>
+          {% for row in g.members %}{{ row_dir(row) }}{% endfor %}
+        </div>
         {% endfor %}
       </div>
+
+      <div class="lb-panel" data-view="citations"{% if default_view != 'citations' %} hidden{% endif %}>
+        {% for row in cite_rows %}{{ row_cite(row) }}{% endfor %}
+      </div>
+
+      <div class="lb-panel" data-view="az"{% if default_view != 'az' %} hidden{% endif %}>
+        {% for row in az_rows %}{{ row_dir(row) }}{% endfor %}
+      </div>
+
+      <p class="lb-empty" hidden>No faculty match “<span class="lb-empty-q"></span>”.</p>
     </section>
   </div>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.lb-panel'));
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.lb-switch button'));
+  var search = document.querySelector('.lb-search');
+  var empty = document.querySelector('.lb-empty');
+  var emptyQ = document.querySelector('.lb-empty-q');
+
+  function currentPanel() {
+    for (var i = 0; i < panels.length; i++) { if (!panels[i].hidden) return panels[i]; }
+    return panels[0];
+  }
+  function show(view) {
+    panels.forEach(function (p) { p.hidden = (p.getAttribute('data-view') !== view); });
+    btns.forEach(function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-view') === view ? 'true' : 'false');
+    });
+  }
+  function applyFilter() {
+    var q = (search.value || '').trim().toLowerCase();
+    var panel = currentPanel();
+    var shown = 0;
+    Array.prototype.forEach.call(panel.querySelectorAll('.lb-row'), function (r) {
+      var hay = (r.getAttribute('data-name') || '') + ' ' +
+                (r.getAttribute('data-title') || '') + ' ' +
+                (r.getAttribute('data-areas') || '');
+      var hit = !q || hay.indexOf(q) !== -1;
+      r.style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    });
+    // hide a group header whose members are all filtered out
+    Array.prototype.forEach.call(panel.querySelectorAll('.lb-group'), function (g) {
+      var any = Array.prototype.some.call(g.querySelectorAll('.lb-row'), function (r) {
+        return r.style.display !== 'none';
+      });
+      g.style.display = any ? '' : 'none';
+    });
+    if (empty) { empty.hidden = shown !== 0; if (emptyQ) emptyQ.textContent = search.value; }
+  }
+  btns.forEach(function (b) {
+    b.addEventListener('click', function () { show(b.getAttribute('data-view')); applyFilter(); });
+  });
+  search.addEventListener('input', applyFilter);
+})();
+</script>
 {% endblock %}
