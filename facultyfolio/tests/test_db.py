@@ -37,3 +37,36 @@ def test_cs_faculty_slugs():
     slugs = db.cs_faculty_slugs()
     assert "ikoutis" in slugs and "oria" in slugs and "km982" in slugs
     assert len(slugs) == 57
+
+
+def test_faculty_slugs_per_org():
+    assert len(db.faculty_slugs(16)) == 57                    # Computer Science
+    assert len(db.faculty_slugs(73)) == 21                    # Data Science
+    assert len(db.faculty_slugs(100)) == 41                   # Informatics
+    assert db.faculty_slugs(config.CS_ORG_ID) == db.cs_faculty_slugs()
+
+
+def test_org_node_by_slug():
+    assert db.org_node_by_slug("ywcc") == 299
+    assert db.org_node_by_slug("computer-science") == 16
+    assert db.org_node_by_slug("no-such-org") is None
+
+
+def test_dept_orgs_of_college_discovers_ywcc_depts():
+    depts = db.dept_orgs_of_college(299)
+    slugs = [d["slug"] for d in depts]
+    # only faculty>0 depts, sorted by slug; College Administration (0 faculty) excluded
+    assert slugs == ["computer-science", "data-science", "informatics"]
+    assert "college-administration" not in slugs
+    by_slug = {d["slug"]: d for d in depts}
+    assert by_slug["data-science"]["faculty"] == 21
+    assert by_slug["data-science"]["node_id"] == 73
+    assert by_slug["computer-science"]["name"] == "Computer Science"
+
+
+def test_college_name_expands_acronym():
+    assert db.college_name(299) == "Ying Wu College of Computing"
+
+
+def test_get_faculty_home_dept_segment():
+    assert db.get_faculty(33)["home_dept_segment"] == "computer-science"   # Koutis

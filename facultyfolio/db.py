@@ -39,6 +39,18 @@ def _org_name(conn, org_id):
     return r["name"] if r else None
 
 
+def _org_slug(conn, node_id):
+    """The organizations.slug for an Org node (via nodes.attrs.org_id). None if absent."""
+    r = conn.execute("SELECT attrs FROM nodes WHERE id=?", (node_id,)).fetchone()
+    if not r or not r["attrs"]:
+        return None
+    oid = json.loads(r["attrs"]).get("org_id")
+    if oid is None:
+        return None
+    s = conn.execute("SELECT slug FROM organizations WHERE id=?", (oid,)).fetchone()
+    return s["slug"] if s else None
+
+
 def _college_of(conn, org_id):
     """First part_of parent of the department org (e.g. CS -> YWCC)."""
     r = conn.execute(
@@ -73,7 +85,7 @@ def get_faculty(id_or_slug) -> dict:
         profiles = attrs.get("profiles", {}) or {}
 
         # roles
-        home_dept = joint_dept = title = None
+        home_dept = joint_dept = title = home_dept_segment = None
         affiliated_depts = []
         for e in conn.execute(
             "SELECT * FROM edges WHERE src_id=? AND type='has_role' AND is_active=1 ORDER BY id",
@@ -85,6 +97,7 @@ def get_faculty(id_or_slug) -> dict:
                 home_dept = _org_name(conn, e["dst_id"])
                 title = ", ".join(titles) if titles else None
                 college = _college_of(conn, e["dst_id"])
+                home_dept_segment = _org_slug(conn, e["dst_id"])
             elif e["category"] == "joint" and joint_dept is None:
                 joint_dept = _org_name(conn, e["dst_id"])
             elif e["category"] == "affiliated":
@@ -130,6 +143,7 @@ def get_faculty(id_or_slug) -> dict:
             "name": normalize_name(node["name"]),
             "title": title,
             "home_dept": home_dept,
+            "home_dept_segment": home_dept_segment,
             "joint_dept": joint_dept,
             "affiliated_depts": affiliated_depts,
             "college": college,
@@ -150,8 +164,8 @@ def get_faculty(id_or_slug) -> dict:
         conn.close()
 
 
-def cs_faculty_slugs() -> list:
-    """Slugs of CS home faculty (category='faculty' -> CS org), minus suppressed."""
+def faculty_slugs(org_id) -> list:
+    """Slugs of an org's home faculty (has_role category='faculty' -> org), minus suppressed."""
     conn = connect()
     try:
         rows = conn.execute(
@@ -161,9 +175,68 @@ def cs_faculty_slugs() -> list:
                  AND e.type='has_role' AND e.category='faculty'
                  AND e.dst_id=? AND e.is_active=1
                ORDER BY n.name""",
-            (config.CS_ORG_ID,),
+            (org_id,),
         ).fetchall()
     finally:
         conn.close()
     slugs = [r["key"].split("/")[-1] for r in rows]
     return [s for s in slugs if s not in config.SUPPRESSED]
+
+
+def cs_faculty_slugs() -> list:
+    """CS home-faculty slugs. Thin alias over faculty_slugs (kept for existing callers/tests)."""
+    return faculty_slugs(config.CS_ORG_ID)
+
+
+def org_node_by_slug(slug):
+    """The nodes.id of the Org whose organizations.slug == slug (None if not found)."""
+    conn = connect()
+    try:
+        row = conn.execute(
+            """SELECT n.id AS id FROM nodes n
+               JOIN organizations o ON o.id = json_extract(n.attrs, '$.org_id')
+               WHERE n.type='Org' AND o.slug=? LIMIT 1""",
+            (slug,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return row["id"] if row else None
+
+
+def dept_orgs_of_college(college_node_id) -> list:
+    """Department child Orgs of a college (part_of), with faculty>0, sorted by slug."""
+    conn = connect()
+    try:
+        child_ids = [r["id"] for r in conn.execute(
+            """SELECT n.id AS id FROM nodes n
+               JOIN edges e ON e.src_id=n.id
+               WHERE e.type='part_of' AND e.dst_id=? AND e.is_active=1
+                 AND n.type='Org' AND n.is_active=1""",
+            (college_node_id,),
+        ).fetchall()]
+        out = []
+        for nid in child_ids:
+            fac = conn.execute(
+                """SELECT COUNT(DISTINCT n2.id) FROM nodes n2
+                   JOIN edges e2 ON e2.src_id=n2.id
+                   WHERE e2.type='has_role' AND e2.category='faculty'
+                     AND e2.dst_id=? AND e2.is_active=1 AND n2.is_active=1""",
+                (nid,),
+            ).fetchone()[0]
+            if fac > 0:
+                out.append({"node_id": nid, "slug": _org_slug(conn, nid),
+                            "name": _org_name(conn, nid), "faculty": fac})
+    finally:
+        conn.close()
+    out.sort(key=lambda d: d["slug"] or "")
+    return out
+
+
+def college_name(college_node_id) -> str:
+    """Org node name, expanded via config.COLLEGE_NAMES (acronym -> full college name)."""
+    conn = connect()
+    try:
+        short = _org_name(conn, college_node_id) or ""
+    finally:
+        conn.close()
+    return config.COLLEGE_NAMES.get(short, short)
