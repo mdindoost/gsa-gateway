@@ -71,11 +71,11 @@ def build_dept(org: dict, out_root: str, photo_map: dict = None) -> str:
 
 def build_hub(out_root: str, college_node: int, depts: list) -> str:
     """Render the college hub at root index.html: a card per department."""
-    cards = [
-        {"name": org["name"], "faculty": rank.coverage(org["node_id"])[1],
-         "scholar": rank.coverage(org["node_id"])[0], "url": f"{org['slug']}/index.html"}
-        for org in depts
-    ]
+    cards = []
+    for org in depts:
+        n_scholar, m_total = rank.coverage(org["node_id"])   # coverage once per dept
+        cards.append({"name": org["name"], "faculty": m_total, "scholar": n_scholar,
+                      "url": f"{org['slug']}/index.html"})
     html = render.render_hub(db.college_name(college_node), cards)
     path = paths.hub_path(out_root)
     _write(path, html)
@@ -118,7 +118,10 @@ def build_all(out_root: str = None) -> dict:
 
     leaderboards = [build_dept(org, out_root, photo_map=photo_map) for org in depts]
     hub = build_hub(out_root, college_node, depts)
+    dept_slugs = {d["slug"] for d in depts}
     for old, new in config.LEGACY_REDIRECTS.items():   # legacy URL continuity
+        if old in dept_slugs:                          # never clobber a live dept directory
+            continue
         _write(paths.redirect_path(out_root, old), _redirect_html(new))
     assets.copy_assets(out_root)
 

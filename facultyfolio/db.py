@@ -223,6 +223,9 @@ def dept_orgs_of_college(college_node_id) -> list:
                      AND e2.dst_id=? AND e2.is_active=1 AND n2.is_active=1""",
                 (nid,),
             ).fetchone()[0]
+            # NOTE: `fac` counts ALL home faculty (not SUPPRESSED-filtered). With SUPPRESSED
+            # empty this equals rank.coverage's denominator; if it's ever populated a dept whose
+            # only faculty are suppressed would still pass this gate (empty leaderboard). Accepted.
             if fac > 0:
                 out.append({"node_id": nid, "slug": _org_slug(conn, nid),
                             "name": _org_name(conn, nid), "faculty": fac})
