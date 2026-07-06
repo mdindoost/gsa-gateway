@@ -12,8 +12,16 @@ def profile_path(out_root: str, slug: str) -> str:
     return os.path.join(out_root, "p", f"{slug}.html")
 
 
-def leaderboard_path(out_root: str) -> str:
-    return os.path.join(out_root, "cs", "index.html")
+def leaderboard_path(out_root: str, segment: str) -> str:
+    return os.path.join(out_root, segment, "index.html")
+
+
+def hub_path(out_root: str) -> str:
+    return os.path.join(out_root, "index.html")
+
+
+def redirect_path(out_root: str, old_segment: str) -> str:
+    return os.path.join(out_root, old_segment, "index.html")
 
 
 def assets_dir(out_root: str) -> str:

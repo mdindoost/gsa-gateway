@@ -37,5 +37,7 @@ def test_flag_rejects_bad_value(monkeypatch):
 def test_paths_ssot_matches_current_layout():
     # Task-0 paths.py must reproduce the CURRENT flat layout byte-for-byte (no visual change)
     assert paths.profile_path("/out", "koutis") == "/out/p/koutis.html"
-    assert paths.leaderboard_path("/out") == "/out/cs/index.html"
+    assert paths.leaderboard_path("/out", "computer-science") == "/out/computer-science/index.html"
+    assert paths.hub_path("/out") == "/out/index.html"
+    assert paths.redirect_path("/out", "cs") == "/out/cs/index.html"
     assert paths.assets_dir("/out") == "/out/assets"
