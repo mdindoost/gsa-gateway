@@ -205,26 +205,51 @@ def format_service(raw: str) -> str:
     return s.strip()
 
 
-def format_education(raw: str) -> list:
-    """Year-anchored record split (spec §7 B5) — records are variable-length.
+_EDU_TAIL_YEAR = re.compile(r",?\s*((?:19|20)\d{2})\.?\s*$")
+_BARE_YEAR_FIELD = re.compile(r"^\s*(?:19|20)\d{2}\s*$")
 
-    Strip the provenance prefix; accumulate ';'-fields until a bare 4-digit year
-    closes a record (degree=first, institution=second, field=the rest). A record
-    needs institution AND year to be valid; degree-only (Oria) yields nothing.
+
+def format_education(raw: str) -> list:
+    """Parse the crawler's education blob into per-degree lines. NJIT emits TWO layouts, told
+    apart purely by YEAR STRUCTURE (no degree vocabulary — must generalize to any dept/college):
+
+    A) component-style — a bare 4-digit-year ';'-field closes a record whose earlier ';'-fields
+       are (degree; institution; field…): "Ph.D.; Ben-Gurion University; CS; 2016; M.Tech.; …".
+    B) per-degree — each ';'-field is ONE full degree with the year embedded at the end:
+       "Diplôme d'ingénieur, Institut …, 1989; Ph.D. in CS, École …, France, 1994." (Vincent Oria).
+
+    Discriminator (generalizable): a bare-year field ⇒ A. Else, only fields carrying an embedded
+    trailing year are emitted as degrees ⇒ B. A record with NO year signal at all (yearless
+    component rosters — Fox/Rahman) yields [] (honest-empty) rather than orphan institution lines.
+    Mechanical + verbatim; no maintained lookup table (base spec §3.4).
     """
     s = clean_mojibake(raw)
     s = re.sub(r"^Education of .*?:\s*", "", s)
     fields = [f.strip() for f in s.split(";") if f.strip()]
-    out, buf = [], []
+
+    if any(_BARE_YEAR_FIELD.match(f) for f in fields):          # layout A (component-style)
+        out, buf = [], []
+        for f in fields:
+            if _BARE_YEAR_FIELD.match(f):
+                year = f.strip()
+                if len(buf) >= 2:
+                    degree, institution = buf[0], buf[1]
+                    field = ", ".join(buf[2:])
+                    head = f"{degree} {field}" if field else degree
+                    out.append(f"{head}, {institution} ({year})")
+                buf = []
+            else:
+                buf.append(f)
+        return out
+
+    # layout B — emit ONLY fields that are "content + embedded trailing year" (Degree …, YYYY).
+    # A field with no trailing year is ambiguous (could be an orphan institution) → skipped, so a
+    # fully-yearless record yields [] not garbage. Year-structure only — no degree word list.
+    out = []
     for f in fields:
-        if re.fullmatch(r"\d{4}", f):
-            year = f
-            if len(buf) >= 2:
-                degree, institution = buf[0], buf[1]
-                field = ", ".join(buf[2:])
-                head = f"{degree} {field}" if field else degree
-                out.append(f"{head}, {institution} ({year})")
-            buf = []
-        else:
-            buf.append(f)
+        m = _EDU_TAIL_YEAR.search(f)
+        if m and not _BARE_YEAR_FIELD.match(f):
+            body = f[:m.start()].rstrip(" ,.")
+            if body:
+                out.append(f"{body} ({m.group(1)})")
     return out

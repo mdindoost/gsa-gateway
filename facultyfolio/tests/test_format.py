@@ -97,6 +97,25 @@ def test_format_education_degree_only_omitted():
     assert F.format_education("Education of Vincent Oria (Computer Science): Ph.D.") == []
 
 
+def test_format_education_per_degree_layout():   # layout B — Vincent Oria (year embedded per field)
+    raw = ("Education of Vincent Oria (Computer Science): "
+           "Diplôme d'ingénieur, Institut National Polytechnique, Yamoussoukro, Côte d'Ivoire, 1989; "
+           "Ph.D. in Computer Science, École Nationale Supérieure, Paris, France, 1994.")
+    out = F.format_education(raw)
+    assert out == [
+        "Diplôme d'ingénieur, Institut National Polytechnique, Yamoussoukro, Côte d'Ivoire (1989)",
+        "Ph.D. in Computer Science, École Nationale Supérieure, Paris, France (1994)",
+    ]
+
+
+def test_format_education_yearless_component_is_empty():
+    # yearless component-style roster (institution/field in separate fields, NO years) must NOT
+    # emit orphan institution lines — honest-empty. Generalizable: year-structure only, no vocab.
+    raw = ("Education of Wayne Fox: B.B.A.; The Wharton School of Business, University of "
+           "Pennsylvania; Accounting J.D.; Rutgers School of Law M.B.A.")
+    assert F.format_education(raw) == []
+
+
 def test_format_office():
     assert F.format_office("4105 Guttenberg Information Technologies Center (GITC)") == "4105 GITC"
     assert F.format_office("") == ""

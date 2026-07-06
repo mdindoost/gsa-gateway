@@ -63,6 +63,9 @@ def social_icons(f: dict, mode: str) -> list:
     return out
 
 
+_ALWAYS_ADAPTIVE_ROWS = {"Teaching interests"}   # sparse: omit when empty regardless of ABOUT_ROWS mode
+
+
 def about_rows(f: dict, mode: str) -> list:
     """The Background block's optional rows (Appointment is separate — always shown).
 
@@ -78,7 +81,10 @@ def about_rows(f: dict, mode: str) -> list:
     out = []
     for label, val in items:
         present = bool(val)
-        if mode == "Adaptive" and not present:
+        # sparse rows are ALWAYS adaptive (omit when empty) even in Fixed mode — a page-wide
+        # "Not listed" for a field most faculty lack is clutter, not a useful claim nudge.
+        adaptive = mode == "Adaptive" or label in _ALWAYS_ADAPTIVE_ROWS
+        if adaptive and not present:
             continue
         out.append({"label": label,
                     "value": val if present else config.ABOUT_EMPTY_LABEL,

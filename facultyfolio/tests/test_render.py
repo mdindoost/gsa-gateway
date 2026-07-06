@@ -21,10 +21,19 @@ def test_profile_koutis_sections():
 
 
 def test_about_rows_fixed_shows_all_with_not_listed():
-    f = {"education_raw": "", "teaching_raw": ""}     # nothing -> all 4 rows grayed
+    f = {"education_raw": "", "teaching_raw": ""}     # nothing present
     rows = render.about_rows(f, "Fixed")
-    assert [r["label"] for r in rows] == ["Education", "Office", "Teaching interests", "Teaching"]
+    # "Teaching interests" is ALWAYS adaptive (sparse) -> omitted when empty even in Fixed mode
+    assert [r["label"] for r in rows] == ["Education", "Office", "Teaching"]
     assert all(r["present"] is False and r["value"] == "Not listed" for r in rows)
+
+
+def test_teaching_interests_always_adaptive():
+    # present -> shows in Fixed; absent -> omitted in Fixed (unlike Education which grays)
+    present = render.about_rows({"education_raw": "", "teaching_raw": "Teaching Interests; AI, ML"}, "Fixed")
+    assert any(r["label"] == "Teaching interests" and r["present"] for r in present)
+    absent = render.about_rows({"education_raw": "", "teaching_raw": ""}, "Fixed")
+    assert "Teaching interests" not in [r["label"] for r in absent]
 
 
 def test_about_rows_adaptive_omits_empty():
@@ -76,11 +85,19 @@ def test_profile_teaching_interests_row():
 
 
 def test_profile_degraded_education_not_listed_fixed():
-    # Fixed default: Oria's education ("Ph.D." only) yields no rendered value -> "Not listed"
-    html = render.render_profile(db.get_faculty("oria"))
+    # Fixed default: a faculty with no parseable education -> Education row grays to "Not listed"
+    f = _koutis()
+    f["education_raw"] = ""
+    html = render.render_profile(f)
     assert "<span class=\"about-k\">Education</span>" in html
-    # the Education row is grayed with the placeholder
     assert "Not listed" in html
+
+
+def test_oria_per_degree_education_renders():
+    # regression: Oria's per-degree layout now renders both degrees (was blank before the fix)
+    html = render.render_profile(db.get_faculty("oria"))
+    assert "Diplôme" in html and "(1989)" in html          # apostrophe is HTML-escaped, avoid it
+    assert "École Nationale Supérieure des Télécommunications" in html and "(1994)" in html
 
 
 def test_missing_scholar_single_hook():
