@@ -52,13 +52,14 @@ COLLEGE_NAMES = {
 # decided one component at a time; only SOCIAL_ICONS is Fixed so far — the rest
 # default Adaptive so adding a flag is a zero-visual-change commit until it's flipped.
 # Override any flag at build time with FACULTYFOLIO_<NAME> (e.g. FACULTYFOLIO_NAV=Fixed).
+# (LEADERBOARD_ROSTER retired — the multi-view leaderboard always shows the full roster,
+#  so the old "gray the missing" toggle no longer has meaning.)
 _FLAG_DEFAULTS = {
     "SOCIAL_ICONS": "Fixed",
     "ABOUT_ROWS": "Fixed",
     "SCHOLAR_METRICS": "Adaptive",
     "PUBLICATIONS": "Adaptive",
     "NAV": "Adaptive",
-    "LEADERBOARD_ROSTER": "Adaptive",
 }
 _FLAG_VALUES = ("Fixed", "Adaptive")
 
@@ -87,7 +88,8 @@ RANK_LADDER = [
     "Senior University Lecturer",
     "University Lecturer",
 ]
-LEADERBOARD_DEFAULT_VIEW = "rank"              # "rank" | "citations" | "az"
+LEADERBOARD_VIEWS = ("rank", "citations", "az")
+LEADERBOARD_DEFAULT_VIEW = "rank"              # must be one of LEADERBOARD_VIEWS
 
 # --- per-person photo overrides (mechanism (c); drop-in file also supported) --
 # Pin a specific photo for a person. Value is one of: "njit" (force the NJIT card),

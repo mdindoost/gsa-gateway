@@ -200,6 +200,11 @@ def render_leaderboard(org_name: str, roster_views: dict, stats: dict,
     photo_map = {slug: photo_ref}; a slug absent -> monogram. Views/sorting are precomputed in
     rank.py — this stays pure presentation.
     """
+    if config.LEADERBOARD_DEFAULT_VIEW not in config.LEADERBOARD_VIEWS:
+        raise ValueError(
+            f"LEADERBOARD_DEFAULT_VIEW={config.LEADERBOARD_DEFAULT_VIEW!r} "
+            f"must be one of {config.LEADERBOARD_VIEWS}"
+        )
     n, m = coverage
     rank_groups = [
         {"label": g["label"], "members": [_lb_row(x, photo_map) for x in g["members"]]}

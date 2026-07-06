@@ -108,15 +108,18 @@ def test_leaderboard_stats_live():
 
 
 def test_cs_coverage():
+    # self-relative so a re-crawl / new hire / Scholar add doesn't break the guard:
+    # M = every home faculty; N = those with an int citation count; 0 <= N <= M.
     N, M = rank.coverage(config.CS_ORG_ID)
-    assert (N, M) == (39, 57)
+    assert M == len(db.cs_faculty_slugs())
+    n_expected = sum(1 for r in rank.roster(config.CS_ORG_ID) if isinstance(r["citations"], int))
+    assert N == n_expected and 0 <= N <= M
 
 
 def test_ranked_list():
     lst = rank.ranked_list(config.CS_ORG_ID)
-    assert len(lst) == 39
-    assert lst[0]["rank"] == 1
-    assert lst[0]["citations"] >= lst[1]["citations"]     # descending
+    n_scholar = sum(1 for r in rank.roster(config.CS_ORG_ID) if isinstance(r["citations"], int))
+    assert len(lst) == n_scholar                          # exactly the Scholar-having faculty
     assert all("slug" in r and "name" in r for r in lst)
-    # ranks are 1..N contiguous
-    assert [r["rank"] for r in lst] == list(range(1, 40))
+    assert [r["rank"] for r in lst] == list(range(1, n_scholar + 1))   # 1..N contiguous
+    assert all(lst[i]["citations"] >= lst[i + 1]["citations"] for i in range(len(lst) - 1))  # descending

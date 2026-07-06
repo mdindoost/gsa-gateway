@@ -1,7 +1,11 @@
 """Build orchestrator — dict -> photo -> render -> write; then leaderboard; then assets.
 
-Idempotent: re-running regenerates every page. Photos are cached by slug, so a rebuild
-does no network I/O and produces byte-identical output.
+Idempotent: re-running regenerates every page. A faculty photo that resolved to a real
+image is cached by slug (`assets/photos/<slug>.jpg`), so a rebuild reuses it with no
+network I/O and produces byte-identical output. A monogram-only person (no photo anywhere)
+has nothing to cache, so their NJIT lookup is re-attempted each run — cheap, output-stable.
+The leaderboard reuses the exact photo refs the profile pass resolved (threaded in via
+`photo_map`), so it never re-resolves or diverges from the profile pages.
 """
 import os
 
@@ -14,26 +18,38 @@ def _write(path: str, html: str) -> None:
         fh.write(html)
 
 
-def build_one(slug: str, out_root: str) -> str:
-    """Generate one faculty profile page; return the written path (or '' if suppressed)."""
-    faculty = db.get_faculty(slug)
-    if faculty["suppressed"]:
-        return ""
-    scholar = faculty.get("scholar") or {}
-    photo_ref = photos_ensure(slug, scholar.get("photo"), faculty["name"], paths.assets_dir(out_root))
-    html = render.render_profile(faculty, photo_ref=photo_ref)
-    path = paths.profile_path(out_root, slug)
-    _write(path, html)
-    return path
-
-
 def photos_ensure(slug, scholar_photo_url, name, assets_dir):
     # thin indirection so tests can stub network without importing photos everywhere
     from .photos import ensure_photo
     return ensure_photo(slug, scholar_photo_url, name, assets_dir)
 
 
-def build_leaderboard(out_root: str) -> str:
+def _resolve_photo(slug: str, faculty: dict, assets_dir: str) -> str:
+    """Resolve one faculty photo using the person's real Scholar photo URL (self-sufficient)."""
+    scholar = faculty.get("scholar") or {}
+    return photos_ensure(slug, scholar.get("photo"), faculty["name"], assets_dir)
+
+
+def build_one(slug: str, out_root: str, photo_ref: str = None) -> str:
+    """Generate one faculty profile page; return the written path (or '' if suppressed).
+
+    When `photo_ref` is supplied (by build_all) the photo is not re-resolved; otherwise it
+    is resolved here so build_one stays usable standalone.
+    """
+    faculty = db.get_faculty(slug)
+    if faculty["suppressed"]:
+        return ""
+    if photo_ref is None:
+        photo_ref = _resolve_photo(slug, faculty, paths.assets_dir(out_root))
+    html = render.render_profile(faculty, photo_ref=photo_ref)
+    path = paths.profile_path(out_root, slug)
+    _write(path, html)
+    return path
+
+
+def build_leaderboard(out_root: str, photo_map: dict = None) -> str:
+    """Render the CS leaderboard. Reuses the profile pass's photo refs when given; otherwise
+    resolves each faculty photo itself (with the real Scholar URL) so it is self-sufficient."""
     roster = rank.roster(config.CS_ORG_ID)
     coverage = rank.coverage(config.CS_ORG_ID)
     views = {
@@ -42,9 +58,11 @@ def build_leaderboard(out_root: str) -> str:
         "az": rank.by_name(roster),
     }
     stats = rank.leaderboard_stats(roster, coverage)
-    # photos are already cached from the profile pass, so this is ref-lookup, no network.
     assets_dir = paths.assets_dir(out_root)
-    photo_map = {r["slug"]: photos_ensure(r["slug"], None, r["name"], assets_dir) for r in roster}
+    photo_map = dict(photo_map or {})
+    for r in roster:                              # fill any slug the caller didn't supply
+        if r["slug"] not in photo_map:
+            photo_map[r["slug"]] = _resolve_photo(r["slug"], db.get_faculty(r["slug"]), assets_dir)
     html = render.render_leaderboard("Computer Science", views, stats, coverage, photo_map)
     path = paths.leaderboard_path(out_root)
     _write(path, html)
@@ -53,9 +71,17 @@ def build_leaderboard(out_root: str) -> str:
 
 def build_all(out_root: str = None) -> dict:
     out_root = out_root or config.OUT_ROOT
+    assets_dir = paths.assets_dir(out_root)
     slugs = db.cs_faculty_slugs()                 # already excludes suppressed
-    pages = [build_one(s, out_root) for s in slugs]
-    lb = build_leaderboard(out_root)
+    photo_map, pages = {}, []
+    for s in slugs:
+        faculty = db.get_faculty(s)
+        if faculty["suppressed"]:
+            continue
+        ref = _resolve_photo(s, faculty, assets_dir)   # resolve ONCE; reuse for page + leaderboard
+        photo_map[s] = ref
+        pages.append(build_one(s, out_root, photo_ref=ref))
+    lb = build_leaderboard(out_root, photo_map=photo_map)
     assets.copy_assets(out_root)
     return {"profiles": [p for p in pages if p], "leaderboard": lb, "count": len([p for p in pages if p])}
 

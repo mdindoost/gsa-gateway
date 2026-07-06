@@ -77,7 +77,7 @@ def by_rank(roster) -> list:
     out = []
     for (index, label) in sorted(groups):                      # ladder order = ascending index
         members = sorted(groups[(index, label)],
-                         key=lambda r: (_surname(r["name"]), r["name"].casefold(), r["slug"]))
+                         key=lambda r: (_surname(r["name"]), (r["name"] or "").casefold(), r["slug"]))
         out.append({"index": index, "label": label, "members": members})
     return out
 
@@ -90,7 +90,7 @@ def by_citations(roster) -> list:
     """
     ordered = sorted(
         roster,
-        key=lambda r: (r["citations"] is None, -(r["citations"] or 0), r["name"].casefold(), r["slug"]),
+        key=lambda r: (r["citations"] is None, -(r["citations"] or 0), (r["name"] or "").casefold(), r["slug"]),
     )
     n = 0
     out = []
@@ -107,7 +107,7 @@ def by_citations(roster) -> list:
 
 def by_name(roster) -> list:
     """All faculty A–Z by surname, then full name, then slug (byte-stable)."""
-    return sorted(roster, key=lambda r: (_surname(r["name"]), r["name"].casefold(), r["slug"]))
+    return sorted(roster, key=lambda r: (_surname(r["name"]), (r["name"] or "").casefold(), r["slug"]))
 
 
 def leaderboard_stats(roster, coverage) -> dict:

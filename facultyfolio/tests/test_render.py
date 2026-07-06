@@ -144,21 +144,37 @@ def test_leaderboard_controls_and_stats():
 
 def test_leaderboard_all_faculty_every_panel():
     html, roster = _leaderboard_html()
-    # every faculty links from all THREE panels -> 3 hrefs per slug
+    slugs = {r["slug"] for r in roster}
+    assert "acz6" in slugs and "ikoutis" in slugs                      # both are known CS faculty
+    # every faculty links from all THREE panels -> exactly 3 hrefs per slug (unconditional)
     for slug in ("acz6", "ikoutis"):
-        if any(r["slug"] == slug for r in roster):
-            assert html.count(f'../p/{slug}.html') == 3
+        assert html.count(f'../p/{slug}.html') == 3
 
 
 def test_leaderboard_chair_group_first_and_no_scholar_grayed():
-    html, _ = _leaderboard_html()
+    html, roster = _leaderboard_html()
     rank_panel = html.split('<div class="lb-panel" data-view="rank">', 1)[1] \
                      .split('<div class="lb-panel" data-view="citations"', 1)[0]
     first_group = rank_panel.split('lb-group-h">', 1)[1].split('<', 1)[0]
     assert first_group == "Department Chair"                           # Chair heads the rank view
-    # Zaidenberg (no Scholar) is grayed in the citations panel with an em-dash citation
+    # Zaidenberg (acz6) has no Scholar -> grayed + em-dash in the citations panel (unconditional)
+    assert not any(r["slug"] == "acz6" and r["citations"] is not None for r in roster)
     cite_panel = html.split('<div class="lb-panel" data-view="citations"', 1)[1] \
                      .split('<div class="lb-panel" data-view="az"', 1)[0]
-    acz6 = cite_panel.split('../p/acz6.html', 1)
-    if len(acz6) > 1:
-        assert 'no-scholar' in acz6[0].rsplit('<a class="lb-row', 1)[1]
+    before_acz6 = cite_panel.split('../p/acz6.html', 1)[0]
+    assert 'no-scholar' in before_acz6.rsplit('<a class="lb-row', 1)[1]   # her row carries the grayed class
+
+
+def test_leaderboard_escapes_hostile_characters():
+    from facultyfolio import rank
+    hostile = [{"slug": "x1", "name": 'A "Quote" & <b>Bold</b>', "title": 'Prof <script>',
+                "rank_index": 2, "rank_label": "Professor", "citations": None, "h_index": None,
+                "areas": ['R&D <tag>']}]
+    views = {"rank": rank.by_rank(hostile), "citations": rank.by_citations(hostile),
+             "az": rank.by_name(hostile)}
+    stats = rank.leaderboard_stats(hostile, (0, 1))
+    html = render.render_leaderboard("CS", views, stats, (0, 1), {"x1": "monogram:AQ"})
+    # the hostile PAYLOAD never appears raw (the page's own <script> block is unrelated)
+    assert "Prof <script>" not in html and "<b>Bold</b>" not in html
+    assert "&lt;script&gt;" in html and "&amp;" in html                 # escaped in visible text
+    assert 'data-name="a &#34;quote&#34; &amp; &lt;b&gt;bold&lt;/b&gt;"' in html  # escaped in data-* attr too
