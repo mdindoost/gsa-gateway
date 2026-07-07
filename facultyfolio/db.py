@@ -11,7 +11,7 @@ import sqlite3
 from . import config
 from .format import normalize_name
 
-_PROSE_TYPES = ("education", "teaching", "profile")
+_PROSE_TYPES = ("education", "teaching", "profile", "research_statement")
 
 
 def connect() -> sqlite3.Connection:
@@ -127,6 +127,7 @@ def get_faculty(id_or_slug) -> dict:
 
         education_raw = _prose(conn, key, "education")
         teaching_raw = _prose(conn, key, "teaching")
+        research_statement_raw = _prose(conn, key, "research_statement")
         prose_types = [t for t in _PROSE_TYPES if _prose(conn, key, t)]
 
         # Recognition (crawler-only): award TITLES (one row each, clean verbatim strings) +
@@ -154,6 +155,7 @@ def get_faculty(id_or_slug) -> dict:
             "areas": areas,
             "education_raw": education_raw,
             "teaching_raw": teaching_raw,
+            "research_statement_raw": research_statement_raw,
             "awards_raw": awards_raw,
             "service_raw": service_raw,
             "scholar": scholar,

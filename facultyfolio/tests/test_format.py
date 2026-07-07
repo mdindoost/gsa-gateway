@@ -154,6 +154,50 @@ def test_format_awards_drops_year_with_trailing_dot():
     assert F.format_awards(["2019.", "2019 Real Award"]) == ["2019 Real Award"]  # "2019." is noise
 
 
+def test_clean_research_statement_list_and_paragraph():
+    # dept-present + a clean list
+    assert F.clean_research_statement(
+        "Research statement of X (Computer Science): Research Interests Wastewater and Water "
+        "Treatment, Water Quality Issues"
+    ) == "Wastewater and Water Treatment, Water Quality Issues"
+    # dept-absent + a paragraph, kept verbatim
+    assert F.clean_research_statement(
+        "Research statement of Jane Doe: Research Interests Dr. Doe's research focuses on human "
+        "robot interaction."
+    ) == "Dr. Doe's research focuses on human robot interaction."
+
+
+def test_clean_research_statement_drops_fused_sections():
+    # the crawler fuses In Progress / Patents onto the interests with NO separator -> keep only interests
+    raw = ("Research statement of Ali Mili (Computer Science): Research Interests software engineering "
+           "software testing program repair In Progress A Theory of Program Repair Using relative "
+           "correctness")
+    assert F.clean_research_statement(raw) == "software engineering software testing program repair"
+    raw2 = ("Research statement of P (Data Science): Research Interests machine learning Patents "
+            "A Method For Something")
+    assert F.clean_research_statement(raw2) == "machine learning"
+
+
+def test_clean_research_statement_label_less_is_empty():
+    # patents-/grants-only rows have NO 'Research Interests' label -> omit (empty)
+    assert F.clean_research_statement(
+        "Research statement of Amy Hoover (Computer Science): Patents Generating Flower Images") == ""
+    assert F.clean_research_statement(
+        "Research statement of Q: In Progress Some Grant Project") == ""
+    assert F.clean_research_statement("") == "" and F.clean_research_statement(None) == ""
+
+
+def test_clean_research_statement_single_strip_and_case():
+    # a body legitimately starting 'Research interests are…' is preserved verbatim (single strip)
+    assert F.clean_research_statement(
+        "Research statement of B: Research Interests Research interests are in the area of networks"
+    ) == "Research interests are in the area of networks"
+    # a lowercase 'patents' inside a sentence is NOT a section boundary (case-sensitive markers)
+    assert F.clean_research_statement(
+        "Research statement of C: Research Interests software patents and licensing policy"
+    ) == "software patents and licensing policy"
+
+
 def test_format_service_strips_prefix_dept_optional():
     assert F.format_service("Service by Jane Doe (Computer Science): Program Committee, 2022") \
         == "Program Committee, 2022"

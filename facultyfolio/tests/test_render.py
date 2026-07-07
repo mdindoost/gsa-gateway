@@ -15,7 +15,8 @@ def test_profile_koutis_sections():
     assert "Active since" in html and ">2007<" in html and "Dept. rank" not in html   # rank cut, "Active since 2007"
     assert 'class="bar peak"' in html                                    # chart present
     assert "not written or generated" in html                           # provenance label
-    assert "2,791" in html                                              # comma-formatted citations
+    from facultyfolio import format as F
+    assert F.commafy(_koutis()["scholar"]["citations"]) in html         # comma-formatted citations (self-relative)
     from facultyfolio import config
     assert config.ASSISTANT_VERSION in html   # footer tracks identity source, not a re-hardcoded string
 
@@ -34,6 +35,25 @@ def test_teaching_interests_always_adaptive():
     assert any(r["label"] == "Teaching interests" and r["present"] for r in present)
     absent = render.about_rows({"education_raw": "", "teaching_raw": ""}, "Fixed")
     assert "Teaching interests" not in [r["label"] for r in absent]
+
+
+def test_research_interests_row_after_education():
+    # present -> a "Research interests" row shows immediately after Education
+    f = {"education_raw": "Education of X (CS): Ph.D.; MIT; CS; 2010",
+         "research_statement_raw": "Research statement of X (CS): Research Interests robotics, vision",
+         "teaching_raw": ""}
+    labels = [r["label"] for r in render.about_rows(f, "Fixed")]
+    assert "Research interests" in labels
+    assert labels.index("Research interests") == labels.index("Education") + 1
+    ri = next(r for r in render.about_rows(f, "Fixed") if r["label"] == "Research interests")
+    assert ri["value"] == "robotics, vision" and ri["present"]
+
+
+def test_research_interests_always_adaptive_omitted_when_empty():
+    # no statement (or a patents-only label-less blob) -> row omitted even in Fixed mode
+    for rs in ("", "Research statement of X (CS): Patents A Method For Something"):
+        f = {"education_raw": "", "research_statement_raw": rs, "teaching_raw": ""}
+        assert "Research interests" not in [r["label"] for r in render.about_rows(f, "Fixed")]
 
 
 def test_about_rows_adaptive_omits_empty():
@@ -109,6 +129,22 @@ def test_profile_back_link_uses_home_segment():
     html = render.render_profile(db.get_faculty(33))            # home = Computer Science
     assert '../computer-science/index.html' in html
     assert '../cs/index.html' not in html
+
+
+def test_profile_mx6_njit_research_interest_and_scholar_chips_coexist():
+    # the whole point: her NJIT prose shows in Background AND her Scholar chips stay in Areas of focus
+    html = render.render_profile(db.get_faculty("mx6"))
+    assert "Research interests" in html
+    assert "Machine learning theory" in html and "graph representation learning" in html
+    assert "Graph Machine Learning" in html and "LLMs" in html      # union chips untouched
+
+
+def test_research_interest_html_escaped():
+    f = _koutis()
+    f["research_statement_raw"] = ("Research statement of K (CS): Research Interests "
+                                   "<script>alert(1)</script> robotics")
+    html = render.render_profile(f)
+    assert "<script>alert(1)</script>" not in html and "&lt;script&gt;" in html
 
 
 def test_missing_scholar_single_hook():

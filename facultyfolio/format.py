@@ -205,6 +205,30 @@ def format_service(raw: str) -> str:
     return s.strip()
 
 
+_RS_PROVENANCE = re.compile(r"^Research statement of [^:]{1,160}:\s*")
+# The interests section, bounded by the next NJIT structural marker. Markers are the crawler's own
+# Title-Case section labels (njit_adapter _GRANT_LABELS = {"in progress","completed"} + "Patents");
+# case-sensitive so a lowercase 'patents'/'in progress' inside a sentence is NOT a boundary.
+_RS_SECTION = re.compile(
+    r"Research Interests[:.]?\s*(.*?)(?:\s*(?:In Progress|Completed|Patents)\b|$)", re.S)
+
+
+def clean_research_statement(raw) -> str:
+    """Extract ONLY the 'Research Interests' section from the crawler's fused `research_statement`.
+
+    The stored blob concatenates several NJIT profile sections with NO separators
+    (Research Interests / In Progress / Completed / Patents). Take the interests section up to the
+    next structural marker (same shape as `format_teaching_interests` bounding at 'Past Courses').
+    No interests label ⇒ '' (patents/grants-only rows omit the row). Verbatim otherwise; the label
+    strip is single-shot (first-match), so a body starting 'Research interests are…' is preserved.
+    Mechanical; no lookup table (base spec §3.4).
+    """
+    s = clean_mojibake(raw or "")
+    s = _RS_PROVENANCE.sub("", s)
+    m = _RS_SECTION.search(s)
+    return m.group(1).strip() if m else ""
+
+
 _EDU_TAIL_YEAR = re.compile(r",?\s*((?:19|20)\d{2})\.?\s*$")
 _BARE_YEAR_FIELD = re.compile(r"^\s*(?:19|20)\d{2}\s*$")
 

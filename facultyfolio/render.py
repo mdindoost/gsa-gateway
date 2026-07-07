@@ -66,7 +66,7 @@ def social_icons(f: dict, mode: str) -> list:
     return out
 
 
-_ALWAYS_ADAPTIVE_ROWS = {"Teaching interests"}   # sparse: omit when empty regardless of ABOUT_ROWS mode
+_ALWAYS_ADAPTIVE_ROWS = {"Teaching interests", "Research interests"}   # sparse: omit when empty regardless of ABOUT_ROWS mode
 
 
 def about_rows(f: dict, mode: str) -> list:
@@ -77,6 +77,7 @@ def about_rows(f: dict, mode: str) -> list:
     """
     items = [
         ("Education", " · ".join(F.format_education(f.get("education_raw") or ""))),
+        ("Research interests", F.clean_research_statement(f.get("research_statement_raw") or "")),
         ("Office", _contact(f) or ""),
         ("Teaching interests", ", ".join(F.format_teaching_interests(f.get("teaching_raw") or ""))),
         ("Teaching", " · ".join(F.format_teaching(f.get("teaching_raw") or ""))),

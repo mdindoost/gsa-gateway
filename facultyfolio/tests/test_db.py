@@ -16,7 +16,7 @@ def test_koutis_dict():
     assert set(f["profiles"]) >= {"scholar", "linkedin", "github", "website"}
     assert len(f["areas"]) == 5
     assert len(set(a.lower().replace(" ", "") for a in f["areas"])) == 5   # deduped
-    assert f["scholar"]["citations"] == 2791
+    assert f["scholar"]["citations"] >= 2791          # grows over time (Scholar refreshes); don't re-pin
     assert "Carnegie Mellon" in f["education_raw"]
     assert "CS 375" in f["teaching_raw"] or "CS375" in f["teaching_raw"]
 
@@ -30,7 +30,13 @@ def test_readonly_connection_rejects_write():
 def test_trust_boundary_only_crawler_prose():
     f = db.get_faculty(33)
     assert "about" not in f["_prose_types"]          # never LLM bios
-    assert set(f["_prose_types"]) <= {"education", "teaching", "profile"}
+    assert set(f["_prose_types"]) <= {"education", "teaching", "profile", "research_statement"}
+
+
+def test_get_faculty_research_statement_raw():
+    # mx6's NJIT research interest is a prose sentence (no chips) -> stored as research_statement
+    rs = db.get_faculty("mx6")["research_statement_raw"]
+    assert "Research statement of" in rs and "Machine learning theory" in rs
 
 
 def test_cs_faculty_slugs():
