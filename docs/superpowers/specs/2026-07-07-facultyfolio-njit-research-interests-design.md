@@ -22,6 +22,18 @@ Mengjia Xu → `Machine learning / Graph Machine Learning / LLMs`). Meanwhile he
 produced no NJIT chips (65 show no chips at all, 50 show Scholar-only like Mengjia). None of the 332
 have their descriptive NJIT text shown anywhere on the page.
 
+**Data-shape reality (Fable review, tested against all 332 live rows):** the `research_statement`
+content is a FUSED dump of several NJIT profile sections, structured as
+`Research statement of <Name>[ (Dept)]: [Research Interests <text>] [In Progress <grants…>]
+[Completed <grants…>] [Patents <patents…>]` with **no separators** between sections. Specifically:
+~40 rows fuse an `In Progress`/`Patents` section directly onto the interests text (e.g. Mili:
+`…program repair In Progress A Theory of Program Repair…`); **8 rows have NO `Research Interests`
+label at all** (patents-/grants-only, e.g. ahoover: `Patents Generating Flower Images…`); 2 rows have
+a benign double-label (`Research Interests Research interests are in the area of…`); 0 entities have
+>1 statement row; median body 202 chars, p90 ~1,179, max 7,273 (singhp). Therefore the cleaner MUST
+extract ONLY the `Research Interests` section (bounded by the next structural section marker), and a
+row with no interests label yields `""` (omitted).
+
 ## Decision (owner-approved)
 
 - **"Areas of focus" stays exactly as-is — the UNION** of NJIT + Scholar chips. (Making it
@@ -44,18 +56,28 @@ the NJIT-verbatim hard line. FacultyFolio currently ignores this type entirely.
   includes it (still all crawler prose). Update `test_trust_boundary_only_crawler_prose` accordingly.
 
 ### `format.py` — `clean_research_statement(raw) -> str`
-Mechanical, verbatim after prefix-strip (same family as `format_service` / `format_education`; no
-lookup tables, base spec §3.4):
+Mechanical, verbatim; extracts ONLY the `Research Interests` section (same shape as the existing
+`format_teaching_interests`, which bounds at the literal `Past Courses` marker). No lookup tables /
+no editorializing (base spec §3.4). The section markers are NJIT profile-template structural artifacts
+the crawler already models (`njit_adapter.py _GRANT_LABELS = {"in progress","completed"}` + `Patents`),
+not domain curation:
 1. `clean_mojibake` (strip U+FFFD, collapse whitespace).
 2. Strip the provenance lead-in: `^Research statement of [^:]{1,160}:\s*` (dept-optional; strip to the
-   first colon — mirrors `format_service`).
-3. Strip a leading label echo: `^Research Interests[:.]?\s*` (case-insensitive).
-4. Return the remainder **verbatim** (`""` if nothing remains).
+   first colon — mirrors `format_service`). (0 misses across 332 rows — no colon-bearing name/dept.)
+3. Extract the interests section: `re.search(r"Research Interests[:.]?\s*(.*?)(?:\s*(?:In Progress|
+   Completed|Patents)\b|$)", s, flags=re.S)`. **No match → return `""`** (the 8 label-less patents/
+   grants-only rows omit the row). Boundary markers are **case-sensitive** (Title-Case structural
+   labels) so a sentence that says lowercase "patents"/"in progress" is not clipped — accepted
+   mechanical trade-off, same family as `smart_titlecase`'s documented cost. Single `^`/first-match
+   `re.search` → the label strip is inherently ONE-shot (a body legitimately starting
+   "Research interests are in the area of…" is preserved verbatim, NOT double-stripped).
+4. Return `m.group(1).strip()` **verbatim**.
 
-Examples (real rows): `… : Research Interests Math Modeling. Business Risk management` →
-`Math Modeling. Business Risk management`; `… (Computer Science): Research Interests Dr. Tsung-Chi
-Lin's research focuses on advancing human robot interaction…` → `Dr. Tsung-Chi Lin's research focuses
-on advancing human robot interaction…`.
+Examples (real rows): `…: Research Interests Math Modeling. Business Risk management` →
+`Math Modeling. Business Risk management`; `…(Computer Science): Research Interests software engineering
+software testing program verification program repair In Progress A Theory of Program Repair…` →
+`software engineering software testing program verification program repair` (In-Progress dropped);
+`…: Patents Generating Flower Images…` → `""` (no interests label → row omitted).
 
 ### `render.py` — `about_rows`
 Insert the row **after Education** in the `items` list:
@@ -77,15 +99,20 @@ value cleanly; Jinja autoescape covers HTML. No length cap (verbatim; render wha
   the honest representation).
 
 ## Testing
-- `format`: prefix strip (dept-present + dept-absent), label-echo strip, verbatim body preserved,
-  empty/`None` → `""`.
+- `format`: prefix strip (dept-present + dept-absent), verbatim body preserved, empty/`None` → `""`;
+  **fused-section** (`… program repair In Progress …` → interests only), **label-less** patents/grants
+  row → `""`, **double-label** (`Research Interests Research interests are in the area of…` → the full
+  verbatim sentence, single-strip), case-sensitive boundary (a sentence containing lowercase "patents"
+  is not clipped).
 - `render.about_rows`: "Research interests" appears immediately after Education when present; omitted
   when empty (even in Fixed mode); value is the cleaned verbatim text.
 - `render_profile`: Mengjia (mx6) renders the NJIT sentence in Background AND keeps her Scholar chips
   in Areas of focus; HTML in a statement is escaped.
 - `db`: `get_faculty(mx6)["research_statement_raw"]` is populated; `_prose_types` may include
   `research_statement`; still `<= {education, teaching, profile, research_statement}`.
-- Rebuild + spot-check a paragraph-statement page (tl459) and a list-statement page (hsieh).
+- Rebuild + spot-check a paragraph page (tl459), a list page (hsieh), a fused page (mili → no
+  "In Progress" text leaks), a label-less page (ahoover → no Research-interests row), and the
+  worst-case wall (singhp, 7,273 chars).
 
 ## Generalizability
 Reads `research_statement` for any person in any dept/college; no per-person/per-dept vocabulary; no
