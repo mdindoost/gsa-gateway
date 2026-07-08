@@ -38,7 +38,10 @@ def test_partial_only_when_latest_eq_sync():
 
 
 def test_gate_min_years():
-    assert C.render_chart({"2024": 1, "2025": 2}, 2026) is None   # <4 years
+    assert C.render_chart({"2025": 2}, 2026) is None              # single year -> no trajectory
+    # two+ years is enough to draw a trajectory (gate is "more than one year")
+    svg = C.render_chart({"2024": 1, "2025": 2}, 2026)
+    assert svg and 'class="bar peak"' in svg
 
 
 def test_gate_peak_zero():

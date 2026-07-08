@@ -23,11 +23,12 @@ def _fmt(x: float) -> str:
 
 def render_chart(cites_per_year: dict, sync_year: int):
     """Return an inline SVG string, or None when the render gate fails
-    (fewer than 4 years, or a non-positive peak)."""
+    (a single year — need more than one to show a trajectory — or a
+    non-positive peak)."""
     if not cites_per_year:
         return None
     years = sorted(int(y) for y in cites_per_year.keys())
-    if len(years) < 4:
+    if len(years) < 2:
         return None
     vals = {int(y): int(v) for y, v in cites_per_year.items()}
 
