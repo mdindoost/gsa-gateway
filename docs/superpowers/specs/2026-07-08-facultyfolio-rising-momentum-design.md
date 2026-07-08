@@ -109,6 +109,32 @@ verdict on the department.
 
 ---
 
+## Per-person "recent trend" line (profile page) — Fable option (B)
+
+Each faculty **profile page** gets a small "recent trend" line directly under its existing cites-per-year
+bar chart. Shown for **everyone who passes the data gate** (≥5 complete years) — NOT positive-only.
+Positive-only would migrate the "last place" harm onto the profile page in a worse form: on a strip an
+omission is invisible, but on a named page — where the chart is right there and peers' pages carry a line
+— an absent line is a conspicuous, readable negative signal to the one reader who matters (the professor).
+So show a line for everyone with data, using a **two-bucket neutral vocabulary that never asserts a decline**:
+
+- **Positive and clears the noise** (same `is_rising` rule as the strip) → `recent trend: growing (+18%/yr, 2021–2025)`
+  — the growth figure, with window. (Tiny-base guard applies: latest complete year < 25 → `recent trend: growing ▲`,
+  no precise %.)
+- **Everything else with data** (flat, mildly negative, noisy) → `recent trend: steady` — **no number, no
+  color, no arrow.**
+- The words **"declining" / "falling" and any bare negative headline percentage NEVER render**, anywhere.
+  Calling a genuine −14% "steady" is honest-partial in the correct direction: we decline to assert a decline
+  the 2–5-year citation lag could erase; "steady" is the strongest claim the data licenses.
+- **Below the data gate** (< 5 complete years): no line at all — data-insufficiency, symmetric with a sparse
+  chart, not a judgment.
+- Same caveat line sits under it as under the strip ("citations received lag research by 2–5 years").
+
+Mechanically this reuses the strip's `momentum_pct` / `is_rising` / tiny-base helpers — the profile page
+just maps the result to `{growing +X%/yr | growing ▲ | steady | (none)}`. No new math.
+
+---
+
 ## File structure
 
 - **Create `facultyfolio/momentum.py`** — pure functions, no I/O: `theil_sen_slope(values)`,
@@ -124,6 +150,10 @@ verdict on the department.
   absolute chip, tiny-base glyph). Reuse `chart.py` for the inline sparkline (small variant).
 - **Modify `facultyfolio/templates/leaderboard.html`** — add the `★ Rising` button to `.lb-switch`
   and a `data-view="rising"` panel with the caption + funnel + footnote; JS toggle already exists.
+- **Modify `facultyfolio/render.py` (`render_profile`) + `templates/profile.html`** — the per-person
+  "recent trend" line under the bar chart (Fable option B). A `_recent_trend(f, sync_year)` helper maps
+  the momentum result → `{"growing", "+18%/yr (2021–2025)"}` / `{"growing", "▲"}` / `{"steady"}` / `None`
+  (below data gate), reusing `momentum.momentum_pct`/`is_rising`. Template renders the line only when non-None.
 - **Modify `facultyfolio/config.py`** if needed — window length (5) and magnitude floor (10) as named
   constants (not magic numbers), plus the tiny-base threshold (25).
 - **Tests:** `facultyfolio/tests/test_momentum.py` (estimator, gates, membership, tiny-base),
@@ -144,6 +174,9 @@ and Informatics with no per-dept code; a future college added to the entry point
 - **Membership:** slope>0 & pessimistic>0 → included; flat (slope≈0) → excluded; negative → excluded.
   A genuinely-declining fixture (Jason-Wang-like 442→275) is EXCLUDED from Rising and PRESENT in Citations.
 - **Tiny-base guard:** latest complete year <25 → `▲ growing` glyph, no precise %.
+- **Per-person trend line:** positive-and-clears-noise fixture → "growing (+X%/yr, …)"; flat fixture →
+  "steady" (no number); genuine −14% decliner → "steady" (NEVER "declining"/negative number); <5 yrs → no
+  line. Assert the string "declin" / "falling" never appears in any rendered profile.
 - **Render invariant (the hard rule):** every Rising row that shows a `%/yr` also contains a sparkline
   and an absolute-rate chip — assert all three co-occur; fail the build if a % appears alone.
 - **Real-data smoke (manual, gated):** rebuild against the live DB; eyeball CS Rising (~20 names,
@@ -163,9 +196,9 @@ and Informatics with no per-dept code; a future college added to the entry point
 - [ ] Tiny-base `▲ growing` guard (<25 latest-year cites).
 - [ ] Honest caption (mechanism named) + coverage funnel + DORA footnote.
 - [ ] Decliners kept present & top-ranked on the default Citations/Rank views (omission ≠ erasure).
-- [ ] Per-person momentum line under the bar chart on each profile page — SAME rules (positive only;
-      %/yr never without the chart + absolute chip beside it; tiny-base glyph). *(Confirm scope w/ owner
-      — could be a fast-follow if it complicates review.)*
+- [ ] Per-person "recent trend" line under the bar chart on each profile page — IN v1, shown for
+      EVERYONE who passes the data gate (≥5 complete years), neutral vocabulary (see "Per-person line"
+      below). Decided: Fable option (B).
 
 **Explicitly DEFERRED (loudly, per review-against-plan hard line):**
 - Shape families (early-climber / plateau / past-peak) — **deferred**; if ever revisited, only as
