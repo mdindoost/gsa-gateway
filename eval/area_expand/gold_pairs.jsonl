@@ -1,0 +1,55 @@
+{"query":"cyber security","tag":"network security","belongs":true}
+{"query":"cyber security","tag":"cloud security","belongs":true}
+{"query":"cyber security","tag":"cybersecurity","belongs":true}
+{"query":"cyber security","tag":"wireless security","belongs":true}
+{"query":"cyber security","tag":"system security","belongs":true}
+{"query":"cyber security","tag":"Software and Systems Security","belongs":true}
+{"query":"cyber security","tag":"Information Security and Privacy","belongs":true}
+{"query":"cyber security","tag":"machine learning","belongs":false}
+{"query":"cyber security","tag":"computer vision","belongs":false}
+{"query":"cyber security","tag":"cyber physical systems","belongs":false}
+{"query":"cyber security","tag":"Real-Time and Cyber-Physical Systems","belongs":false}
+{"query":"computer networks","tag":"wireless networks","belongs":true}
+{"query":"computer networks","tag":"datacenter networks","belongs":true}
+{"query":"computer networks","tag":"communication networks","belongs":true}
+{"query":"computer networks","tag":"sensor networks","belongs":true}
+{"query":"computer networks","tag":"ad hoc & vehicular networks","belongs":true}
+{"query":"computer networks","tag":"interconnection networks","belongs":true}
+{"query":"computer networks","tag":"neural networks","belongs":false}
+{"query":"computer networks","tag":"artificial neural networks","belongs":false}
+{"query":"computer networks","tag":"social network","belongs":false}
+{"query":"computer networks","tag":"Computer Vision (Object/Face Detection, Video Processing)","belongs":false}
+{"query":"computer networks","tag":"Computer Science","belongs":false}
+{"query":"computer networks","tag":"analytical and quantitative analysis of electrical properties of neurons and networks","belongs":false}
+{"query":"machine learning","tag":"deep learning","belongs":true}
+{"query":"machine learning","tag":"reinforcement learning","belongs":true}
+{"query":"machine learning","tag":"statistical learning","belongs":true}
+{"query":"machine learning","tag":"representation learning","belongs":true}
+{"query":"machine learning","tag":"adversarial machine learning","belongs":true}
+{"query":"machine learning","tag":"motor learning","belongs":false}
+{"query":"machine learning","tag":"service-learning connections to writing","belongs":false}
+{"query":"machine learning","tag":"learning sciences (educational research)","belongs":false}
+{"query":"machine learning","tag":"Decision support modeling and evaluations of human machine systems","belongs":false}
+{"query":"machine learning","tag":"publication and service learning","belongs":false}
+{"query":"operating systems","tag":"distributed systems","belongs":true}
+{"query":"operating systems","tag":"real-time systems","belongs":true}
+{"query":"operating systems","tag":"embedded computing systems","belongs":true}
+{"query":"operating systems","tag":"transportation systems","belongs":false}
+{"query":"operating systems","tag":"power systems","belongs":false}
+{"query":"operating systems","tag":"biological systems","belongs":false}
+{"query":"operating systems","tag":"healthcare systems engineering","belongs":false}
+{"query":"recommender systems","tag":"recommender systems","belongs":true}
+{"query":"recommender systems","tag":"machine learning","belongs":false}
+{"query":"recommender systems","tag":"data mining","belongs":false}
+{"query":"computer vision","tag":"computer vision – face recognition","belongs":true}
+{"query":"computer vision","tag":"image processing","belongs":true}
+{"query":"computer vision","tag":"natural language processing","belongs":false}
+{"query":"robotics","tag":"swarm robotics","belongs":true}
+{"query":"robotics","tag":"robotics and navigation","belongs":true}
+{"query":"robotics","tag":"machine learning","belongs":false}
+{"query":"cyber security","tag":"risk-sharing financial network","belongs":false}
+{"query":"cyber security","tag":"green communications and networking","belongs":false}
+{"query":"cyber security","tag":"wireless networks","belongs":false}
+{"query":"cyber security","tag":"sensors for cyber-physical systems","belongs":false}
+{"query":"computer networks","tag":"wireless communication","belongs":true}
+{"query":"machine learning","tag":"human machine systems","belongs":false}

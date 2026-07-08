@@ -119,9 +119,16 @@ def test_synonym_abbreviation_matches_tag(db):
 
 
 # ═══════════════ the consistency invariant (the core thesis) ═══════════════
-def test_membership_matches_population_skill_exactly(db):
-    """For every person, does_person_research_area == 'yes' IFF they appear in
-    people_by_research_area(area). The two can never disagree."""
+# Task 7 (area expansion, spec §9 R1/R2) RELAXED this invariant: people_by_research_area's
+# roster is now a SUPERSET (exact ∪ LLM-verified sibling-tag holders), so 'yes' is no longer
+# equivalent to roster membership — a sibling-only member answers 'related', never a false
+# 'no'. The exact-membership IFF (this test) still holds when expansion is a no-op, which is
+# what we assert here by stubbing _expand_llm deterministically (no live-LLM dependency); the
+# expanded/'related' case has its own dedicated coverage in test_area_expand_skills.py.
+def test_membership_never_contradicts_population_skill(db, monkeypatch):
+    """For every person, does_person_research_area == 'yes' IFF they appear in the EXACT
+    (non-expanded) roster. The two can never disagree when there is no sibling expansion."""
+    monkeypatch.setattr(skills, "_expand_llm", lambda conn, area: set())
     area = "machine learning"
     roster_ids = {eid for _n, eid in skills.people_by_research_area(db, area)}
     for eid in ("p/koutis", "p/quinn", "p/val", "p/nora"):

@@ -390,3 +390,9 @@ is he working on machine learning
 who are the MTSM faculty
 who is Guiling Wang
 what is Ali Akansu's title
+
+# research-area expansion (LLM-verified umbrella matching)
+who is working on cyber security
+who works on computer networks
+who works on machine learning
+does Iulian Neamtiu work on cyber security

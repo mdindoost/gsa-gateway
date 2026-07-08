@@ -75,6 +75,11 @@ class Embedder:
     def embed_document(self, text: str) -> list[float] | None:
         return self.normalize(self._embed(self._prepare(self.descriptor.doc_prefix, text)))
 
+    def embed_documents(self, texts: list[str]) -> list[list[float] | None]:
+        """Batch-embed passages (doc prefix + truncate + L2-normalize). For the area-tag vocabulary."""
+        prepared = [self._prepare(self.descriptor.doc_prefix, t) for t in texts]
+        return [self.normalize(v) for v in self._embed_batch(prepared)]
+
     def health_check(self) -> bool:
         try:
             v = self._embed(self._prepare(self.descriptor.doc_prefix, "health check"), timeout=15)

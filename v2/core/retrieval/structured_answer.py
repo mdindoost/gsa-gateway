@@ -99,12 +99,18 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         # honest fallback when NObody lists areas: the roster (names only) + a 'no areas' line.
         roster = [] if rows else [n for n, _ in skills.faculty_in_department(conn, a["org_id"])]
         return {"skill": skill, "org_name": org_name, "rows": rows, "roster": roster}
+    rows_annotated = None   # only populated for people_by_research_area (Task 8 / R4)
     if skill == "org_departments":
         rows = skills.org_departments(conn, a["org_id"])
     elif skill == "faculty_in_department":
         rows = [n for n, _ in skills.faculty_in_department(conn, a["org_id"])]
     elif skill == "people_by_research_area":
         rows = [n for n, _ in skills.people_by_research_area(conn, a["area"], a.get("org_id"))]
+        # Annotated (name, own-matched-tag) roster: exact hits tagged with the queried area itself,
+        # expanded-only hits tagged with the person's OWN verified sibling tag — never the umbrella
+        # (anti-fabrication). format_answer uses this to render honestly when expansion fired.
+        rows_annotated = [(n, tag) for n, _eid, tag in
+                          skills.people_by_research_area_annotated(conn, a["area"], a.get("org_id"))]
     elif skill == "count_people_by_research_area":
         rows = skills.count_people_by_research_area(conn, a["area"], a.get("org_id"))
     elif skill == "areas_in_org":
@@ -119,7 +125,10 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         rows = skills.people_in_org(conn, a["org_id"])     # list of (name, title, email)
     else:  # pragma: no cover - router only emits known skills
         rows = []
-    return {"skill": skill, "org_name": org_name, "area": a.get("area"), "rows": rows}
+    result = {"skill": skill, "org_name": org_name, "area": a.get("area"), "rows": rows}
+    if rows_annotated is not None:
+        result["rows_annotated"] = rows_annotated
+    return result
 
 
 def _join(names: list[str]) -> str:
@@ -337,6 +346,13 @@ def format_answer(result: dict) -> str:
         if result["answer"] == "no":           # has areas, area not among them — LIST them (the hedge)
             return (f"I don't see {area} among {name}'s listed research areas. "
                     f"Their listed areas: {', '.join(areas)}.")
+        if result["answer"] == "related":      # holds a verified SIBLING tag, not the exact area itself —
+            # honest-partial (Task 7/8, R4): never a false 'no' for someone the population skill's
+            # expansion would surface, and never claim they list the umbrella area (anti-fabrication).
+            tag = result["matched_area"]
+            extra = f" Their listed research areas: {', '.join(areas)}." if areas else ""
+            return (f"{name} lists {tag}, a form of {area} — "
+                    f"I don't have \"{area}\" listed as such.{extra}")
         # unknown → honest-partial: no areas on file, so we can't confirm (never a false 'no').
         return (f"I don't have research areas listed for {name}, "
                 f"so I can't confirm whether they work on {area}.")
@@ -513,7 +529,8 @@ def format_answer(result: dict) -> str:
         listed = ", ".join(c["name"] for c in cands)
         return (f"That could be more than one — which did you mean? {listed}.")
 
-    org, area, rows = result["org_name"], result["area"], result["rows"]
+    org, area = result.get("org_name"), result["area"]
+    rows = result.get("rows")
     scope = f" in {org}" if org else ""
 
     if skill == "org_departments":
@@ -527,9 +544,17 @@ def format_answer(result: dict) -> str:
         return f"{org} has {len(rows)} faculty: {_join(rows)}."
 
     if skill == "people_by_research_area":
-        if not rows:
+        rows_annotated = result.get("rows_annotated")
+        if not rows and not rows_annotated:
             return f"I couldn't find anyone working on \"{area}\"{scope}."
-        return f"{len(rows)} faculty work on \"{area}\"{scope}: {_join(rows)}."
+        # Expansion fired iff any name's OWN tag differs from the queried area — render the honest,
+        # per-name-tagged wording (never assert the umbrella area on a name that only holds a sibling
+        # tag). Byte-identical to the pre-expansion wording when it didn't fire.
+        if rows_annotated and any(tag != area for _n, tag in rows_annotated):
+            listed = ", ".join(f"{n} ({tag})" for n, tag in rows_annotated)
+            return f"{len(rows_annotated)} faculty work in {area}-related areas{scope}: {listed}."
+        names = [n for n, _tag in rows_annotated] if rows_annotated else rows
+        return f"{len(names)} faculty work on \"{area}\"{scope}: {_join(names)}."
 
     if skill == "count_people_by_research_area":
         return f"{rows} faculty work on \"{area}\"{scope}."

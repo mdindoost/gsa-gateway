@@ -294,7 +294,30 @@ def top_people_by_metric(conn: sqlite3.Connection, org_id: int, field_key: str,
 _FACET_SUFFIX = re.compile(r"\s+research(?:\s+areas?)?$", re.I)
 
 
-def _research_entities(conn: sqlite3.Connection, area: str, org_id: int | None) -> set[str]:
+def _expand_llm(conn: sqlite3.Connection, area: str) -> set[str]:
+    """Seam over area_expand.expand_area_llm (monkeypatchable in tests; function-level import
+    avoids a cycle). Fail-safe: expand_area_llm itself never raises — any error yields an empty
+    set, so callers here are automatically a no-op on failure (exact-match behavior preserved)."""
+    from v2.core.retrieval.area_expand import expand_area_llm
+    return expand_area_llm(conn, area)
+
+
+def _people_by_verified_tags(conn: sqlite3.Connection, verified: set[str],
+                             org_id: int | None) -> dict[str, str]:
+    """entity_id -> the person's OWN matched sibling tag (first seen), for every person who
+    lists one of the LLM-verified sibling tags. Empty verified set -> {} (no-op)."""
+    if not verified:
+        return {}
+    targets = {t.casefold() for t in verified}
+    out: dict[str, str] = {}
+    for val, eid in _area_rows(conn, org_id):
+        if val.casefold() in targets and eid not in out:
+            out[eid] = val
+    return out
+
+
+def _research_entities(conn: sqlite3.Connection, area: str, org_id: int | None,
+                       expand: bool = False) -> set[str]:
     def _lookup(term: str) -> set[str]:
         params: list = [_fts_query(term), *_RESEARCH_TYPES]
         org_clause = ""
@@ -318,43 +341,81 @@ def _research_entities(conn: sqlite3.Connection, area: str, org_id: int | None) 
         stripped = _FACET_SUFFIX.sub("", area or "").strip()
         if stripped and stripped.lower() != (area or "").strip().lower():
             result = _lookup(stripped)
+    if expand:
+        # LLM-verified area expansion (R1): union in everyone who lists a sibling tag the LLM
+        # confirmed belongs to the same field (e.g. "cyber security" -> also "system security").
+        # Fail-safe: expand_area_llm returns {} on any error, so this is a no-op then.
+        verified = _expand_llm(conn, area)
+        result = result | set(_people_by_verified_tags(conn, verified, org_id).keys())
     return result
 
 
 def people_by_research_area(conn: sqlite3.Connection, area: str,
                             org_id: int | None = None) -> list[tuple[str, str]]:
-    """All faculty (name, entity_id) whose research matches ``area`` (FTS word-boundary),
-    optionally scoped to an org subtree. Complete and stable — no top-K."""
-    return _named_rows(conn, list(_research_entities(conn, area, org_id)))
+    """All faculty (name, entity_id) whose research matches ``area`` (FTS word-boundary) OR an
+    LLM-verified sibling tag under the same field (R1 area expansion — e.g. "cyber security"
+    also surfaces someone who only lists "system security"), optionally scoped to an org
+    subtree. Complete and stable — no top-K."""
+    return _named_rows(conn, list(_research_entities(conn, area, org_id, expand=True)))
 
 
 def count_people_by_research_area(conn: sqlite3.Connection, area: str,
                                   org_id: int | None = None) -> int:
-    """Count of distinct faculty matching ``area`` — same query as the list, so they
-    can never disagree."""
-    return len(_research_entities(conn, area, org_id))
+    """Count of distinct faculty matching ``area`` (same expand=True population as the list,
+    so they can never disagree)."""
+    return len(_research_entities(conn, area, org_id, expand=True))
+
+
+def people_by_research_area_annotated(conn: sqlite3.Connection, area: str,
+                                      org_id: int | None = None) -> list[tuple[str, str, str]]:
+    """(name, entity_id, matched_tag) for the same population as people_by_research_area —
+    exact hits are tagged with the query ``area`` itself; expanded-only hits are tagged with the
+    person's OWN verified sibling tag (e.g. "Neamtiu (system security)" for a "cyber security"
+    query). Sorted by name. Task 8 (rendering) consumes this."""
+    exact = _research_entities(conn, area, org_id, expand=False)
+    verified = _expand_llm(conn, area)
+    sib = _people_by_verified_tags(conn, verified, org_id)      # eid -> a matched sibling tag
+    eids = exact | set(sib.keys())
+    named = {eid: name for name, eid in _named_rows(conn, list(eids))}
+    out = []
+    for eid in eids:
+        tag = area if eid in exact else sib.get(eid, area)
+        out.append((named.get(eid, eid), eid, tag))
+    return sorted(out, key=lambda r: r[0].casefold())
 
 
 def does_person_research_area(conn: sqlite3.Connection, entity_id: str, area: str,
                               name: str | None = None) -> dict:
-    """Yes/no: does ONE person research ``area``? Membership is IDENTICAL to people_by_research_area
-    (``entity_id`` ∈ ``_research_entities``), so the two can NEVER disagree — if the person shows up in
-    the population roster, the answer is 'yes'. `basis` records whether the hit is a discrete area TAG
-    (matched via the same expand_area synonyms) or profile PROSE (statement/overview), so the renderer
-    never over-claims a 'listed' area for a prose-only match. Honest-partial ('unknown', never a false
-    'no') when the person lists no areas at all. `research_of_person` supplies the person's own areas for
-    the answer text ONLY — never as the source of truth for the yes/no."""
-    in_set = entity_id in _research_entities(conn, area, org_id=None)
+    """Yes/no/related: does ONE person research ``area``? Membership never CONTRADICTS
+    people_by_research_area's (expanded) roster: an EXACT hit (``entity_id`` ∈
+    ``_research_entities(expand=False)``) answers 'yes'; someone who only holds an LLM-verified
+    SIBLING tag (in the roster via expansion, but not an exact hit) answers 'related' — never a
+    false 'no' for someone the population skill would surface. `basis` records whether a 'yes' is
+    a discrete area TAG (matched via the same expand_area synonyms) or profile PROSE (statement/
+    overview), so the renderer never over-claims a 'listed' area for a prose-only match.
+    Honest-partial ('unknown', never a false 'no') when the person lists no areas at all and holds
+    no verified sibling tag either. `research_of_person` supplies the person's own areas for the
+    answer text ONLY — never as the source of truth for the yes/no."""
+    in_set = entity_id in _research_entities(conn, area, org_id=None, expand=False)
     prof = research_of_person(conn, entity_id)          # {name, areas, statement}
     pats = [re.compile(r"\b" + re.escape(t.casefold()) + r"\b")
             for t in expand_area(area) if (t or "").strip()]
     matched = next((pa for pa in prof["areas"]
                     if any(p.search(pa.casefold()) for p in pats)), None)
-    answer = "yes" if in_set else ("no" if prof["areas"] else "unknown")
-    basis = "tag" if (in_set and matched) else ("prose" if in_set else None)
+    if in_set:
+        answer = "yes"
+        basis = "tag" if matched else "prose"
+        matched_area = matched if basis == "tag" else None
+    else:
+        sib = _people_by_verified_tags(conn, _expand_llm(conn, area), None)
+        if entity_id in sib:
+            answer, basis, matched_area = "related", "related", sib[entity_id]
+        else:
+            answer = "no" if prof["areas"] else "unknown"
+            basis, matched_area = None, None
     return {"entity_id": entity_id, "name": name or prof["name"], "area": area,
             "answer": answer, "basis": basis,
-            "matched_area": matched if basis == "tag" else None,
+            "matched_area": matched_area,
             "person_areas": prof["areas"]}
 
 
@@ -389,7 +450,8 @@ def _area_rows(conn: sqlite3.Connection, org_id: int | None) -> list[tuple[str, 
     q = ("SELECT je.value, json_extract(k.metadata,'$.entity_id') "
          "FROM knowledge_items k, json_each(k.metadata,'$.areas') je "
          "WHERE k.type='research_areas' AND k.is_active=1 "
-         "AND json_extract(k.metadata,'$.entity_id') IS NOT NULL" + clause)
+         "AND json_extract(k.metadata,'$.entity_id') IS NOT NULL" + clause +
+         " ORDER BY je.value")   # stable order → deterministic first-seen sibling tag (area-expansion M3)
     out: list[tuple[str, str]] = []
     for val, eid in conn.execute(q, params):
         if val and val.strip() and eid:

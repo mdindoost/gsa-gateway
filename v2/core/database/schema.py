@@ -448,6 +448,26 @@ CREATE TABLE IF NOT EXISTS judging_score_audit (
 ) STRICT;
 """
 
+# ─── OPS: LLM-verified area-expansion cache (Task 1 of the area-expansion build) ─
+# Best-effort persistent cache — lives in the OPS DB, never the KB DB. Accessed
+# only via v2/core/retrieval/area_cache.py, which opens its own short-lived conn.
+
+AREA_EXPAND_CACHE = """
+CREATE TABLE IF NOT EXISTS area_expand_cache (
+    key TEXT PRIMARY KEY,          -- normalized_area | vocab_hash | model | prompt_ver | k
+    tags_json TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+) STRICT;
+"""
+
+AREA_VOCAB_BLOB = """
+CREATE TABLE IF NOT EXISTS area_vocab_blob (
+    name TEXT PRIMARY KEY,         -- e.g. 'vocab:<vocab_hash>'
+    data BLOB NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+) STRICT;
+"""
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Indexes — split into knowledge vs ops
 # ─────────────────────────────────────────────────────────────────────────────
@@ -581,6 +601,8 @@ _OPS_TABLE_DDL = [
     JUDGING_SCORES,
     JUDGING_AUDIENCE_VOTES,
     JUDGING_SCORE_AUDIT,
+    AREA_EXPAND_CACHE,
+    AREA_VOCAB_BLOB,
 ]
 
 _TRIGGER_DDL = [
