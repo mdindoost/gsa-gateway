@@ -221,6 +221,22 @@ ANTECEDENT_GUARD_ENABLED = os.getenv("ANTECEDENT_GUARD_ENABLED", "0").strip().lo
 UNRESOLVED_PRONOUN_CLARIFY_ENABLED = os.getenv(
     "UNRESOLVED_PRONOUN_CLARIFY_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
 
+# --- Person entity-mentions enrichment (KG+KB winner-take-all fix) ---
+# PIVOT 2026-07-08: the card-addendum path is SUPERSEDED by person-FACET questions ("Oria news",
+# "Deek awards", …) — each owned-prose surface is its own clean answer, the card stays UNCHANGED.
+# PERSON_FACETS_ENABLED (default ON): route person-facet cues to the deterministic facet skills
+#   (news/awards/bio/involvement). Kill switch — OFF restores prior card/RAG routing.
+# PERSON_ADDENDUM_ENABLED (default OFF, RETIRED): the old inert card-addendum path (append AWARDS/
+#   tagged prose to the entity card). Kept for one release as a no-op; removed in cleanup.
+# PERSON_MENTIONS_ENABLED (default OFF): the addendum's Tier-2 prose sub-flag (also inert now).
+# EM_ROSTER_N: anti-roster other-person threshold. AWARD_CAP: max awards shown before "+N more".
+# Spec: docs/superpowers/specs/2026-07-08-person-facet-questions-delta-design.md (parent §15 R8).
+PERSON_FACETS_ENABLED = os.getenv("PERSON_FACETS_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
+PERSON_ADDENDUM_ENABLED = os.getenv("PERSON_ADDENDUM_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+PERSON_MENTIONS_ENABLED = os.getenv("PERSON_MENTIONS_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+EM_ROSTER_N = int(os.getenv("EM_ROSTER_N", "5"))
+AWARD_CAP = int(os.getenv("AWARD_CAP", "6"))
+
 
 # --- Kavosh v2.1 unified router (Phase 1b) ---
 # ROUTER_V21 master switch (default OFF). When on, the UnifiedRouter is built + consulted.

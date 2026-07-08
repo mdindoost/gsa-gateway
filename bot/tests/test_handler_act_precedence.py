@@ -59,7 +59,7 @@ async def test_act_kg_in_gsa_mode_runs_structured():
                                source=None, command_intent=None))
     h.conversation_manager.get_mode.return_value = "gsa"
     h.ollama = MagicMock(); h.ollama.compose_from_rows = AsyncMock(return_value="composed")
-    with patch.object(h, "_structured_from_route", side_effect=lambda s, a: ("facts", "", False)):
+    with patch.object(h, "_structured_from_route", side_effect=lambda s, a: ("facts", "", False, [], None)):
         out = await h._answer_decision(
             MessageRequest(user_id="u", text="who teaches cs", platform="discord"),
             h.unified_router.decide.return_value)

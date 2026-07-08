@@ -360,6 +360,24 @@ CREATE TABLE IF NOT EXISTS page_nodes (
 ) STRICT;
 """
 
+# Derived (rebuildable) many-to-many tag: which Person node(s) a KB item is ABOUT.
+# Written by the offline entity_mentions tagger; KNOWLEDGE schema (FK-joins KB rows +
+# nodes). stable_key = COALESCE(natural_key,'id:'||item_id) so crawler rows survive
+# re-ingest and natural_key-less curated rows still key. Spec 2026-07-07 §15 R2/R3/R9.
+ENTITY_MENTIONS = """
+CREATE TABLE IF NOT EXISTS entity_mentions (
+    stable_key   TEXT    NOT NULL,
+    node_key     TEXT    NOT NULL,
+    item_id      INTEGER NOT NULL,
+    node_id      INTEGER NOT NULL,
+    match_basis  TEXT    NOT NULL,
+    confidence   REAL,
+    created_by   TEXT    NOT NULL DEFAULT 'entity_mentions_tagger',
+    created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (stable_key, node_key)
+) STRICT;
+"""
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Group D — judging system (STRICT) — OPS only
 # ─────────────────────────────────────────────────────────────────────────────
@@ -495,6 +513,8 @@ _KNOWLEDGE_INDEXES = [
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_frontier_root ON frontier(url) WHERE from_node_id IS NULL;",
     "CREATE INDEX        IF NOT EXISTS idx_frontier_status ON frontier(status);",
     "CREATE INDEX        IF NOT EXISTS idx_page_nodes_node ON page_nodes(node_id);",
+    "CREATE INDEX        IF NOT EXISTS idx_em_node   ON entity_mentions(node_key);",
+    "CREATE INDEX        IF NOT EXISTS idx_em_stable ON entity_mentions(stable_key);",
 ]
 
 _OPS_INDEXES = [
@@ -587,6 +607,7 @@ _KNOWLEDGE_TABLE_DDL = [
     EDGES,
     FRONTIER,
     PAGE_NODES,
+    ENTITY_MENTIONS,
 ]
 
 _OPS_TABLE_DDL = [

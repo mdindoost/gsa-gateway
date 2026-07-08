@@ -572,3 +572,97 @@ def entity_card(conn: sqlite3.Connection, entity_id: str) -> str:
             if content and content.strip():
                 lines.append(content.strip())
     return "\n".join(lines)
+
+
+# ── Person-FACET skills (delta 2026-07-08): tag-powered NEW questions, NOT card changes ──────
+# Each is DETERMINISTIC + VERBATIM (owned rows only; empty → honest/RAG). The card + existing
+# person skills are untouched. entity_mentions supplies the mention-prose LOCATE; awards/service
+# are id-linked. Spec: docs/superpowers/specs/2026-07-08-person-facet-questions-delta-design.md.
+_BARE_YEAR_RE = re.compile(r"^\d{4}$")
+
+
+def _person_display_name(conn: sqlite3.Connection, entity_id: str) -> str:
+    row = conn.execute("SELECT name FROM nodes WHERE type='Person' AND key=? AND is_active=1",
+                       (entity_id,)).fetchone()
+    return normalize_person_name(row[0]) if row else entity_id
+
+
+def awards_of_person(conn: sqlite3.Connection, entity_id: str) -> dict:
+    """Id-linked award titles (verbatim), bare-year noise dropped, newest-labelled first."""
+    name = _person_display_name(conn, entity_id)
+    awards = []
+    for (title,) in conn.execute(
+            "SELECT title FROM knowledge_items WHERE is_active=1 AND type='award' "
+            "AND json_extract(metadata,'$.entity_id')=? ORDER BY title DESC", (entity_id,)):
+        t = (title or "").strip()
+        if t and not _BARE_YEAR_RE.match(t):
+            awards.append(t)
+    return {"name": name, "awards": awards}
+
+
+def news_of_person(conn: sqlite3.Connection, entity_id: str, limit: int = 5) -> dict:
+    """Tagged news/event prose (title + source link), newest first (created_at/id fallback —
+    crawled news has no date). is_active-gated both sides; surname re-confirmed at serve time."""
+    name = _person_display_name(conn, entity_id)
+    last = name.split()[-1] if name else ""
+    items = []
+    for title, url, content in conn.execute(
+            "SELECT k.title, k.source_url, k.content FROM entity_mentions m "
+            "JOIN knowledge_items k ON k.is_active=1 AND "
+            "  COALESCE(json_extract(k.metadata,'$.natural_key'), 'id:' || k.id) = m.stable_key "
+            "JOIN nodes n ON n.id = m.node_id AND n.is_active=1 "
+            "WHERE m.node_key = ? AND k.type IN ('news','event_info') "
+            "ORDER BY k.created_at DESC, k.id DESC LIMIT ?", (entity_id, limit)):
+        if last and last.lower() not in (content or "").lower():   # rowid-drift guard
+            continue
+        items.append({"title": title or "", "url": url})
+    return {"name": name, "items": items}
+
+
+def bio_of_person(conn: sqlite3.Connection, entity_id: str) -> dict:
+    """The single best curated bio: a title-tagged faq wins (stable: lowest id), else a crawler
+    `about` row. Verbatim. Empty → caller falls to RAG."""
+    row = conn.execute(
+        "SELECT k.content, k.source_url FROM entity_mentions m "
+        "JOIN knowledge_items k ON k.is_active=1 AND "
+        "  COALESCE(json_extract(k.metadata,'$.natural_key'), 'id:' || k.id) = m.stable_key "
+        "JOIN nodes n ON n.id = m.node_id AND n.is_active=1 "
+        "WHERE m.node_key = ? AND k.type='faq' AND m.match_basis='title' "
+        "ORDER BY k.id ASC LIMIT 1", (entity_id,)).fetchone()
+    if not (row and (row[0] or "").strip()):
+        row = conn.execute(
+            "SELECT content, source_url FROM knowledge_items WHERE is_active=1 AND type='about' "
+            "AND json_extract(metadata,'$.entity_id')=? ORDER BY id ASC LIMIT 1", (entity_id,)).fetchone()
+    name = _person_display_name(conn, entity_id)
+    if row and (row[0] or "").strip():
+        return {"name": name, "text": row[0].strip(), "url": row[1]}
+    return {"name": name, "text": "", "url": None}
+
+
+def involvement_of_person(conn: sqlite3.Connection, entity_id: str) -> dict:
+    """Roll-up: all tagged items (faq/news/event) + id-linked `service` rows, deduped by stable
+    key, each with a source link."""
+    name = _person_display_name(conn, entity_id)
+    seen: set[str] = set()
+    items = []
+    for title, url, key in conn.execute(
+            "SELECT k.title, k.source_url, "
+            "  COALESCE(json_extract(k.metadata,'$.natural_key'), 'id:' || k.id) sk "
+            "FROM entity_mentions m "
+            "JOIN knowledge_items k ON k.is_active=1 AND "
+            "  COALESCE(json_extract(k.metadata,'$.natural_key'), 'id:' || k.id) = m.stable_key "
+            "JOIN nodes n ON n.id = m.node_id AND n.is_active=1 "
+            "WHERE m.node_key = ? AND k.type IN ('faq','news','event_info')", (entity_id,)):
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append({"title": title or "", "url": url, "kind": "mention"})
+    for title, url, key in conn.execute(
+            "SELECT title, source_url, 'id:' || id FROM knowledge_items "
+            "WHERE is_active=1 AND type='service' "
+            "AND json_extract(metadata,'$.entity_id')=?", (entity_id,)):
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append({"title": title or "", "url": url, "kind": "service"})
+    return {"name": name, "items": items}

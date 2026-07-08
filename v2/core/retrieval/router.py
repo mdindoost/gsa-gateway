@@ -14,6 +14,7 @@ are rule-based. See docs/superpowers/specs/2026-06-13-structured-retrieval-phase
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -242,6 +243,24 @@ _INFO_CUE = re.compile(r"\b(info|information|details|profile|bio|background|ever
 # 'office' excludes "office hours" (a schedule ask, not a contact field) — review MINOR.
 _CONTACT_CUE = re.compile(r"\b(e-?mail|phone|contact|reach)\b|\bnumbers?\b|\boffice\b(?!\s+hours)")
 _TITLE_CUE = re.compile(r"\b(title|position)\b|\bwhat\s+does\b.+\bdo\b")
+# ── Person-FACET cues (delta spec 2026-07-08): "Oria news" / "Deek awards" / "what is X involved
+# in" / "tell me more about X". Dispatched in _person_skill BELOW the research/paper branches (so
+# "recent research"/"latest paper" stay shadowed) and gated by PERSON_FACETS_ENABLED (default ON).
+# Precedence inside the person branch: awards → news → involvement → bio (bare "about" broadest, LAST).
+_AWARDS_CUE      = re.compile(r"\b(award|awards|honou?rs?|prize|prizes|recognition|won|received)\b", re.I)
+_NEWS_CUE        = re.compile(r"\b(news|latest|recent|announcement|announced|in the news|headline)\b", re.I)
+_INVOLVEMENT_CUE = re.compile(r"\b(involved|involvement|workshop|workshops|committee|committees|service|organi[sz]e|organizing)\b", re.I)
+_BIO_CUE         = re.compile(r"\b(bio|biography|background|tell me more about|more about)\b", re.I)
+# One combined cue for the person-branch TRIGGERS (so a facet query resolves the name). Kept separate
+# from the dispatch regexes so precedence lives in ONE place (_person_skill).
+_FACET_CUE = re.compile("|".join(r.pattern for r in (_AWARDS_CUE, _NEWS_CUE, _INVOLVEMENT_CUE, _BIO_CUE)), re.I)
+
+
+def _facets_on() -> bool:
+    """PERSON_FACETS_ENABLED kill switch (default ON). v2/core is decoupled from bot.config, so the
+    flag is read from the environment directly. OFF = prior card/RAG behavior (facet cues neither
+    trigger the person branch nor dispatch a facet skill)."""
+    return os.getenv("PERSON_FACETS_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
 # WS3 org-type enumeration (B3): a PLURAL type noun is the discriminator — 'clubs'/'colleges'/'student
 # organizations' fire; SINGULAR 'college'/'club' ("which college is X in", "what college should I apply
 # to", "what is the ACM club") do NOT (review BLOCKER: over-match). Departments are NOT enumerated here
@@ -611,8 +630,20 @@ def _resolve_person_scoped(conn: sqlite3.Connection, q_for_area: str, area: str,
 
 
 def _person_skill(q: str) -> str:
-    """Which person-attribute skill a resolved-person query wants: contact vs title vs the full card.
-    Contact wins over title if both cue words appear (rare)."""
+    """Which person-attribute skill a resolved-person query wants. Precedence (most specific first):
+    awards → news → involvement → bio → contact → title → entity_card. The four facet branches are
+    gated by PERSON_FACETS_ENABLED and only reachable AFTER the research/paper branches in route()
+    already declined (so "recent research"/"latest paper" stay shadowed). Contact wins over title if
+    both cue words appear (rare)."""
+    if _facets_on():
+        if _AWARDS_CUE.search(q):
+            return "awards_of_person"
+        if _NEWS_CUE.search(q):
+            return "news_of_person"
+        if _INVOLVEMENT_CUE.search(q):
+            return "involvement_of_person"
+        if _BIO_CUE.search(q):
+            return "bio_of_person"
     if _CONTACT_CUE.search(q):
         return "contact_of_person"
     if _TITLE_CUE.search(q):
@@ -908,13 +939,14 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     # entity card: a specific named person (who-is / tell-me-about / "<name>'s email" /
     # bare name). LAST + most-guarded so it never hijacks a "who works on X" ask.
     qn = _NAME_PREFIX.sub("", q).strip()
+    _facet_trigger = _facets_on() and _FACET_CUE.search(q)
     if len(named) == 1 and (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q)
                             or _CONTACT_CUE.search(q) or _TITLE_CUE.search(q)
-                            or _is_bare_name(qn, named[0])):
+                            or _facet_trigger or _is_bare_name(qn, named[0])):
         return Route(_person_skill(q),
                      {"entity_id": named[0]["entity_id"], "name": named[0]["name"]})
     if len(named) > 1 and (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q)
-                           or _CONTACT_CUE.search(q) or _TITLE_CUE.search(q)):
+                           or _CONTACT_CUE.search(q) or _TITLE_CUE.search(q) or _facet_trigger):
         return _with_origin(Route("person_disambig", {"candidates": named}), _person_skill(q), {})
 
     # surname-only: "professor Wang" / "who is Wang" / "Koutis's email" / "koutis info" /
@@ -924,7 +956,7 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     qn_toks = _qtokens(qn)
     if (_PERSON_INTENT.search(q) or _PERSON_ATTR.search(q) or _CONTACT_CUE.search(q)
             or _TITLE_CUE.search(q) or _NAME_PREFIX.search(q) or _INFO_CUE.search(q)
-            or len(qn_toks) == 1):
+            or _facet_trigger or len(qn_toks) == 1):
         person = _resolve_surname(conn, q)
         if isinstance(person, Route):
             return _with_origin(person, _person_skill(q), {})

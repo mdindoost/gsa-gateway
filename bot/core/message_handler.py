@@ -425,7 +425,8 @@ class MessageHandler:
         # NOT a GSA structured answer — skip structured so free mode isn't identical to GSA.
         # (mode already resolved above for the contextual-rewrite gate)
         if mode != "free":
-            structured = await self._try_structured(resolved_query, user_id=user_id, clean_text=clean_text)
+            structured = await self._try_structured(resolved_query, user_id=user_id,
+                                                    clean_text=clean_text, platform=req.platform)
             if structured is not None:
                 # QW-A8: log the structured/KG answer so the connectors attach the 👍/👎/🔄 keyboard and
                 # the tier is measurable. This LEGACY path is reached only when the v2.1 router returned
@@ -533,7 +534,8 @@ class MessageHandler:
         return await self._rag_pipeline(req, clean_text, intent, resolved_query=resolved_query)
 
     async def _try_structured(self, text: str, user_id: str | None = None,
-                              clean_text: str | None = None) -> Optional[str]:
+                              clean_text: str | None = None,
+                              platform: str | None = None) -> Optional[str]:
         """Answer enumerate/filter/traverse/count questions from structured DB queries
         (complete + deterministic), or return None to fall through to semantic RAG.
 
@@ -566,9 +568,11 @@ class MessageHandler:
                 # flag so the caller skips LLM compose entirely.
                 # A3: person_names_of(result) computed HERE (the result dict dies with the thread);
                 # threaded out so _register_and_record can tag the assistant turn.
+                # Person-enrichment addendum ALSO computed here (conn dies with the thread — R1).
+                addendum = self._person_addendum_payload(conn, rt.skill, rt.args)
                 return (rt, facts, structured_answer.deterministic_suffix(result),
                         structured_answer.is_deterministic(result),
-                        structured_answer.person_names_of(result))
+                        structured_answer.person_names_of(result), addendum)
             finally:
                 conn.close()
 
@@ -579,18 +583,44 @@ class MessageHandler:
             return None
         if not ran:
             return None
-        rt, facts, suffix, deterministic, person_names = ran
-        composed = await self._compose_structured(text, facts, suffix, deterministic)
+        rt, facts, suffix, deterministic, person_names, addendum = ran
+        composed = await self._compose_structured(text, facts, suffix, deterministic,
+                                                  addendum=addendum, platform=platform)
         if user_id is not None:                      # main :290 path → register + record
             self._register_and_record(user_id, clean_text or text, rt, composed, person_names)
         return composed
 
+    @staticmethod
+    def _cap(platform: str | None) -> int:
+        """Platform message-length cap for the verbatim addendum budget (§15 R7)."""
+        return 4096 if platform == "telegram" else 2000
+
+    def _person_addendum_payload(self, conn, skill: str, args: dict | None):
+        """Compute the person-enrichment addendum DATA payload inside the worker thread (R1/R4).
+        Defensive: never raises into the answer path (returns None on any error)."""
+        if not botcfg.PERSON_ADDENDUM_ENABLED or skill not in ("entity_card", "research_of_person"):
+            return None
+        eid = (args or {}).get("entity_id")
+        if not eid:
+            return None
+        try:
+            from v2.core.retrieval import structured_answer
+            return structured_answer.build_person_addendum(
+                conn, eid, mentions_on=botcfg.PERSON_MENTIONS_ENABLED, award_cap=botcfg.AWARD_CAP)
+        except Exception:  # noqa: BLE001 - enrichment must never break the answer path
+            logger.debug("person_addendum payload failed (ignored)", exc_info=True)
+            return None
+
     async def _compose_structured(self, text: str, facts: str, suffix: str,
-                                  deterministic: bool) -> str:
+                                  deterministic: bool, addendum=None,
+                                  platform: str | None = None) -> str:
         """Compose-suppression — SHARED by _try_structured and the v2.1 _answer_decision so the
         anti-fab rule can't drift between the two paths. The LLM rephrases the Facts ONLY when the
         answer is NOT deterministic (metric numbers must never be reworded); the deterministic
-        suffix (profile links / Scholar numbers) is appended VERBATIM, never handed to the LLM."""
+        suffix (profile links / Scholar numbers) is appended VERBATIM, never handed to the LLM.
+
+        The person addendum (awards / tagged prose) is appended LAST and VERBATIM, its length
+        budget measured against the COMPOSED text (compose can expand length — §15 R1/R7)."""
         out = facts
         if self.ollama and not deterministic:   # metric numbers must not be reworded by the LLM
             composed = await self.ollama.compose_from_rows(text, facts)
@@ -601,6 +631,11 @@ class MessageHandler:
                 out = composed
         if suffix:
             out = f"{out}\n\n{suffix}"
+        if addendum:
+            from v2.core.retrieval.structured_answer import render_addendum
+            add = render_addendum(addendum, used_len=len(out), platform_cap=self._cap(platform))
+            if add:
+                out = f"{out}{add}"
         return out
 
     def _register_and_record(self, user_id, clean_text, rt, text, person_names=None) -> None:
@@ -642,8 +677,9 @@ class MessageHandler:
             return None
         if not ran:
             return None
-        facts, suffix, deterministic, person_names = ran
-        text = await self._compose_structured(option.label, facts, suffix, deterministic)
+        facts, suffix, deterministic, person_names, addendum = ran
+        text = await self._compose_structured(option.label, facts, suffix, deterministic,
+                                              addendum=addendum)
         return text, person_names
 
     def _structured_from_route(self, skill: str, args: dict):
@@ -663,9 +699,10 @@ class MessageHandler:
             facts = structured_answer.format_answer(result)
             if not facts:
                 return None
+            addendum = self._person_addendum_payload(conn, skill, args)
             return (facts, structured_answer.deterministic_suffix(result),
                     structured_answer.is_deterministic(result),
-                    structured_answer.person_names_of(result))
+                    structured_answer.person_names_of(result), addendum)
         finally:
             conn.close()
 
@@ -710,8 +747,9 @@ class MessageHandler:
                 logger.warning("router-v21 structured run errored, falling to RAG: %s", exc)
                 ran = None
             if ran:
-                facts, suffix, deterministic, person_names = ran
-                text = await self._compose_structured(text, facts, suffix, deterministic)
+                facts, suffix, deterministic, person_names, addendum = ran
+                text = await self._compose_structured(text, facts, suffix, deterministic,
+                                                      addendum=addendum, platform=req.platform)
                 from v2.core.retrieval.router import Route
                 self._register_and_record(req.user_id, req.text.strip(),
                                           Route(skill=decision.skill, args=dict(decision.args or {})),

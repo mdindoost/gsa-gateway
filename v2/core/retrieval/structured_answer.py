@@ -8,6 +8,7 @@ as a correct, complete answer. Empty results are stated honestly, never guessed.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 
 from v2.core.people import profile_fields
@@ -52,6 +53,14 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
                 "card": entity.entity_card(conn, a["entity_id"]),
                 "links": profile_fields.render_links(_person_attrs(conn, a["entity_id"])),
                 "scholar_push": _push_paper_lines(conn, a["entity_id"])}
+    if skill == "awards_of_person":
+        return {"skill": skill, **entity.awards_of_person(conn, a["entity_id"])}
+    if skill == "news_of_person":
+        return {"skill": skill, **entity.news_of_person(conn, a["entity_id"])}
+    if skill == "bio_of_person":
+        return {"skill": skill, **entity.bio_of_person(conn, a["entity_id"])}
+    if skill == "involvement_of_person":
+        return {"skill": skill, **entity.involvement_of_person(conn, a["entity_id"])}
     if skill == "contact_of_person":
         return {"skill": skill, **entity.contact_of_person(conn, a["entity_id"])}
     if skill == "title_of_person":
@@ -165,7 +174,11 @@ _DETERMINISTIC_SKILLS = frozenset({"metric_of_person", "top_people_by_metric", "
                                    # Affiliated-faculty: the "(affiliated)"/"(joint appointment)" marker
                                    # on a title is load-bearing (home vs cross-listing) — the LLM must not
                                    # reword it away. No greeting on this surface, so verbatim loses nothing.
-                                   "title_of_person"})
+                                   "title_of_person",
+                                   # Person-facet skills (delta 2026-07-08): tagged prose / awards served
+                                   # VERBATIM — never reworded (anti-fab; a static lead-in is not compose).
+                                   "awards_of_person", "news_of_person", "bio_of_person",
+                                   "involvement_of_person"})
 
 
 def is_deterministic(result: dict) -> bool:
@@ -182,7 +195,9 @@ def is_deterministic(result: dict) -> bool:
 _PN_STRING_ROW = frozenset({"faculty_in_department", "people_by_research_area", "people_by_area_tag"})
 _PN_NAMEFIRST_ROW = frozenset({"officers_in_org", "people_in_org", "role_in_org", "people_by_role"})
 _PN_SINGLE_NAME = frozenset({"entity_card", "metric_of_person", "contact_of_person", "title_of_person",
-                             "does_person_research_area"})
+                             "does_person_research_area",
+                             "awards_of_person", "news_of_person", "bio_of_person",
+                             "involvement_of_person"})
 
 
 def person_names_of(result: dict) -> list[str]:
@@ -356,6 +371,36 @@ def format_answer(result: dict) -> str:
         # unknown → honest-partial: no areas on file, so we can't confirm (never a false 'no').
         return (f"I don't have research areas listed for {name}, "
                 f"so I can't confirm whether they work on {area}.")
+
+    if skill == "awards_of_person":
+        name, awards = result["name"], result["awards"]
+        if not awards:
+            return f"I don't have awards on file for {name}."
+        return f"{name} — awards & honors: {'; '.join(awards)}."
+
+    if skill == "news_of_person":
+        name, items = result["name"], result["items"]
+        if not items:
+            return f"I don't have news about {name} on file."
+        listed = "; ".join(f"{it['title']}" + (f" ({it['url']})" if it.get("url") else "")
+                            for it in items)
+        return f"{name} in the news: {listed}."
+
+    if skill == "bio_of_person":
+        # Verbatim curated bio as its OWN answer. Empty → "" so _try_structured falls to RAG.
+        text = result.get("text") or ""
+        if not text.strip():
+            return ""
+        url = result.get("url")
+        return f"{text}" + (f"\nSource: {url}" if url else "")
+
+    if skill == "involvement_of_person":
+        name, items = result["name"], result["items"]
+        if not items:
+            return f"I don't have involvement or service details on file for {name}."
+        listed = "; ".join(f"{it['title']}" + (f" ({it['url']})" if it.get("url") else "")
+                            for it in items)
+        return f"{name} is involved in: {listed}."
 
     if skill == "metric_of_person":
         name, found, allm = result["name"], result["found"], result["all"]
@@ -615,6 +660,77 @@ def deterministic_suffix(result: dict) -> str | None:
         return None
     parts = [p for p in parts if p]                # omit a missing line (links/metrics/each push)
     return "\n".join(parts) if parts else None
+
+
+# ── Person enrichment (KG+KB winner-take-all fix) ──────────────────────────────────────────
+# Two functions split per spec §15 R1/R2: build_person_addendum computes a DATA payload inside
+# the worker thread (has the conn); render_addendum makes the length-budget/fit decision AFTER
+# the caller has the COMPOSED answer (compose can expand length). Both keep prose VERBATIM.
+_ADDENDUM_DIVIDER = "─── More on this person ───"
+_BARE_YEAR = re.compile(r"^\d{4}$")
+
+
+def build_person_addendum(conn: sqlite3.Connection, entity_id: str, *,
+                          mentions_on: bool, award_cap: int = 6) -> dict | None:
+    """DATA payload for the person addendum (computed in the worker thread). Returns
+    {"awards": str|None, "prose": {"title","content","url"}|None} or None if nothing to add.
+
+    Tier 1 (awards): direct id-link SQL (R5) — always when present. Tier 2 (prose): only when
+    ``mentions_on``; joins entity_mentions to the LIVE knowledge_items + active Person node."""
+    awards: list[str] = []
+    for (title,) in conn.execute(
+            "SELECT title FROM knowledge_items WHERE is_active=1 AND type='award' "
+            "AND json_extract(metadata,'$.entity_id')=? ORDER BY title DESC", (entity_id,)):
+        t = (title or "").strip()
+        if t and not _BARE_YEAR.match(t):            # drop bare-year noise rows
+            awards.append(t)
+    awards_str = None
+    if awards:
+        shown = awards[:award_cap]
+        extra = f" (+{len(awards) - len(shown)} more)" if len(awards) > len(shown) else ""
+        awards_str = "Awards & honors: " + "; ".join(shown) + extra
+
+    prose = None
+    if mentions_on:
+        row = conn.execute(
+            "SELECT k.title, k.content, k.source_url FROM entity_mentions m "
+            "JOIN knowledge_items k ON k.is_active=1 AND "
+            "  COALESCE(json_extract(k.metadata,'$.natural_key'), 'id:' || k.id) = m.stable_key "
+            "JOIN nodes n ON n.id = m.node_id AND n.is_active=1 "
+            "WHERE m.node_key = ? "
+            "ORDER BY (m.match_basis='title') DESC, k.created_at DESC LIMIT 1", (entity_id,)
+        ).fetchone()
+        if row and (row[1] or "").strip():
+            prose = {"title": row[0] or "", "content": row[1].strip(), "url": row[2]}
+
+    if not awards_str and not prose:
+        return None
+    return {"awards": awards_str, "prose": prose}
+
+
+def render_addendum(payload: dict | None, *, used_len: int, platform_cap: int) -> str | None:
+    """Assemble the verbatim addendum block, length-budgeted. Prose is shown WHOLE iff it fits
+    the remaining budget, else OMITTED (never truncated mid-text — verbatim hard line); an
+    optional pointer link replaces an omitted prose item. Returns None if nothing fits/exists."""
+    if not payload:
+        return None
+    lines = [payload["awards"]] if payload.get("awards") else []
+    head = f"\n\n{_ADDENDUM_DIVIDER}\n"
+    prose = payload.get("prose")
+    if prose:
+        body = "\n".join(lines) + ("\n" if lines else "")
+        source = f"\nSource: {prose['url']}" if prose.get("url") else ""
+        whole = head + body + prose["content"] + source
+        if used_len + len(whole) <= platform_cap:
+            return whole
+        # doesn't fit → NEVER partial prose: awards (if any) + an optional pointer to the full item
+        tail = f"\nMore: {prose['title']} — {prose['url']}" if prose.get("url") else ""
+        if lines or tail:
+            return head + "\n".join(lines) + tail
+        return None
+    if lines:
+        return head + "\n".join(lines)
+    return None
 
 
 def resumable_action(rt: Route) -> list[tuple[str, Route]] | None:

@@ -66,7 +66,7 @@ async def test_a8_answer_decision_kg_logs_skill_and_question_id(monkeypatch):
 
     h = _make_handler(ollama=AsyncMock())
     # skip real SQL/compose — exercise only the logging + response wiring
-    h._structured_from_route = MagicMock(return_value=("Facts: 30 faculty …", None, False))
+    h._structured_from_route = MagicMock(return_value=("Facts: 30 faculty …", None, False, [], None))
     h._compose_structured = AsyncMock(return_value="The department has 30 faculty.")
 
     decision = MagicMock(family="KG", skill="faculty_in_department", args={"org_id": 7}, source="kg")

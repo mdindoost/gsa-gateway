@@ -55,7 +55,7 @@ def _kg_handler(compose_return):
 async def test_deterministic_kg_route_skips_llm_compose(monkeypatch):
     h = _kg_handler("LLM REWORDED NUMBERS")
     monkeypatch.setattr(h, "_structured_from_route",
-                        lambda skill, args: ("Citations: 1234", "🔗 Scholar", True), raising=False)
+                        lambda skill, args: ("Citations: 1234", "🔗 Scholar", True, [], None), raising=False)
     decision = SimpleNamespace(family="KG", skill="metric_of_person", args={},
                                source=None, command_intent=None)
     out = await h._answer_decision(
@@ -68,7 +68,7 @@ async def test_deterministic_kg_route_skips_llm_compose(monkeypatch):
 async def test_nondeterministic_kg_route_uses_llm_compose(monkeypatch):
     h = _kg_handler("Nice grounded prose")
     monkeypatch.setattr(h, "_structured_from_route",
-                        lambda skill, args: ("raw facts", "", False), raising=False)
+                        lambda skill, args: ("raw facts", "", False, [], None), raising=False)
     decision = SimpleNamespace(family="KG", skill="faculty_in_department", args={"org_id": 1},
                                source=None, command_intent=None)
     out = await h._answer_decision(
