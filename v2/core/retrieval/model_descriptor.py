@@ -98,11 +98,12 @@ QWEN = ModelDescriptor(
 _REGISTRY = {NOMIC.id: NOMIC, QWEN.id: QWEN}
 _BY_OLLAMA = {NOMIC.ollama_name: NOMIC, QWEN.ollama_name: QWEN}
 
-# Default = NOMIC (the safe, already-deployed fallback). The nomic->qwen switch is realized by
-# setting `EMBEDDING_MODEL=qwen3-embedding:0.6b` in the environment (.env) at swap time — an
-# explicit, reversible opt-in — rather than flipping the code default (which would desync any
-# module-level active_descriptor() captured at import from an env pinned per-process later).
-DEFAULT_DESCRIPTOR = NOMIC
+# Default = QWEN — the deployed embedder and the width the LIVE corpus is embedded at. The env
+# (`EMBEDDING_MODEL=qwen3-embedding:0.6b` in .env) still pins it explicitly at runtime; this default
+# only governs the unset-env fallback, and it now points at the model that MATCHES the corpus (the
+# nomic model was uninstalled 2026-07-07, so a nomic fallback would both mismatch and fail to load).
+# NOMIC remains registered for content_hash lookups on any legacy nomic-embedded rows.
+DEFAULT_DESCRIPTOR = QWEN
 
 
 def active_descriptor() -> ModelDescriptor:

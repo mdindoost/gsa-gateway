@@ -2,7 +2,7 @@
 
 ONE classify-then-resolve router replacing the four hand-maintained mechanisms. Layers run in
 order in `decide()`: (0) deterministic COMMAND layer, (1) deterministic FAST-PATH (zero-encode),
-(2) masked coarse-family CLASSIFIER (one router-prefixed nomic encode), (3) deterministic RESOLVER
+(2) masked coarse-family CLASSIFIER (one router-prefixed embedder encode), (3) deterministic RESOLVER
 (today's router.route() + its negative + terminal-skill guards), (4) CLARIFY / RAG outcomes / live.
 The classifier picks the FAMILY only; the SQL skill stays deterministic. (Inverse-FN guard DEFERRED.)
 """

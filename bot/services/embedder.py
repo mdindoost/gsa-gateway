@@ -1,4 +1,5 @@
-"""Embedding service — converts text to vectors using Ollama's nomic-embed-text model."""
+"""Embedding service — converts text to vectors using Ollama's configured embedding model
+(qwen3-embedding:0.6b in production; the model name is injected, this is only the default)."""
 
 import asyncio
 import logging
@@ -13,7 +14,7 @@ class EmbeddingService:
     def __init__(
         self,
         base_url: str,
-        model: str = "nomic-embed-text",
+        model: str = "qwen3-embedding:0.6b",
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model

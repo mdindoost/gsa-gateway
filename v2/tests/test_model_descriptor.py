@@ -32,13 +32,15 @@ def test_qwen_asymmetric_prefix():
     )
 
 
-def test_active_descriptor_defaults_to_nomic(monkeypatch):
-    # Default stays NOMIC (safe fallback); the switch is an explicit EMBEDDING_MODEL=qwen opt-in.
+def test_active_descriptor_defaults_to_qwen(monkeypatch):
+    # Default is QWEN — the deployed embedder and the width the LIVE corpus is embedded at
+    # (the nomic model was uninstalled 2026-07-07; a nomic fallback would mismatch AND fail to load).
     monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
-    assert active_descriptor() is NOMIC
+    assert active_descriptor() is QWEN
 
 
 def test_active_descriptor_env_selects_nomic(monkeypatch):
+    # NOMIC stays registered for content_hash lookups on any legacy nomic-embedded rows.
     monkeypatch.setenv("EMBEDDING_MODEL", "nomic-embed-text")
     assert active_descriptor() is NOMIC
 

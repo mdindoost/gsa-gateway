@@ -12,7 +12,7 @@ card) that vector search alone ranks poorly get surfaced by the keyword leg, and
 vice-versa. Optional org-subtree and item-type filters scope retrieval to any
 node of the organization tree.
 
-Generation (Ollama llama3.1) is unchanged from v1 and lives elsewhere; this
+Generation (Ollama granite4:tiny-h) is unchanged from v1 and lives elsewhere; this
 module only does retrieval.
 
 Note: the public API is synchronous. Bot integration will wrap ``retrieve`` in a

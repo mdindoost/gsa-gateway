@@ -120,7 +120,7 @@ def load_config() -> Config:
         chroma_db_path=os.getenv("CHROMA_DB_PATH", "./chroma_db"),
         conversation_timeout_minutes=int(os.getenv("CONVERSATION_TIMEOUT_MINUTES", "60")),
         conversation_max_turns=int(os.getenv("CONVERSATION_MAX_TURNS", "5")),
-        embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
+        embedding_model=os.getenv("EMBEDDING_MODEL", "qwen3-embedding:0.6b"),
         ask_gsa_channel=os.getenv("ASK_GSA_CHANNEL", "ask-gsa"),
         mathcafe_channel=os.getenv("MATHCAFE_CHANNEL", "gsa-mathcafe"),
         mathcafe_enabled=os.getenv("MATHCAFE_ENABLED", "true").lower() == "true",

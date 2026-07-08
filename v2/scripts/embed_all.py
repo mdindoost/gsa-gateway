@@ -1,7 +1,7 @@
 """GSA Gateway v2.0 — embedding pass (Step 3).
 
 Embeds every active ``knowledge_items`` row into the ``knowledge_vectors`` vec0
-table using Ollama's ``nomic-embed-text``. Resumable: re-running only embeds
+table using the configured Ollama embedder (``qwen3-embedding:0.6b``). Resumable: re-running only embeds
 items not already present. Safe to run against the LIVE ``gsa_gateway.db`` —
 ``knowledge_vectors`` is a v2-only table the v1 bot never reads.
 

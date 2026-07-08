@@ -189,7 +189,7 @@ class OllamaClient:
         base_url: str = "http://localhost:11434",
         model: str = "granite4:tiny-h",
         timeout: int = 60,
-        embedding_model: str = "nomic-embed-text",
+        embedding_model: str = "qwen3-embedding:0.6b",
         num_ctx: Optional[int] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
