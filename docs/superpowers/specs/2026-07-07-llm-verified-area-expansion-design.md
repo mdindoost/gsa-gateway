@@ -283,6 +283,18 @@ qwen embed on the 16GB box is at the edge — verify a 3-model-resident VRAM che
 re-gating to `llama3.1:8b` a safe fallback if it thrashes. Gold gate now scores the PRODUCTION (chunk-of-10)
 shape, not just chunk-of-1.
 
+### R6 UPDATE #2 (2026-07-07 PM, owner decision — VRAM reuse): default verify model = **granite4:tiny-h**
+The 16GB GPU is shared with the owner's ML research project, so the 7.8GB gemma3:12b verify model was too costly
+to keep resident. Owner's decision: **reuse the already-loaded generation model (`granite4:tiny-h`) for verify —
+zero additional VRAM**, and delete gemma3:12b + the smaller bake-off candidates. Bake-off on the same 55-pair gold
+gate (production/chunk-of-10 shape): granite4:tiny-h scores **precision 0.846 / recall 0.815** (vs gemma's 0.923 /
+0.889). This is BELOW the spec's ≥0.9 precision gate — an **explicit, owner-sanctioned trade** ("even by losing
+some answers or dropping precision"). Recall 0.815 is healthy (no silent collapse, the risk Fable flagged): umbrella
+queries surface ~11–12 of ~15 faculty instead of ~13, still an overwhelming win over the pre-fix 1-of-15. Peak bot
+VRAM drops to granite (4.2GB) + qwen (0.6GB) ≈ 4.8GB, ~11GB free for research; no cold-load (granite always warm
+as the gen model). `AREA_VERIFY_MODEL`/gate default both → granite4:tiny-h. Re-gating to a stronger model = pull it
++ set `AREA_VERIFY_MODEL` (the gate stays the arbiter).
+
 ### §8 checklist — corrected wording (per review-against-plan)
 - "Surfaces all and only field experts" → **"surfaces substantially more correct experts (cyber security 1→≥12),
   recall-bounded by shortlist∪token-overlap and precision-bounded by the ≥0.9 gold gate; over-inclusion rendered

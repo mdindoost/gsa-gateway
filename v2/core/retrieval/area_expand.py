@@ -95,7 +95,7 @@ def candidate_tags(conn: sqlite3.Connection, area: str, k: int = 30, embedder=No
 
 
 PROMPT_VERSION = "v3"
-VERIFY_MODEL = os.getenv("AREA_VERIFY_MODEL", "gemma3:12b")
+VERIFY_MODEL = os.getenv("AREA_VERIFY_MODEL", "granite4:tiny-h")
 _VERIFY_SCHEMA = {"type": "object", "properties": {"indices": {"type": "array", "items": {"type": "integer"}}},
                   "required": ["indices"]}
 _SYSTEM = (

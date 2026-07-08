@@ -44,7 +44,7 @@ def main() -> int:
         rec = tp / (tp + fn) if (tp + fn) else 1.0
         return prec, rec, wrong
 
-    model = os.getenv("AREA_VERIFY_MODEL", "gemma3:12b")
+    model = os.getenv("AREA_VERIFY_MODEL", "granite4:tiny-h")
     tags_by_q: dict[str, list[str]] = {}
     for p in pairs:
         tags_by_q.setdefault(p["query"], []).append(p["tag"])
