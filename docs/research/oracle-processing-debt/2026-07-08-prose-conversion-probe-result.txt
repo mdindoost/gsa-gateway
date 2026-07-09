@@ -1,0 +1,34 @@
+LIVE_THRESHOLD=0.15  DB=gsa_gateway.db  n=24
+
+original                                             q1_ce  q2_ce  verdict
+---------------------------------------------------------------------------------
+how cpt apply                                        0.980  1.000  q1-already-clears
+how cpt applyy                                       0.890  1.000  q1-already-clears
+wht is njit policy fr opt?                           0.912  0.985  q1-already-clears
+cn i take less credits at njit?                      0.877  0.982  q1-already-clears
+what happen if i miss add drop?                      0.073  0.145  CORPUS (fix doesn't lift)
+wher submit degreeworks form?                        0.634  0.900  q1-already-clears
+where submit tuishon refund form?                    0.029  0.885  CONVERT (fix lifts >thr)
+wheree can i find info about academic probation?     0.080  0.189  CONVERT (fix lifts >thr)
+i have problem with health insurance waiver what do  0.105  0.187  CONVERT (fix lifts >thr)
+where cn i find info about degreeworks?              0.240  0.831  q1-already-clears
+wht happen if i miss tuition due date?               0.082  0.168  CONVERT (fix lifts >thr)
+i have problem w grade appeal what do                0.745  0.973  q1-already-clears
+i have problem with course registration what do      0.701  0.929  q1-already-clears
+what happen if i get academic warning?               0.964  0.980  q1-already-clears
+wht is njit policy fr late payment?                  0.882  0.966  q1-already-clears
+i20 sign wheree go                                   0.221  0.880  q1-already-clears
+where cn i find info about meal plan                 0.029  0.220  CONVERT (fix lifts >thr)
+wher can i print on campus                           0.747  0.911  q1-already-clears
+how to apply fr room change?                         0.564  0.980  q1-already-clears
+i have problem with academic probation what do       0.180  0.600  q1-already-clears
+how do i transfer credits?                           0.967  0.967  q1-already-clears
+how to apply for health insurance waiver?            0.942  0.942  q1-already-clears
+can i withdraw late at njit?                         0.994  0.994  q1-already-clears
+where can i find info about late payment?            0.086  0.086  CORPUS (clean, still miss)
+
+CONVERSIONS (fix lifts miss->clear): 5
+CORPUS debt (fix doesn't help / clean-but-miss): 2
+q1 already clears threshold (not a retrieval miss): 17
+
+Conversion rate among genuine misses: 5/7 = 71%
