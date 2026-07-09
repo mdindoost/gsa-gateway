@@ -182,6 +182,33 @@ def _climb_to_scope(
 _LEADERSHIP_PROCESS = re.compile(
     r"\b(do(?:es)?|responsib|dut(?:y|ies)|how\s+(?:to|do)|become|elect|appoint|"
     r"eligib|qualif|nominat|remov|why|what'?s?\s+the\s+role)\b")
+
+# Leadership-INTENT phrasings that are NOT in _ROLE_VOCAB (so the role branch misses them).
+# "who runs/run", "boss of", "head of", "who leads", "who ... in charge of", "president of <unit>".
+# Verb cues (runs?/leads?/in charge of) are ordinary English verbs on their own ("which shuttle
+# RUNS to X", "what programs RUN in X", "who are the HEADS OF departments" — enumeration, not an
+# identity ask) so they are GATED behind a nearby "who" (0-2 filler words: "who actually runs X"
+# still matches). Noun-phrase cues ("boss of", "head of" singular, "president of") are NOT ordinary
+# verbs and may stand alone. A bare `\bruns?\b`/plural `heads?\s+of` previously over-matched any
+# query containing "run(s)"/"heads of" → false person routes (live-verified 2026-07-08/09).
+_LEADER_INTENT = re.compile(
+    r"\bwho\s+(?:\w+\s+){0,2}runs?\b|\bwho\s+(?:\w+\s+){0,2}leads?\b|"
+    r"\bwho\s+(?:\w+\s+){0,2}in\s+charge\s+of\b|"
+    r"\bboss\s+of\b|\bhead\s+of\b|"
+    r"\bpresident\s+of\b|\bwho\s+president\b", re.I)
+
+_LEADER_ROLE_BY_TYPE = {"department": "chair", "college": "dean", "school": "dean",
+                        "university": "president"}
+
+def _leader_role_for_org(conn, org_id):
+    row = conn.execute("SELECT type FROM organizations WHERE id=?", (org_id,)).fetchone()
+    if row is None:
+        return None
+    otype = row[0]
+    if otype in ("club", "gsa"):
+        return ("officers_in_org", "")
+    role = _LEADER_ROLE_BY_TYPE.get(otype)
+    return ("people_by_role", role) if role else None
 _ENUM_TRIGGER = re.compile(r"\b(?:list|name|show|all|every|any|are\s+there|is\s+there|do\s+we\s+have)\b")
 # Faculty-roster cues: any of these + a resolved org → list that department's faculty. Broad on
 # purpose (people ask many ways). Deliberately EXCLUDES 'people/members/staff/works' (→
@@ -846,6 +873,25 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     # department list). Officer titles stay with the officer branch above; process/eligibility
     # shapes ("how to become a dean") fall through to RAG. Empty result → RAG.
     if not _LEADERSHIP_PROCESS.search(q):
+        # Leader rule (spec §14 C-1): map run/boss/head/president-of-<unit> to the org-type role.
+        from v2.core.retrieval import query_correct
+        if (query_correct.enabled() and _LEADER_INTENT.search(q) and org_id is not None):
+            role_is_org = bool(org_phrase and any(
+                w in org_phrase.lower() for w in ("president", "head", "chair", "dean")))
+            if not role_is_org:
+                mapped = _leader_role_for_org(conn, org_id)
+                if mapped is not None:
+                    skill, role_head = mapped
+                    if skill == "officers_in_org":
+                        # officers_in_org is TERMINAL (empty -> "I don't have officer
+                        # information", no RAG fall-through) — only take it when the org
+                        # actually holds a true officer/deprep edge; otherwise fall through
+                        # to the rest of route()/RAG so club prose can still answer.
+                        if _has_true_officers(conn, org_id):
+                            return Route("officers_in_org", {"org_id": org_id})
+                    else:
+                        return Route("people_by_role", {"role_head": role_head, "org_id": org_id})
+
         rm = _ROLE_VOCAB_RX.search(q)
         if rm:
             role_word = rm.group(1).lower()

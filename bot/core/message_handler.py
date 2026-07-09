@@ -35,6 +35,7 @@ from v2.core.ingestion.explore import http_fetch
 from v2.core.retrieval.route_shadow import log_shadow
 from v2.core.retrieval.answer_gate import gate1_intent, gate2_prompt, parse_gate2
 from v2.core.retrieval import faithfulness as faith
+from v2.core.retrieval import query_correct
 import bot.config as botcfg
 
 logger = logging.getLogger(__name__)
@@ -367,6 +368,18 @@ class MessageHandler:
             if _rr.clarify_text is not None:
                 return MessageResponse(text=_rr.clarify_text, is_abstain=True,
                                        abstain_reason=_rr.clarify_reason)
+
+        # ── Query-correction (C+A): deterministic acronym dictionary ───────────
+        # Gated (QUERY_CORRECT_ENABLED). Augments the ROUTING/RETRIEVAL query only —
+        # `clean_text` (display/log/history/compose) is NEVER touched. Runs AFTER the
+        # context-rewrite above so it augments the already-resolved query, and BEFORE
+        # every consumer (Gate-1, the v2.1 router, _try_structured, _rag_pipeline).
+        # protected=None: the curated 9-entry ACRONYMS map (gsa/dept/dep/prof/cs/sci/
+        # eng/ece/uni) has no active-Person name-token collision (checked against
+        # `nodes` on 2026-07-09); a name-protected token set is deferred until the
+        # dictionary grows enough to risk one (YAGNI — no loader built for v1).
+        if query_correct.enabled():
+            resolved_query = query_correct.augment_acronyms(resolved_query, protected=None)
 
         # ── Explicit "search njit for X" ──────────────────────────────────────
         # The user literally asked to go to the live njit.edu site, so honor it directly —

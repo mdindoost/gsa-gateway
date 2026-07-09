@@ -407,3 +407,24 @@ Vincent Oria news
 Fadi Deek awards
 tell me more about Vincent Oria
 what is Vincent Oria involved in
+
+# query-correction C+A (Tasks 1-5: acronym dictionary + org-type-aware leader rule; gated by
+# QUERY_CORRECT_ENABLED, default OFF). C-3 typo tolerance was deferred/backed out — no typo cases here.
+who run cs
+boss of cs
+who president cs
+boss of ywcc
+top cited prof in computer sci
+women in cs officers who
+most published prof in mathematics
+# GUARD — GSA-equal + non-target collision: must stay office/officer-neutral, not misrouted by the
+# leader rule or the acronym dictionary.
+registrar office hours
+who runs GSA
+# GUARD — whole-branch review Fix 1: bare "run(s)"/"heads of" over-matched ordinary verbs and
+# hijacked these into a false person route. must NOT route to a person (people_by_role/officers_in_org).
+which shuttle runs to the cs building
+what programs run in the computer science department
+what courses run in the fall at ywcc
+what services run out of the graduate student association
+who are the heads of departments at njit
