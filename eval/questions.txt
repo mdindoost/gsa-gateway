@@ -407,3 +407,17 @@ Vincent Oria news
 Fadi Deek awards
 tell me more about Vincent Oria
 what is Vincent Oria involved in
+
+# query-correction C+A (Tasks 1-5: acronym dictionary + org-type-aware leader rule; gated by
+# QUERY_CORRECT_ENABLED, default OFF). C-3 typo tolerance was deferred/backed out — no typo cases here.
+who run cs
+boss of cs
+who president cs
+boss of ywcc
+top cited prof in computer sci
+women in cs officers who
+most published prof in mathematics
+# GUARD — GSA-equal + non-target collision: must stay office/officer-neutral, not misrouted by the
+# leader rule or the acronym dictionary.
+registrar office hours
+who runs GSA
