@@ -896,6 +896,11 @@ class MessageHandler:
             outcome, reason = faith.decide_after_gate2(v.label, v.quote, g2_passages, parsed=v.parsed)
         elif outcome == "gate2":
             outcome = "answer"  # no LLM available -> never withhold (answer-biased, like parse_gate2)
+        # Deterministic metric backstop (gate2 hardening): a metric-cued question ("X citations",
+        # "h-index") whose retrieved passages hold NO metric data must not surface a mis-attributed
+        # answer (the wrong-professor drift the tiny gate model leaks as FULLY_SUPPORTED). Model-free.
+        if outcome == "answer" and faith.metric_query_without_grounded_metric(question, full_passages):
+            return False, "gate2:metric-ungrounded"
         return outcome == "answer", reason
 
     def _useful_abstain(self, question: str, chunks) -> str:

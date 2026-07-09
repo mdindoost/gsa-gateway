@@ -159,7 +159,13 @@ BASE_SYSTEM_PROMPT = (
     "is a serious error.\n"
     "13. Never use gendered pronouns (he/him/his/she/her/hers) for a person unless their gender "
     "is explicitly stated in the context — the documents do not record gender, so assuming one is "
-    "fabrication. Refer to a person by name or use 'they/them'."
+    "fabrication. Refer to a person by name or use 'they/them'.\n"
+    "14. If the student's question contains a time or schedule qualifier (for example 'next "
+    "semester', 'this fall', 'in spring 2026') that the provided documents do NOT confirm, do NOT "
+    "assert that qualifier as fact. Answer what the documents DO state and add that per-semester "
+    "scheduling is not in our data. Example: asked who teaches CS 634 next semester when the "
+    "documents give the instructor but not the semester — name the instructor and say you don't "
+    "have next-semester scheduling."
 )
 
 _ANSWER_INSTRUCTIONS = (

@@ -217,3 +217,36 @@ def test_gate2_supported_but_ungrounded_quote_abstains():
     outcome, _ = decide_after_gate2(
         "FULLY_SUPPORTED", "the capital of France is Paris", ["France is a partner country"])
     assert outcome == "abstain"
+
+
+# ------------------------------------------------------------------ Gate-2 precision fix (positive-span reframe)
+# Layer-1 decision contract lock: PARTIALLY_SUPPORTED already routes to answer (given a grounded quote),
+# so compound questions (primary answered, secondary detail missing) surface here instead of dying as
+# NOT_IN_CONTEXT. These are characterization tests -- no logic change, just locking existing behavior.
+_CTX = ["To drop a class, submit the withdrawal form to the Registrar before the deadline."]
+
+
+def test_partial_support_with_grounded_quote_answers():
+    # compound: primary answered (how to drop), secondary (exact deadline) missing -> ANSWER
+    out, reason = decide_after_gate2("PARTIALLY_SUPPORTED", "submit the withdrawal form to the Registrar", _CTX)
+    assert out == "answer"
+
+
+def test_full_support_with_grounded_quote_answers():
+    out, _ = decide_after_gate2("FULLY_SUPPORTED", "submit the withdrawal form to the Registrar", _CTX)
+    assert out == "answer"
+
+
+def test_not_in_context_abstains():
+    out, reason = decide_after_gate2("NOT_IN_CONTEXT", "", _CTX)
+    assert out == "abstain" and reason == "gate2:not-in-context"
+
+
+def test_supported_but_ungrounded_quote_abstains():
+    out, reason = decide_after_gate2("FULLY_SUPPORTED", "tuition is due in the patent office", _CTX)
+    assert out == "abstain" and reason == "gate2:unsupported"
+
+
+def test_parse_fail_abstains_even_if_supported():
+    out, reason = decide_after_gate2("FULLY_SUPPORTED", "submit the withdrawal form", _CTX, parsed=False)
+    assert out == "abstain" and reason == "gate2:unsupported"

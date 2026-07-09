@@ -13,6 +13,9 @@ Two complementary gates protect the small generator from confidently answering w
            Run ONLY in the ambiguous ce_score band (gate-the-gate, spec fold #8) to avoid a serial
            8B call on every confident query. NOT_IN_CONTEXT is NEVER terminal — it routes to
            fallback (deep-fallback -> live -> deflect-only-if-all-miss, spec fold #5).
+           The label is decided against the question's PRIMARY ask (positive-span): FULLY/PARTIALLY_
+           SUPPORTED when a grounded quote answers the primary need, NOT_IN_CONTEXT only when none does
+           (2026-07-08 precision fix — was negative-global, which over-abstained on compound/partial Qs).
 
 This module is the pure logic (deterministic Gate 1 + Gate 2 prompt/parse/decision). The actual LLM
 call + retrieval live in the caller (scripts/eval_gate_shadow.py for measurement; later UnifiedRouter
@@ -120,12 +123,32 @@ def gate1_intent(question: str) -> Gate1Verdict:
 
 # ──────────────────────────────────────────────────────────────────── Gate 2 (LLM answerability)
 _GATE2_SYSTEM = (
-    "You are a strict grounding checker. Decide whether the CONTEXT contains a specific answer to the "
-    "QUESTION. First copy one or more verbatim supporting quotes from the context that directly answer "
-    "it; if no sentence answers it, leave the quote empty. A topic merely being mentioned is NOT "
-    "support. Then assign a label: FULLY_SUPPORTED (the answer is stated), PARTIALLY_SUPPORTED (some "
-    "but not all of it), or NOT_IN_CONTEXT (the specific answer is absent). Respond with ONLY a JSON "
-    'object: {"supporting_quote": "...", "label": "...", "missing_piece": "..."}'
+    "You are a grounding checker for a student Q&A system. Decide whether the CONTEXT contains "
+    "information that answers the user's QUESTION as written.\n"
+    "Rules:\n"
+    "- Use the QUESTION exactly as the user asked it. NEVER rewrite, narrow, or reinterpret it to "
+    "fit the context.\n"
+    "- Identify the user's PRIMARY need. If ANY sentence in the context gives information a reasonable "
+    "person would accept as answering that need, that sentence IS support — copy it verbatim as the "
+    "quote. Do NOT demand the exact wording, a more specific sub-step, or a more complete answer than "
+    "the context happens to use; a plainly responsive sentence counts even if it is not phrased as a "
+    "direct reply.\n"
+    "- A sentence that is only about a DIFFERENT topic, a different person, or a different thing than "
+    "the user asked is NOT support (a topic merely being mentioned is not support).\n"
+    "- If you can copy a responsive quote, you MUST NOT label NOT_IN_CONTEXT.\n"
+    "Label: FULLY_SUPPORTED (a quote answers the primary need), PARTIALLY_SUPPORTED (a quote answers "
+    "the primary need but a secondary detail is missing or unconfirmed), NOT_IN_CONTEXT (no quote "
+    "answers the primary need).\n"
+    "Examples:\n"
+    'QUESTION: how do i reset my password | CONTEXT: [1] Visit Accounts & Access on Highlander Nexus '
+    'to reset your password. -> {"primary_ask": "how to reset password", "supporting_quote": "Visit '
+    'Accounts & Access on Highlander Nexus to reset your password.", "label": "FULLY_SUPPORTED", '
+    '"missing_piece": ""}\n'
+    'QUESTION: what is the opt policy | CONTEXT: [1] NJIT PATENT POLICY: NJIT owns inventions made by '
+    'its employees. -> {"primary_ask": "OPT (optional practical training) policy", "supporting_quote": '
+    '"", "label": "NOT_IN_CONTEXT", "missing_piece": "context is about patents, not OPT"}\n'
+    "Respond with ONLY a JSON object, primary_ask FIRST: "
+    '{"primary_ask": "...", "supporting_quote": "...", "label": "...", "missing_piece": "..."}'
 )
 
 

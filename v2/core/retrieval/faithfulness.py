@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import re
 
+from v2.core.people.profile_fields import match_metric
+
 # ─────────────────────────────────────────────────────────────── normalization
 _MD = re.compile(r"[*_#`]+")
 _NONWORD = re.compile(r"[^a-z0-9 %$.]+")
@@ -197,6 +199,30 @@ def robust_grounded(quote: str, passages, min_overlap: float = 0.7) -> bool:
     return sum(1 for t in q if t in ctx) / len(q) >= min_overlap
 
 
+# ─────────────────────────────────────────────────────────── deterministic metric backstop (gate2 hardening)
+def metric_query_without_grounded_metric(question: str, passages) -> bool:
+    """True iff the QUESTION asks for a Scholar METRIC (citations / h-index / i10) but NONE of the
+    retrieved PASSAGES contain that metric's terms — the KB prose holds no metric data, so a composed
+    answer would mis-attribute a number or a person (the wrong-professor drift the tiny gate model
+    leaks as FULLY_SUPPORTED). Metric questions belong to the structured metric skill; reaching prose
+    RAG is already a routing miss, so abstaining here is correct. Deterministic, model-free, and it
+    checks the PASSAGES not the answer (the answer's 'Cited Document:' attribution boilerplate contains
+    the word 'cited' and would otherwise mask a metric-less context).
+
+    Wired ONLY at the KB faithfulness gate, not the live-fallback relevance gate — live spans are
+    verbatim njit.edu page text, which never carries Scholar metrics (Scholar data is manual-only), so
+    a metric question can only be metric-grounded via the KB path anyway."""
+    m = match_metric(question or "")
+    if not m:
+        return False
+    _, metric = m
+    hay = _norm(" \n ".join(passages) if isinstance(passages, (list, tuple)) else (passages or ""))
+    # Normalize each alias through _norm too, so a hyphenated alias ("h-index") matches the normalized
+    # passage text ("h index") without relying on the registry also carrying a redundant space-variant.
+    return not any((na := _norm(a)) and re.search(r"\b" + re.escape(na) + r"\b", hay)
+                   for a in metric.aliases)
+
+
 # ─────────────────────────────────────────────────────────────── decision (two-phase)
 _SUPPORTED = {"FULLY_SUPPORTED", "PARTIALLY_SUPPORTED"}
 
@@ -229,7 +255,13 @@ def decide_after_gate2(gate2_label: str, gate2_quote: str, passages, parsed: boo
     out-of-domain question) while NO should-answer question relied on it (0 measured false-abstain
     benefit). Gate-2 runs at temp 0.0, so a parse failure is DETERMINISTIC (out-of-domain garbage), not a
     transient glitch; and robust_grounded already TOLERATES paraphrase (token-set >=0.7), so the reviewer's
-    "reworded quote" case still answers. False-answer is the priority metric → require real support."""
+    "reworded quote" case still answers. False-answer is the priority metric → require real support.
+
+    # Positive-span reframe (2026-07-08): PARTIALLY_SUPPORTED means "the question's PRIMARY ask is
+    # answered though a secondary detail is missing" — so compound questions surface here instead of
+    # dying as NOT_IN_CONTEXT. The abstain/answer wiring below is unchanged; only the LLM's label
+    # criterion (in _GATE2_SYSTEM) moved.
+    """
     if gate2_label not in _SUPPORTED:
         return "abstain", "gate2:not-in-context"
     if not parsed or not robust_grounded(gate2_quote, passages):

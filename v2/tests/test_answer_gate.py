@@ -192,6 +192,15 @@ def test_gate2_prompt_includes_question_and_context():
     assert "NOT_IN_CONTEXT" in sys_p
 
 
+def test_gate2_prompt_is_positive_span_primary_ask():
+    sys_p, user_p = gate2_prompt("who teaches cs 634 next semester", ["CS 634 is taught by Prof. X."])
+    # positive-span framing: asks for the PRIMARY need and a primary-first JSON schema
+    assert "primary_ask" in sys_p
+    assert sys_p.index("primary_ask") < sys_p.index("supporting_quote")  # primary_ask emitted FIRST
+    assert "PARTIALLY_SUPPORTED" in sys_p and "NOT_IN_CONTEXT" in sys_p
+    assert "quote" in sys_p  # keeps the existing substring contract
+
+
 # ---------------------------------------------------------------- Gate 2: parse
 def test_parse_gate2_reads_label_and_quote():
     raw = '{"supporting_quote": "The deadline is May 1.", "label": "FULLY_SUPPORTED", "missing_piece": ""}'
@@ -208,6 +217,15 @@ def test_parse_gate2_defaults_to_answerable_on_garbage():
     # answer-biased default: unparseable => treat as supported (never withhold on a parse failure)
     v = parse_gate2("the model rambled with no json")
     assert v.label == "FULLY_SUPPORTED"
+
+
+def test_parse_gate2_ignores_primary_ask_field():
+    raw = ('{"primary_ask": "who teaches cs 634", "supporting_quote": "CS 634 is taught by Prof. X.", '
+           '"label": "PARTIALLY_SUPPORTED", "missing_piece": "which semester"}')
+    v = parse_gate2(raw)
+    assert v.label == "PARTIALLY_SUPPORTED"
+    assert "Prof. X" in v.quote
+    assert v.parsed is True
 
 
 # ---------------------------------------------------------------- decision: gate-the-gate + ordering
