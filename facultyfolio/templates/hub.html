@@ -4,7 +4,7 @@
 {% block rail %}
   <div class="rail">
     <span><span class="dot"></span>Crawled from public sources</span>
-    <a class="claim" href="#">Is this you? Claim your page →</a>
+    <a class="claim" href="{{ claim_url }}">Is this you? Claim your page →</a>
   </div>
 {% endblock %}
 
@@ -17,6 +17,7 @@
       <div class="hub-cards">
         {% for c in cards %}
         <a class="hub-card" href="{{ c.url }}">
+          {% if c.badge %}<span class="hub-badge" aria-hidden="true">{{ c.badge }}</span>{% endif %}
           <span class="hub-name">{{ c.name }}</span>
           <span class="hub-stats"><strong>{{ c.faculty }}</strong> faculty · <strong>{{ c.scholar }}</strong> on Google Scholar</span>
           <span class="hub-go">View directory →</span>

@@ -125,10 +125,18 @@ def test_profile_sources_label_not_cs_specific():
     assert "Scholar + NJIT" in html and "NJIT-CS" not in html
 
 
-def test_profile_back_link_uses_home_segment():
-    html = render.render_profile(db.get_faculty(33))            # home = Computer Science
-    assert '../computer-science/index.html' in html
-    assert '../cs/index.html' not in html
+def test_profile_back_link_uses_dept_url():
+    # Spec B: the card dept back-link uses the nested /<college>/<dept>/ path passed as dept_url
+    # (not the old legacy ../<dept>/index.html redirect hop, which was removed).
+    html = render.render_profile(db.get_faculty(33), dept_url="../ywcc/computer-science/")
+    assert 'href="../ywcc/computer-science/"' in html
+    assert '../computer-science/index.html' not in html and '../cs/index.html' not in html
+
+
+def test_profile_no_dept_url_renders_plain_dept_name():
+    # Without a dept_url (a bare render_profile call), the dept shows as plain text — no broken link.
+    html = render.render_profile(db.get_faculty(33))
+    assert 'Computer Science' in html and '../computer-science/index.html' not in html
 
 
 def test_profile_mx6_njit_research_interest_and_scholar_chips_coexist():

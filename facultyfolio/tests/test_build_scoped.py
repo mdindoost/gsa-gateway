@@ -122,6 +122,28 @@ def test_nested_leaderboard_uses_depth_correct_asset_and_profile_paths(monkeypat
         assert 'src="../assets/photos/ikoutis.jpg"' in prof
 
 
+def test_org_badge_derivation(monkeypatch):
+    from facultyfolio import build, config
+    assert build._org_badge("ywcc", "Ying Wu College of Computing", is_college=True) == "YWCC"
+    assert build._org_badge("computer-science", "Computer Science") == "CS"      # multiword initials
+    assert build._org_badge("data-science", "Data Science") == "DS"
+    assert build._org_badge("informatics", "Informatics") == "IN"                # single word -> first two
+    monkeypatch.setattr(config, "ORG_BADGES", {"informatics": "INF"})
+    assert build._org_badge("informatics", "Informatics") == "INF"               # override wins
+
+
+def test_standalone_build_one_has_breadcrumb(monkeypatch):
+    """build_one(slug, out) with NO college/dept args derives a full breadcrumb from the KG:
+    NJIT / <college> / <dept> / <name>, with a dept back-link (regression for the review's #6)."""
+    monkeypatch.setattr(build, "photos_ensure", lambda slug, *a, **k: f"monogram:{slug[:2].upper()}")
+    with tempfile.TemporaryDirectory() as out:
+        html = open(build.build_one("ikoutis", out)).read()
+        assert '<nav class="nav" aria-label="Breadcrumb">' in html
+        assert 'aria-current="page">Ioannis Koutis' in html          # person is the current crumb
+        assert 'href="../ywcc/computer-science/"' in html            # dept crumb resolves nested
+        assert 'href="../">NJIT' in html                             # NJIT crumb -> site root
+
+
 def test_scoped_dept_build_leaves_sibling_profile_untouched():
     """A --dept computer-science build must not overwrite a sibling dept's profile page in
     the shared flat /p/ namespace."""

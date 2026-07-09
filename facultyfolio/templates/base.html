@@ -3,20 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1a2233">
 <title>{% block title %}FacultyFolio{% endblock %}</title>
 {% if canonical %}<link rel="canonical" href="{{ canonical }}">{% endif %}
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f6df0'/%3E%3Ctext x='16' y='24' font-family='Georgia,serif' font-weight='600' font-size='21' fill='white' text-anchor='middle'%3EF%3C/text%3E%3C/svg%3E">
+<meta property="og:site_name" content="FacultyFolio">
+<meta property="og:type" content="{% block og_type %}website{% endblock %}">
+{% if og_title %}<meta property="og:title" content="{{ og_title }}">{% endif %}
+{% if og_description %}<meta property="og:description" content="{{ og_description }}">
+<meta name="description" content="{{ og_description }}">{% endif %}
+{% if canonical %}<meta property="og:url" content="{{ canonical }}">{% endif %}
+<meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="{{ asset_root }}assets/style.css">
 </head>
 <body>
 
-  <nav class="nav">
+  <nav class="nav" aria-label="Breadcrumb">
     <div class="nav-in">
-      <a href="#" class="active">Home</a>
-      <a href="#pubs">Publications</a>
-      <a href="#">Teaching</a>
-      <span class="brand">FacultyFolio</span>
+      {% if nav %}
+      <ol class="crumb">
+        {% for c in nav %}
+        <li>{% if c.href %}<a href="{{ c.href }}">{{ c.label }}</a><span class="sep" aria-hidden="true">/</span>{% else %}<span class="here" aria-current="page">{{ c.label }}</span>{% endif %}</li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+      <a class="brand" href="{{ asset_root }}" aria-label="FacultyFolio home">
+        <img class="brand-logo" src="{{ asset_root }}assets/logo.png" alt="" width="32" height="32">
+        <span>FacultyFolio</span>
+      </a>
     </div>
   </nav>
+
+  {% block nav_tools %}{% endblock %}
 
   {% block rail %}{% endblock %}
 

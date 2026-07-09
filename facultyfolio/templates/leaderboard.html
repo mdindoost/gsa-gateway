@@ -1,6 +1,24 @@
 {% extends "base.html" %}
 {% block title %}{{ org_name }} — FacultyFolio{% endblock %}
 
+{# Spec B: the view switch + search live in a light STICKY toolbar under the nav,
+   not in the body. It is view-STATE, not navigation, so it is a plain labelled div,
+   NOT inside <nav>. The panel-toggle JS is document-scoped, so relocation is free. #}
+{% block nav_tools %}
+  <div class="lb-toolbar">
+    <div class="lb-toolbar-in" aria-label="Directory controls">
+      <span class="tb-dept">{{ org_name }}</span>
+      <div class="lb-switch" role="group" aria-label="Sort faculty">
+        <button type="button" data-view="rank" aria-pressed="{{ 'true' if default_view=='rank' else 'false' }}"><span class="sw-lg">By rank / title</span><span class="sw-sm">Rank</span></button>
+        <button type="button" data-view="citations" aria-pressed="{{ 'true' if default_view=='citations' else 'false' }}"><span class="sw-lg">By citations</span><span class="sw-sm">Cited</span></button>
+        <button type="button" data-view="az" aria-pressed="{{ 'true' if default_view=='az' else 'false' }}">A–Z</button>
+        {% if show_rising %}<button type="button" data-view="rising" aria-pressed="false" aria-label="Rising"><span class="lb-star">★</span><span class="sw-lg"> Rising</span></button>{% endif %}
+      </div>
+      <input class="lb-search" type="search" placeholder="Search name, title, research area…" aria-label="Search faculty">
+    </div>
+  </div>
+{% endblock %}
+
 {%- macro photo_thumb(row, asset_root) -%}
   {%- if row.photo_ref.startswith('monogram:') -%}
   <svg class="lb-photo" viewBox="0 0 40 40" role="img" aria-label="{{ row.name }}">
@@ -48,7 +66,7 @@
     <span><span class="dot"></span>Crawled from public sources</span>
     <span class="sep">·</span>
     <span>{{ coverage_n }} of {{ coverage_m }} on Google Scholar</span>
-    <a class="claim" href="#">Is this you? Claim your page →</a>
+    <a class="claim" href="{{ claim_url }}">Is this you? Claim your page →</a>
   </div>
 {% endblock %}
 
@@ -63,16 +81,6 @@
         <span class="glance-hd"><strong>{{ stats.total }}</strong> faculty</span>
         <span class="glance-hd"><strong>{{ stats.with_scholar }}</strong> on Google Scholar</span>
         {% for label, count in stats.groups %}<span class="glance-g">{{ count }} · {{ label }}</span>{% endfor %}
-      </div>
-
-      <div class="lb-controls">
-        <div class="lb-switch" role="group" aria-label="Sort faculty">
-          <button type="button" data-view="rank" aria-pressed="{{ 'true' if default_view=='rank' else 'false' }}">By rank / title</button>
-          <button type="button" data-view="citations" aria-pressed="{{ 'true' if default_view=='citations' else 'false' }}">By citations</button>
-          <button type="button" data-view="az" aria-pressed="{{ 'true' if default_view=='az' else 'false' }}">A–Z</button>
-          {% if show_rising %}<button type="button" data-view="rising" aria-pressed="false"><span class="lb-star">★</span> Rising</button>{% endif %}
-        </div>
-        <input class="lb-search" type="search" placeholder="Search name, title, research area…" aria-label="Search faculty">
       </div>
 
       <div class="lb-panel" data-view="rank"{% if default_view != 'rank' %} hidden{% endif %}>

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ name }} — FacultyFolio{% endblock %}
+{% block og_type %}profile{% endblock %}
 
 {% block rail %}
   <div class="rail">
@@ -7,7 +8,7 @@
     {% if sync_label %}<span class="sep">·</span><span>{{ sync_label }}</span>{% endif %}
     <span class="sep">·</span>
     <span>{{ sources }}</span>
-    <a class="claim" href="#">Is this you? Claim this page →</a>
+    <a class="claim" href="{{ claim_url }}">Is this you? Claim this page →</a>
   </div>
 {% endblock %}
 
@@ -37,7 +38,7 @@
       <h1>{{ name }}</h1>
       {% if title %}<p class="title">{{ title }}</p>{% endif %}
       <p class="dept">
-        {% if home_dept_segment %}<a href="../{{ home_dept_segment }}/index.html">{{ home_dept }}</a>{% else %}{{ home_dept }}{% endif %}
+        {% if dept_url %}<a href="{{ dept_url }}">{{ home_dept }}</a>{% else %}{{ home_dept }}{% endif %}
         {% if joint_dept %}<span class="uni">Joint appointment · {{ joint_dept }}</span>{% endif %}
         {% if college %}<span class="uni">{{ college }} · NJIT</span>{% endif %}
       </p>
@@ -57,7 +58,7 @@
           {% for a in areas %}<span class="area"><span class="d"></span>{{ a }}</span>{% endfor %}
         </div>
         {% else %}
-        <div class="hook"><span class="ic">🔬</span><span class="txt">Research areas aren't listed on public profiles yet — <a href="#">claim this page</a> to add them.</span></div>
+        <div class="hook"><span class="ic">🔬</span><span class="txt">Research areas aren't listed on public profiles yet — <a href="{{ claim_url }}">claim this page</a> to add them.</span></div>
         {% endif %}
       </section>
 
@@ -87,7 +88,7 @@
           {% if chart_svg %}
           <div class="chart-wrap">
             <div class="chart-lab"><span>Citations per year</span><span>Google Scholar</span></div>
-            {{ chart_svg|safe }}
+            <div class="chart-scroll">{{ chart_svg|safe }}</div>
           </div>
           {% endif %}
           {% if recent_trend %}
@@ -103,7 +104,7 @@
           {% endif %}
         </div>
         {% else %}
-        <div class="hook"><span class="ic">📊</span><span class="txt">No Google Scholar profile is linked for {{ name }} yet — is this you? <a href="#">Claim this page</a> to connect it.</span></div>
+        <div class="hook"><span class="ic">📊</span><span class="txt">No Google Scholar profile is linked for {{ name }} yet — is this you? <a href="{{ claim_url }}">Claim this page</a> to connect it.</span></div>
         {% endif %}
       </section>
 
@@ -155,7 +156,7 @@
         {% else %}
           <div class="hook">
             <span class="ic">🏆</span>
-            <span class="txt">Awards aren't in our public data yet — things like NSF grants and best-paper awards aren't crawlable. <a href="#">Claim this page</a> to add them.</span>
+            <span class="txt">Awards aren't in our public data yet — things like NSF grants and best-paper awards aren't crawlable. <a href="{{ claim_url }}">Claim this page</a> to add them.</span>
           </div>
         {% endif %}
       </section>

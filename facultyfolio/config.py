@@ -41,6 +41,14 @@ LEGACY_REDIRECTS = {
 from bot.core import identity as _identity
 ASSISTANT_VERSION = _identity.version_label()          # e.g. "Kavosh v2.5"
 
+# --- Spec B visuals -----------------------------------------------------------
+# Optional per-org badge label override (else auto-derived: college = slug upper,
+# dept = name initials). Keys are org slugs; add one to pin a nicer acronym.
+ORG_BADGES = {}                                # e.g. {"informatics": "INF"}
+# "Claim your page" contact — a real destination beats a dead href="#" (Spec B).
+# A mailto to the project maintainer; change the address to retarget claims.
+CLAIM_MAILTO = "mailto:md724@njit.edu?subject=FacultyFolio%20page%20claim"
+
 # --- fixed copy (never data-driven — trust boundary, spec §3.2) --------------
 FIXED_HEADING = "Impact & trajectory"          # Scholarly-activity section heading, all faculty
 ACTIVE_SINCE_LABEL = "Active since"            # 4th stat (NOT "Publishing since" — honesty, spec §4)

@@ -8,8 +8,38 @@ The leaderboard reuses the exact photo refs the profile pass resolved (threaded 
 `photo_map`), so it never re-resolves or diverges from the profile pages.
 """
 import os
+import re
 
 from . import assets, config, db, paths, rank, render, seo
+
+_BADGE_STOP = {"of", "and", "the", "for", "in", "&"}
+
+
+def _org_badge(slug: str, name: str, is_college: bool = False) -> str:
+    """Monogram-badge label for a hub card (Spec B). Override wins; else auto-derive:
+    a college = its slug upper-cased (YWCC/MTSM); a dept = its name's word-initials
+    (Computer Science -> CS), falling back to the first two letters for a single word."""
+    if slug in config.ORG_BADGES:
+        return config.ORG_BADGES[slug]
+    if is_college:
+        return slug.upper()
+    words = [w for w in re.split(r"[\s\-]+", name) if w and w.lower() not in _BADGE_STOP]
+    letters = "".join(w[0] for w in words)
+    return (letters[:4] if len(letters) >= 2 else name[:2]).upper()
+
+
+def _crumbs(asset_root: str, trail: list) -> list:
+    """Breadcrumb model (Spec B). trail = [(label, target_relpath_from_root | None)];
+    a None target is the current page (rendered as text, no link). Every href is the
+    page's asset_root + the root-relative target, so links resolve at any page depth."""
+    return [{"label": lbl, "href": (None if tgt is None else asset_root + tgt)}
+            for lbl, tgt in trail]
+
+
+def _profile_og(faculty: dict) -> str:
+    parts = [faculty.get("title"), faculty.get("home_dept"), faculty.get("college")]
+    lead = ", ".join(p for p in parts if p)
+    return f"{lead} · NJIT faculty profile" if lead else "NJIT faculty profile"
 
 
 def _write(path: str, html: str) -> None:
@@ -30,26 +60,54 @@ def _resolve_photo(slug: str, faculty: dict, assets_dir: str) -> str:
     return photos_ensure(slug, scholar.get("photo"), faculty["name"], assets_dir)
 
 
-def build_one(slug: str, out_root: str, photo_ref: str = None) -> str:
+def build_one(slug: str, out_root: str, photo_ref: str = None,
+              college_seg: str = None, college_name: str = None,
+              dept_slug: str = None, dept_name: str = None) -> str:
     """Generate one faculty profile page; return the written path (or '' if suppressed).
 
     When `photo_ref` is supplied (by build_all) the photo is not re-resolved; otherwise it
-    is resolved here so build_one stays usable standalone.
+    is resolved here so build_one stays usable standalone. The college/dept args give the
+    breadcrumb its ancestors; when omitted (standalone use) they're derived from the KG.
     """
     faculty = db.get_faculty(slug)
     if faculty["suppressed"]:
         return ""
     if photo_ref is None:
         photo_ref = _resolve_photo(slug, faculty, paths.assets_dir(out_root))
+    trail = _profile_trail(faculty, college_seg, college_name, dept_slug, dept_name)
+    nav = _crumbs("../", trail)
+    # card dept back-link: the correct nested /<college>/<dept>/ path (not the legacy ../<dept>/
+    # redirect), reused from the dept crumb; None when the person has no resolvable home dept.
+    dept_url = ("../" + trail[2][1]) if len(trail) == 4 else None
     html = render.render_profile(
         faculty, photo_ref=photo_ref,
-        asset_root="../", canonical=paths.canonical_url(f"p/{slug}.html"))
+        asset_root="../", canonical=paths.canonical_url(f"p/{slug}.html"),
+        nav=nav, og_title=faculty["name"], og_description=_profile_og(faculty), dept_url=dept_url)
     path = paths.profile_path(out_root, slug)
     _write(path, html)
     return path
 
 
-def build_dept(org: dict, out_root: str, college_seg: str, photo_map: dict = None) -> str:
+def _profile_trail(faculty, college_seg, college_name, dept_slug, dept_name):
+    """Breadcrumb trail for a profile: NJIT / College / Dept / Name. Uses the passed
+    ancestors when present (full build), else derives them from the person's home dept."""
+    if college_seg and dept_slug:
+        return [("NJIT", ""), (college_name, f"{college_seg}/"),
+                (dept_name, f"{college_seg}/{dept_slug}/"), (faculty["name"], None)]
+    ds = faculty.get("home_dept_segment")
+    if ds:
+        try:
+            cs = _college_of_dept(ds)          # home dept's published college
+        except ValueError:
+            cs = None                          # home dept not under a published college -> no dept crumb
+        if cs:
+            return [("NJIT", ""), (faculty.get("college") or "NJIT", f"{cs}/"),
+                    (faculty.get("home_dept") or "", f"{cs}/{ds}/"), (faculty["name"], None)]
+    return [("NJIT", ""), (faculty["name"], None)]
+
+
+def build_dept(org: dict, out_root: str, college_seg: str, photo_map: dict = None,
+               college_name: str = None) -> str:
     """Render one department's leaderboard at <college>/<dept>/index.html."""
     roster = rank.roster(org["node_id"])
     coverage = rank.coverage(org["node_id"])
@@ -63,8 +121,12 @@ def build_dept(org: dict, out_root: str, college_seg: str, photo_map: dict = Non
         if r["slug"] not in photo_map:
             photo_map[r["slug"]] = _resolve_photo(r["slug"], db.get_faculty(r["slug"]), assets_dir)
     canonical = paths.canonical_url(f"{college_seg}/{org['slug']}/")
+    college_name = college_name or db.college_name(db.org_node_by_slug(college_seg))
+    nav = _crumbs("../../", [("NJIT", ""), (college_name, f"{college_seg}/"), (org["name"], None)])
+    og = f"{coverage[1]} faculty in {org['name']} at NJIT — ranked by citations, with Google Scholar metrics."
     html = render.render_leaderboard(org["name"], views, stats, coverage, photo_map,
-                                     rising=rising, asset_root="../../", canonical=canonical)
+                                     rising=rising, asset_root="../../", canonical=canonical,
+                                     nav=nav, og_title=f"{org['name']} — NJIT", og_description=og)
     path = paths.leaderboard_path(out_root, college_seg, org["slug"])
     _write(path, html)
     return path
@@ -77,10 +139,15 @@ def build_college_hub(college_node: int, college_seg: str, out_root: str) -> str
     for d in depts:
         n, m = rank.coverage(d["node_id"])
         cards.append({"name": d["name"], "faculty": m, "scholar": n,
-                      "url": f"{d['slug']}/index.html"})
+                      "url": f"{d['slug']}/index.html", "badge": _org_badge(d["slug"], d["name"])})
     canonical = paths.canonical_url(f"{college_seg}/")
-    html = render.render_hub(db.college_name(college_node), cards, eyebrow="College",
-                             asset_root="../", canonical=canonical)
+    cname = db.college_name(college_node)
+    _, cm = db.college_coverage(college_node)
+    nav = _crumbs("../", [("NJIT", ""), (cname, None)])
+    og = f"{cm} faculty across {len(depts)} departments at {cname}, NJIT — with Google Scholar metrics."
+    html = render.render_hub(cname, cards, eyebrow="College",
+                             asset_root="../", canonical=canonical,
+                             nav=nav, og_title=cname, og_description=og)
     path = paths.college_hub_path(out_root, college_seg)
     _write(path, html)
     return path
@@ -93,10 +160,15 @@ def build_njit_hub(out_root: str) -> str:
         node = db.org_node_by_slug(slug)
         n, m = db.college_coverage(node)
         cards.append({"name": db.college_name(node), "faculty": m, "scholar": n,
-                      "url": f"{slug}/index.html"})
+                      "url": f"{slug}/index.html", "badge": _org_badge(slug, db.college_name(node), is_college=True)})
     canonical = paths.canonical_url("")
+    nav = _crumbs("", [("NJIT", None)])
+    og = (f"Faculty across {len(config.PUBLISHED_COLLEGES)} "
+          f"college{'s' if len(config.PUBLISHED_COLLEGES) != 1 else ''} at NJIT — "
+          "profiles, rankings, and Google Scholar metrics.")
     html = render.render_hub("New Jersey Institute of Technology", cards, eyebrow="University",
-                             asset_root="", canonical=canonical)
+                             asset_root="", canonical=canonical,
+                             nav=nav, og_title="NJIT faculty", og_description=og)
     path = paths.njit_hub_path(out_root)
     _write(path, html)
     return path
@@ -128,7 +200,7 @@ def _college_of_dept(dept_slug: str) -> str:
     raise ValueError(f"dept {dept_slug!r} is not under any published college")
 
 
-def _build_dept_scope(college_seg, org, out_root, built, photo_map):
+def _build_dept_scope(college_seg, org, out_root, built, photo_map, college_name=None):
     """Build one dept's profiles + leaderboard into the shared maps."""
     assets_dir = paths.assets_dir(out_root)
     for s in db.faculty_slugs(org["node_id"]):
@@ -142,8 +214,9 @@ def _build_dept_scope(college_seg, org, out_root, built, photo_map):
             continue
         ref = _resolve_photo(s, faculty, assets_dir)
         photo_map[s] = ref
-        build_one(s, out_root, photo_ref=ref)
-    build_dept(org, out_root, college_seg, photo_map=photo_map)
+        build_one(s, out_root, photo_ref=ref, college_seg=college_seg,
+                  college_name=college_name, dept_slug=org["slug"], dept_name=org["name"])
+    build_dept(org, out_root, college_seg, photo_map=photo_map, college_name=college_name)
 
 
 def _occupied_root_segments(out_root: str) -> set:
@@ -222,10 +295,11 @@ def build_site(scope: dict = None, out_root: str = None) -> dict:
 
     for cslug in college_slugs:
         cnode = db.org_node_by_slug(cslug)
+        cname = db.college_name(cnode)
         for org in db.dept_orgs_of_college(cnode):
             if dept_filter and org["slug"] != dept_filter:
                 continue
-            _build_dept_scope(cslug, org, out_root, built, photo_map)
+            _build_dept_scope(cslug, org, out_root, built, photo_map, college_name=cname)
         build_college_hub(cnode, cslug, out_root)
 
     build_njit_hub(out_root)                 # ancestor: always refreshed

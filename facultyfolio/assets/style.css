@@ -149,17 +149,26 @@
   }
   /* ============================================================================== */
   *{box-sizing:border-box;}
-  body{margin:0; background:var(--paper); color:var(--ink); font-family:var(--f-body); -webkit-font-smoothing:antialiased; line-height:1.55;}
-  a{color:inherit;}
+  body{margin:0; background:var(--paper); color:var(--ink); font-family:var(--f-body); -webkit-font-smoothing:antialiased; line-height:1.55; overflow-x:clip;}
+  a{color:inherit; -webkit-tap-highlight-color:rgba(47,109,240,.1);}
 
-  /* nav */
-  .nav{background:var(--nav); position:sticky; top:0; z-index:10;}
-  .nav-in{max-width:1080px; margin:0 auto; padding:0 24px; display:flex; align-items:center; gap:30px; height:56px;}
-  .nav a{color:var(--nav-ink); text-decoration:none; font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding:4px 0; position:relative;}
-  .nav a.active{color:#fff;}
-  .nav a.active::after{content:""; position:absolute; left:0; right:0; bottom:-4px; height:2px; background:var(--nav-active);}
-  .nav a:hover{color:#fff;}
-  .nav .brand{margin-left:auto; font-family:var(--f-mono); font-size:11px; color:var(--faint); text-transform:none; letter-spacing:0;}
+  /* nav — breadcrumb row (Spec B). NOT sticky: on the leaderboard the light toolbar below
+     is the sticky element, and double-sticky bars eat a phone's viewport. */
+  .nav{background:var(--nav);}
+  .nav-in{max-width:1080px; margin:0 auto; padding:0 24px; display:flex; align-items:center; gap:20px; min-height:60px;}
+  .nav .brand{margin-left:auto; display:inline-flex; align-items:center; gap:8px; text-decoration:none;
+              font-family:var(--f-mono); font-size:11px; color:var(--faint); text-transform:none; letter-spacing:0;}
+  .nav .brand:hover{color:var(--nav-ink);}
+  .brand-logo{width:32px; height:32px; display:block; flex:none;}
+
+  /* breadcrumb trail */
+  .crumb{list-style:none; margin:0; padding:0; display:flex; align-items:center; flex-wrap:wrap;
+         font-family:var(--f-mono); font-size:11.5px; letter-spacing:.02em; min-width:0;}
+  .crumb li{display:flex; align-items:center; min-width:0;}
+  .crumb a{color:var(--nav-ink); text-decoration:none; text-transform:none; padding:6px 0;}
+  .crumb a:hover{color:#fff;}
+  .crumb .sep{color:#55627a; margin:0 9px;}
+  .crumb .here{color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 
   /* provenance rail */
   .rail{max-width:1080px; margin:0 auto; padding:10px 24px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; font-family:var(--f-mono); font-size:11px; color:var(--mute);}
@@ -202,7 +211,7 @@
   .about-row{display:grid; grid-template-columns:120px 1fr; gap:20px; padding:16px 0; border-bottom:1px solid var(--hair-2); align-items:baseline;}
   .about-row:last-child{border-bottom:none;}
   .about-k{font-family:var(--f-mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); padding-top:2px;}
-  .about-v{font-size:14.5px; color:var(--ink-2); line-height:1.5;}
+  .about-v{font-size:14.5px; color:var(--ink-2); line-height:1.5; overflow-wrap:anywhere;}
   /* Fixed mode: a row the person has no data for -> shown but grayed ("Not listed"). */
   .about-row.off .about-v{color:var(--faint); font-style:italic;}
   .about-src{font-family:var(--f-mono); font-size:10.5px; color:var(--faint); margin:10px 0 0; padding-left:2px;}
@@ -233,7 +242,7 @@
   .pub{display:flex; gap:18px; padding:15px 0; border-bottom:1px solid var(--hair-2); align-items:baseline;}
   .pub-cite{width:66px; flex-shrink:0; text-align:right;}
   .pub-cite .pc-n{font-family:var(--f-display); font-size:19px; font-weight:600; color:var(--ink); display:block; line-height:1;}
-  .pub-cite .pc-l{font-family:var(--f-mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--faint);}
+  .pub-cite .pc-l{font-family:var(--f-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--faint);}
   .pub-main{flex:1; min-width:0;}
   .pub-t{font-size:15.5px; font-weight:500; color:var(--ink); text-decoration:none; line-height:1.4; display:block; margin-bottom:3px;}
   .pub-t:hover{color:var(--accent);}
@@ -263,7 +272,7 @@
     .card .photo{width:96px;height:96px;margin:0;}
     .card .social{grid-column:1/-1; justify-content:flex-start; margin-top:18px;}
     .card h1{text-align:left;}
-    .nav .brand{display:none;}
+    .nav .brand span{display:none;}      /* keep the logo as a home button, drop the wordmark to save space */
   }
 
   /* ============ leaderboard ============ */
@@ -299,7 +308,7 @@
   /* rows (flex — serves both the directory and the ranked-citations layout) */
   .lb-row{display:flex; gap:16px; align-items:center; background:var(--card); border-radius:12px;
           box-shadow:var(--shadow); padding:12px 20px; text-decoration:none; color:var(--ink); transition:.15s;}
-  .lb-row:hover{transform:translateY(-1px); box-shadow:0 2px 6px rgba(20,30,50,.06), 0 12px 28px rgba(20,30,50,.07);}
+  @media (hover:hover){ .lb-row:hover{transform:translateY(-1px); box-shadow:0 2px 6px rgba(20,30,50,.06), 0 12px 28px rgba(20,30,50,.07);} }
   .lb-row.no-scholar{opacity:.6;}
   .lb-photo{width:40px; height:40px; border-radius:50%; object-fit:cover; background:var(--hair); flex:none;}
   .lb-rank{font-family:var(--f-display); font-size:18px; font-weight:600; color:var(--mute);
@@ -315,18 +324,33 @@
   .lb-cite,.lb-h{display:flex; flex-direction:column; align-items:flex-end; min-width:74px; flex:none;}
   .lb-h{min-width:56px;}
   .lb-num{font-family:var(--f-display); font-size:17px; font-weight:600; line-height:1;}
-  .lb-lab{font-family:var(--f-mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--faint);}
+  .lb-lab{font-family:var(--f-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--faint);}
   .lb-empty{font-family:var(--f-mono); font-size:13px; color:var(--mute); padding:20px 0;}
-  @media (max-width:640px){ .lb-h{display:none;} .lb-areas{display:none;} }
+  @media (max-width:640px){
+    .lb-h{display:none;}                                  /* citations alone rank the phone view */
+    .lb-row{flex-wrap:wrap; padding:12px 14px; gap:12px;}
+    .lb-rank{width:22px; font-size:15px;}
+    .lb-cite{min-width:60px;}
+    /* areas move to a 2nd line (max 2 chips) instead of vanishing — restores browse value */
+    .lb-areas{display:flex; flex:1 1 100%; max-width:none; justify-content:flex-start;
+              padding-left:52px; margin-top:2px;}
+    .lb-areas .chip:nth-child(n+3){display:none;}
+  }
 
   /* --- college hub cards --- */
   .hub-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; margin-top:22px;}
   .hub-card{display:flex; flex-direction:column; gap:8px; padding:20px 21px; background:var(--card); border:1px solid var(--hair); border-radius:var(--radius); box-shadow:var(--shadow); text-decoration:none; color:inherit; transition:border-color .15s, transform .15s;}
-  .hub-card:hover{border-color:var(--accent); transform:translateY(-2px);}
-  .hub-name{font-family:var(--f-display); font-size:19px; font-weight:600; color:var(--ink);}
+  .hub-card:hover{border-color:var(--accent);}
+  @media (hover:hover){ .hub-card:hover{transform:translateY(-2px);} }
+  .hub-name{font-family:var(--f-display); font-size:19px; font-weight:600; color:var(--ink); min-width:0;}
   .hub-stats{font-family:var(--f-body); font-size:14px; color:var(--mute);}
   .hub-stats strong{color:var(--ink-2);}
   .hub-go{font-family:var(--f-mono); font-size:12px; color:var(--accent); margin-top:2px;}
+  /* monogram badge (Spec B): acronym in the display serif on an accent chip; auto per-org */
+  .hub-badge{width:46px; height:46px; border-radius:13px; display:flex; align-items:center; justify-content:center;
+             font-family:var(--f-display); font-weight:600; font-size:17px; letter-spacing:.01em; color:#fff;
+             background:linear-gradient(160deg,var(--accent),#5b86f4); box-shadow:0 4px 10px rgba(47,109,240,.28);
+             margin-bottom:4px;}
 
   /* ★ Rising (citation-momentum) view — reuses .lb-row flex; adds spark + momentum cells */
   .lb-star{color:var(--nav-active);}
@@ -337,7 +361,7 @@
   .lb-spark{display:flex; flex-direction:column; align-items:center; gap:3px; flex:none; width:104px;}
   .lb-spark svg.spark{width:96px; height:26px;}
   .lb-spark svg.spark rect{fill:var(--accent); opacity:.85;}
-  .lb-win{font-family:var(--f-mono); font-size:9.5px; color:var(--faint);}
+  .lb-win{font-family:var(--f-mono); font-size:10.5px; color:var(--faint);}
   .lb-mom,.lb-recent{display:flex; flex-direction:column; align-items:flex-end; min-width:82px; flex:none;}
   .lb-mom .lb-num{color:var(--pos); white-space:nowrap;}
   @media (max-width:640px){ .lb-recent{display:none;} }
@@ -352,3 +376,44 @@
   .recent-trend .rt-v.steady{color:var(--mute);}
   .recent-trend .rt-win{font-family:var(--f-mono); font-size:11px; color:var(--faint);}
   .recent-trend .rt-note{font-family:var(--f-mono); font-size:10px; color:var(--faint); flex-basis:100%;}
+
+  /* ============ Spec B: sticky controls toolbar (leaderboard) ============ */
+  .lb-toolbar{background:var(--card); border-bottom:1px solid var(--hair); position:sticky; top:0; z-index:9;}
+  .lb-toolbar-in{max-width:1080px; margin:0 auto; padding:10px 24px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+  .tb-dept{font-family:var(--f-display); font-size:17px; font-weight:600; color:var(--ink); margin-right:2px;}
+  .lb-toolbar .lb-search{margin-left:auto;}          /* push search to the right on desktop */
+  .sw-sm{display:none;}                              /* short toggle labels appear only on mobile */
+
+  /* ============ mobile polish (Fable mobile-UX consult) ============ */
+  @media (max-width:640px){
+    /* tap targets: 44px min + 16px search font (kills iOS focus-zoom) */
+    .lb-switch button, .toggle button{min-height:44px; padding-top:10px; padding-bottom:10px;}
+    .lb-search{min-height:44px; font-size:16px;}
+    .card .social a, .card .social span.off{width:44px; height:44px;}
+    .card .social{gap:14px;}
+    .rail .claim{padding:10px 0; display:inline-block;}
+    /* toolbar: dept label hides (it's in the breadcrumb + body h2); switch scrolls, search on its own line */
+    .lb-toolbar-in{padding:8px 16px; gap:8px 10px;}
+    .tb-dept{display:none;}
+    .lb-switch{overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%;}
+    .lb-switch button{white-space:nowrap;}
+    .sw-lg{display:none;} .sw-sm{display:inline;}
+    .lb-toolbar .lb-search{flex:1 1 100%; max-width:none; margin-left:0;}
+    /* ★ Rising row was crushed at phone width — drop the sparkline to its own line */
+    .lb-rising{flex-wrap:wrap;}
+    .lb-spark{order:5; flex-basis:100%; width:auto; flex-direction:row; align-items:center; gap:8px; padding-left:52px;}
+    /* chart: only the SVG pans; the caption above it stays put (not swept off-screen) */
+    .chart-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch;}
+    .chart-scroll svg{min-width:520px; display:block;}
+    /* breadcrumb links reach the 44px tap target like the other controls */
+    .crumb a{padding:14px 0;}
+  }
+  @media (max-width:480px){
+    .m-top{display:grid; grid-template-columns:1fr 1fr; gap:18px 16px;}
+    .m .v{font-size:27px;}
+    .metrics{padding:20px 18px;}
+    .about-row{grid-template-columns:1fr; gap:2px; padding:12px 0;}
+    .pub{gap:12px;} .pub-cite{width:54px;}
+    .card h1{font-size:23px;} .card .photo{width:84px; height:84px;}
+    .hub-cards{gap:12px;}
+  }
