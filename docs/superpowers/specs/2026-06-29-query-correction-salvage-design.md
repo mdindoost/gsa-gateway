@@ -512,12 +512,21 @@ the President); keep the `role_is_org` overlap guard (:858) intact so "registrar
 **C-2. Leader-term role synonyms.** Extend `_ROLE_SYNONYM` (:130) so the leader terms normalize to the
 resolved role head only when org-type-resolved (never a bare "boss" → chair without a unit).
 
-**C-3. Closed-lexicon edit-≤2 typo tolerance.** For ROLE / ORG / METRIC tokens ONLY, Damerau-Levenshtein ≤2
-fuzzy-match INTO the closed vocabularies (`_ROLE_VOCAB`, org names/`metadata.aliases`, metric aliases from
-`profile_fields`): `stdent→student`, `citatns→citations`, `tuishon→tuition`, `computer sci→computer science`.
-Maps ONLY to an existing vocab entry; no match / ambiguous (two entries within ≤2) → leave the token as-is
-(honest-partial). This is NOT the rejected open-vocabulary G4 corrector (that snapped ordinary words to random
-surnames) — it only ever rewrites INTO a known closed set.
+**C-3. Closed-lexicon edit-≤2 typo tolerance. — ⛔ DEFERRED 2026-07-09 (built, reviewed, BACKED OUT as unsafe).**
+The intent: for ROLE / METRIC tokens, Damerau-Levenshtein ≤2 fuzzy-match INTO the closed vocabularies
+(`_ROLE_VOCAB`, metric aliases). **Built (bbb246c) + guarded (5cdc021) + reviewed → BACKED OUT to the Task-5
+state.** WHY: fuzzing arbitrary query tokens into `_ROLE_VOCAB` — which is full of SHORT, common-word-shaped
+entries (`dean`,`chair`,`director`,`registrar`,`cited`) — snaps ORDINARY correctly-spelled words to a role and
+silently misroutes common queries, verified live (flag ON): `register for cs`→registrar, `direct me to cs`→
+director, `chart of cs`→chair, `koutis cite`→metric (the last also defeats CLAUDE.md's deliberate "bare `cite`
+NOT aliased" rule). Two guard rounds (exact-match-wins + first-char) did NOT close the class — a correctly-spelled
+unrelated word that shares a first char and lands within DL≤2 of a short vocab entry still fires. The value is
+marginal (a handful of typo queries; org-name fuzzing was already deferred as higher-risk), so it does not justify
+the fragility. **The pure `closed_lexicon_fix`/`_dl` helper was correct + tested but removed with the wiring (dead
+without it).** REVIVE only with a SAFE design: exclude real English words (dictionary/frequency check) AND/OR gate
+the typo-fix behind the same person/role-of-org cue the exact-match path requires AND/OR DL≤1 for ≤6-char targets
++ drop short metric aliases. Tracked as **G-C3r (deferred)** in §14.7. The `stdent→student`-class org-name typos
+remain unaddressed (they were the org-fuzz path, deferred from the start).
 
 ### 14.3 Hard lines / guardrails
 - **GSA-equal** ([[feedback_gsa_equal_not_privileged]]): the leader mapping is ORG-TYPE-driven, not a GSA
@@ -557,6 +566,7 @@ of the converted answers (a route alone isn't a correct answer). Report the stru
 - **G-A** — acronym dictionary (AUGMENT, owns acronyms, GSA correct). **SHIP.**
 - **G-C1r** — org-type-aware leader rule → people_by_role/officers_in_org. **SHIP.**
 - **G-C2r** — leader-term role synonyms (org-type-resolved). **SHIP.**
-- **G-C3r** — closed-lexicon edit-≤2 typo tolerance (role/org/metric). **SHIP.**
+- **G-C3r** — closed-lexicon edit-≤2 typo tolerance (role/metric). **DEFERRED** (built + reviewed + backed out
+  as unsafe on short common-word-shaped vocab; see §14.2 C-3. Revive only with a safe design.)
 - **G6** — on-miss LLM rewrite + guards + shadow. **DROPPED/DEFERRED** (Finding A; revivable per §7 G6).
 - **§10's G-B/G-B2/G-C/G-C2/G-E** (LLM path) — **SUPERSEDED by G6 deferral**; not in the rev-5 build.
