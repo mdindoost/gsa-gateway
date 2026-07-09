@@ -258,13 +258,16 @@ as gold-plating: Alpine/any micro-lib, a generic site-tree abstraction, hash-bas
 ## 13. Goals checklist (shipped vs deferred — per the review-against-plan rule)
 
 Filled at implementation time; every goal must end SHIPPED or LOUDLY DEFERRED:
-- [ ] G1 three-level site (NJIT → college → dept) + flat profiles
-- [ ] G2 explicit `PUBLISHED_COLLEGES` registry + auto dept discovery
-- [ ] G3 scoped CLI (`--college`, `--dept`, default all)
-- [ ] G4 scoped-write safety (ancestor refresh, no sibling writes, no wipe)
-- [ ] G5 SEO (sitemap + robots + canonical + leaderboard redirects) — **requires `SITE_ORIGIN` (§6)**
-- [ ] G6 YWCC restructured into the new tree, tested, deployable
-- [ ] Deferred-and-flagged: MTSM/HCAD build (seams only), stale-pruning, visual (Spec B), profile rename, cross-college search, framework
+- [x] G1 three-level site (NJIT → college → dept) + flat profiles — SHIPPED
+- [x] G2 explicit `PUBLISHED_COLLEGES` registry + auto dept discovery — SHIPPED
+- [x] G3 scoped CLI (`--college`, `--dept`, default all) — SHIPPED
+- [x] G4 scoped-write safety (ancestor refresh, no sibling writes, no wipe) — SHIPPED, incl. the
+  full-build slug-uniqueness assert (`_assert_slug_uniqueness`, distinct-key-per-slug) that underwrites
+  the shared `/p/` + photo namespace safety
+- [x] G5 SEO (sitemap + robots + canonical + leaderboard redirects) via `SITE_ORIGIN` — SHIPPED
+- [x] G6 YWCC restructured into the new tree, tested, deployable — SHIPPED (byte-stable, count==live 119)
+- [ ] Deferred-and-flagged: MTSM/HCAD build (seams only — see §14 landmine), stale-pruning, visual (Spec B), profile rename, cross-college search, framework
+- **Built as YWCC-only; nothing new published.** Merge + deploy = owner's gate.
 
 ## 14. Open decisions when a *dept-less / school-based* college is later published
 
@@ -272,6 +275,15 @@ Recorded so they aren't silently dropped at add-time (not decisions for this spe
 - MTSM hub copy + confirming the leaderboard-at-`/<college>/` shape reads well.
 - HCAD child-org heading label ("Departments" vs "Schools" vs a generic/data-driven word).
 - Whether Honors College is ever published (KG has it; likely no home faculty).
+
+> ⚠️ **LANDMINE — dept-less college publish (M-4 from the whole-branch review).** The dept-less-college
+> path (D8) is a SEAM, not implemented. `build_college_hub` always renders a card-hub and `build_site`
+> iterates only `dept_orgs_of_college`, so publishing a college whose faculty sit directly on the college
+> node (e.g. MTSM leadership as `faculty@mtsm`) with the CURRENT code would produce an **empty hub + ZERO
+> profiles**, while `db.college_coverage` still advertises a non-zero faculty count → a count-vs-pages
+> drift. Before publishing any dept-less or school-based college, implement D8 (render the college's own
+> leaderboard at `/<college>/`) — do NOT just add its slug to `PUBLISHED_COLLEGES`. (YWCC is unaffected:
+> 0 college-node-direct faculty, verified.)
 
 ## 15. Changelog — review changes folded (2026-07-09)
 
