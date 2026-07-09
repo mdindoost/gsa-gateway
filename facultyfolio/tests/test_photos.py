@@ -28,7 +28,7 @@ def test_njit_first(tmp_path, monkeypatch):
     # both sources have a real photo -> NJIT wins (new order)
     monkeypatch.setattr(photos, "_download", _dl({"ldapimage": b"NJIT", "scholar": b"SCHOLAR"}))
     ref = photos.ensure_photo("koutis", REAL_SCHOLAR, "Ioannis Koutis", str(tmp_path))
-    assert ref == "../assets/photos/koutis.jpg"
+    assert ref == "assets/photos/koutis.jpg"       # root-relative; templates prepend page asset_root
     assert _read(tmp_path, "koutis") == b"NJIT"
 
 
@@ -55,7 +55,7 @@ def test_cached_not_refetched(tmp_path, monkeypatch):
         raise AssertionError("must not download when cached and un-overridden")
     monkeypatch.setattr(photos, "_download", boom)
     ref = photos.ensure_photo("koutis", REAL_SCHOLAR, "Ioannis Koutis", str(tmp_path))
-    assert ref == "../assets/photos/koutis.jpg"
+    assert ref == "assets/photos/koutis.jpg"
     assert _read(tmp_path, "koutis") == b"cached"
 
 
@@ -86,3 +86,22 @@ def test_override_config_url(tmp_path, monkeypatch):
     monkeypatch.setattr(photos, "_download", _dl({"pics.example/x.jpg": b"CUSTOM"}))
     photos.ensure_photo("x", None, "X", str(tmp_path))
     assert _read(tmp_path, "x") == b"CUSTOM"
+
+
+def test_scholar_gray_avatar_md5_is_registered():
+    # The real Scholar gray-avatar fingerprint must be in the placeholder set _try rejects.
+    assert photos._SCHOLAR_AVATAR_MD5 == "31cb65bf3c565b39a5c4a575843028a4"
+
+
+def test_scholar_gray_avatar_rejected_by_content(tmp_path, monkeypatch):
+    # cliu's failure mode: NJIT serves its default headshot AND a real-photo Scholar URL (NOT the
+    # avatar_scholar_128 silhouette form) nonetheless serves the generic gray avatar bytes. Both must
+    # be rejected by CONTENT fingerprint -> monogram, no file written.
+    njit_def = hashlib.md5(b"NJITDEFAULT").hexdigest()
+    gray = hashlib.md5(b"GRAYAVATAR").hexdigest()
+    monkeypatch.setattr(photos, "_NJIT_PLACEHOLDER_MD5", njit_def)
+    monkeypatch.setattr(photos, "_SCHOLAR_AVATAR_MD5", gray)
+    monkeypatch.setattr(photos, "_download", _dl({"ldapimage": b"NJITDEFAULT", "scholar": b"GRAYAVATAR"}))
+    ref = photos.ensure_photo("cliu", REAL_SCHOLAR, "Chengjun Liu", str(tmp_path))
+    assert ref == "monogram:CL"
+    assert not os.path.exists(os.path.join(tmp_path, "photos", "cliu.jpg"))

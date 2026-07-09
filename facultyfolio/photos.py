@@ -17,8 +17,12 @@ UA = "GSA-Gateway-FacultyFolio/1.0 (NJIT GSA project)"        # project UA, no p
 NJIT_IMG = "https://uws.njit.edu/ldapimage.php?format=full&uid={slug}"
 
 # Known "no photo" defaults, fingerprinted so we never ship them (spec §4).
-_SCHOLAR_SILHOUETTE = "avatar_scholar_128"                     # URL marker
+_SCHOLAR_SILHOUETTE = "avatar_scholar_128"                     # URL marker (Scholar's no-photo URL form)
 _NJIT_PLACEHOLDER_MD5 = "6c7ddedf95d43600e59046af39862f0c"     # ldapimage default headshot
+_SCHOLAR_AVATAR_MD5 = "31cb65bf3c565b39a5c4a575843028a4"       # Scholar generic gray graduation-cap avatar
+# The URL marker above only catches Scholar's `avatar_scholar_128` form; a real-photo URL (e.g. a stale
+# `citpid=N`) can still SERVE the gray avatar bytes (this is exactly how cliu shipped a gray avatar), so
+# _try ALSO rejects by CONTENT md5 against both placeholders (built inline so a test can monkeypatch either).
 
 # Drop-in manual overrides (tracked in the repo, source of truth for pinned photos).
 _MANUAL_DIR = os.path.join(os.path.dirname(__file__), "assets", "photos_manual")
@@ -46,7 +50,7 @@ def _try(url: str, is_njit: bool):
         return None
     if not data:
         return None
-    if is_njit and hashlib.md5(data).hexdigest() == _NJIT_PLACEHOLDER_MD5:
+    if hashlib.md5(data).hexdigest() in {_NJIT_PLACEHOLDER_MD5, _SCHOLAR_AVATAR_MD5}:  # content reject (any source)
         return None
     return data
 
