@@ -13,8 +13,10 @@ from v2.core.retrieval.query_correct import augment_acronyms
 
 def test_off_is_identity(monkeypatch):
     monkeypatch.delenv("QUERY_CORRECT_ENABLED", raising=False)
-    # augment is only APPLIED when enabled(); the raw helper is still identity on no-match
-    assert augment_acronyms("who is the chair of cs") == "who is the chair of cs computer science"
+    # augment is only APPLIED when enabled(); the raw helper is still identity on no-match.
+    # Uses a generic-vocabulary acronym (dept) — org slugs like `cs` are deliberately NOT expanded.
+    assert augment_acronyms("who is the chair of the sci dept") == \
+        "who is the chair of the sci science dept department"
 
 
 def test_protected_name_not_expanded():
@@ -68,10 +70,10 @@ async def test_flag_off_resolved_query_untouched(wiring_handler, monkeypatch):
     monkeypatch.delenv("ANSWER_GATE_ENABLED", raising=False)
     monkeypatch.delenv("ROUTER_V21", raising=False)
     monkeypatch.delenv("FOLLOWUP_RESUME_ENABLED", raising=False)
-    req = MessageRequest(user_id="1", text="who is the chair of cs", platform="discord")
+    req = MessageRequest(user_id="1", text="who is the chair of the sci dept", platform="discord")
     await wiring_handler.handle(req)
     called_text = wiring_handler._try_structured.call_args.args[0]
-    assert called_text == "who is the chair of cs"
+    assert called_text == "who is the chair of the sci dept"
 
 
 @pytest.mark.asyncio
@@ -80,7 +82,7 @@ async def test_flag_on_resolved_query_augmented(wiring_handler, monkeypatch):
     monkeypatch.delenv("ANSWER_GATE_ENABLED", raising=False)
     monkeypatch.delenv("ROUTER_V21", raising=False)
     monkeypatch.delenv("FOLLOWUP_RESUME_ENABLED", raising=False)
-    req = MessageRequest(user_id="1", text="who is the chair of cs", platform="discord")
+    req = MessageRequest(user_id="1", text="who is the chair of the sci dept", platform="discord")
     await wiring_handler.handle(req)
     called_text = wiring_handler._try_structured.call_args.args[0]
-    assert called_text == "who is the chair of cs computer science"
+    assert called_text == "who is the chair of the sci science dept department"

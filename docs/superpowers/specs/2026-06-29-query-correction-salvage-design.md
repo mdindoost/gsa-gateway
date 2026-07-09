@@ -241,9 +241,11 @@ association` (the exact thing the 8B got wrong), `dep/dept → department`, `pro
 `cs → computer science`, `eng → engineering`, `uni → university`.
 
 - **O1 = AUGMENT, not expand-in-place** (RAG-review BLOCKER, IR-decided): emit `original + expansion`
-  (`"what is gsa" → "what is gsa graduate student association"`), NOT a replacement. `GSA` is a single
-  high-IDF token the bm25/FTS leg exact-matches on the most common query class; expand-in-place would drop
-  it and regress recall. Augment preserves the bare-acronym match AND adds the expansion to both legs. The
+  (`"the sci dept" → "the sci science dept department"`), NOT a replacement. (NOTE: `gsa` itself is NO
+  LONGER in the seed map — see the §14.1 HARD EXCLUSION; it's an org slug the router resolves natively and
+  expanding it regressed routing. The AUGMENT principle still governs the seeds that remain.) A high-IDF
+  token the bm25/FTS leg exact-matches would be dropped by expand-in-place, regressing recall; augment
+  preserves the bare token AND adds the expansion to both legs. The
   router's positive-presence regexes tolerate the extra tokens (verified shape: `_ROLE_OF_ORG`/`_find_org`
   match on token presence, not exclusivity).
 - **In-vocab / name protection:** never augment a token that is a real corpus term or a `nodes`
@@ -485,11 +487,21 @@ structure-guard reverts.
 case-insensitive map; **AUGMENT** (keep the bare token, append the expansion — never expand-in-place, O1).
 Applied ONCE at the top of `handle()` (after the context-rewrite) so the augmented string feeds Gate-1
 `_try_structured`, `UnifiedRouter.decide`, the structured path, AND `_rag_pipeline`'s `base_q`. Seeds (curated,
-reviewed, GSA-equal): `gsa→graduate student association`, `dept/dep→department`, `prof→professor`,
-`cs→computer science`, `sci→science`, `eng→engineering`, `ece→electrical and computer engineering`,
+reviewed, GSA-equal): `dept/dep→department`, `prof→professor`, `sci→science`, `eng→engineering`,
 `uni→university`. **Never augment** a token in `protected` (a `nodes` person-name token or a real corpus term).
 Alone this captures the METRIC class (probe: `top cited prof in computer sci` + `sci→science`/`prof→professor`
 → `top_people_by_metric`, no LLM).
+
+> **HARD EXCLUSION (post-build fix, 2026-07-09 — caught by the $0 route-diff gate).** The dictionary MUST
+> NOT expand a token the router already resolves as an **org identifier** (slug / alias). Expanding a
+> resolvable org slug into its full name (`gsa → gsa graduate student association`, `cs → cs computer
+> science`, `ece → …`) BREAKS the router's native org resolution and **demotes a correct structured
+> route** (`officers_in_org`, `faculty_in_department`) into RAG. The route-diff over the 324-Q eval showed
+> expanding `gsa` silently broke **7** correct GSA officer/president queries. So `gsa`, `cs`, `ece` are
+> deliberately DROPPED from the seed map (the router resolves them natively; the org-type LEADER rule in
+> §14.2 still handles `who runs GSA` / `who run cs` via native resolution). The dictionary carries ONLY
+> generic vocabulary normalizers for tokens the router can't resolve on its own. Regression-locked by
+> `test_org_slug_acronyms_are_not_expanded`.
 
 ### 14.2 Component C — deterministic router extension (`v2/core/retrieval/router.py`)
 Three small, native additions. The router ALREADY owns the machinery (`_ROLE_VOCAB_RX` :127, `_ROLE_SYNONYM`
