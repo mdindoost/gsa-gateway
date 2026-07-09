@@ -4,7 +4,34 @@
 > memory (owner points Claude to this folder). Convert relative dates to absolute.
 
 ═══════════════════════════════════════════════════════════════════════════════════════════════
-▶▶▶ EXACT RESUME STATE @ 2026-07-07 (SESSION 3 — later; owner cue "processing debt" = START HERE) ◀◀◀
+▶▶▶ EXACT RESUME STATE @ 2026-07-08 (SESSION 5 — owner cue "processing debt" = START HERE) ◀◀◀
+═══════════════════════════════════════════════════════════════════════════════════════════════
+**✅ GATE-2 PRECISION FIX — SHIPPED + LIVE + MERGED + PUSHED (main=`cbd4baf`, origin pushed, all services restarted, live-verified).**
+The prose-⅔ debt lever is done. Chain of evidence this session:
+- **Diagnosis:** 1000-Q eval → 26.6% own-but-missed. Prose-gate diagnostic (`eval/processing_debt/prose_gate_diagnostic.py`,
+  82 prose-debt Qs) → **63% GATE_ABSTAIN** (the WS4 answer-gate over-abstaining), 47 `gate2:not-in-context` hand-labeled
+  → 39 keep / 8 abstain (81% false-abstain).
+- **Fix (3 parts, behind live `ANSWER_GATE_ENABLED`):** (1) Gate-2 prompt reframed negative-global→**positive-span**
+  (grounded quote responsive to the PRIMARY ask); (2) compose **rule 14** — don't assert an unconfirmed time/schedule
+  qualifier; (3) **deterministic metric backstop** (`faithfulness.py metric_query_without_grounded_metric` — metric-cued Q
+  w/ no metric term in passages → abstain; killed the wrong-professor drift).
+- **KEY FINDING: `granite4:tiny-h` is BELOW the answerability-judging capability floor** — hair-splits on-topic ("what is
+  njit" → NOT_IN_CONTEXT even w/ NJIT literally present), warps off-topic. 2 prompt iters capped at 13→15. So shipped as a
+  **HARDENED PARTIAL** (Fable's binding go-order, owner-delegated): **15/39 false-abstains recovered (0 before), 8/8 drift
+  guardrails held, false-answer NEUTRAL vs main (19 vs 20 on 70-Q should-abstain set)**. **VRAM diet KEPT** (bigger gate
+  model declined; "a capable-enough gate model" is a documented system requirement, LLM-agnostic NOT violated).
+- Reviews: RAG + senior-eng design → Fable go-order (3 binding calls) → final whole-branch **MERGE-READY**. 96 unit tests +
+  frozen 47-case integration regression (`v2/tests/test_gate2_regression.py`: 15/39, 8/8) green. Spec+plan in
+  `docs/superpowers/{specs,plans}/2026-07-08-gate2-precision-fix*`.
+- **⏭ NEXT MOVE (remaining debt levers, Fable's redirect):** **(1) M2 chunking** (26% NO_RECALL — the model-limited ~24
+  keeps + long-page truncation; `project_m2_embedding`), **(2) query-correction-salvage** (the structured ⅓; spec already
+  written `docs/superpowers/specs/2026-06-29-query-correction-salvage-design.md` rev-4, Fable's 6 must-fixes still to apply).
+  Also open-item **#14** (`project_open_items.md`): pre-existing ~28% false-answer floor on the should-abstain set
+  (Gate-1/temporal/typed leaks, on main too) → separate track, re-measure contention-free.
+- Note: this fix rode on top of the area-expansion fix (main=612f1d7) + the other agent's FacultyFolio commits; all on origin/main now.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+▶ prior resume state @ 2026-07-07 (SESSION 3 — later) — kept for provenance ▼
 ═══════════════════════════════════════════════════════════════════════════════════════════════
 **PIVOT 2026-07-08 (owner): DON'T touch the card. The `entity_mentions` tags now power NEW person-FACET
 questions ("Oria news", "Deek awards", "tell me more about X", "what is X involved in") — each its own
