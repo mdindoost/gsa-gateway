@@ -90,6 +90,17 @@
             {{ chart_svg|safe }}
           </div>
           {% endif %}
+          {% if recent_trend %}
+          <p class="recent-trend">
+            <span class="rt-k">Recent trend</span>
+            {% if recent_trend.kind == 'growing' %}
+            <span class="rt-v growing">{% if recent_trend.glyph %}▲ growing{% else %}growing +{{ recent_trend.pct }}%/yr{% endif %}</span>{% if not recent_trend.glyph %}<span class="rt-win">{{ recent_trend.window }}</span>{% endif %}
+            {% else %}
+            <span class="rt-v steady">steady</span>
+            {% endif %}
+            <span class="rt-note">citations lag research by 2–5 years</span>
+          </p>
+          {% endif %}
         </div>
         {% else %}
         <div class="hook"><span class="ic">📊</span><span class="txt">No Google Scholar profile is linked for {{ name }} yet — is this you? <a href="#">Claim this page</a> to connect it.</span></div>

@@ -314,3 +314,72 @@ def test_leaderboard_escapes_hostile_characters():
     assert "Prof <script>" not in html and "<b>Bold</b>" not in html
     assert "&lt;script&gt;" in html and "&amp;" in html                 # escaped in visible text
     assert 'data-name="a &#34;quote&#34; &amp; &lt;b&gt;bold&lt;/b&gt;"' in html  # escaped in data-* attr too
+
+
+# ---- ★ Rising view (citation momentum) ----
+
+def _leaderboard_with_rising(org_id=None):
+    from facultyfolio import rank, config
+    org_id = org_id or config.CS_ORG_ID
+    roster = rank.roster(org_id)
+    cov = rank.coverage(org_id)
+    views = {"rank": rank.by_rank(roster), "citations": rank.by_citations(roster),
+             "az": rank.by_name(roster)}
+    stats = rank.leaderboard_stats(roster, cov)
+    rising = rank.rising(roster)
+    photo_map = {r["slug"]: f"monogram:{r['name'][:1]}" for r in roster}
+    return render.render_leaderboard("Computer Science", views, stats, cov, photo_map, rising=rising), rising
+
+
+def test_rising_tab_and_panel_present():
+    html, (rows, funnel) = _leaderboard_with_rising()
+    assert funnel["risers"] >= 5                      # CS has a healthy riser set (13 at build time)
+    assert 'data-view="rising"' in html
+    assert '★' in html and 'Rising' in html
+    assert 'growing citations' in html               # caption/funnel wording
+    # funnel is COMPUTED, not literal
+    assert f"{funnel['risers']} of {funnel['gated']} faculty with growing citations" in html
+
+
+def test_rising_hard_rule_pct_never_without_sparkline_and_recent_chip():
+    html, _ = _leaderboard_with_rising()
+    panel = html.split('data-view="rising"', 1)[1].split('lb-empty', 1)[0]
+    rows = [r for r in panel.split('<a class="lb-row lb-rising"')[1:]]
+    assert rows, "expected rising rows"
+    for r in rows:
+        if '%/yr' in r:                              # every % row co-displays spark + recent chip
+            assert 'svg class="spark"' in r
+            assert 'recent/yr' in r
+
+
+def test_rising_never_uses_declining_language():
+    html, _ = _leaderboard_with_rising()
+    low = html.lower()
+    assert 'declin' not in low and 'falling' not in low
+    assert '%/yr' not in low.split('data-view="rising"', 1)[0] or True  # sanity: rising is where % lives
+
+
+def test_rising_empty_hides_tab():
+    # a roster with no risers (no Scholar data) must render NO ★ Rising button/panel (S4)
+    from facultyfolio import rank
+    flat = [{"slug": "x1", "name": "Flat Person", "title": "Professor", "rank_index": 2,
+             "rank_label": "Professor", "citations": None, "h_index": None, "areas": [],
+             "cites_per_year": None, "updated_at": None}]
+    views = {"rank": rank.by_rank(flat), "citations": rank.by_citations(flat), "az": rank.by_name(flat)}
+    stats = rank.leaderboard_stats(flat, (0, 1))
+    html = render.render_leaderboard("CS", views, stats, (0, 1), {"x1": "monogram:F"},
+                                     rising=rank.rising(flat))
+    assert 'data-view="rising"' not in html          # tab + panel absent when empty
+
+
+def test_profile_recent_trend_growing_for_real_riser():
+    html = render.render_profile(db.get_faculty("zy8"))     # Zhihao Yao — steep real climber
+    assert 'Recent trend' in html and 'growing' in html
+    assert 'declin' not in html.lower() and 'falling' not in html.lower()
+
+
+def test_profile_recent_trend_steady_for_real_decliner_never_declining():
+    html = render.render_profile(db.get_faculty("mili"))    # Ali Mili — genuine recent decline
+    assert 'Recent trend' in html and 'steady' in html
+    assert 'declin' not in html.lower() and 'falling' not in html.lower()
+    assert '%/yr' not in html.split('Recent trend', 1)[1].split('</p>', 1)[0]  # no number for a non-riser

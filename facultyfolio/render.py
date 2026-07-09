@@ -10,7 +10,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from . import config
 from . import format as F
-from .chart import render_chart
+from . import momentum
+from .chart import render_chart, sparkline
 
 _env = Environment(
     loader=FileSystemLoader(os.path.join(os.path.dirname(__file__), "templates")),
@@ -146,6 +147,7 @@ def _scholar_ctx(sch: dict) -> dict:
         "active_since": years[0] if years else "",
         "years_active": (years[-1] - years[0] + 1) if years else "",
         "chart_svg": render_chart(cpy, sync_year),
+        "recent_trend": momentum.recent_trend(cpy, sync_year),
         "top_cited": [_pub(p) for p in (sch.get("top_cited") or [])],
         "newest": [_pub(p) for p in (sch.get("newest") or [])],
     }
@@ -212,13 +214,50 @@ def _lb_row(r: dict, photo_map: dict) -> dict:
     }
 
 
+def _rising_row(r: dict, photo_map: dict) -> dict:
+    """One momentum view-model -> a template-ready ★ Rising row. The `%/yr` (or ▲ glyph)
+    is ALWAYS accompanied by the sparkline + the absolute recent-rate chip (the hard rule)."""
+    areas = r.get("areas") or []
+    return {
+        "slug": r["slug"],
+        "name": r["name"],
+        "title": r.get("title") or "",
+        "photo_ref": photo_map.get(r["slug"]) or f"monogram:{F.initials(r['name'])}",
+        "data_areas": " ".join(areas),
+        "spark_svg": sparkline(r["values"]),
+        "momentum": "▲ growing" if r["glyph"] else f"+{r['momentum_pct']}%/yr",
+        "window": "" if r["glyph"] else r["window"],
+        "recent_rate": r["recent_rate"],
+    }
+
+
+# Panel caption is window-free (mixed per-person sync years) — each row carries its own window.
+_RISING_CAPTION = (
+    "Faculty whose annual citations grew over their five most recent complete years "
+    "(the current year is excluded — it is still accruing). Citations lag research by 2–5 "
+    "years, and faculty with large established citation bases naturally show flatter recent "
+    "growth — this highlights recent momentum, not overall impact or research quality. See "
+    "the By citations view for lifetime totals."
+)
+
+
+def _rising_funnel_text(fn: dict) -> str:
+    """Computed coverage funnel (honesty anchor) — never a literal."""
+    return (
+        f"{fn['risers']} of {fn['gated']} faculty with growing citations "
+        f"(Scholar-listed with ≥5 complete years; "
+        f"{fn['scholar']} of {fn['total']} faculty are on Google Scholar)."
+    )
+
+
 def render_leaderboard(org_name: str, roster_views: dict, stats: dict,
-                       coverage: tuple, photo_map: dict) -> str:
-    """Render the 3-view directory (rank default / citations / A–Z), all faculty shown.
+                       coverage: tuple, photo_map: dict, rising=None) -> str:
+    """Render the directory views (rank default / citations / A–Z [/ ★ Rising]), all faculty shown.
 
     roster_views = {"rank": by_rank groups, "citations": by_citations rows, "az": by_name rows}.
-    photo_map = {slug: photo_ref}; a slug absent -> monogram. Views/sorting are precomputed in
-    rank.py — this stays pure presentation.
+    rising = (riser rows, funnel dict) from rank.rising, or None. An EMPTY rising set hides the
+    ★ Rising tab entirely (S4 — an empty board named "Rising" would read as a negative verdict).
+    photo_map = {slug: photo_ref}; a slug absent -> monogram. Sorting is precomputed upstream.
     """
     if config.LEADERBOARD_DEFAULT_VIEW not in config.LEADERBOARD_VIEWS:
         raise ValueError(
@@ -232,8 +271,19 @@ def render_leaderboard(org_name: str, roster_views: dict, stats: dict,
     ]
     cite_rows = [_lb_row(x, photo_map) for x in roster_views["citations"]]
     az_rows = [_lb_row(x, photo_map) for x in roster_views["az"]]
+
+    rising_rows, rising_funnel_text, show_rising = [], "", False
+    if rising:
+        rows, funnel = rising
+        if rows:                                   # empty -> hide the tab (S4)
+            rising_rows = [_rising_row(x, photo_map) for x in rows]
+            rising_funnel_text = _rising_funnel_text(funnel)
+            show_rising = True
+
     return _env.get_template("leaderboard.html").render(
         org_name=org_name, rank_groups=rank_groups, cite_rows=cite_rows, az_rows=az_rows,
         stats=stats, coverage_n=n, coverage_m=m,
         default_view=config.LEADERBOARD_DEFAULT_VIEW,
+        show_rising=show_rising, rising_rows=rising_rows,
+        rising_caption=_RISING_CAPTION, rising_funnel=rising_funnel_text,
     )
