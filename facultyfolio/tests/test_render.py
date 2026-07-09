@@ -210,7 +210,8 @@ def test_render_hub_cards_and_counts():
         {"name": "Computer Science", "faculty": 57, "scholar": 34, "url": "computer-science/index.html"},
         {"name": "Data Science", "faculty": 21, "scholar": 15, "url": "data-science/index.html"},
     ]
-    html = render.render_hub("Ying Wu College of Computing", cards)
+    html = render.render_hub("Ying Wu College of Computing", cards,
+                             eyebrow="College", asset_root="")
     assert "Ying Wu College of Computing" in html
     assert 'href="computer-science/index.html"' in html
     assert ">57<" in html and "on Google Scholar" in html
@@ -221,7 +222,7 @@ def test_render_hub_cards_and_counts():
 
 def test_render_hub_escapes_hostile_card():
     cards = [{"name": 'X <script>alert(1)</script>', "faculty": 1, "scholar": 0, "url": "x/index.html"}]
-    html = render.render_hub("C & <b>", cards)
+    html = render.render_hub("C & <b>", cards, eyebrow="College", asset_root="")
     assert "<script>alert(1)</script>" not in html and "&lt;script&gt;" in html
 
 
