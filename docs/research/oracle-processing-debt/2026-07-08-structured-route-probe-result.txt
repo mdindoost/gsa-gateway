@@ -1,0 +1,30 @@
+original                                           route(q1)      route(q2)      verdict
+----------------------------------------------------------------------------------------------
+who run math                                       None           people_by_role  ROUTES after fix (KG-rescue win)
+boss of cs?                                        None           people_by_role  ROUTES after fix (KG-rescue win)
+who president cybersecurity dept?                  None           people_by_role  ROUTES after fix (KG-rescue win)
+boss of data science dept?                         None           people_by_role  ROUTES after fix (KG-rescue win)
+who president cs?                                  None           people_by_role  ROUTES after fix (KG-rescue win)
+who run cs?                                        None           people_by_role  ROUTES after fix (KG-rescue win)
+who run computer sci?                              None           people_by_role  ROUTES after fix (KG-rescue win)
+who run computer science?                          None           people_by_role  ROUTES after fix (KG-rescue win)
+ece president name pls                             None           people_by_role  ROUTES after fix (KG-rescue win)
+boss of ywcc?                                      None           people_by_role  ROUTES after fix (KG-rescue win)
+top cited prof in computer sci                     None           top_people_by_metric  ROUTES after fix (KG-rescue win)
+top cited prof in data sci dept                    None           top_people_by_metric  ROUTES after fix (KG-rescue win)
+machine learning prof h index?                     None           None           still None (correction doesn't route)
+highest hindex in computer vision                  None           None           still None (correction doesn't route)
+rank prof by citatns in biomedical engineering     None           top_people_by_metric  ROUTES after fix (KG-rescue win)
+most published prof in mathematics                 None           faculty_in_department  ROUTES after fix (KG-rescue win)
+women in cs officers who                           None           officers_in_org  ROUTES after fix (KG-rescue win)
+graduate stdent association officers who           None           officers_in_org  ROUTES after fix (KG-rescue win)
+intl student club officers who                     None           None           still None (correction doesn't route)
+data science club officers who                     None           None           still None (correction doesn't route)
+who is the chair of ying wu college of computing?  people_by_role  people_by_role  q1-already-routes
+
+ROUTES-after-fix (correction turns None->KG skill): 16
+still-None after fix (correction doesn't route):    4
+clean-but-None (routing gap, no typo to fix):        0
+q1 already routes (not a routing miss):              1
+
+Route-conversion among raw-None slang/typo queries: 16/20 = 80%
