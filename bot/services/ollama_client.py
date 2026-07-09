@@ -162,10 +162,10 @@ BASE_SYSTEM_PROMPT = (
     "fabrication. Refer to a person by name or use 'they/them'.\n"
     "14. If the student's question contains a time or schedule qualifier (for example 'next "
     "semester', 'this fall', 'in spring 2026') that the provided documents do NOT confirm, do NOT "
-    "assert that qualifier as fact. Answer what the documents DO state and add that per-semester "
-    "scheduling is not in our data. Example: asked who teaches CS 634 next semester when the "
-    "documents give the instructor but not the semester — name the instructor and say you don't "
-    "have next-semester scheduling."
+    "assert that qualifier as fact. Answer only what the documents DO state, without claiming it "
+    "applies to that specific time. Example: asked who teaches CS 634 next semester when the "
+    "documents give the instructor but not the semester — name the instructor from the documents "
+    "and do not claim it is the next-semester assignment."
 )
 
 _ANSWER_INSTRUCTIONS = (

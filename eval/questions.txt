@@ -316,6 +316,12 @@ How many days after travel must I submit the Chrome River Expense Report
 what is the capital of France
 who are the faculty in engineering
 
+# self-abstain bug lock (rule-14 trim): an owned-core + unowned-time-qualifier question must ANSWER
+#  the owned part (the instructor), NOT get deleted as a self-abstain; the typed variant (a count we
+#  don't hold for that semester) must still ABSTAIN, not fabricate.
+who teaches CS 634 next semester
+how many sections of CS 634 are offered next semester
+
 # followup-resume
 who has the lowest citation in ywcc
 
