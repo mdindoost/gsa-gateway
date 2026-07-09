@@ -1,15 +1,42 @@
-# On-Miss Query Correction (LLM-rewrite + acronym dictionary) — design (rev 4, DRAFT)
+# Query Correction — acronym dictionary + deterministic router extension (rev 5 — SCOPE PIVOT, C+A)
 
-**Date:** 2026-06-29 · **rev-4 refresh 2026-07-08**
-**Branch (proposed):** `feat/query-correction-salvage` (off `main`)
-**Status:** DRAFT rev 4 — rev-3 body twice-reviewed (senior-eng + RAG/LLM, both GO-WITH-CHANGES);
-rev-4 refreshed against the VRAM diet + the 1000-question debt evidence. **Fable delta-review DONE
-(GO-WITH-CHANGES, 6 must-fixes — `docs/research/oracle-processing-debt/2026-07-08-fable-review-query-correction-rev4.md`);
-all 6 applied 2026-07-08 + the $0 prose-conversion probe run (`scratchpad/qc_prose_probe.py`).** ⚠️ The
-probe RE-SCOPED the design (see §3b must-fix #4): the ⅔ PROSE-RAG arm is mostly gate-2's domain, not this
-lever's — awaiting an OWNER SCOPE DECISION (full two-arm vs structured-⅓-focused) before TDD. No code yet.
-**Arc:** Retrieval robustness. Touches the answer-gate ([[project_answer_stack_design]]) and the
-live-fallback (`specs/2026-06-17-live-search-fallback-design.md`). Corpus-light; ships independently.
+**Date:** 2026-06-29 · **rev-4 refresh 2026-07-08** · **rev-5 scope pivot 2026-07-08**
+**Branch:** `feat/query-correction-salvage` (off `main`)
+**Status:** DRAFT rev 5 — **owner APPROVED scope C+A 2026-07-08.** The rev-3/4 LLM-rewrite body below is
+kept as the investigation record; rev-5 PIVOTS the build to **hybrid C+A: an always-on acronym dictionary
++ a deterministic router extension (org-type-aware leader rule + role synonyms + closed-lexicon typo
+tolerance). The on-miss `llm_rewrite` + name-guard + structure-guard + shadow apparatus is DROPPED from v1
+and loudly deferred (G6).** Driven by two $0 probes + Fable's binding confirmation review
+(`docs/research/oracle-processing-debt/2026-07-08-fable-review-query-correction-rev4.md` + its follow-up
+ruling). The CURRENT build spec is **§14 below**; §§4–13 describe the deferred LLM path. Next: implementation
+plan → owner sign-off → TDD. No code yet.
+**Arc:** Retrieval/routing robustness. Extends the deterministic router (the 2026-07-03 pattern). Ships
+independently; no LLM on the hot path.
+
+> **rev-5 changelog (2026-07-08 — the SCOPE PIVOT; supersedes the rev-3/4 build plan where noted).**
+> Two $0 probes + Fable's confirmation review re-scoped this lever. See §14 for the build spec.
+> 1. **PROSE-RAG arm is NOT the ⅔** (prose probe, §3b must-fix #4): 17/24 prose-debt queries already clear
+>    `LIVE_THRESHOLD` with the typo → their debt is DOWNSTREAM (gate/compose = gate-2's domain), never a
+>    retrieval miss the rescue arm sees. Only ~21% are typo-retrieval-misses. The RAG-rescue arm's exclusive
+>    value shrinks to a handful of borderline conversions.
+> 2. **STRUCTURED arm is the real win, and it's DETERMINISTIC** (structured probe
+>    `2026-07-08-structured-route-probe-result.txt`: 16/20 = 80% route to a KG skill after correction). The
+>    wins decompose into (a) **abbreviation expansion** → the §5.1 dictionary (safe, no LLM), and (b)
+>    **`run`/`boss`/`president`→`chair`/`dean`** contextual mapping.
+> 3. **Fable Finding A — the LLM path is SELF-DEFEATING on (b).** §5.3b structure-guard reverts any rewrite
+>    dropping a content token without an edit-≤2 survivor. Measured: `run→chair`(5), `boss→chair`(5),
+>    `president→chair`(8), `president→dean`(7) are ALL guard-reverted (only `heir→chair`=2 survives — the
+>    flagship is the exception). So the two-arm LLM build delivers ≈ZERO of the 10 role wins; the guards that
+>    make the LLM safe block the rewrites that make it useful.
+> 4. **Fable Finding C — the router already owns the machinery** (`_ROLE_SYNONYM` router.py:130,
+>    `ORG_TYPE_LEVEL` + hierarchy-climb :861-871): an org-type-aware **leader rule** (`who runs/heads/boss
+>    of/president of <unit>` → chair for dept, dean for college, president for gsa/club — resolved from the
+>    org node's ACTUAL type) is a small native extension, and the router KNOWS the org type (granite would
+>    guess). The typo residue is edit-≤2 against CLOSED lexicons (role/org/metric vocab) → deterministically
+>    fuzzy-matchable INTO known vocabulary (NOT the rejected open-vocabulary G4 fuzzy).
+> 5. **DECISION: build C+A (§14); DROP+DEFER the LLM apparatus (G6).** GSA-equal held (mapping is
+>    org-type-driven, no GSA bias). Corpus-debt prose residue → the fresh prose-recall track (NOT old-M2);
+>    the 4 structured non-wins = a missing skill (metric-by-research-area) + org data gaps, logged not built.
 
 > **rev-4 changelog (2026-07-08 refresh — the ONLY delta for this review; rev-3 body below is unchanged
 > and already twice-reviewed).**
@@ -38,10 +65,10 @@ live-fallback (`specs/2026-06-17-live-search-fallback-design.md`). Corpus-light;
 >    answer-gate now sits in this path; confirm `retrieval_q=q2` threads through the WS4 gate too, and that
 >    the on-miss block sits correctly relative to WS4 abstention (a WS4 abstain must still allow the q2
 >    rescue before live). No design change expected — a wiring re-verification the plan owns.
-> 5. **Scope confirmation from the evidence (no design change): the design covers BOTH debt buckets.** The
->    1000-Q debt is ⅓ STRUCTURED (router-`None` → KG rescue arm) + ⅔ PROSE-RAG (typo/slang policy/forms
->    questions → the `top_relevance(q2)≥LIVE_THRESHOLD` RAG-rescue arm, §5.2/G-B2). Both arms already exist
->    in rev 3 — the evidence confirms the RAG-rescue arm is not optional (it carries the larger ⅔).
+> 5. ~~**Scope confirmation from the evidence: the design covers BOTH debt buckets** — the RAG-rescue arm
+>    carries the larger ⅔.~~ **SUPERSEDED by rev-5 (the prose probe): the RAG arm does NOT carry the ⅔** —
+>    17/24 prose-debt already clear threshold (gate/compose domain, not a retrieval miss). See rev-5
+>    changelog + §3b + §14. This bullet stood on an un-probed assumption; the probe refuted it.
 
 > **rev-3 changelog (reviews folded).** (1) §4/§5.4 ordering contradiction RESOLVED — decision **D-ORD =
 > (b)**: the LLM rewrite fires AFTER office/deep didn't adopt (cheap-tiers-first); the rare precedence
@@ -156,8 +183,10 @@ retriever) settles it — and the ⅔ claim does NOT hold:
   `what happen if i get academic warning?` 0.96, `i have problem w grade appeal what do` 0.75). Their debt
   was NOT a retrieval miss → the RAG-rescue arm (which fires only on `primary_miss`) never even runs for
   them. Their LIVE/DEBT classification came from DOWNSTREAM (the WS4 answer-gate abstaining / compose) —
-  i.e. the **gate-2 precision fix's** domain (shipped `cbd4baf` later the SAME day, after this 1000-Q run),
-  NOT query-correction's.
+  i.e. the **gate/compose domain**, NOT a retrieval miss query-correction fixes. (The gate-2 precision fix
+  `cbd4baf` shipped later the same day and addresses part of this, but recovered only 15/39 prose
+  false-abstains in its own eval, so a chunk of these 17 likely STILL abstains → the residue is gate/compose
+  work, not query-correction's. Optional $0 confirmation: re-run the 17 through the full post-gate-2 pipeline.)
 - Only **7 / 24 are genuine retrieval misses**; of those the typo fix converts **5 (71%)** over threshold
   (`where submit tuishon refund form?` 0.03→0.89, `where cn i find info about meal plan` 0.03→0.22, …) and
   2 stay corpus-limited (`what happen if i miss add drop?` 0.07→0.15 borderline; a clean `late payment`
@@ -333,6 +362,12 @@ structure-guard reverts.
   measures the wrong-rescue rate so the deferral is trustworthy; add the guard if the eval shows it bites.
 - **G3 — Learned/auto-grown dictionary** from the answered-query log. Curated map only in v1.
 - **G4 — Bigram/statistical corrector** — dropped with rev 1.
+- **G5 — Fresh rewrite on a WS4 gate-abstain of a NON-rescued query** — deferred (rev-4 must-fix #5, §5.5);
+  the 97% mechanism flows through `primary_miss`, already intercepted. Revisit only if measured.
+- **G6 — The on-miss `llm_rewrite` + name-guard + structure-guard + shadow apparatus (§§5.2–5.5): DROPPED
+  from v1 (rev-5).** Not merely because the RAG arm shrank, but because Finding A proves the guards veto the
+  synonym-shaped rewrites that would carry the structured wins. Revivable ONLY if (i) a post-C+A debt
+  re-measure shows a material typo-PROSE residue AND (ii) granite passes the §8 min-efficacy shadow bar.
 - **O1b — Split router-form vs retriever-form normalization** — only if the augmented string misroutes.
 
 ## 8. Testing (TDD)
@@ -437,3 +472,91 @@ structure-guard reverts.
 3. **Rescue threshold** — reuse `LIVE_THRESHOLD` for the RAG re-retrieve adopt, or a dedicated bar?
 4. **Structure-guard edit-distance** — is ≤2 the right "this deletion was a typo fix, not a clause drop"
    boundary, or ≤1 + stopword-aware?
+
+---
+
+## 14. rev-5 BUILD SPEC — C+A (dictionary + deterministic router extension) — THE CURRENT SCOPE
+
+> §§4–13 above describe the DEFERRED LLM path (G6). This section is what we BUILD. No LLM anywhere;
+> extends the deterministic router (the proven 2026-07-03 pattern). Owner-approved 2026-07-08.
+
+### 14.1 Component A — acronym/abbreviation dictionary (from §5.1, unchanged in intent)
+`v2/core/retrieval/query_correct.py`: `augment_acronyms(text, protected=None) -> str`. Curated whole-word,
+case-insensitive map; **AUGMENT** (keep the bare token, append the expansion — never expand-in-place, O1).
+Applied ONCE at the top of `handle()` (after the context-rewrite) so the augmented string feeds Gate-1
+`_try_structured`, `UnifiedRouter.decide`, the structured path, AND `_rag_pipeline`'s `base_q`. Seeds (curated,
+reviewed, GSA-equal): `gsa→graduate student association`, `dept/dep→department`, `prof→professor`,
+`cs→computer science`, `sci→science`, `eng→engineering`, `ece→electrical and computer engineering`,
+`uni→university`. **Never augment** a token in `protected` (a `nodes` person-name token or a real corpus term).
+Alone this captures the METRIC class (probe: `top cited prof in computer sci` + `sci→science`/`prof→professor`
+→ `top_people_by_metric`, no LLM).
+
+### 14.2 Component C — deterministic router extension (`v2/core/retrieval/router.py`)
+Three small, native additions. The router ALREADY owns the machinery (`_ROLE_VOCAB_RX` :127, `_ROLE_SYNONYM`
+:130, `ORG_TYPE_LEVEL` :133, `ROLE_SCOPE_LEVEL` :144, `_climb_to_scope` :157, `_find_org` :382, the role
+branch + `role_is_org` guard :848-872, `_RANK_CUE` :196). Re-locate anchors by symbol at build (numbers drift).
+
+**C-1. Org-type-aware LEADER rule (the 10/10 role win).** A new `_LEADER_INTENT` matcher for leadership-intent
+phrasings that are NOT in `_ROLE_VOCAB`: `who runs/run`, `who heads/head of`, `boss of`, `in charge of`,
+`who leads`, and `president of <academic unit>`. When it co-occurs with an org resolved by `_find_org`, map to
+the org-type-appropriate role FROM THE ORG NODE'S ACTUAL TYPE (not a guess):
+  - department → `chair` · college/school → `dean` · university → `president`/`provost` · gsa/club/rgo →
+    officer (`officers_in_org`/president).
+Route to `people_by_role`/`role_in_org` (or `officers_in_org` for clubs), reusing the existing
+`ROLE_SCOPE_LEVEL` + `_climb_to_scope` scoping. **Ordering:** runs in the role region (`:848+`), AFTER the
+`_LEADERSHIP_PROCESS` gate (a "how does leadership work" process question still must NOT hit a person lookup)
+and composes with the existing `_ROLE_VOCAB_RX` branch. **Disambiguation:** `president`/`provost`/`registrar`
+are also office-org names — the org-type resolution settles it (president-of-a-DEPT → chair, not the Office of
+the President); keep the `role_is_org` overlap guard (:858) intact so "registrar office hours" → office.
+
+**C-2. Leader-term role synonyms.** Extend `_ROLE_SYNONYM` (:130) so the leader terms normalize to the
+resolved role head only when org-type-resolved (never a bare "boss" → chair without a unit).
+
+**C-3. Closed-lexicon edit-≤2 typo tolerance.** For ROLE / ORG / METRIC tokens ONLY, Damerau-Levenshtein ≤2
+fuzzy-match INTO the closed vocabularies (`_ROLE_VOCAB`, org names/`metadata.aliases`, metric aliases from
+`profile_fields`): `stdent→student`, `citatns→citations`, `tuishon→tuition`, `computer sci→computer science`.
+Maps ONLY to an existing vocab entry; no match / ambiguous (two entries within ≤2) → leave the token as-is
+(honest-partial). This is NOT the rejected open-vocabulary G4 corrector (that snapped ordinary words to random
+surnames) — it only ever rewrites INTO a known closed set.
+
+### 14.3 Hard lines / guardrails
+- **GSA-equal** ([[feedback_gsa_equal_not_privileged]]): the leader mapping is ORG-TYPE-driven, not a GSA
+  thumb; `who runs GSA` → gsa president via the club/officer branch, same mechanism as any unit. No alias table.
+- **No-LLM router preserved**; deterministic + zero-latency on the hot path.
+- **`role_is_org` + `_LEADERSHIP_PROCESS` guards preserved** (no regression on office-hours / process queries).
+- **Run the GOLD/EVAL set, not spot-checks** (the 2026-07-03 lesson): `eval.sh` + the router gold suites must
+  show no regression; org-resolution is shared surface.
+- **Reversible / gated:** behind `QUERY_CORRECT_ENABLED` (default OFF → shadow → on), kill = `0` + restart.
+- Per [[feedback_grow_correctness_suite]]: every new rule adds its Qs to `eval/questions.txt`.
+
+### 14.4 Explicit non-goals (rev-5)
+- The `llm_rewrite` + guards + shadow apparatus (G6, deferred).
+- The 4 structured non-wins: metric-by-RESEARCH-AREA (`machine learning prof h index?` — needs a new
+  metric-over-area skill, not correction) + unresolved CLUBS (`intl student club` — org/entity data gap). Logged,
+  not built here.
+- Prose corpus-debt residue → the fresh prose-recall track (NOT old-M2).
+
+### 14.5 Verification (TDD)
+- Dictionary: augments (keeps bare acronym + appends expansion); never augments a name/corpus term; clean
+  query routes the same after augmentation.
+- Leader rule: the 10 probe role queries (`who run cs`/`boss of cs`/`who president cs`/…) route to
+  `people_by_role` with the CORRECT org + org-type-correct role (dept→chair, college→dean); `boss of ywcc`→dean.
+- Metric: `top cited prof in computer sci` (+dict) → `top_people_by_metric`.
+- Officer: `women in cs officers who`/`graduate student association officers who` → `officers_in_org`.
+- Typo tolerance: `stdent`/`citatns`/`tuishon` map into vocab; a non-vocab typo is left untouched.
+- GUARDS: `registrar office hours` → office (role_is_org held); a leadership-PROCESS question not → a person.
+- GSA-equal: `who runs GSA` → gsa president; no unit → no bias.
+- `eval.sh` + router gold suites: no regression (HARD gate).
+
+### 14.6 Success metric
+$0 re-run of the 1000-Q debt harness scoped to the STRUCTURED debt: target = convert a large share of the 16
+probe-confirmed router-None structured questions from LIVE/DEBT → SURFACED, PAIRED with a correctness spot-check
+of the converted answers (a route alone isn't a correct answer). Report the structured before/after.
+
+### 14.7 Goals checklist (rev-5 — supersedes §10 for the current scope)
+- **G-A** — acronym dictionary (AUGMENT, owns acronyms, GSA correct). **SHIP.**
+- **G-C1r** — org-type-aware leader rule → people_by_role/officers_in_org. **SHIP.**
+- **G-C2r** — leader-term role synonyms (org-type-resolved). **SHIP.**
+- **G-C3r** — closed-lexicon edit-≤2 typo tolerance (role/org/metric). **SHIP.**
+- **G6** — on-miss LLM rewrite + guards + shadow. **DROPPED/DEFERRED** (Finding A; revivable per §7 G6).
+- **§10's G-B/G-B2/G-C/G-C2/G-E** (LLM path) — **SUPERSEDED by G6 deferral**; not in the rev-5 build.
