@@ -182,6 +182,25 @@ def _climb_to_scope(
 _LEADERSHIP_PROCESS = re.compile(
     r"\b(do(?:es)?|responsib|dut(?:y|ies)|how\s+(?:to|do)|become|elect|appoint|"
     r"eligib|qualif|nominat|remov|why|what'?s?\s+the\s+role)\b")
+
+# Leadership-INTENT phrasings that are NOT in _ROLE_VOCAB (so the role branch misses them).
+# "who runs/run", "boss of", "head(s) of", "who leads", "in charge of", "president of <unit>".
+_LEADER_INTENT = re.compile(
+    r"\bwho\s+runs?\b|\bruns?\b|\bboss\s+of\b|\bheads?\s+of\b|\bwho\s+leads?\b|"
+    r"\bin\s+charge\s+of\b|\bpresident\s+of\b|\bwho\s+president\b", re.I)
+
+_LEADER_ROLE_BY_TYPE = {"department": "chair", "college": "dean", "school": "dean",
+                        "university": "president"}
+
+def _leader_role_for_org(conn, org_id):
+    row = conn.execute("SELECT type FROM organizations WHERE id=?", (org_id,)).fetchone()
+    if row is None:
+        return None
+    otype = row[0]
+    if otype in ("club", "gsa"):
+        return ("officers_in_org", "")
+    role = _LEADER_ROLE_BY_TYPE.get(otype)
+    return ("people_by_role", role) if role else None
 _ENUM_TRIGGER = re.compile(r"\b(?:list|name|show|all|every|any|are\s+there|is\s+there|do\s+we\s+have)\b")
 # Faculty-roster cues: any of these + a resolved org → list that department's faculty. Broad on
 # purpose (people ask many ways). Deliberately EXCLUDES 'people/members/staff/works' (→
