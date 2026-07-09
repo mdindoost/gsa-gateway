@@ -185,7 +185,7 @@ ANSWER_GATE_ENABLED = os.getenv("ANSWER_GATE_ENABLED", "0").strip().lower() in (
 
 # --- Query correction (C+A: acronym dictionary + router-leader-rule support) ---
 # QUERY_CORRECT_ENABLED defaults OFF so the feature is gated until an env flip + restart.
-QUERY_CORRECT_ENABLED = os.getenv("QUERY_CORRECT_ENABLED", "0") == "1"
+QUERY_CORRECT_ENABLED = os.getenv("QUERY_CORRECT_ENABLED", "0").strip().lower() in ("1","true","yes","on")
 
 # --- A15b — topic→people trustworthiness (two behavior-changing flags, both DEFAULT OFF = today) ---
 # MISS_SIGNAL_SKIP_UNSCORED (A11): the miss-signal (top_relevance) must skip an UNSCORED injected

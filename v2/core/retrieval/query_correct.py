@@ -21,7 +21,7 @@ _ACRONYM_RX = re.compile(
 
 
 def enabled() -> bool:
-    return os.getenv("QUERY_CORRECT_ENABLED", "0") == "1"
+    return os.getenv("QUERY_CORRECT_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
 def augment_acronyms(text: str, protected: set[str] | None = None) -> str:

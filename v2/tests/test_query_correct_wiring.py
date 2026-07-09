@@ -63,6 +63,11 @@ def wiring_handler():
 @pytest.mark.asyncio
 async def test_flag_off_resolved_query_untouched(wiring_handler, monkeypatch):
     monkeypatch.delenv("QUERY_CORRECT_ENABLED", raising=False)
+    # Isolate from other flags a real shell/CI env might export — none of these should
+    # influence whether resolved_query gets augmented.
+    monkeypatch.delenv("ANSWER_GATE_ENABLED", raising=False)
+    monkeypatch.delenv("ROUTER_V21", raising=False)
+    monkeypatch.delenv("FOLLOWUP_RESUME_ENABLED", raising=False)
     req = MessageRequest(user_id="1", text="who is the chair of cs", platform="discord")
     await wiring_handler.handle(req)
     called_text = wiring_handler._try_structured.call_args.args[0]
@@ -72,6 +77,9 @@ async def test_flag_off_resolved_query_untouched(wiring_handler, monkeypatch):
 @pytest.mark.asyncio
 async def test_flag_on_resolved_query_augmented(wiring_handler, monkeypatch):
     monkeypatch.setenv("QUERY_CORRECT_ENABLED", "1")
+    monkeypatch.delenv("ANSWER_GATE_ENABLED", raising=False)
+    monkeypatch.delenv("ROUTER_V21", raising=False)
+    monkeypatch.delenv("FOLLOWUP_RESUME_ENABLED", raising=False)
     req = MessageRequest(user_id="1", text="who is the chair of cs", platform="discord")
     await wiring_handler.handle(req)
     called_text = wiring_handler._try_structured.call_args.args[0]

@@ -184,10 +184,18 @@ _LEADERSHIP_PROCESS = re.compile(
     r"eligib|qualif|nominat|remov|why|what'?s?\s+the\s+role)\b")
 
 # Leadership-INTENT phrasings that are NOT in _ROLE_VOCAB (so the role branch misses them).
-# "who runs/run", "boss of", "head(s) of", "who leads", "in charge of", "president of <unit>".
+# "who runs/run", "boss of", "head of", "who leads", "who ... in charge of", "president of <unit>".
+# Verb cues (runs?/leads?/in charge of) are ordinary English verbs on their own ("which shuttle
+# RUNS to X", "what programs RUN in X", "who are the HEADS OF departments" — enumeration, not an
+# identity ask) so they are GATED behind a nearby "who" (0-2 filler words: "who actually runs X"
+# still matches). Noun-phrase cues ("boss of", "head of" singular, "president of") are NOT ordinary
+# verbs and may stand alone. A bare `\bruns?\b`/plural `heads?\s+of` previously over-matched any
+# query containing "run(s)"/"heads of" → false person routes (live-verified 2026-07-08/09).
 _LEADER_INTENT = re.compile(
-    r"\bwho\s+runs?\b|\bruns?\b|\bboss\s+of\b|\bheads?\s+of\b|\bwho\s+leads?\b|"
-    r"\bin\s+charge\s+of\b|\bpresident\s+of\b|\bwho\s+president\b", re.I)
+    r"\bwho\s+(?:\w+\s+){0,2}runs?\b|\bwho\s+(?:\w+\s+){0,2}leads?\b|"
+    r"\bwho\s+(?:\w+\s+){0,2}in\s+charge\s+of\b|"
+    r"\bboss\s+of\b|\bhead\s+of\b|"
+    r"\bpresident\s+of\b|\bwho\s+president\b", re.I)
 
 _LEADER_ROLE_BY_TYPE = {"department": "chair", "college": "dean", "school": "dean",
                         "university": "president"}
@@ -875,8 +883,14 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
                 if mapped is not None:
                     skill, role_head = mapped
                     if skill == "officers_in_org":
-                        return Route("officers_in_org", {"org_id": org_id})
-                    return Route("people_by_role", {"role_head": role_head, "org_id": org_id})
+                        # officers_in_org is TERMINAL (empty -> "I don't have officer
+                        # information", no RAG fall-through) — only take it when the org
+                        # actually holds a true officer/deprep edge; otherwise fall through
+                        # to the rest of route()/RAG so club prose can still answer.
+                        if _has_true_officers(conn, org_id):
+                            return Route("officers_in_org", {"org_id": org_id})
+                    else:
+                        return Route("people_by_role", {"role_head": role_head, "org_id": org_id})
 
         rm = _ROLE_VOCAB_RX.search(q)
         if rm:

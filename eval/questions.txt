@@ -421,3 +421,10 @@ most published prof in mathematics
 # leader rule or the acronym dictionary.
 registrar office hours
 who runs GSA
+# GUARD — whole-branch review Fix 1: bare "run(s)"/"heads of" over-matched ordinary verbs and
+# hijacked these into a false person route. must NOT route to a person (people_by_role/officers_in_org).
+which shuttle runs to the cs building
+what programs run in the computer science department
+what courses run in the fall at ywcc
+what services run out of the graduate student association
+who are the heads of departments at njit

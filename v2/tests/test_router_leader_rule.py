@@ -55,3 +55,63 @@ def test_registrar_office_hours_still_office(conn, monkeypatch):
     monkeypatch.setenv("QUERY_CORRECT_ENABLED", "1")
     r = route(conn, "registrar office hours")
     assert r is None or r.skill != "people_by_role"   # role_is_org guard held
+
+
+# ── FIX 1 (CRITICAL): _LEADER_INTENT must not over-match ordinary verbs ────────────
+# Live-verified FALSE ANSWERS (flag ON) before the fix: bare "run(s)"/"heads? of" hijacked
+# ordinary questions into a person route. Each of these MUST become None (or at least NOT
+# people_by_role/officers_in_org) after the who-gate + singular-head fix.
+_ADVERSARIAL = [
+    "which shuttle runs to the cs building",
+    "what programs run in the computer science department",
+    "what courses run in the fall at ywcc",
+    "what services run out of the graduate student association",
+    "who are the heads of departments at njit",
+]
+
+
+@pytest.mark.parametrize("q", _ADVERSARIAL)
+def test_leader_intent_does_not_overmatch_ordinary_verbs(q):
+    # The regex itself must not fire on these — this is what makes the route() calls below safe.
+    assert not router._LEADER_INTENT.search(q), f"_LEADER_INTENT false-matched: {q!r}"
+
+
+@pytest.mark.parametrize("q", _ADVERSARIAL)
+def test_adversarial_probes_do_not_route_to_person(conn, monkeypatch, q):
+    monkeypatch.setenv("QUERY_CORRECT_ENABLED", "1")
+    r = route(conn, q)
+    assert r is None or r.skill not in ("people_by_role", "officers_in_org"), (
+        f"{q!r} misrouted to a person: {r}")
+
+
+# ── the 5 wins must still route (flag ON) after the fix ────────────────────────────
+def test_who_run_math_routes_chair(conn, monkeypatch):
+    monkeypatch.setenv("QUERY_CORRECT_ENABLED", "1")
+    r = route(conn, "who run math")
+    assert r is not None and r.skill == "people_by_role" and r.args.get("role_head") == "chair"
+
+
+def test_boss_of_cs_routes_chair(conn, monkeypatch):
+    monkeypatch.setenv("QUERY_CORRECT_ENABLED", "1")
+    r = route(conn, "boss of cs")
+    assert r is not None and r.skill == "people_by_role" and r.args.get("role_head") == "chair"
+
+
+def test_who_runs_gsa_routes_officers(conn, monkeypatch):
+    monkeypatch.setenv("QUERY_CORRECT_ENABLED", "1")
+    r = route(conn, "who runs GSA")
+    assert r is not None and r.skill == "officers_in_org"
+
+
+def test_who_actually_runs_ywcc_still_matches_intent():
+    # "who <filler> runs <unit>" (0-2 filler words) must still be caught by the who-gated verb cue.
+    assert router._LEADER_INTENT.search("who actually runs ywcc")
+
+
+# ── FIX 2 (MUST-FIX): club/gsa leader arm must gate on _has_true_officers ──────────
+def test_who_runs_club_with_no_true_officers_falls_through(conn, monkeypatch):
+    monkeypatch.setenv("QUERY_CORRECT_ENABLED", "1")
+    # PhD Club (org id 8, live DB) has prose but NO true officer/deprep edges.
+    assert router._has_true_officers(conn, 8) is False
+    r = route(conn, "who runs the phd club")
+    assert r is None or r.skill != "officers_in_org"
