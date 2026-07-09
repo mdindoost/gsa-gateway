@@ -57,8 +57,21 @@ def roster(org_id) -> list:
             "citations": sch.get("citations") if sch else None,
             "h_index": sch.get("h_index") if sch else None,
             "areas": f["areas"],
+            # momentum inputs (★ Rising view) — carried so rising() needs no extra DB pass
+            "cites_per_year": sch.get("cites_per_year") if sch else None,
+            "updated_at": sch.get("updated_at") if sch else None,
         })
     return out
+
+
+def rising(roster) -> tuple:
+    """The ★ Rising view: (riser rows sorted by momentum desc, funnel counts).
+
+    Delegates the mechanical math to `momentum.rising_view`; the roster rows must carry
+    `cites_per_year` + `updated_at` (added in `roster` above). Returns the same
+    `(rows, {"risers","gated","scholar","total"})` shape the renderer consumes."""
+    from . import momentum
+    return momentum.rising_view(roster)
 
 
 def _surname(name: str) -> str:

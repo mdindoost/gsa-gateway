@@ -32,6 +32,17 @@
 </a>
 {%- endmacro -%}
 
+{%- macro row_rising(row) -%}
+<a class="lb-row lb-rising" href="../p/{{ row.slug }}.html"
+   data-name="{{ row.name|lower }}" data-title="{{ row.title|lower }}" data-areas="{{ row.data_areas|lower }}">
+  {{ photo_thumb(row) }}
+  <span class="lb-id"><span class="lb-name">{{ row.name }}</span>{% if row.title %}<span class="lb-title">{{ row.title }}</span>{% endif %}</span>
+  <span class="lb-spark">{{ row.spark_svg|safe }}{% if row.window %}<span class="lb-win">{{ row.window }}</span>{% endif %}</span>
+  <span class="lb-mom"><span class="lb-num">{{ row.momentum }}</span><span class="lb-lab">momentum</span></span>
+  <span class="lb-recent"><span class="lb-num">{{ row.recent_rate }}</span><span class="lb-lab">recent/yr</span></span>
+</a>
+{%- endmacro -%}
+
 {% block rail %}
   <div class="rail">
     <span><span class="dot"></span>Crawled from public sources</span>
@@ -59,6 +70,7 @@
           <button type="button" data-view="rank" aria-pressed="{{ 'true' if default_view=='rank' else 'false' }}">By rank / title</button>
           <button type="button" data-view="citations" aria-pressed="{{ 'true' if default_view=='citations' else 'false' }}">By citations</button>
           <button type="button" data-view="az" aria-pressed="{{ 'true' if default_view=='az' else 'false' }}">A–Z</button>
+          {% if show_rising %}<button type="button" data-view="rising" aria-pressed="false"><span class="lb-star">★</span> Rising</button>{% endif %}
         </div>
         <input class="lb-search" type="search" placeholder="Search name, title, research area…" aria-label="Search faculty">
       </div>
@@ -79,6 +91,15 @@
       <div class="lb-panel" data-view="az"{% if default_view != 'az' %} hidden{% endif %}>
         {% for row in az_rows %}{{ row_dir(row) }}{% endfor %}
       </div>
+
+      {% if show_rising %}
+      <div class="lb-panel lb-rising-panel" data-view="rising" hidden>
+        <p class="lb-cap">{{ rising_caption }}</p>
+        <p class="lb-funnel">{{ rising_funnel }}</p>
+        {% for row in rising_rows %}{{ row_rising(row) }}{% endfor %}
+        <p class="lb-foot">Citation counts support, they don’t replace, judgment.</p>
+      </div>
+      {% endif %}
 
       <p class="lb-empty" hidden>No faculty match “<span class="lb-empty-q"></span>”.</p>
     </section>

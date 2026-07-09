@@ -92,3 +92,35 @@ def _peak_year(years, vals, peak, partial_year):
         if y != partial_year and vals[y] == peak:
             return y
     return years[-1]
+
+
+# --- inline sparkline (★ Rising leaderboard rows) --------------------------------
+# A minimal-geometry cousin of render_chart: bars only, no axis text / peak label /
+# year ticks (those are the big profile-chart's concerns). Fixed small viewBox so it
+# sits in a directory row; each bar scales to the window's own max so SHAPE is legible
+# regardless of absolute scale (the absolute-rate chip beside it carries magnitude).
+_SP_W = 96.0        # sparkline width
+_SP_H = 30.0        # sparkline height (bar area)
+_SP_GAP = 3.0
+
+
+def sparkline(values) -> str:
+    """Return a tiny inline bar-SVG for a list of yearly counts, or '' when empty.
+    Pure + deterministic; bars scale to the local max (shape, not magnitude)."""
+    vals = [max(0, int(v)) for v in (values or [])]
+    if not vals:
+        return ""
+    peak = max(vals)
+    n = len(vals)
+    width = (_SP_W - _SP_GAP * (n - 1)) / n
+    step = width + _SP_GAP
+    scale = (_SP_H / peak) if peak > 0 else 0.0
+    parts = [f'<svg class="spark" viewBox="0 0 {_fmt(_SP_W)} {_fmt(_SP_H)}" '
+             f'preserveAspectRatio="none" role="img" aria-hidden="true">']
+    for i, v in enumerate(vals):
+        h = max(1.0, v * scale)          # a visible stub even for a near-zero year
+        x = i * step
+        parts.append(f'<rect x="{_fmt(x)}" y="{_fmt(_SP_H - h)}" width="{_fmt(width)}" '
+                     f'height="{_fmt(h)}" rx="1"/>')
+    parts.append("</svg>")
+    return "".join(parts)

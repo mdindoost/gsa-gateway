@@ -107,6 +107,16 @@ PHOTO_OVERRIDES: dict = {}
 # --- visibility hook (default publish; a slug here is never emitted) ----------
 SUPPRESSED: set = set()
 
+# --- citation-momentum (★ Rising view) — named constants, no magic numbers -----
+# Window = the MOMENTUM_WINDOW most recent COMPLETE years (the person's Scholar sync
+# year is partial and excluded). A person passes the data gate iff all window years are
+# present AND the window median citations/yr clears MOMENTUM_FLOOR. A latest-year count
+# below MOMENTUM_TINY_BASE renders a "▲ growing" glyph instead of a precise % (a huge %
+# on a tiny base looks like a magnitude claim it isn't). See the 2026-07-08 design spec.
+MOMENTUM_WINDOW = 5
+MOMENTUM_FLOOR = 10
+MOMENTUM_TINY_BASE = 25
+
 
 def sync_label(updated_at: str) -> str:
     """'2026-06-30' -> 'Synced 30 Jun 2026'. Empty/None -> '' (no Scholar)."""

@@ -57,13 +57,14 @@ def build_dept(org: dict, out_root: str, photo_map: dict = None) -> str:
     coverage = rank.coverage(org["node_id"])
     views = {"rank": rank.by_rank(roster), "citations": rank.by_citations(roster),
              "az": rank.by_name(roster)}
+    rising = rank.rising(roster)                  # (riser rows, funnel) — empty set hides the tab
     stats = rank.leaderboard_stats(roster, coverage)
     assets_dir = paths.assets_dir(out_root)
     photo_map = dict(photo_map or {})
     for r in roster:                              # fill any slug the caller didn't supply
         if r["slug"] not in photo_map:
             photo_map[r["slug"]] = _resolve_photo(r["slug"], db.get_faculty(r["slug"]), assets_dir)
-    html = render.render_leaderboard(org["name"], views, stats, coverage, photo_map)
+    html = render.render_leaderboard(org["name"], views, stats, coverage, photo_map, rising=rising)
     path = paths.leaderboard_path(out_root, org["slug"])
     _write(path, html)
     return path
