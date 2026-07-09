@@ -190,6 +190,25 @@ def cs_faculty_slugs() -> list:
     return faculty_slugs(config.CS_ORG_ID)
 
 
+def faculty_keys(org_id) -> list:
+    """Node keys of an org's home faculty (has_role category='faculty' -> org), minus suppressed
+    (filtered by slug, same as faculty_slugs)."""
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """SELECT n.key AS key FROM nodes n
+               JOIN edges e ON e.src_id=n.id
+               WHERE n.type='Person' AND n.is_active=1
+                 AND e.type='has_role' AND e.category='faculty'
+                 AND e.dst_id=? AND e.is_active=1
+               ORDER BY n.name""",
+            (org_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [r["key"] for r in rows if r["key"].split("/")[-1] not in config.SUPPRESSED]
+
+
 def org_node_by_slug(slug):
     """The nodes.id of the Org whose organizations.slug == slug (None if not found)."""
     conn = connect()
@@ -241,7 +260,6 @@ def college_coverage(college_node_id) -> tuple:
     """(N distinct home faculty with Scholar citations, M distinct home faculty) across the
     college node itself and every faculty>0 child org. DISTINCT by person id, so a faculty
     homed in two child orgs (the known dup-home case) is counted once."""
-    import json
     org_ids = [college_node_id] + [d["node_id"] for d in dept_orgs_of_college(college_node_id)]
     conn = connect()
     try:

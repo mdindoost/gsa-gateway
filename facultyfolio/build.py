@@ -147,10 +147,26 @@ def _build_dept_scope(college_seg, org, out_root, built, photo_map):
 
 
 def _occupied_root_segments(out_root: str) -> set:
-    """Root-level segment names that already hold a real page (published college hubs +
-    any existing root dir). Used so a legacy stub never clobbers a real page (C-1)."""
-    occupied = set(config.PUBLISHED_COLLEGES)          # e.g. 'ywcc' hub occupies /ywcc/
-    return occupied
+    """Root-level segment names a legacy redirect stub must never clobber: the published college
+    hubs (each occupies /<college>/) plus the reserved shared roots /p/ (profiles) and /assets/.
+    Name-membership, not a filesystem scan — sound for this layout where the only real root pages
+    are college hubs, profiles under /p/, and assets under /assets/."""
+    return set(config.PUBLISHED_COLLEGES) | {"p", "assets"}
+
+
+def _assert_slug_uniqueness() -> None:
+    """Fail loudly if two DISTINCT faculty node keys resolve to the same URL slug (the shared
+    flat /p/<slug>.html + photo namespace). A dup-home person (same key, two edges) is fine."""
+    slug_keys = {}
+    for cslug in config.PUBLISHED_COLLEGES:
+        cnode = db.org_node_by_slug(cslug)
+        for org in db.dept_orgs_of_college(cnode):
+            for key in db.faculty_keys(org["node_id"]):
+                slug = key.split("/")[-1]
+                slug_keys.setdefault(slug, set()).add(key)
+    collisions = {s: sorted(ks) for s, ks in slug_keys.items() if len(ks) > 1}
+    if collisions:
+        raise ValueError(f"FacultyFolio slug collision (distinct people, same /p/<slug>): {collisions}")
 
 
 def _emit_redirects(out_root: str, occupied: set) -> None:
@@ -200,6 +216,9 @@ def build_site(scope: dict = None, out_root: str = None) -> dict:
     else:
         college_slugs = list(config.PUBLISHED_COLLEGES)
         dept_filter = None
+
+    if scope is None:
+        _assert_slug_uniqueness()             # full build only: verify the flat /p/ namespace
 
     for cslug in college_slugs:
         cnode = db.org_node_by_slug(cslug)

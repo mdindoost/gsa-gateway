@@ -84,6 +84,23 @@ def test_full_build_is_byte_stable():
         fb = _read(os.path.join(b, "ywcc", "computer-science", "index.html"))
         assert fa == fb
 
+def test_full_build_asserts_slug_uniqueness(monkeypatch):
+    """Two DISTINCT person keys resolving to the same slug must fail a full build loudly."""
+    import tempfile
+    from facultyfolio import build, db
+    real = db.faculty_keys
+    def fake(org_id):
+        keys = list(real(org_id))
+        # inject a colliding key: a DIFFERENT node key whose final segment duplicates an existing slug
+        if keys:
+            dup_slug = keys[0].split("/")[-1]
+            keys.append(f"other.example.edu/profile/{dup_slug}")   # distinct key, same slug
+        return keys
+    monkeypatch.setattr(build.db, "faculty_keys", fake)
+    with tempfile.TemporaryDirectory() as out:
+        with pytest.raises(ValueError, match="slug collision"):
+            build.build_site(scope=None, out_root=out)
+
 def test_scoped_dept_build_leaves_sibling_profile_untouched():
     """A --dept computer-science build must not overwrite a sibling dept's profile page in
     the shared flat /p/ namespace."""
