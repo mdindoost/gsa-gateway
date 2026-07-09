@@ -500,8 +500,19 @@ Alone this captures the METRIC class (probe: `top cited prof in computer sci` + 
 > expanding `gsa` silently broke **7** correct GSA officer/president queries. So `gsa`, `cs`, `ece` are
 > deliberately DROPPED from the seed map (the router resolves them natively; the org-type LEADER rule in
 > §14.2 still handles `who runs GSA` / `who run cs` via native resolution). The dictionary carries ONLY
-> generic vocabulary normalizers for tokens the router can't resolve on its own. Regression-locked by
-> `test_org_slug_acronyms_are_not_expanded`.
+> generic vocabulary normalizers for tokens the router can't resolve on its own.
+>
+> **Full invariant (Fable N1/N2), for anyone ADDING a seed later — check the expansion OUTPUT, not just
+> the key:** a candidate key is unsafe if (i) it is itself a resolvable org identifier (name/slug/alias);
+> **or** (ii) it appears as a whole word in a NON-FINAL position of any multi-word identifier phrase —
+> because AUGMENT appends after the token and would split the phrase (a phrase-FINAL occurrence like `sci`
+> in the alias `comp sci` is safe: the expansion lands after the whole phrase); **or** (iii) its expansion
+> output stitches with adjacent user tokens to form an identifier. Leg (iii) is second-order and can run in
+> the user's favour — e.g. `"eng technology faculty"` → `"eng engineering technology faculty"` now matches
+> the `engineering technology` alias the raw query missed (a WIN) — but it is the same mechanism that broke
+> `gsa`, so verify its DIRECTION per candidate. Locked by the enumerated `test_org_slug_acronyms_are_not_expanded`
+> (the three caught tokens) AND the live-DB invariant `test_no_acronym_key_shadows_or_splits_an_org_identifier`
+> (legs i–ii + non-final-position of ii), which fails the moment a future org slug/alias collides with a kept key.
 
 ### 14.2 Component C — deterministic router extension (`v2/core/retrieval/router.py`)
 Three small, native additions. The router ALREADY owns the machinery (`_ROLE_VOCAB_RX` :127, `_ROLE_SYNONYM`
