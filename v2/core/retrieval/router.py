@@ -865,6 +865,19 @@ def route(conn: sqlite3.Connection, question: str) -> Route | None:
     # department list). Officer titles stay with the officer branch above; process/eligibility
     # shapes ("how to become a dean") fall through to RAG. Empty result → RAG.
     if not _LEADERSHIP_PROCESS.search(q):
+        # Leader rule (spec §14 C-1): map run/boss/head/president-of-<unit> to the org-type role.
+        from v2.core.retrieval import query_correct
+        if (query_correct.enabled() and _LEADER_INTENT.search(q) and org_id is not None):
+            role_is_org = bool(org_phrase and any(
+                w in org_phrase.lower() for w in ("president", "head", "chair", "dean")))
+            if not role_is_org:
+                mapped = _leader_role_for_org(conn, org_id)
+                if mapped is not None:
+                    skill, role_head = mapped
+                    if skill == "officers_in_org":
+                        return Route("officers_in_org", {"org_id": org_id})
+                    return Route("people_by_role", {"role_head": role_head, "org_id": org_id})
+
         rm = _ROLE_VOCAB_RX.search(q)
         if rm:
             role_word = rm.group(1).lower()
