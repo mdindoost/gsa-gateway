@@ -18,11 +18,22 @@ OUT_ROOT = os.environ.get(
 CS_ORG_ID = 16          # Computer Science Org node (named convenience anchor; build discovers depts)
 KOUTIS_NODE = 33        # golden test faculty
 
-# YWCC college anchored by SLUG (node ids renumber on `run_explore.py --reset`; slugs don't).
-COLLEGE_SLUG = "ywcc"
-# Old URL segment -> new segment. Preserves a previously-shared URL after the slug move
-# (URL-migration continuity, NOT per-dept vocabulary). A stub redirect is written per entry.
-LEGACY_REDIRECTS = {"cs": "computer-science"}
+# --- published-colleges registry (ordered; iteration order = registry order) ---
+# A college is served only when its slug is here. Departments are auto-discovered
+# per college from the KG. Add a slug (after eyeballing) to publish a new college.
+PUBLISHED_COLLEGES = ["ywcc"]
+
+# Absolute site origin for canonical <link> + sitemap + robots (SEO needs absolute URLs).
+SITE_ORIGIN = "https://facultyfolio.github.io"
+
+# Legacy URL segment -> new target segment-path (NO leading slash, NO origin: the
+# redirect stub composes it as ../{target}/index.html relative to /{old}/index.html).
+LEGACY_REDIRECTS = {
+    "cs": "ywcc/computer-science",
+    "computer-science": "ywcc/computer-science",
+    "data-science": "ywcc/data-science",
+    "informatics": "ywcc/informatics",
+}
 
 # --- assistant brand/version (single source of truth: bot/core/identity.py) --
 # So the footer's "GSA Gateway · Kavosh vX" tracks the one place the version lives — a version

@@ -13,24 +13,29 @@ def test_build_koutis(tmp_path, monkeypatch):
 
 def test_build_all_and_leaderboard(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "photos_ensure", lambda slug, *a, **k: f"monogram:{slug[:2].upper()}")
-    from facultyfolio import db, config
+    from facultyfolio import db
     res = build.build_all(str(tmp_path))
-    # a profile per YWCC home faculty across all three depts (57 + 21 + 41)
-    depts = db.dept_orgs_of_college(db.org_node_by_slug(config.COLLEGE_SLUG))
-    assert res["count"] == sum(len(db.faculty_slugs(d["node_id"])) for d in depts)
-    # each dept leaderboard exists at its org slug; college-administration never gets one
-    assert os.path.exists(os.path.join(tmp_path, "computer-science", "index.html"))
-    assert os.path.exists(os.path.join(tmp_path, "data-science", "index.html"))
-    assert os.path.exists(os.path.join(tmp_path, "informatics", "index.html"))
-    assert not os.path.exists(os.path.join(tmp_path, "college-administration", "index.html"))
-    # hub at root, profiles flat, legacy cs/ redirect preserved, assets copied
-    assert os.path.exists(os.path.join(tmp_path, "index.html"))
+    # count == DISTINCT home faculty across published YWCC depts (dedup-safe)
+    depts = db.dept_orgs_of_college(db.org_node_by_slug("ywcc"))
+    distinct = set()
+    for d in depts:
+        distinct.update(db.faculty_slugs(d["node_id"]))
+    assert res["count"] == len(distinct)
+    # dept leaderboards now nested under the college; admin unit still gets none
+    assert os.path.exists(os.path.join(tmp_path, "ywcc", "computer-science", "index.html"))
+    assert os.path.exists(os.path.join(tmp_path, "ywcc", "data-science", "index.html"))
+    assert os.path.exists(os.path.join(tmp_path, "ywcc", "informatics", "index.html"))
+    assert not os.path.exists(os.path.join(tmp_path, "ywcc", "college-administration", "index.html"))
+    # root = NJIT hub; YWCC hub moved under /ywcc/; profiles flat; assets copied
+    root_hub = open(os.path.join(tmp_path, "index.html")).read()
+    assert "New Jersey Institute of Technology" in root_hub
+    college_hub = open(os.path.join(tmp_path, "ywcc", "index.html")).read()
+    assert "Ying Wu College of Computing" in college_hub
     assert os.path.exists(os.path.join(tmp_path, "p", "ikoutis.html"))
     assert os.path.exists(os.path.join(tmp_path, "assets", "style.css"))
+    # legacy /cs/ and /computer-science/ redirect to the nested dept
     cs_redirect = open(os.path.join(tmp_path, "cs", "index.html")).read()
-    assert "url=../computer-science/index.html" in cs_redirect
-    hub = open(os.path.join(tmp_path, "index.html")).read()
-    assert "Ying Wu College of Computing" in hub
+    assert "url=../ywcc/computer-science/index.html" in cs_redirect
 
 
 def test_idempotent(tmp_path, monkeypatch):

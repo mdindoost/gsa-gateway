@@ -153,7 +153,8 @@ def _scholar_ctx(sch: dict) -> dict:
     }
 
 
-def render_profile(f: dict, photo_ref: str = None) -> str:
+def render_profile(f: dict, photo_ref: str = None,
+                   asset_root: str = "../", canonical: str = None) -> str:
     name = f["name"]
     if photo_ref is None:
         photo_ref = f"monogram:{F.initials(name)}"
@@ -180,17 +181,21 @@ def render_profile(f: dict, photo_ref: str = None) -> str:
         "sync_label": config.sync_label(sch["updated_at"]) if sch else "",
         "sources": "Scholar + NJIT" if sch else "NJIT",
         "home_dept_segment": f.get("home_dept_segment") or "",
+        "asset_root": asset_root,
+        "canonical": canonical,
     }
     if sch:
         ctx.update(_scholar_ctx(sch))
     return _env.get_template("profile.html").render(**ctx)
 
 
-def render_hub(college_name: str, cards: list) -> str:
-    """College hub landing page: a card per department (name, faculty count, Scholar count).
-    Root-level page, so asset_root='' points at assets/ (not ../assets/)."""
+def render_hub(title: str, cards: list, *, eyebrow: str, asset_root: str,
+               canonical: str = None) -> str:
+    """Hub landing page (NJIT hub: cards=colleges; college hub: cards=depts). One template.
+    `asset_root` = rel path to assets/ for this page's depth; `eyebrow` = 'University'/'College'."""
     return _env.get_template("hub.html").render(
-        college_name=college_name, cards=cards, asset_root="")
+        college_name=title, eyebrow=eyebrow, cards=cards,
+        asset_root=asset_root, canonical=canonical)
 
 
 _LB_AREA_CHIPS = 4          # chips shown per directory row; full list is on the profile + in data-areas
@@ -251,7 +256,8 @@ def _rising_funnel_text(fn: dict) -> str:
 
 
 def render_leaderboard(org_name: str, roster_views: dict, stats: dict,
-                       coverage: tuple, photo_map: dict, rising=None) -> str:
+                       coverage: tuple, photo_map: dict, rising=None,
+                       asset_root: str = "../", canonical: str = None) -> str:
     """Render the directory views (rank default / citations / A–Z [/ ★ Rising]), all faculty shown.
 
     roster_views = {"rank": by_rank groups, "citations": by_citations rows, "az": by_name rows}.
@@ -286,4 +292,5 @@ def render_leaderboard(org_name: str, roster_views: dict, stats: dict,
         default_view=config.LEADERBOARD_DEFAULT_VIEW,
         show_rising=show_rising, rising_rows=rising_rows,
         rising_caption=_RISING_CAPTION, rising_funnel=rising_funnel_text,
+        asset_root=asset_root, canonical=canonical,
     )
