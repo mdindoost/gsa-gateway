@@ -92,7 +92,7 @@ def ensure_photo(slug: str, scholar_photo_url: str, name: str, out_dir: str) -> 
     photos_dir = os.path.join(out_dir, "photos")
     os.makedirs(photos_dir, exist_ok=True)
     dest = os.path.join(photos_dir, f"{slug}.jpg")
-    ref = f"../assets/photos/{slug}.jpg"
+    ref = f"assets/photos/{slug}.jpg"      # root-relative; templates prepend their page's asset_root
 
     override = _override_bytes(slug, scholar_photo_url)        # wins over cache + auto
     if override is not None:

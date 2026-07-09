@@ -101,6 +101,27 @@ def test_full_build_asserts_slug_uniqueness(monkeypatch):
         with pytest.raises(ValueError, match="slug collision"):
             build.build_site(scope=None, out_root=out)
 
+def test_nested_leaderboard_uses_depth_correct_asset_and_profile_paths(monkeypatch):
+    """Regression (photos vanished on the live nested leaderboards): a /ywcc/<dept>/ leaderboard is
+    depth-2, so its photo srcs AND profile links must be ../../ (not ../). Jinja macros don't see the
+    render-context asset_root, so it must be threaded through the row/photo macros. Photos are stubbed
+    to a real-style root-relative ref so the path (not a monogram) is exercised."""
+    import os, tempfile
+    from facultyfolio import build, db
+    monkeypatch.setattr(build, "photos_ensure", lambda slug, *a, **k: f"assets/photos/{slug}.jpg")
+    with tempfile.TemporaryDirectory() as out:
+        cs = next(d for d in db.dept_orgs_of_college(db.org_node_by_slug("ywcc"))
+                  if d["slug"] == "computer-science")
+        html = open(build.build_dept(cs, out, "ywcc")).read()
+        assert 'src="../../assets/photos/' in html      # depth-2 photo path correct
+        assert 'href="../../p/' in html                 # depth-2 profile link correct
+        assert 'src="../assets/photos/' not in html     # no depth-1 leftover
+        assert 'href="../p/' not in html
+        # a profile page (depth-1) still uses ../
+        prof = open(build.build_one("ikoutis", out, photo_ref="assets/photos/ikoutis.jpg")).read()
+        assert 'src="../assets/photos/ikoutis.jpg"' in prof
+
+
 def test_scoped_dept_build_leaves_sibling_profile_untouched():
     """A --dept computer-science build must not overwrite a sibling dept's profile page in
     the shared flat /p/ namespace."""

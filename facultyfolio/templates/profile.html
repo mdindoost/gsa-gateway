@@ -32,7 +32,7 @@
         <text x="75" y="82" text-anchor="middle" font-family="var(--f-display)" font-size="52" fill="var(--mute)">{{ photo_ref[9:] }}</text>
       </svg>
       {% else %}
-      <img class="photo" src="{{ photo_ref }}" alt="{{ name }}">
+      <img class="photo" src="{{ asset_root }}{{ photo_ref }}" alt="{{ name }}">
       {% endif %}
       <h1>{{ name }}</h1>
       {% if title %}<p class="title">{{ title }}</p>{% endif %}
