@@ -31,3 +31,9 @@ def test_scoped_dept_build_writes_ancestors_not_siblings():
         assert os.path.exists(os.path.join(out, "index.html"))         # ancestor refreshed
         with open(sib) as fh:
             assert fh.read() == "SENTINEL"                  # sibling untouched
+
+def test_parse_scope_from_args():
+    from facultyfolio import build as _b
+    assert _b._scope_from_args([]) is None
+    assert _b._scope_from_args(["--college", "ywcc"]) == {"college": "ywcc"}
+    assert _b._scope_from_args(["--dept", "computer-science"]) == {"dept": "computer-science"}

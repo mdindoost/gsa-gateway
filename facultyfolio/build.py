@@ -221,10 +221,26 @@ def build_all(out_root: str = None) -> dict:   # back-compat alias
     return build_site(scope=None, out_root=out_root)
 
 
-def main():
-    result = build_all()
-    print(f"FacultyFolio: {result['count']} faculty across {len(config.PUBLISHED_COLLEGES)} "
-          f"published college(s) -> {config.OUT_ROOT}")
+def _scope_from_args(argv):
+    import argparse
+    p = argparse.ArgumentParser(prog="facultyfolio.build")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--college", metavar="SLUG")
+    g.add_argument("--dept", metavar="SLUG")
+    a = p.parse_args(argv)
+    if a.college:
+        return {"college": a.college}
+    if a.dept:
+        return {"dept": a.dept}
+    return None
+
+
+def main(argv=None):
+    import sys
+    scope = _scope_from_args(sys.argv[1:] if argv is None else argv)
+    result = build_site(scope=scope)
+    label = "all published" if scope is None else next(iter(scope.items()))
+    print(f"FacultyFolio: built {result['count']} faculty ({label}) -> {config.OUT_ROOT}")
 
 
 if __name__ == "__main__":
