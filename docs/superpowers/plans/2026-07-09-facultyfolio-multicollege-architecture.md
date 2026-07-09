@@ -632,7 +632,15 @@ git commit -m "feat(facultyfolio): nested build_dept + college/NJIT hub builders
 ```python
 # facultyfolio/tests/test_build_scoped.py
 import os, tempfile
+import pytest
 from facultyfolio import build
+
+@pytest.fixture(autouse=True)
+def _stub_photos(monkeypatch):
+    """Every build-touching test in this file stubs photo resolution — else it hits the
+    network for all 119 faculty (slow + flaky). Monograms are byte-stable."""
+    monkeypatch.setattr(build, "photos_ensure",
+                        lambda slug, *a, **k: f"monogram:{slug[:2].upper()}")
 
 def test_full_build_writes_njit_hub_college_hub_and_nested_dept():
     with tempfile.TemporaryDirectory() as out:
@@ -801,15 +809,55 @@ def main():
           f"published college(s) -> {config.OUT_ROOT}")
 ```
 
-- [ ] **Step 6: Run the smoke test + full suite**
+- [ ] **Step 6: Migrate the existing `test_build.py` to the new tree**
 
-Run: `python3 -m pytest facultyfolio/tests/test_build_scoped.py facultyfolio/tests/ -q`
-Expected: PASS. Fix any existing `build_all`/`build_dept` caller/test that broke (e.g. a test calling `build_dept(org, out)` with the old 2-arg signature → update to pass `college_seg="ywcc"`).
+The pre-existing `facultyfolio/tests/test_build.py::test_build_all_and_leaderboard` asserts the OLD flat
+layout (root = YWCC hub, `/computer-science/` leaderboards, `config.COLLEGE_SLUG`) — all changed now.
+Rewrite that test (keep `test_build_koutis` and `test_idempotent` as-is; they still pass — profile path
+unchanged, idempotency preserved):
 
-- [ ] **Step 7: Commit**
+```python
+def test_build_all_and_leaderboard(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "photos_ensure", lambda slug, *a, **k: f"monogram:{slug[:2].upper()}")
+    from facultyfolio import db
+    res = build.build_all(str(tmp_path))
+    # count == DISTINCT home faculty across published YWCC depts (dedup-safe)
+    depts = db.dept_orgs_of_college(db.org_node_by_slug("ywcc"))
+    distinct = set()
+    for d in depts:
+        distinct.update(db.faculty_slugs(d["node_id"]))
+    assert res["count"] == len(distinct)
+    # dept leaderboards now nested under the college; admin unit still gets none
+    assert os.path.exists(os.path.join(tmp_path, "ywcc", "computer-science", "index.html"))
+    assert os.path.exists(os.path.join(tmp_path, "ywcc", "data-science", "index.html"))
+    assert os.path.exists(os.path.join(tmp_path, "ywcc", "informatics", "index.html"))
+    assert not os.path.exists(os.path.join(tmp_path, "ywcc", "college-administration", "index.html"))
+    # root = NJIT hub; YWCC hub moved under /ywcc/; profiles flat; assets copied
+    root_hub = open(os.path.join(tmp_path, "index.html")).read()
+    assert "New Jersey Institute of Technology" in root_hub
+    college_hub = open(os.path.join(tmp_path, "ywcc", "index.html")).read()
+    assert "Ying Wu College of Computing" in college_hub
+    assert os.path.exists(os.path.join(tmp_path, "p", "ikoutis.html"))
+    assert os.path.exists(os.path.join(tmp_path, "assets", "style.css"))
+    # legacy /cs/ and /computer-science/ redirect to the nested dept
+    cs_redirect = open(os.path.join(tmp_path, "cs", "index.html")).read()
+    assert "url=../ywcc/computer-science/index.html" in cs_redirect
+```
+
+- [ ] **Step 7: Remove dead `build_hub`** — the old root-hub builder is unused after Tasks 6–7. Delete the
+`build_hub` function from `build.py`. Confirm nothing references it: `grep -rn "build_hub\b" facultyfolio/`
+should return only `build_college_hub`/`build_njit_hub`.
+
+- [ ] **Step 8: Run the smoke test + full suite**
+
+Run: `python3 -m pytest facultyfolio/tests/test_build_scoped.py facultyfolio/tests/test_build.py -q`
+Expected: PASS. Then the whole package: `python3 -m pytest facultyfolio/tests/ -q` (may take a couple
+minutes — build tests are monkeypatched so no network; a slow-but-green run is fine).
+
+- [ ] **Step 9: Commit**
 
 ```bash
-git add facultyfolio/build.py facultyfolio/tests/test_build_scoped.py
+git add facultyfolio/build.py facultyfolio/tests/test_build_scoped.py facultyfolio/tests/test_build.py
 git commit -m "feat(facultyfolio): scope-aware orchestrator + ancestor refresh + redirect-guard fix + SEO emit"
 ```
 
