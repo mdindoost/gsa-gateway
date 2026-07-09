@@ -1,23 +1,36 @@
-"""Output-path single source of truth.
+"""Output-path single source of truth (URL seam).
 
-Every file the build writes gets its path from here, so the flat -> hierarchical
-URL restructure (spec: 2026-07-05 display-flags plan, Task 7) is a one-module change
-rather than a hunt through build.py + templates. Today it reproduces the current flat
-layout exactly (p/<slug>.html, cs/index.html, assets/) — no behavior change.
+Multi-college layout: NJIT hub at /index.html, college hub at /<college>/index.html,
+dept leaderboard at /<college>/<dept>/index.html, profiles flat at /p/<slug>.html.
+Canonical + sitemap URLs are absolute (config.SITE_ORIGIN + path).
 """
 import os
+
+from . import config
 
 
 def profile_path(out_root: str, slug: str) -> str:
     return os.path.join(out_root, "p", f"{slug}.html")
 
 
-def leaderboard_path(out_root: str, segment: str) -> str:
-    return os.path.join(out_root, segment, "index.html")
+def leaderboard_path(out_root: str, college_seg: str, dept_seg: str) -> str:
+    return os.path.join(out_root, college_seg, dept_seg, "index.html")
 
 
-def hub_path(out_root: str) -> str:
+def college_hub_path(out_root: str, college_seg: str) -> str:
+    return os.path.join(out_root, college_seg, "index.html")
+
+
+def njit_hub_path(out_root: str) -> str:
     return os.path.join(out_root, "index.html")
+
+
+def sitemap_path(out_root: str) -> str:
+    return os.path.join(out_root, "sitemap.xml")
+
+
+def robots_path(out_root: str) -> str:
+    return os.path.join(out_root, "robots.txt")
 
 
 def redirect_path(out_root: str, old_segment: str) -> str:
@@ -26,3 +39,13 @@ def redirect_path(out_root: str, old_segment: str) -> str:
 
 def assets_dir(out_root: str) -> str:
     return os.path.join(out_root, "assets")
+
+
+def rel_root(depth: int) -> str:
+    """asset_root for a page `depth` directory levels below the site root."""
+    return "../" * depth
+
+
+def canonical_url(rel_path: str) -> str:
+    """Absolute canonical URL. rel_path has no leading slash; a directory ends with '/'."""
+    return f"{config.SITE_ORIGIN}/{rel_path}"
