@@ -9,7 +9,7 @@ The leaderboard reuses the exact photo refs the profile pass resolved (threaded 
 """
 import os
 
-from . import assets, config, db, paths, rank, render
+from . import assets, config, db, paths, rank, render, seo
 
 
 def _write(path: str, html: str) -> None:
@@ -41,31 +41,63 @@ def build_one(slug: str, out_root: str, photo_ref: str = None) -> str:
         return ""
     if photo_ref is None:
         photo_ref = _resolve_photo(slug, faculty, paths.assets_dir(out_root))
-    html = render.render_profile(faculty, photo_ref=photo_ref)
+    html = render.render_profile(
+        faculty, photo_ref=photo_ref,
+        asset_root="../", canonical=paths.canonical_url(f"p/{slug}.html"))
     path = paths.profile_path(out_root, slug)
     _write(path, html)
     return path
 
 
-def build_dept(org: dict, out_root: str, photo_map: dict = None) -> str:
-    """Render one department's 3-view leaderboard at <org slug>/index.html.
-
-    `org` = {"node_id","slug","name","faculty"} from db.dept_orgs_of_college.
-    Reuses the profile pass's photo refs when given; resolves any missing itself.
-    """
+def build_dept(org: dict, out_root: str, college_seg: str, photo_map: dict = None) -> str:
+    """Render one department's leaderboard at <college>/<dept>/index.html."""
     roster = rank.roster(org["node_id"])
     coverage = rank.coverage(org["node_id"])
     views = {"rank": rank.by_rank(roster), "citations": rank.by_citations(roster),
              "az": rank.by_name(roster)}
-    rising = rank.rising(roster)                  # (riser rows, funnel) — empty set hides the tab
+    rising = rank.rising(roster)
     stats = rank.leaderboard_stats(roster, coverage)
     assets_dir = paths.assets_dir(out_root)
     photo_map = dict(photo_map or {})
-    for r in roster:                              # fill any slug the caller didn't supply
+    for r in roster:
         if r["slug"] not in photo_map:
             photo_map[r["slug"]] = _resolve_photo(r["slug"], db.get_faculty(r["slug"]), assets_dir)
-    html = render.render_leaderboard(org["name"], views, stats, coverage, photo_map, rising=rising)
-    path = paths.leaderboard_path(out_root, org["slug"])
+    canonical = paths.canonical_url(f"{college_seg}/{org['slug']}/")
+    html = render.render_leaderboard(org["name"], views, stats, coverage, photo_map,
+                                     rising=rising, asset_root="../../", canonical=canonical)
+    path = paths.leaderboard_path(out_root, college_seg, org["slug"])
+    _write(path, html)
+    return path
+
+
+def build_college_hub(college_node: int, college_seg: str, out_root: str) -> str:
+    """College hub at <college>/index.html: a card per dept/school with faculty>0."""
+    depts = db.dept_orgs_of_college(college_node)
+    cards = []
+    for d in depts:
+        n, m = rank.coverage(d["node_id"])
+        cards.append({"name": d["name"], "faculty": m, "scholar": n,
+                      "url": f"{d['slug']}/index.html"})
+    canonical = paths.canonical_url(f"{college_seg}/")
+    html = render.render_hub(db.college_name(college_node), cards, eyebrow="College",
+                             asset_root="../", canonical=canonical)
+    path = paths.college_hub_path(out_root, college_seg)
+    _write(path, html)
+    return path
+
+
+def build_njit_hub(out_root: str) -> str:
+    """NJIT hub at /index.html: a card per PUBLISHED college (subtree-distinct coverage)."""
+    cards = []
+    for slug in config.PUBLISHED_COLLEGES:            # registry order (deterministic)
+        node = db.org_node_by_slug(slug)
+        n, m = db.college_coverage(node)
+        cards.append({"name": db.college_name(node), "faculty": m, "scholar": n,
+                      "url": f"{slug}/index.html"})
+    canonical = paths.canonical_url("")
+    html = render.render_hub("New Jersey Institute of Technology", cards, eyebrow="University",
+                             asset_root="", canonical=canonical)
+    path = paths.njit_hub_path(out_root)
     _write(path, html)
     return path
 
