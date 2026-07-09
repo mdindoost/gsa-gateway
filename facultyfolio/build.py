@@ -102,71 +102,129 @@ def build_njit_hub(out_root: str) -> str:
     return path
 
 
-def build_hub(out_root: str, college_node: int, depts: list) -> str:
-    """Render the college hub at root index.html: a card per department."""
-    cards = []
-    for org in depts:
-        n_scholar, m_total = rank.coverage(org["node_id"])   # coverage once per dept
-        cards.append({"name": org["name"], "faculty": m_total, "scholar": n_scholar,
-                      "url": f"{org['slug']}/index.html"})
-    html = render.render_hub(db.college_name(college_node), cards)
-    path = paths.hub_path(out_root)
-    _write(path, html)
-    return path
-
-
 def _redirect_html(target_segment: str) -> str:
     """A minimal meta-refresh page pointing from a legacy segment to the new one."""
-    url = f"../{target_segment}/index.html"
+    rel = f"../{target_segment}/index.html"
+    canon = f"{config.SITE_ORIGIN}/{target_segment}/"
     return (
         '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f'<meta http-equiv="refresh" content="0; url={url}">\n'
-        f'<link rel="canonical" href="{url}">\n'
+        f'<meta http-equiv="refresh" content="0; url={rel}">\n'
+        f'<link rel="canonical" href="{canon}">\n'
         '<title>FacultyFolio</title></head>\n'
-        f'<body><p>Redirecting to the <a href="{url}">FacultyFolio faculty directory</a>…</p></body></html>\n'
+        f'<body><p>Redirecting to the <a href="{rel}">FacultyFolio faculty directory</a>…</p></body></html>\n'
     )
 
 
-def build_all(out_root: str = None) -> dict:
-    out_root = out_root or config.OUT_ROOT
+def _college_of_dept(dept_slug: str) -> str:
+    """Parent college slug of a dept, via KG part_of. Raises if dept/college unknown or unpublished."""
+    node = db.org_node_by_slug(dept_slug)
+    if node is None:
+        raise ValueError(f"unknown dept slug {dept_slug!r}")
+    for slug in config.PUBLISHED_COLLEGES:
+        college_node = db.org_node_by_slug(slug)
+        if any(d["slug"] == dept_slug for d in db.dept_orgs_of_college(college_node)):
+            return slug
+    raise ValueError(f"dept {dept_slug!r} is not under any published college")
+
+
+def _build_dept_scope(college_seg, org, out_root, built, photo_map):
+    """Build one dept's profiles + leaderboard into the shared maps."""
     assets_dir = paths.assets_dir(out_root)
-    college_node = db.org_node_by_slug(config.COLLEGE_SLUG)
-    depts = db.dept_orgs_of_college(college_node)      # sorted by slug, faculty>0
-
-    photo_map, pages, built = {}, [], {}
-    for org in depts:                                  # profiles: each unique home faculty once
-        for s in db.faculty_slugs(org["node_id"]):
-            if s in built:                             # dup-home (data regression) -> LOUD, keep first
-                print(f"[facultyfolio] WARN dup-home faculty {s!r}: "
-                      f"kept under {built[s]!r}, skipped under {org['slug']!r}")
-                continue
-            built[s] = org["slug"]
-            faculty = db.get_faculty(s)
-            if faculty["suppressed"]:
-                continue
-            ref = _resolve_photo(s, faculty, assets_dir)
-            photo_map[s] = ref
-            pages.append(build_one(s, out_root, photo_ref=ref))
-
-    leaderboards = [build_dept(org, out_root, photo_map=photo_map) for org in depts]
-    hub = build_hub(out_root, college_node, depts)
-    dept_slugs = {d["slug"] for d in depts}
-    for old, new in config.LEGACY_REDIRECTS.items():   # legacy URL continuity
-        if old in dept_slugs:                          # never clobber a live dept directory
+    for s in db.faculty_slugs(org["node_id"]):
+        if s in built:
+            print(f"[facultyfolio] WARN dup-home faculty {s!r}: kept under {built[s]!r}, "
+                  f"skipped under {org['slug']!r}")
             continue
-        _write(paths.redirect_path(out_root, old), _redirect_html(new))
-    assets.copy_assets(out_root)
+        built[s] = org["slug"]
+        faculty = db.get_faculty(s)
+        if faculty["suppressed"]:
+            continue
+        ref = _resolve_photo(s, faculty, assets_dir)
+        photo_map[s] = ref
+        build_one(s, out_root, photo_ref=ref)
+    build_dept(org, out_root, college_seg, photo_map=photo_map)
 
-    profiles = [p for p in pages if p]
-    return {"profiles": profiles, "leaderboards": leaderboards, "hub": hub,
-            "count": len(profiles)}
+
+def _occupied_root_segments(out_root: str) -> set:
+    """Root-level segment names that already hold a real page (published college hubs +
+    any existing root dir). Used so a legacy stub never clobbers a real page (C-1)."""
+    occupied = set(config.PUBLISHED_COLLEGES)          # e.g. 'ywcc' hub occupies /ywcc/
+    return occupied
+
+
+def _emit_redirects(out_root: str, occupied: set) -> None:
+    for old, target in config.LEGACY_REDIRECTS.items():
+        if old in occupied:                            # never clobber a real root page (C-1)
+            continue
+        _write(paths.redirect_path(out_root, old), _redirect_html(target))
+
+
+def _all_published_urls(out_root: str) -> list:
+    """Every canonical URL in the published site, for the sitemap (full set, even on a scoped build)."""
+    urls = [paths.canonical_url("")]                   # NJIT hub
+    for cslug in config.PUBLISHED_COLLEGES:
+        cnode = db.org_node_by_slug(cslug)
+        urls.append(paths.canonical_url(f"{cslug}/"))  # college hub
+        for org in db.dept_orgs_of_college(cnode):
+            urls.append(paths.canonical_url(f"{cslug}/{org['slug']}/"))
+            for slug in db.faculty_slugs(org["node_id"]):
+                urls.append(paths.canonical_url(f"p/{slug}.html"))
+    # de-dup (dup-home faculty appear once) preserving order
+    seen, out = set(), []
+    for u in urls:
+        if u not in seen:
+            seen.add(u); out.append(u)
+    return out
+
+
+def _emit_seo(out_root: str) -> None:
+    _write(paths.sitemap_path(out_root), seo.sitemap_xml(_all_published_urls(out_root)))
+    _write(paths.robots_path(out_root), seo.robots_txt())
+
+
+def build_site(scope: dict = None, out_root: str = None) -> dict:
+    """Scope-aware build. scope=None -> all published; {'college': s}; {'dept': s}.
+    Always regenerates the NJIT hub + affected college hub(s) + SEO (ancestor consistency)."""
+    out_root = out_root or config.OUT_ROOT
+    built, photo_map = {}, {}
+
+    if scope and "dept" in scope:
+        college_slugs = [_college_of_dept(scope["dept"])]
+        dept_filter = scope["dept"]
+    elif scope and "college" in scope:
+        if scope["college"] not in config.PUBLISHED_COLLEGES:
+            raise ValueError(f"college {scope['college']!r} is not published")
+        college_slugs = [scope["college"]]
+        dept_filter = None
+    else:
+        college_slugs = list(config.PUBLISHED_COLLEGES)
+        dept_filter = None
+
+    for cslug in college_slugs:
+        cnode = db.org_node_by_slug(cslug)
+        for org in db.dept_orgs_of_college(cnode):
+            if dept_filter and org["slug"] != dept_filter:
+                continue
+            _build_dept_scope(cslug, org, out_root, built, photo_map)
+        build_college_hub(cnode, cslug, out_root)
+
+    build_njit_hub(out_root)                 # ancestor: always refreshed
+    occupied = _occupied_root_segments(out_root)
+    _emit_redirects(out_root, occupied)
+    _emit_seo(out_root)
+    assets.copy_assets(out_root)
+    return {"built": sorted(built), "count": len(built)}
+
+
+def build_all(out_root: str = None) -> dict:   # back-compat alias
+    return build_site(scope=None, out_root=out_root)
 
 
 def main():
     result = build_all()
-    print(f"FacultyFolio: {result['count']} profiles + "
-          f"{len(result['leaderboards'])} dept leaderboards + hub -> {config.OUT_ROOT}")
+    print(f"FacultyFolio: {result['count']} faculty across {len(config.PUBLISHED_COLLEGES)} "
+          f"published college(s) -> {config.OUT_ROOT}")
 
 
 if __name__ == "__main__":
