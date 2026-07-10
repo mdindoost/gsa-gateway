@@ -21,6 +21,50 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def _surname(name: str) -> str:
+    parts = (name or "").split()
+    return parts[-1].casefold() if parts else ""
+
+
+def _role_title(titles: list) -> str:
+    """The role title from a (rank + role) titles list: the entry containing 'dean';
+    else the last entry. We SELECT which listed title to show, never reword it."""
+    for t in titles or []:
+        if "dean" in t.lower():
+            return t
+    return (titles or [""])[-1]
+
+
+def college_leadership(college_node: int) -> dict:
+    """Dean + associate deans from admin@college has_role edges. Names normalized to
+    'Given Surname'; displayed title is the role ('dean') title, not the professorial rank."""
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """SELECT n.key AS key, n.name AS name, e.attrs AS attrs
+               FROM edges e JOIN nodes n ON n.id=e.src_id
+               WHERE e.type='has_role' AND e.category='admin'
+                 AND e.dst_id=? AND e.is_active=1 AND n.is_active=1""",
+            (college_node,),
+        ).fetchall()
+    finally:
+        conn.close()
+    dean, assoc = [], []
+    for r in rows:
+        attrs = json.loads(r["attrs"]) if r["attrs"] else {}
+        title = _role_title(attrs.get("titles") or [])
+        low = title.lower()
+        if "dean" not in low:
+            continue
+        person = {"slug": r["key"].split("/")[-1],
+                  "name": normalize_name(r["name"]), "title": title}
+        (assoc if "associate dean" in low else dean).append(person)
+    keyf = lambda p: (_surname(p["name"]), p["name"].casefold(), p["slug"])
+    dean.sort(key=keyf)
+    assoc.sort(key=keyf)
+    return {"dean": dean, "assoc_deans": assoc}
+
+
 def _area_key(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
