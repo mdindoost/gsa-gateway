@@ -27,15 +27,19 @@ order (title → numbers/stats → chair) up at the college level:
 1. **Title** — college name (unchanged).
 2. **Stats** — college-wide coverage line + a rank rollup: the per-department rank-group
    counts (already shown on each dept page) **summed across all departments**, same taxonomy.
-3. **Dean** — the college dean, as a person card.
-4. **Associate Deans** — as person cards.
-5. **Department Chairs** — every department's chair, as person cards, together in one section.
-6. **Departments** — the existing department entry-point cards (name + counts), unchanged.
+3. **Departments** — the existing department entry-point cards (name + counts). Placed
+   **directly under the stats, above leadership**, so the page instantly reads as a hub (owner,
+   2026-07-09) — a student landing here immediately sees the way into each department.
+4. **Dean** — the college dean, as a person card.
+5. **Associate Deans** — as person cards.
+6. **Department Chairs** — every department's chair, as person cards, together in one section.
 
 All leadership people (dean, associate deans, chairs) render as the **same person-card
-component** the department leaderboard already uses, each linking to their FacultyFolio
-profile. The department cards at the bottom stay clean entry points — the chair is **not**
-embedded inside them.
+component** the department leaderboard already uses — photo, name, title, **and their
+research-area chips** (the identical card a visitor sees for that person on their department
+page; capped at the same `_LB_AREA_CHIPS = 4`, and honestly empty when the KG lists no areas,
+e.g. Michael Halper today). Each card links to the person's FacultyFolio profile. The
+department entry cards stay clean entry points — the chair is **not** embedded inside them.
 
 ### Real data (computed 2026-07-09 with the existing `rank` code, YWCC)
 
@@ -113,15 +117,18 @@ macros into a small `templates/_person_card.html` and `{% import %}` it from bot
 locked by the existing leaderboard golden tests).
 
 Each leadership/chair person is turned into a template row via the existing
-`render._lb_row(roster_dict, photo_map)` helper, so photos, monograms, and links resolve
-exactly as on the department pages.
+`render._lb_row(roster_dict, photo_map)` helper, so photos, monograms, **research-area chips**
+(capped at `_LB_AREA_CHIPS`), and links resolve exactly as on the department pages. The
+roster dict for each leadership person therefore must carry `areas` — read from the KG
+`researches` edges the same way `rank.roster` already populates them (reuse `db.get_faculty`,
+which already returns `areas`).
 
 `render_hub(...)` gains optional keyword args (all default `None`/empty, so the NJIT hub —
 which passes none — is unaffected):
 - `stats` — the `college_rollup` dict (coverage line + ordered `(label, count)` groups).
 - `leadership` — `{"dean": [rows], "assoc_deans": [rows], "chairs": [rows]}` (template rows).
 
-`hub.html` renders, between the title and the existing `hub-cards` block, in order:
+`hub.html` renders, after the title, in this order:
 1. a **stats** block rendered with the **exact same markup the department page uses** — the
    `glance` block (`leaderboard.html:79-83`): two `.glance-hd` spans (`{total}` faculty,
    `{with_scholar}` on Google Scholar) then one `.glance-g` span per rank group rendered
@@ -130,12 +137,16 @@ which passes none — is unaffected):
    rollup looks 1:1 identical to a department's rank stats. The `glance` block is extracted
    to a shared partial (`templates/_glance.html`, `{% import %}`ed by both templates) so there
    is one source of truth and no drift; the department output stays byte-identical (golden test).
-2. a **Dean** section (label + card[s]) — omitted if empty;
-3. an **Associate Deans** section — omitted if empty;
-4. a **Department Chairs** section — each card labeled with its **department**
-   ("Computer Science — Vincent Oria"); omitted if empty;
-then the existing department cards. All new blocks are guarded by `{% if %}` so a hub without
-leadership/stats (e.g. the NJIT hub) renders exactly as today.
+2. the **existing department entry cards** (`hub-cards`) — **moved up to here, directly under
+   the stats and above leadership**, so the page reads as a hub first (owner, 2026-07-09);
+3. a **Dean** section (label + card[s]) — omitted if empty;
+4. an **Associate Deans** section — omitted if empty;
+5. a **Department Chairs** section — each card labeled with its **department**
+   ("Computer Science — Vincent Oria"); omitted if empty.
+All new blocks are guarded by `{% if %}` so a hub without leadership/stats (e.g. the NJIT hub)
+renders exactly as today — just the title + department/college cards. Each leadership section
+is wrapped in the same `lb-group` / `lb-group-h` structure the department "By rank" view uses,
+so "line (section header) then card(s)" is visually identical to what a visitor already sees.
 
 ### 4.3 Build layer (`build.py`)
 
@@ -170,9 +181,14 @@ New unit tests (pytest, alongside the existing FacultyFolio suite):
   edges; deterministic order.
 - Chair derivation: one chair per dept from the `rank_index == 0` group; deptless-college safe.
 - `render_hub`: with `stats`+`leadership`, the page contains the `glance` block (coverage line
-  + one `.glance-g` `{count} · {label}` span per rank group in ladder order), a Dean/Associate
-  Deans/Chairs section each with a linked person card (chairs labeled by department); **without**
-  them (NJIT hub call) output is byte-identical to today (golden test).
+  + one `.glance-g` `{count} · {label}` span per rank group in ladder order), then the
+  department cards, then a Dean/Associate Deans/Chairs section each with a linked person card
+  (chairs labeled by department, cards carrying research-area chips); order is
+  stats → departments → leadership; **without** them (NJIT hub call) output is byte-identical
+  to today (golden test).
+- Person-card area chips on the hub: a leadership person with areas shows up to
+  `_LB_AREA_CHIPS` chips; one with no `researches` edges (e.g. Halper) shows none — no
+  placeholder, no fabrication.
 - Macro-extraction refactor: department leaderboard output byte-identical (existing goldens).
 
 Manual: full build, eyeball `/ywcc/`, confirm links resolve and photos render.
@@ -180,10 +196,11 @@ Manual: full build, eyeball `/ywcc/`, confirm links resolve and photos render.
 ## 7. Goals checklist (to be filled at PR time — shipped / deferred)
 
 - [ ] Stats block (coverage line + college-wide rank rollup chips)
-- [ ] Dean section (person card)
-- [ ] Associate Deans section (person cards)
-- [ ] Department Chairs section (person cards)
-- [ ] Department entry cards unchanged, below leadership
+- [ ] Department entry cards moved **above** leadership (directly under stats)
+- [ ] Dean section (person card, with research-area chips)
+- [ ] Associate Deans section (person cards, with research-area chips)
+- [ ] Department Chairs section (person cards, labeled by dept, with research-area chips)
+- [ ] Person cards carry research-area chips, capped/honest-empty like the dept pages
 - [ ] Person-card macro shared between leaderboard + hub (no output drift)
 - [ ] NJIT hub unaffected (byte-identical)
 
