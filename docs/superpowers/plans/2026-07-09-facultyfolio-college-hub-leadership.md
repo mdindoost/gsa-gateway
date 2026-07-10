@@ -467,10 +467,10 @@ git commit -m "feat(facultyfolio): render_hub stats+leadership; hub shows stats,
 
 ```python
 # add to facultyfolio/tests/test_build.py — mirror the existing full-build test's setup
-def test_college_hub_has_stats_and_leadership(tmp_path):
+def test_college_hub_has_stats_and_leadership(tmp_path, monkeypatch):
     from facultyfolio import build
-    out = str(tmp_path)
-    build.build_site(scope={"college": "ywcc"}, out_root=out)
+    monkeypatch.setattr(build, "photos_ensure", lambda slug, *a, **k: f"monogram:{slug[:2].upper()}")
+    build.build_site(scope={"college": "ywcc"}, out_root=str(tmp_path))
     html = (tmp_path / "ywcc" / "index.html").read_text()
     assert "119" in html and "3 · Department Chair" in html      # rollup
     assert "Jamie Payton" in html                                # dean
