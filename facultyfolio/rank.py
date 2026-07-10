@@ -219,3 +219,37 @@ def college_chairs(college_node) -> list:
             row["dept_name"] = d["name"]
             out.append(row)
     return out
+
+
+def funding_rollup(org_ids):
+    """Aggregate NSF+NIH funding across the given org node ids' home faculty.
+    Dedup by person node id (a dup-home person counted once). Returns
+    {nsf, nih, n_funded, as_of} or None when nothing is funded."""
+    conn = connect()
+    seen = {}
+    try:
+        for oid in org_ids:
+            for r in conn.execute(
+                """SELECT n.id AS id, n.key AS key, n.attrs AS attrs FROM nodes n
+                   JOIN edges e ON e.src_id=n.id
+                   WHERE n.type='Person' AND n.is_active=1
+                     AND e.type='has_role' AND e.category='faculty'
+                     AND e.dst_id=? AND e.is_active=1""", (oid,)):
+                if r["id"] in seen or r["key"].split("/")[-1] in config.SUPPRESSED:
+                    continue
+                fund = (json.loads(r["attrs"]) if r["attrs"] else {}).get("funding") or {}
+                nsf = int((fund.get("nsf") or {}).get("njit_total") or 0)
+                nih = int((fund.get("nih") or {}).get("njit_total") or 0)
+                dates = [b["updated_at"] for b in (fund.get("nsf"), fund.get("nih"))
+                         if b and b.get("updated_at")]
+                seen[r["id"]] = (nsf, nih, dates)
+    finally:
+        conn.close()
+    nsf_t = sum(v[0] for v in seen.values())
+    nih_t = sum(v[1] for v in seen.values())
+    if nsf_t == 0 and nih_t == 0:
+        return None
+    n_funded = sum(1 for v in seen.values() if v[0] > 0 or v[1] > 0)
+    all_dates = [d for v in seen.values() if v[0] > 0 or v[1] > 0 for d in v[2]]  # counted bags only
+    return {"nsf": nsf_t, "nih": nih_t, "n_funded": n_funded,
+            "as_of": min(all_dates) if all_dates else None}

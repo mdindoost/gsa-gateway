@@ -217,6 +217,7 @@ def get_faculty(id_or_slug) -> dict:
             "awards_raw": awards_raw,
             "service_raw": service_raw,
             "scholar": scholar,
+            "funding": attrs.get("funding") or {},
             "suppressed": slug in config.SUPPRESSED,
             "_prose_types": prose_types,
         }

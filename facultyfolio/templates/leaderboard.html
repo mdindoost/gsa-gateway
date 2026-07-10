@@ -61,6 +61,10 @@
 
       {{ glance(stats) }}
 
+      {% if funding_rollup %}
+      <div class="rollup"><span class="rk">Sponsored research</span>{% for amt, ag in funding_rollup.parts %}<span><b>{{ amt }}</b> {{ ag }}</span><span class="sep">·</span>{% endfor %}<span><b>{{ funding_rollup.n }}</b> funded faculty</span><span class="sep">·</span><span class="asof">as of {{ funding_rollup.as_of }}</span></div>
+      {% endif %}
+
       <div class="lb-panel" data-view="rank"{% if default_view != 'rank' %} hidden{% endif %}>
         {% for g in rank_groups %}
         <div class="lb-group">

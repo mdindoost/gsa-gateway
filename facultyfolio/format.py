@@ -277,3 +277,32 @@ def format_education(raw: str) -> list:
             if body:
                 out.append(f"{body} ({m.group(1)})")
     return out
+
+
+_MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def money(n) -> str:
+    """Exact comma-grouped below $1M; compact $X.XM at or above $1M."""
+    n = int(n or 0)
+    if n >= 1_000_000:
+        return f"${n / 1_000_000:.2f}M"
+    return f"${commafy(n)}"
+
+
+def money_exact(n) -> str:
+    """Always exact, comma-grouped (for group summary lines)."""
+    return f"${commafy(int(n or 0))}"
+
+
+def date_long(iso: str) -> str:
+    """'2026-07-10' -> 'Jul 10, 2026'."""
+    y, m, d = iso.split("-")
+    return f"{_MONTHS[int(m)]} {int(d)}, {y}"
+
+
+def month_year(iso: str) -> str:
+    """'2026-07-10' -> 'Jul 2026'."""
+    y, m, _ = iso.split("-")
+    return f"{_MONTHS[int(m)]} {y}"

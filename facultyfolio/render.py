@@ -4,6 +4,7 @@ Applies the mechanical formatters and the degradation rules (spec §4). The phot
 is resolved elsewhere (photos.py, I/O) and passed in as photo_ref; when omitted a
 non-I/O monogram is used so this stays pure and trivially testable.
 """
+import datetime
 import os
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -159,6 +160,90 @@ def _pub(p: dict) -> dict:
     }
 
 
+_NSF_LINK = "https://www.nsf.gov/awardsearch/showAward?AWD_ID={}"
+_NIH_LINK = "https://reporter.nih.gov/project-details/{}"
+
+
+def _exp_date(mdy):
+    try:
+        return datetime.datetime.strptime(mdy, "%m/%d/%Y").date()
+    except (ValueError, TypeError):
+        return None
+
+
+def _year(mdy):
+    d = _exp_date(mdy)
+    return d.year if d else "—"
+
+
+def funding_view(f: dict, today: datetime.date = None) -> dict | None:
+    """Profile 'Research funding' view-model. NSF group then NIH group, each
+    summary + recency-ordered rows. None when there are no contributing rows."""
+    fund = f.get("funding") or {}
+    today = today or datetime.date.today()
+    fy_now = today.year + 1 if today.month >= 10 else today.year
+    groups, updated = [], []
+
+    nsf = fund.get("nsf")
+    if nsf:
+        rows = [a for a in nsf.get("awards", []) if a.get("at_njit")]
+        if rows:
+            updated.append(nsf["updated_at"])
+            rows = sorted(rows, key=lambda a: (_exp_date(a["exp"]) or datetime.date.min,
+                                               a["obligated"]), reverse=True)
+            n = len(rows)
+            groups.append({
+                "agency": "NSF awards",
+                "summary": f'{F.money_exact(nsf["njit_total"])} obligated · {n} award{"" if n == 1 else "s"}',
+                "rows": [{
+                    "amount": F.money(a["obligated"]), "unit": "obligated",
+                    "title": a["title"], "url": _NSF_LINK.format(a["id"]),
+                    "meta": f'NSF {a["id"]}',
+                    "years": f'{_year(a["start"])} – {_year(a["exp"])}',
+                    "active": bool(_exp_date(a["exp"]) and _exp_date(a["exp"]) >= today),
+                    "copi": False,
+                } for a in rows],
+            })
+
+    nih = fund.get("nih")
+    if nih:
+        projects = nih.get("projects", [])
+        contact = [p for p in projects if p.get("role") == "contact"]
+        copi = [p for p in projects if p.get("role") == "co_pi"]
+        if contact or copi:
+            updated.append(nih["updated_at"])
+            key = lambda p: (p.get("fy_last") or 0, p.get("total") or 0)
+            ordered = sorted(contact, key=key, reverse=True) + sorted(copi, key=key, reverse=True)
+            if contact:
+                nc = len(contact)
+                summary = (f'{F.money_exact(nih["njit_total"])} project costs · '
+                           f'{nc} project{"" if nc == 1 else "s"} (as contact PI)')
+            else:
+                ncp = len(copi)
+                summary = f'co-investigator on {ncp} project{"" if ncp == 1 else "s"}'
+            groups.append({
+                "agency": "NIH projects", "summary": summary,
+                "rows": [{
+                    "amount": F.money(p["total"]),
+                    "unit": "costs" if p["role"] == "contact" else "project",
+                    "title": p["title"],
+                    "url": _NIH_LINK.format(p["appl_id"]) if p.get("appl_id") else None,
+                    "meta": f'NIH {p["core"]}',
+                    "years": f'FY{p["fy_first"]} – FY{p["fy_last"]}' if p.get("fy_first") else "—",
+                    "active": bool(isinstance(p.get("fy_last"), int) and p["fy_last"] >= fy_now),
+                    "copi": p["role"] == "co_pi",
+                } for p in ordered],
+            })
+
+    if not groups:
+        return None
+    present = [g["agency"].split()[0] for g in groups]     # ["NSF"], ["NIH"], or both
+    src = " and ".join(present)
+    as_of = min(u for u in updated if u)                   # YYYY-MM-DD sorts chronologically
+    return {"groups": groups,
+            "provenance": f"From {src} public award records · as of {F.date_long(as_of)}"}
+
+
 def _scholar_ctx(sch: dict) -> dict:
     cpy = sch.get("cites_per_year") or {}
     years = sorted(int(y) for y in cpy) if cpy else []
@@ -208,6 +293,7 @@ def render_profile(f: dict, photo_ref: str = None,
         "heading": config.FIXED_HEADING,
         "active_since_label": config.ACTIVE_SINCE_LABEL,
         "scholar": sch,
+        "funding": funding_view(f),
         "sync_label": config.sync_label(sch["updated_at"]) if sch else "",
         "sources": "Scholar + NJIT" if sch else "NJIT",
         "home_dept_segment": f.get("home_dept_segment") or "",
@@ -224,21 +310,37 @@ def render_profile(f: dict, photo_ref: str = None,
     return _env.get_template("profile.html").render(**ctx)
 
 
+def _rollup_view(r: dict | None) -> dict | None:
+    """Raw funding_rollup dict -> template-ready {parts:[($str, agency)], n, as_of}."""
+    if not r or (not r.get("nsf") and not r.get("nih")):
+        return None
+    parts = []
+    if r["nsf"]:
+        parts.append((F.money(r["nsf"]), "NSF"))
+    if r["nih"]:
+        parts.append((F.money(r["nih"]), "NIH"))
+    return {"parts": parts, "n": r["n_funded"],
+            "as_of": F.month_year(r["as_of"]) if r.get("as_of") else ""}
+
+
 def render_hub(title: str, cards: list, *, eyebrow: str, asset_root: str,
                canonical: str = None, nav: list = None,
                og_title: str = None, og_description: str = None,
-               stats: dict = None, leadership: dict = None) -> str:
+               stats: dict = None, leadership: dict = None,
+               funding_rollup: dict = None) -> str:
     """Hub landing page (NJIT hub: cards=colleges; college hub: cards=depts). One template.
     `asset_root` = rel path to assets/ for this page's depth; `eyebrow` = 'University'/'College'.
     `stats` = college_rollup dict (college hub only); `leadership` =
     {"dean":[rows],"assoc_deans":[rows],"chairs":[rows]} of `_lb_row` rows. The NJIT hub passes
-    neither, so it renders exactly as before."""
+    neither, so it renders exactly as before. `funding_rollup` = raw rank.funding_rollup dict
+    (NJIT hub + college hub both pass one; None -> no `.rollup` line rendered)."""
     return _env.get_template("hub.html").render(
         college_name=title, eyebrow=eyebrow, cards=cards,
         asset_root=asset_root, canonical=canonical,
         nav=nav or [], og_title=og_title or title, og_description=og_description,
         claim_url=config.CLAIM_MAILTO,
-        stats=stats, leadership=leadership or {})
+        stats=stats, leadership=leadership or {},
+        funding_rollup=_rollup_view(funding_rollup))
 
 
 _LB_AREA_CHIPS = 4          # chips shown per directory row; full list is on the profile + in data-areas
@@ -301,13 +403,15 @@ def _rising_funnel_text(fn: dict) -> str:
 def render_leaderboard(org_name: str, roster_views: dict, stats: dict,
                        coverage: tuple, photo_map: dict, rising=None,
                        asset_root: str = "../", canonical: str = None,
-                       nav: list = None, og_title: str = None, og_description: str = None) -> str:
+                       nav: list = None, og_title: str = None, og_description: str = None,
+                       funding_rollup: dict = None) -> str:
     """Render the directory views (rank default / citations / A–Z [/ ★ Rising]), all faculty shown.
 
     roster_views = {"rank": by_rank groups, "citations": by_citations rows, "az": by_name rows}.
     rising = (riser rows, funnel dict) from rank.rising, or None. An EMPTY rising set hides the
     ★ Rising tab entirely (S4 — an empty board named "Rising" would read as a negative verdict).
     photo_map = {slug: photo_ref}; a slug absent -> monogram. Sorting is precomputed upstream.
+    funding_rollup = raw rank.funding_rollup dict for this dept; None -> no `.rollup` line.
     """
     if config.LEADERBOARD_DEFAULT_VIEW not in config.LEADERBOARD_VIEWS:
         raise ValueError(
@@ -339,4 +443,5 @@ def render_leaderboard(org_name: str, roster_views: dict, stats: dict,
         asset_root=asset_root, canonical=canonical,
         nav=nav or [], og_title=og_title or org_name, og_description=og_description,
         claim_url=config.CLAIM_MAILTO,
+        funding_rollup=_rollup_view(funding_rollup),
     )

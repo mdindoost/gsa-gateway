@@ -146,7 +146,7 @@ def nih_match(name, _our_email, _rpp):
         "criteria": {"org_names": [NIH_ORG], "pi_names": [{"any_name": _fullname(name)}],
                      "exclude_subprojects": True},          # S3: no P01/U54 parent+child double-count
         "include_fields": ["CoreProjectNum", "ProjectTitle", "PrincipalInvestigators",
-                           "AwardAmount", "FiscalYear"],
+                           "AwardAmount", "FiscalYear", "ApplId"],
         "limit": 100}).encode()
     d = _http(NIH_API, data=body)
     if d is None:
@@ -165,10 +165,15 @@ def nih_match(name, _our_email, _rpp):
         core = p.get("core_project_num") or "?"
         c = cores.setdefault(core, {"total": 0, "title": p.get("project_title"),
                                     "role": "contact" if is_contact else "co_pi",
-                                    "fys": set(), "pids": set()})
+                                    "fys": set(), "pids": set(),
+                                    "appl_id": None, "appl_fy": -1})
         c["total"] += _amt(p.get("award_amount"))
         if p.get("fiscal_year"):
-            c["fys"].add(int(p["fiscal_year"]))
+            fy = int(p["fiscal_year"])
+            c["fys"].add(fy)
+            if fy > c["appl_fy"] and p.get("appl_id"):
+                c["appl_fy"] = fy
+                c["appl_id"] = p["appl_id"]
         for pi in mine:
             if pi.get("profile_id"):
                 c["pids"].add(pi["profile_id"])
@@ -184,7 +189,8 @@ def nih_match(name, _our_email, _rpp):
     njit_total = sum(c["total"] for c in cores.values() if c["role"] == "contact")
     projects = [{"core": k, "title": c["title"], "total": c["total"], "role": c["role"],
                  "fy_first": min(c["fys"]) if c["fys"] else None,
-                 "fy_last": max(c["fys"]) if c["fys"] else None}
+                 "fy_last": max(c["fys"]) if c["fys"] else None,
+                 "appl_id": c["appl_id"]}
                 for k, c in cores.items()]
     n_contact = sum(1 for c in cores.values() if c["role"] == "contact")
     return {"status": "ok", "source": "nih", "basis": "org+name", "truncated": truncated,
