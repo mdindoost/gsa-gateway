@@ -1,0 +1,8 @@
+{#- Shared at-a-glance stats strip: department leaderboard AND college hub. -#}
+{%- macro glance(stats) -%}
+<div class="lb-glance">
+  <span class="glance-hd"><strong>{{ stats.total }}</strong> faculty</span>
+  <span class="glance-hd"><strong>{{ stats.with_scholar }}</strong> on Google Scholar</span>
+  {% for label, count in stats.groups %}<span class="glance-g">{{ count }} · {{ label }}</span>{% endfor %}
+</div>
+{%- endmacro -%}
