@@ -442,3 +442,9 @@
   .chip.active{background:var(--pos-soft,#e6f4ec); color:var(--pos);}
   .chip.copi{background:var(--hair); color:var(--mute);}
   @media (max-width:540px){ .fund-cite{width:78px;} .fund-row{gap:12px;} }
+
+  /* funding rollup line (dept leaderboards + college/NJIT hubs — aggregate only, no per-person $) */
+  .rollup{font-family:var(--f-mono); font-size:13px; color:var(--ink-2); background:var(--accent-soft); border-radius:10px; padding:12px 16px; margin:16px 0 0; display:flex; flex-wrap:wrap; gap:6px 12px; align-items:baseline;}
+  .rollup .rk{color:var(--accent); text-transform:uppercase; letter-spacing:.1em; font-size:10.5px;}
+  .rollup b{color:var(--ink); font-variant-numeric:tabular-nums;}
+  .rollup .sep{color:var(--faint);} .rollup .asof{color:var(--faint);}

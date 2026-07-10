@@ -310,21 +310,37 @@ def render_profile(f: dict, photo_ref: str = None,
     return _env.get_template("profile.html").render(**ctx)
 
 
+def _rollup_view(r: dict | None) -> dict | None:
+    """Raw funding_rollup dict -> template-ready {parts:[($str, agency)], n, as_of}."""
+    if not r or (not r.get("nsf") and not r.get("nih")):
+        return None
+    parts = []
+    if r["nsf"]:
+        parts.append((F.money(r["nsf"]), "NSF"))
+    if r["nih"]:
+        parts.append((F.money(r["nih"]), "NIH"))
+    return {"parts": parts, "n": r["n_funded"],
+            "as_of": F.month_year(r["as_of"]) if r.get("as_of") else ""}
+
+
 def render_hub(title: str, cards: list, *, eyebrow: str, asset_root: str,
                canonical: str = None, nav: list = None,
                og_title: str = None, og_description: str = None,
-               stats: dict = None, leadership: dict = None) -> str:
+               stats: dict = None, leadership: dict = None,
+               funding_rollup: dict = None) -> str:
     """Hub landing page (NJIT hub: cards=colleges; college hub: cards=depts). One template.
     `asset_root` = rel path to assets/ for this page's depth; `eyebrow` = 'University'/'College'.
     `stats` = college_rollup dict (college hub only); `leadership` =
     {"dean":[rows],"assoc_deans":[rows],"chairs":[rows]} of `_lb_row` rows. The NJIT hub passes
-    neither, so it renders exactly as before."""
+    neither, so it renders exactly as before. `funding_rollup` = raw rank.funding_rollup dict
+    (NJIT hub + college hub both pass one; None -> no `.rollup` line rendered)."""
     return _env.get_template("hub.html").render(
         college_name=title, eyebrow=eyebrow, cards=cards,
         asset_root=asset_root, canonical=canonical,
         nav=nav or [], og_title=og_title or title, og_description=og_description,
         claim_url=config.CLAIM_MAILTO,
-        stats=stats, leadership=leadership or {})
+        stats=stats, leadership=leadership or {},
+        funding_rollup=_rollup_view(funding_rollup))
 
 
 _LB_AREA_CHIPS = 4          # chips shown per directory row; full list is on the profile + in data-areas
@@ -387,13 +403,15 @@ def _rising_funnel_text(fn: dict) -> str:
 def render_leaderboard(org_name: str, roster_views: dict, stats: dict,
                        coverage: tuple, photo_map: dict, rising=None,
                        asset_root: str = "../", canonical: str = None,
-                       nav: list = None, og_title: str = None, og_description: str = None) -> str:
+                       nav: list = None, og_title: str = None, og_description: str = None,
+                       funding_rollup: dict = None) -> str:
     """Render the directory views (rank default / citations / A–Z [/ ★ Rising]), all faculty shown.
 
     roster_views = {"rank": by_rank groups, "citations": by_citations rows, "az": by_name rows}.
     rising = (riser rows, funnel dict) from rank.rising, or None. An EMPTY rising set hides the
     ★ Rising tab entirely (S4 — an empty board named "Rising" would read as a negative verdict).
     photo_map = {slug: photo_ref}; a slug absent -> monogram. Sorting is precomputed upstream.
+    funding_rollup = raw rank.funding_rollup dict for this dept; None -> no `.rollup` line.
     """
     if config.LEADERBOARD_DEFAULT_VIEW not in config.LEADERBOARD_VIEWS:
         raise ValueError(
@@ -425,4 +443,5 @@ def render_leaderboard(org_name: str, roster_views: dict, stats: dict,
         asset_root=asset_root, canonical=canonical,
         nav=nav or [], og_title=og_title or org_name, og_description=og_description,
         claim_url=config.CLAIM_MAILTO,
+        funding_rollup=_rollup_view(funding_rollup),
     )

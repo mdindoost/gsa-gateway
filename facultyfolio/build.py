@@ -124,9 +124,11 @@ def build_dept(org: dict, out_root: str, college_seg: str, photo_map: dict = Non
     college_name = college_name or db.college_name(db.org_node_by_slug(college_seg))
     nav = _crumbs("../../", [("NJIT", ""), (college_name, f"{college_seg}/"), (org["name"], None)])
     og = f"{coverage[1]} faculty in {org['name']} at NJIT — ranked by citations, with Google Scholar metrics."
+    funding_rollup = rank.funding_rollup([org["node_id"]])
     html = render.render_leaderboard(org["name"], views, stats, coverage, photo_map,
                                      rising=rising, asset_root="../../", canonical=canonical,
-                                     nav=nav, og_title=f"{org['name']} — NJIT", og_description=og)
+                                     nav=nav, og_title=f"{org['name']} — NJIT", og_description=og,
+                                     funding_rollup=funding_rollup)
     path = paths.leaderboard_path(out_root, college_seg, org["slug"])
     _write(path, html)
     return path
@@ -173,10 +175,12 @@ def build_college_hub(college_node: int, college_seg: str, out_root: str,
     _, cm = db.college_coverage(college_node)
     nav = _crumbs("../", [("NJIT", ""), (cname, None)])
     og = f"{cm} faculty across {len(depts)} departments at {cname}, NJIT — with Google Scholar metrics."
+    funding_rollup = rank.funding_rollup([d["node_id"] for d in depts] + [college_node])
     html = render.render_hub(cname, cards, eyebrow="College",
                              asset_root="../", canonical=canonical,
                              nav=nav, og_title=cname, og_description=og,
-                             stats=stats, leadership=leadership)
+                             stats=stats, leadership=leadership,
+                             funding_rollup=funding_rollup)
     path = paths.college_hub_path(out_root, college_seg)
     _write(path, html)
     return path
@@ -195,9 +199,15 @@ def build_njit_hub(out_root: str) -> str:
     og = (f"Faculty across {len(config.PUBLISHED_COLLEGES)} "
           f"college{'s' if len(config.PUBLISHED_COLLEGES) != 1 else ''} at NJIT — "
           "profiles, rankings, and Google Scholar metrics.")
+    org_ids = []
+    for slug in config.PUBLISHED_COLLEGES:
+        node = db.org_node_by_slug(slug)
+        org_ids += [d["node_id"] for d in db.dept_orgs_of_college(node)] + [node]
+    funding_rollup = rank.funding_rollup(org_ids)
     html = render.render_hub("New Jersey Institute of Technology", cards, eyebrow="University",
                              asset_root="", canonical=canonical,
-                             nav=nav, og_title="NJIT faculty", og_description=og)
+                             nav=nav, og_title="NJIT faculty", og_description=og,
+                             funding_rollup=funding_rollup)
     path = paths.njit_hub_path(out_root)
     _write(path, html)
     return path
