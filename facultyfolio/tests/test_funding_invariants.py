@@ -21,30 +21,32 @@ def test_njit_total_equals_sum_of_contributing_rows():
             assert s == f["nih"]["njit_total"], f"NIH drift for {slug}"
 
 
-def test_no_dollars_or_fund_classes_on_person_card_or_hero():
-    # person-card macro (leaderboard/hub rows) and the profile hero must carry no funding.
-    f = db.get_faculty("zhiwei")            # a funded person
+def test_no_funding_on_hero():
+    f = db.get_faculty("zhiwei")
     html = render.render_profile(f)
-    # the hero/aside is the left identity card; funding lives only in the #funding section.
-    hero = html.split('id="funding"')[0]    # everything before the funding section
+    hero = html.split('id="funding"')[0]        # everything before the funding section
     assert "$" not in hero
     assert "fund-" not in hero
     assert "rollup" not in hero
 
 
-# Every aggregate page: no per-person .fund- classes leak, and every '$' sits inside a .rollup.
-AGGREGATE_PAGES = [
-    "ywcc/computer-science/index.html",     # dept leaderboard
-    "ywcc/index.html",                      # college hub
-    "index.html",                           # NJIT root hub
-]
+def test_profile_funding_section_no_dollars_no_copi():
+    f = db.get_faculty("zhiwei")
+    html = render.render_profile(f)
+    start = html.index('id="funding"')
+    sec = html[start:html.index("</section>", start)]
+    scaffold = re.sub(r'class="fund-t"[^>]*>.*?<', "<", sec, flags=re.S)   # drop verbatim titles
+    assert "$" not in scaffold
+    assert "co-PI" not in sec and "fund-cite" not in sec
 
 
-def test_aggregate_pages_no_fund_classes_and_dollars_only_in_rollup():
+AGGREGATE_PAGES = ["ywcc/computer-science/index.html", "ywcc/index.html", "index.html"]
+
+
+def test_aggregate_pages_no_dollars_no_fund_classes():
     for rel in AGGREGATE_PAGES:
         out = os.path.join(config.OUT_ROOT, rel)
-        assert os.path.exists(out), f"build the site first (Task 6/8): {rel}"
+        assert os.path.exists(out), f"build the site first: {rel}"
         html = open(out).read()
-        assert "fund-" not in html, f"profile-only .fund- class leaked into {rel}"
-        non_rollup = re.sub(r'<div class="rollup".*?</div>', "", html, flags=re.S)
-        assert "$" not in non_rollup, f"a '$' appears outside the aggregate rollup in {rel}"
+        assert "fund-" not in html          # profile-only classes never leak here
+        assert "$" not in html              # no dollars anywhere on aggregate pages
