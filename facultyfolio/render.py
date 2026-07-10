@@ -298,15 +298,17 @@ def render_profile(f: dict, photo_ref: str = None,
 
 
 def _rollup_view(r: dict | None) -> dict | None:
-    """Raw funding_rollup dict -> template-ready {parts:[($str, agency)], n, as_of}."""
-    if not r or (not r.get("nsf") and not r.get("nih")):
+    """Raw funding_rollup dict -> template-ready {parts:[(label, agency)], funded, as_of}."""
+    if not r or (not r.get("nsf_awards") and not r.get("nih_projects")):
         return None
     parts = []
-    if r["nsf"]:
-        parts.append((F.money(r["nsf"]), "NSF"))
-    if r["nih"]:
-        parts.append((F.money(r["nih"]), "NIH"))
-    return {"parts": parts, "n": r["n_funded"],
+    if r["nsf_awards"]:
+        n, a = r["nsf_awards"], r["nsf_active"]
+        parts.append((f'{n} award{"" if n == 1 else "s"} ({a} active)', "NSF"))
+    if r["nih_projects"]:
+        n, a = r["nih_projects"], r["nih_active"]
+        parts.append((f'{n} project{"" if n == 1 else "s"} ({a} active)', "NIH"))
+    return {"parts": parts, "funded": r["funded"],
             "as_of": F.month_year(r["as_of"]) if r.get("as_of") else ""}
 
 
