@@ -12,7 +12,7 @@ def test_leadership_dean_and_assoc_deans_names_and_titles():
     names = [a["name"] for a in lead["assoc_deans"]]
     assert names == ["David Bader", "Brook Wu"]          # normalized + surname-sorted
     titles = {a["name"]: a["title"] for a in lead["assoc_deans"]}
-    assert titles["Brook Wu"] == "Associate Dean for Academic Affairs"
+    assert titles["Brook Wu"] == "Associate Dean"        # shortened per owner 2026-07-09 (was "…for Academic Affairs")
     assert titles["David Bader"] == "Associate Dean"     # role title, not "Distinguished Professor"
     assert all(", " not in a["name"] for a in lead["assoc_deans"])   # never raw "Surname, Given"
 
