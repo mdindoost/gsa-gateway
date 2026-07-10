@@ -53,17 +53,29 @@ Replace dollar totals with **counts**, per agency, never combined:
   - `nsf_active` / `nih_active` = subset that is currently active (NSF `exp >= today`; NIH `fy_last >=
     fy_now`). Active is computed per award/project the same way as the profile chip.
   - `funded` = distinct persons with ≥1 PI-led award (an `at_njit` NSF award OR a contact NIH project).
+    **Definitional shift from v1** (v1 used `njit_total > 0`): live-equivalent today (verified: 0
+    zero-obligated at_njit NSF rows, 0 zero-cost contact NIH rows → 36 = 36), but the count-based
+    definition is the correct one for v2 and diverges only if a $0 PI-led award ever appears. Note it so
+    a reviewer diffing v1 doesn't read it as a count bug.
   - `as_of` = min `updated_at` among the contributing bags (kept from v1).
 - **Determinism:** `funding_rollup` and `funding_view` take an injectable `today` (default
   `datetime.date.today()`) so active-count tests are stable; the count tests pin `today=2026-07-10`.
   The total award/project + funded counts are date-independent and can be asserted unconditionally;
   the *active* subset asserts against the pinned date.
-- `_rollup_view` formats the count string (omit an agency clause when its count is 0; keep the funded
-  count; `None`/all-zero → no line).
+- `_rollup_view` maps the raw rollup dict to a template-ready view-model. **Contract:** return
+  `{parts: [(count_label, agency)], funded, as_of}` where each `parts` entry is a pre-rendered clause
+  string like `"59 awards (14 active)"` paired with its agency (`"NSF"`/`"NIH"`) — mirroring v1's
+  `parts` list shape so the template edit is minimal (v1 was `($amount, agency)`; v2 is
+  `(count_label, agency)`). Omit an agency's part when its count is 0; keep `funded`; `None`/all-zero
+  rollup → `None` (no line). `test_rollup_render.py` asserts this `parts` shape.
 
 ### 3. Honest-labeling constraints (updated)
-- **No `$` anywhere in the funding section or the rollup** — the v1 rule "`$` only inside `.rollup`"
-  becomes "**no `$` in any funding output at all**" (profile `#funding` section and `.rollup` line).
+- **No `$` in any funding output** — the v1 rule "`$` only inside `.rollup`" becomes "**no `$` in the
+  generated funding scaffolding**" (summaries, meta lines, year/FY ranges, rollup counts). **Scope the
+  invariant assert to the scaffolding, NOT the verbatim award title** (`.fund-t` text): 0 live NSF/NIH
+  titles contain `$`, but a future verbatim title could, and the verbatim hard line forbids stripping
+  it — so the test strips/excludes `.fund-t` title text before asserting no `$`, rather than failing on
+  authoritative title content.
 - NSF and NIH counts are shown **separately, never summed** into one number.
 - Funding still appears **only** in the profile `#funding` section and the aggregate `.rollup` line —
   never per-person on hero/glance/card/leaderboard-column.
@@ -81,9 +93,18 @@ Replace dollar totals with **counts**, per agency, never combined:
 - `facultyfolio/format.py` — `money` / `money_exact` become **unused** by funding; remove them and their
   test (`test_format_money.py`) unless another caller exists (grep first). `date_long`/`month_year`/
   `_MONTHS` stay (used by provenance + rollup as_of).
-- Tests — update `test_funding_view.py` (no amount/unit/copi; count summaries; NIH contact-only),
-  `test_funding_rollup.py` (count assertions vs live YWCC), `test_rollup_render.py` (count parts),
-  `test_funding_invariants.py` (no `$` anywhere in funding; NIH group has no co-PI chip).
+- Tests — update:
+  - `test_funding_view.py` (rows drop amount/unit/copi; count summaries with PI wording; NIH contact-only),
+  - `test_profile_funding_render.py` (**currently asserts `"obligated"`/`"costs"` — those words are
+    deleted; rewrite to assert the count-summary wording + gov-link presence + **no `$`** in the section**),
+  - `test_funding_rollup.py` (count assertions vs the live YWCC/CS/DS targets below),
+  - `test_rollup_render.py` (count `parts`, not dollar parts),
+  - `test_funding_invariants.py` (no `$` anywhere in the funding section/rollup — see §3; NIH group has no
+    co-PI chip).
+  - **RETAINED UNCHANGED (do NOT delete):** `test_db_funding.py` and the
+    `test_njit_total_equals_sum_of_contributing_rows` tripwire in `test_funding_invariants.py`. The
+    `attrs.funding` bags (including `njit_total`) are untouched by v2 — the number is simply never
+    displayed — so the enrichment-drift tripwire stays valid and must survive the dollar-display removal.
 
 ## Live-data expectations (for the new count tests — computed 2026-07-10, today=2026-07-10)
 Concrete targets the tests assert (re-derive at build time; if they drift, the data changed):
