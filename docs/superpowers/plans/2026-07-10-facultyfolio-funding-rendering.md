@@ -39,17 +39,29 @@ In `scripts/funding_enrich.py`, in `nih_match`, change the `include_fields` list
                            "AwardAmount", "FiscalYear", "ApplId"],
 ```
 
-Then, in the per-project loop that builds `cores`, track the appl_id of the highest fiscal year. Replace the `cores.setdefault(...)` block's body so each core also records `appl_id`/`appl_fy`:
+Then make TWO surgical additive edits to the per-project loop that builds `cores` — do **not** rewrite the whole loop body (the `for pi in mine … c["pids"].add(...)` homonym-gate lines and the `if is_contact: c["role"] = "contact"` promotion line MUST stay unchanged).
+
+Edit (a): add two keys to the `cores.setdefault(...)` default dict:
 
 ```python
-        core = p.get("core_project_num") or "?"
         c = cores.setdefault(core, {"total": 0, "title": p.get("project_title"),
                                     "role": "contact" if is_contact else "co_pi",
                                     "fys": set(), "pids": set(),
                                     "appl_id": None, "appl_fy": -1})
-        c["total"] += _amt(p.get("award_amount"))
-        fy = int(p["fiscal_year"]) if p.get("fiscal_year") else None
-        if fy is not None:
+```
+
+Edit (b): replace ONLY the two-line fiscal-year block
+
+```python
+        if p.get("fiscal_year"):
+            c["fys"].add(int(p["fiscal_year"]))
+```
+
+with a version that also records the appl_id of the highest fiscal year (everything after it — the `for pi in mine` loop and the `if is_contact` promotion — is left exactly as-is):
+
+```python
+        if p.get("fiscal_year"):
+            fy = int(p["fiscal_year"])
             c["fys"].add(fy)
             if fy > c["appl_fy"] and p.get("appl_id"):
                 c["appl_fy"] = fy
@@ -223,7 +235,7 @@ from facultyfolio import db
 
 
 def test_get_faculty_exposes_funding_for_funded_person():
-    f = db.get_faculty("wei")            # Zhi Wei (people.njit.edu/profile/wei)
+    f = db.get_faculty("zhiwei")         # Zhi Wei (people.njit.edu/profile/zhiwei)
     assert "nsf" in f["funding"] or "nih" in f["funding"]
     assert f["funding"]["nih"]["njit_total"] == 1653383
 
@@ -447,7 +459,7 @@ def funding_view(f: dict, today: datetime.date = None) -> dict | None:
                     "title": p["title"],
                     "url": _NIH_LINK.format(p["appl_id"]) if p.get("appl_id") else None,
                     "meta": f'NIH {p["core"]}',
-                    "years": f'FY{p["fy_first"]} – FY{p["fy_last"]}',
+                    "years": f'FY{p["fy_first"]} – FY{p["fy_last"]}' if p.get("fy_first") else "—",
                     "active": bool(isinstance(p.get("fy_last"), int) and p["fy_last"] >= fy_now),
                     "copi": p["role"] == "co_pi",
                 } for p in ordered],
@@ -497,7 +509,7 @@ from facultyfolio import db, render
 
 
 def test_funded_profile_has_funding_section():
-    f = db.get_faculty("wei")
+    f = db.get_faculty("zhiwei")
     html = render.render_profile(f)
     assert 'class="eyebrow">Sponsored research' in html
     assert "Research funding" in html
@@ -507,10 +519,20 @@ def test_funded_profile_has_funding_section():
 
 def test_unfunded_profile_has_no_funding_section():
     # find a person with no funding; Selected work etc. still render
-    f = db.get_faculty("wei")
+    f = db.get_faculty("zhiwei")
     f = dict(f); f["funding"] = {}
     html = render.render_profile(f)
     assert "Research funding" not in html
+
+
+def test_funded_but_no_scholar_still_renders_funding():
+    # B2 guard: funding must render even when the Scholar/pubs block is absent.
+    f = db.get_faculty("calvin")         # funded, no Scholar block (verify slug at build time)
+    if not f.get("funding"):
+        import pytest; pytest.skip("fixture slug not funded; pick another no-Scholar funded slug")
+    f = dict(f); f["scholar"] = None
+    html = render.render_profile(f)
+    assert "Research funding" in html
 ```
 
 - [ ] **Step 2: Run to verify it fails.**
@@ -528,7 +550,7 @@ In `facultyfolio/render.py`, `render_profile`, add to the `ctx` dict (near `"sch
 
 - [ ] **Step 4: Add the template section.**
 
-In `facultyfolio/templates/profile.html`, immediately AFTER the `#pubs` section's closing `</section>` and BEFORE the "Awards & honors" section, insert:
+In `facultyfolio/templates/profile.html`, insert the funding section **between** the `{% endif %}` that closes the Publications block (line 141) and the Recognition `<section>` (line 143). **Do NOT put it inside the `{% if scholar and (top_cited or newest) %}` … `{% endif %}` block** — 3 funded faculty have no Scholar (`calvin`, `sohna`, `ss797`) and their funding would silently vanish. The section is guarded by its own `{% if funding %}`:
 
 ```html
       {% if funding %}
@@ -676,7 +698,7 @@ def funding_rollup(org_ids):
     if nsf_t == 0 and nih_t == 0:
         return None
     n_funded = sum(1 for v in seen.values() if v[0] > 0 or v[1] > 0)
-    all_dates = [d for v in seen.values() for d in v[2]]
+    all_dates = [d for v in seen.values() if v[0] > 0 or v[1] > 0 for d in v[2]]  # counted bags only
     return {"nsf": nsf_t, "nih": nih_t, "n_funded": n_funded,
             "as_of": min(all_dates) if all_dates else None}
 ```
@@ -784,7 +806,7 @@ In `facultyfolio/templates/hub.html`, under the existing rank-rollup/stats block
         {% endif %}
 ```
 
-In `facultyfolio/templates/leaderboard.html`, under the `lb-glance` strip, add the identical block.
+In `facultyfolio/templates/leaderboard.html`, immediately after the `{{ glance(stats) }}` call (leaderboard.html line 62; the `lb-glance` markup lives inside that macro / `_glance.html`), add the identical block. (In `hub.html` the anchor is the `{{ glance(stats) }}` at line 20 — put the block right after it, per Step 5.)
 
 - [ ] **Step 6: Add `.rollup` CSS.**
 
@@ -853,16 +875,16 @@ git commit -m "feat(facultyfolio): funding rollup line on hubs + dept leaderboar
 Create `facultyfolio/tests/test_funding_invariants.py`:
 
 ```python
-import json, sqlite3
-from facultyfolio import db, render
+import json, os, re
+from facultyfolio import db, render, config
 
 
 def _funded_slugs():
-    c = sqlite3.connect("file:gsa_gateway.db?mode=ro", uri=True)
+    c = db.connect()
     rows = c.execute("SELECT key, attrs FROM nodes WHERE type='Person' AND is_active=1 "
                      "AND json_extract(attrs,'$.funding') IS NOT NULL").fetchall()
     c.close()
-    return [(k.split("/")[-1], json.loads(a)) for k, a in rows]
+    return [(r["key"].split("/")[-1], json.loads(r["attrs"])) for r in rows]
 
 
 def test_njit_total_equals_sum_of_contributing_rows():
@@ -878,7 +900,7 @@ def test_njit_total_equals_sum_of_contributing_rows():
 
 def test_no_dollars_or_fund_classes_on_person_card_or_hero():
     # person-card macro (leaderboard/hub rows) and the profile hero must carry no funding.
-    f = db.get_faculty("wei")               # a funded person
+    f = db.get_faculty("zhiwei")            # a funded person
     html = render.render_profile(f)
     # the hero/aside is the left identity card; funding lives only in the #funding section.
     hero = html.split('id="funding"')[0]    # everything before the funding section
@@ -887,23 +909,29 @@ def test_no_dollars_or_fund_classes_on_person_card_or_hero():
     assert "rollup" not in hero
 
 
-def test_leaderboard_page_has_no_fund_classes_and_dollars_only_in_rollup():
-    import subprocess, os
-    out = "/home/md724/Faculty-Folio/ywcc/computer-science/index.html"
-    assert os.path.exists(out), "build the site first (Task 6 step 8)"
-    html = open(out).read()
-    assert "fund-" not in html                       # profile-only classes never leak here
-    # every '$' must sit inside a .rollup element
-    import re
-    non_rollup = re.sub(r'<div class="rollup".*?</div>', "", html, flags=re.S)
-    assert "$" not in non_rollup, "a dollar sign appears outside the aggregate rollup"
+# Every aggregate page: no per-person .fund- classes leak, and every '$' sits inside a .rollup.
+AGGREGATE_PAGES = [
+    "ywcc/computer-science/index.html",     # dept leaderboard
+    "ywcc/index.html",                      # college hub
+    "index.html",                           # NJIT root hub
+]
+
+
+def test_aggregate_pages_no_fund_classes_and_dollars_only_in_rollup():
+    for rel in AGGREGATE_PAGES:
+        out = os.path.join(config.OUT_ROOT, rel)
+        assert os.path.exists(out), f"build the site first (Task 6/8): {rel}"
+        html = open(out).read()
+        assert "fund-" not in html, f"profile-only .fund- class leaked into {rel}"
+        non_rollup = re.sub(r'<div class="rollup".*?</div>', "", html, flags=re.S)
+        assert "$" not in non_rollup, f"a '$' appears outside the aggregate rollup in {rel}"
 ```
 
 - [ ] **Step 2: Run to verify (build first if needed).**
 
-Run:
+Run (full build so the root `index.html` + all hubs exist):
 ```bash
-python3 -m facultyfolio.build --college ywcc >/dev/null 2>&1
+python3 -m facultyfolio.build >/dev/null 2>&1
 python3 -m pytest facultyfolio/tests/test_funding_invariants.py -q
 ```
 Expected: PASS (3 passed).
@@ -933,7 +961,7 @@ Expected: `FacultyFolio: built N faculty ...`, exit 0.
 
 - [ ] **Step 2: Spot-check the rendered pages against the approved mockup.**
 
-Open in a browser (or grep): `/home/md724/Faculty-Folio/p/wei.html` (both groups), `p/js2852.html`/Oria's profile (NSF-only), the YWCC hub, and a CS leaderboard. Confirm: NSF above NIH, unit words, Active chips, one NSF + one NIH link resolve, rollup lines present.
+Open in a browser (or grep) under `config.OUT_ROOT`: `p/zhiwei.html` (both groups), `p/oria.html` (NSF-only, large), `p/perl.html` (NIH), the YWCC hub `ywcc/index.html`, the root `index.html`, and a CS leaderboard `ywcc/computer-science/index.html`. Confirm: NSF above NIH, unit words, Active chips, one NSF + one NIH link resolve, rollup lines present.
 
 - [ ] **Step 3: Deploy (owner-gated — confirm before pushing Pages).**
 
