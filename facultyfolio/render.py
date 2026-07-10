@@ -177,8 +177,8 @@ def _year(mdy):
 
 
 def funding_view(f: dict, today: datetime.date = None) -> dict | None:
-    """Profile 'Research funding' view-model. NSF group then NIH group, each
-    summary + recency-ordered rows. None when there are no contributing rows."""
+    """Profile 'Research funding' view-model — PI-led awards by NAME, no dollars.
+    NSF (lead-PI) then NIH (contact-PI only). None when there are no PI-led awards."""
     fund = f.get("funding") or {}
     today = today or datetime.date.today()
     fy_now = today.year + 1 if today.month >= 10 else today.year
@@ -188,60 +188,47 @@ def funding_view(f: dict, today: datetime.date = None) -> dict | None:
     if nsf:
         rows = [a for a in nsf.get("awards", []) if a.get("at_njit")]
         if rows:
-            updated.append(nsf["updated_at"])
-            rows = sorted(rows, key=lambda a: (_exp_date(a["exp"]) or datetime.date.min,
-                                               a["obligated"]), reverse=True)
+            updated.append(nsf.get("updated_at"))
+            rows = sorted(rows, key=lambda a: (_exp_date(a["exp"]) or datetime.date.min), reverse=True)
             n = len(rows)
             groups.append({
-                "agency": "NSF awards",
-                "summary": f'{F.money_exact(nsf["njit_total"])} obligated · {n} award{"" if n == 1 else "s"}',
+                "agency": "NSF",
+                "summary": f'{n} award{"" if n == 1 else "s"} · as Principal Investigator',
                 "rows": [{
-                    "amount": F.money(a["obligated"]), "unit": "obligated",
                     "title": a["title"], "url": _NSF_LINK.format(a["id"]),
                     "meta": f'NSF {a["id"]}',
                     "years": f'{_year(a["start"])} – {_year(a["exp"])}',
                     "active": bool(_exp_date(a["exp"]) and _exp_date(a["exp"]) >= today),
-                    "copi": False,
                 } for a in rows],
             })
 
     nih = fund.get("nih")
     if nih:
-        projects = nih.get("projects", [])
-        contact = [p for p in projects if p.get("role") == "contact"]
-        copi = [p for p in projects if p.get("role") == "co_pi"]
-        if contact or copi:
-            updated.append(nih["updated_at"])
-            key = lambda p: (p.get("fy_last") or 0, p.get("total") or 0)
-            ordered = sorted(contact, key=key, reverse=True) + sorted(copi, key=key, reverse=True)
-            if contact:
-                nc = len(contact)
-                summary = (f'{F.money_exact(nih["njit_total"])} project costs · '
-                           f'{nc} project{"" if nc == 1 else "s"} (as contact PI)')
-            else:
-                ncp = len(copi)
-                summary = f'co-investigator on {ncp} project{"" if ncp == 1 else "s"}'
+        contact = [p for p in nih.get("projects", []) if p.get("role") == "contact"]
+        if contact:
+            updated.append(nih.get("updated_at"))
+            contact = sorted(contact, key=lambda p: (p.get("fy_last") or 0), reverse=True)
+            m = len(contact)
             groups.append({
-                "agency": "NIH projects", "summary": summary,
+                "agency": "NIH",
+                "summary": f'{m} project{"" if m == 1 else "s"} · as Contact PI',
                 "rows": [{
-                    "amount": F.money(p["total"]),
-                    "unit": "costs" if p["role"] == "contact" else "project",
                     "title": p["title"],
                     "url": _NIH_LINK.format(p["appl_id"]) if p.get("appl_id") else None,
                     "meta": f'NIH {p["core"]}',
                     "years": f'FY{p["fy_first"]} – FY{p["fy_last"]}' if p.get("fy_first") else "—",
                     "active": bool(isinstance(p.get("fy_last"), int) and p["fy_last"] >= fy_now),
-                    "copi": p["role"] == "co_pi",
-                } for p in ordered],
+                } for p in contact],
             })
 
     if not groups:
         return None
-    present = [g["agency"].split()[0] for g in groups]     # ["NSF"], ["NIH"], or both
-    src = " and ".join(present)
-    as_of = min(u for u in updated if u)                   # YYYY-MM-DD sorts chronologically
-    return {"groups": groups,
-            "provenance": f"From {src} public award records · as of {F.date_long(as_of)}"}
+    src = " and ".join(g["agency"] for g in groups)
+    dates = [u for u in updated if u]
+    prov = f"From {src} public award records"
+    if dates:
+        prov += f" · as of {F.date_long(min(dates))}"
+    return {"groups": groups, "provenance": prov}
 
 
 def _scholar_ctx(sch: dict) -> dict:
