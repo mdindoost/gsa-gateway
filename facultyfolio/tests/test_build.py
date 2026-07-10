@@ -55,3 +55,17 @@ def test_idempotent(tmp_path, monkeypatch):
     build.build_all(str(tmp_path))
     h2 = digest()
     assert h1 == h2                    # byte-identical rebuild
+
+
+def test_college_hub_has_stats_and_leadership(tmp_path, monkeypatch):
+    from facultyfolio import build
+    monkeypatch.setattr(build, "photos_ensure", lambda slug, *a, **k: f"monogram:{slug[:2].upper()}")
+    build.build_site(scope={"college": "ywcc"}, out_root=str(tmp_path))
+    html = (tmp_path / "ywcc" / "index.html").read_text()
+    assert "119" in html and "3 · Department Chair" in html          # rollup
+    assert "Jamie Payton" in html                                    # dean
+    assert "David Bader" in html and "Brook Wu" in html              # assoc deans (post-fix)
+    assert "Vincent Oria" in html and "Department Chair, Computer Science" in html
+    assert "p/bader.html" in html and "p/oria.html" in html          # leaders linked
+    # ordering: department cards above the Dean section
+    assert html.index("computer-science/index.html") < html.index("Jamie Payton")

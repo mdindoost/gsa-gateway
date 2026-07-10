@@ -186,3 +186,36 @@ def ranked_list(org_id) -> list:
     for i, r in enumerate(scored, 1):
         r["rank"] = i
     return scored
+
+
+def college_rollup(college_node) -> dict:
+    """College-wide rank rollup: concat every in-scope roster, rank ONCE.
+
+    Org set = department children + the college node itself (mirrors db.college_coverage,
+    catching faculty homed directly on the college org, e.g. a deptless college). Reusing
+    by_rank on the combined list makes ladder order correct by construction — no merge logic.
+    """
+    org_ids = [d["node_id"] for d in db.dept_orgs_of_college(college_node)] + [college_node]
+    combined = [row for oid in org_ids for row in roster(oid)]
+    slugs = {r["slug"] for r in combined}
+    assert len(slugs) == len(combined), (
+        f"college_rollup: {len(combined) - len(slugs)} duplicate-home person(s) "
+        "(multi-home producer regression) — the faculty headcount would inflate")
+    return {
+        "total": len(combined),
+        "with_scholar": sum(1 for r in combined if r["citations"] is not None),
+        "groups": [(g["label"], len(g["members"])) for g in by_rank(combined)],
+    }
+
+
+def college_chairs(college_node) -> list:
+    """Every department chair (the rank_index==0 group members) tagged with dept_name.
+    0 chairs in a dept -> none contributed; >1 -> all, surname-sorted."""
+    out = []
+    for d in db.dept_orgs_of_college(college_node):
+        chairs = [r for r in roster(d["node_id"]) if r["rank_index"] == 0]
+        for c in sorted(chairs, key=lambda r: (_surname(r["name"]), (r["name"] or "").casefold(), r["slug"])):
+            row = dict(c)
+            row["dept_name"] = d["name"]
+            out.append(row)
+    return out

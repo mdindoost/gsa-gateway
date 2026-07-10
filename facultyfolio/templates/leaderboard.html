@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_person_card.html" import photo_thumb, row_dir %}
+{% from "_glance.html" import glance %}
 {% block title %}{{ org_name }} — FacultyFolio{% endblock %}
 
 {# Spec B: the view switch + search live in a light STICKY toolbar under the nav,
@@ -18,26 +20,6 @@
     </div>
   </div>
 {% endblock %}
-
-{%- macro photo_thumb(row, asset_root) -%}
-  {%- if row.photo_ref.startswith('monogram:') -%}
-  <svg class="lb-photo" viewBox="0 0 40 40" role="img" aria-label="{{ row.name }}">
-    <rect width="40" height="40" rx="20" fill="var(--hair)"/>
-    <text x="20" y="26" text-anchor="middle" font-family="var(--f-display)" font-size="15" fill="var(--mute)">{{ row.photo_ref[9:] }}</text>
-  </svg>
-  {%- else -%}
-  <img class="lb-photo" src="{{ asset_root }}{{ row.photo_ref }}" alt="{{ row.name }}" loading="lazy">
-  {%- endif -%}
-{%- endmacro -%}
-
-{%- macro row_dir(row, asset_root) -%}
-<a class="lb-row" href="{{ asset_root }}p/{{ row.slug }}.html"
-   data-name="{{ row.name|lower }}" data-title="{{ row.title|lower }}" data-areas="{{ row.data_areas|lower }}">
-  {{ photo_thumb(row, asset_root) }}
-  <span class="lb-id"><span class="lb-name">{{ row.name }}</span>{% if row.title %}<span class="lb-title">{{ row.title }}</span>{% endif %}</span>
-  {%- if row.areas %}<span class="lb-areas">{% for a in row.areas %}<span class="chip">{{ a }}</span>{% endfor %}</span>{% endif -%}
-</a>
-{%- endmacro -%}
 
 {%- macro row_cite(row, asset_root) -%}
 <a class="lb-row{% if not row.has_scholar %} no-scholar{% endif %}" href="{{ asset_root }}p/{{ row.slug }}.html"
@@ -77,11 +59,7 @@
       <h2>{{ org_name }}</h2>
       <div class="rule"></div>
 
-      <div class="lb-glance">
-        <span class="glance-hd"><strong>{{ stats.total }}</strong> faculty</span>
-        <span class="glance-hd"><strong>{{ stats.with_scholar }}</strong> on Google Scholar</span>
-        {% for label, count in stats.groups %}<span class="glance-g">{{ count }} · {{ label }}</span>{% endfor %}
-      </div>
+      {{ glance(stats) }}
 
       <div class="lb-panel" data-view="rank"{% if default_view != 'rank' %} hidden{% endif %}>
         {% for g in rank_groups %}

@@ -1,0 +1,20 @@
+{#- Shared person-card macros: used by the department leaderboard AND the college hub. -#}
+{%- macro photo_thumb(row, asset_root) -%}
+  {%- if row.photo_ref.startswith('monogram:') -%}
+  <svg class="lb-photo" viewBox="0 0 40 40" role="img" aria-label="{{ row.name }}">
+    <rect width="40" height="40" rx="20" fill="var(--hair)"/>
+    <text x="20" y="26" text-anchor="middle" font-family="var(--f-display)" font-size="15" fill="var(--mute)">{{ row.photo_ref[9:] }}</text>
+  </svg>
+  {%- else -%}
+  <img class="lb-photo" src="{{ asset_root }}{{ row.photo_ref }}" alt="{{ row.name }}" loading="lazy">
+  {%- endif -%}
+{%- endmacro -%}
+
+{%- macro row_dir(row, asset_root) -%}
+<a class="lb-row" href="{{ asset_root }}p/{{ row.slug }}.html"
+   data-name="{{ row.name|lower }}" data-title="{{ row.title|lower }}" data-areas="{{ row.data_areas|lower }}">
+  {{ photo_thumb(row, asset_root) }}
+  <span class="lb-id"><span class="lb-name">{{ row.name }}</span>{% if row.title %}<span class="lb-title">{{ row.title }}</span>{% endif %}</span>
+  {%- if row.areas %}<span class="lb-areas">{% for a in row.areas %}<span class="chip">{{ a }}</span>{% endfor %}</span>{% endif -%}
+</a>
+{%- endmacro -%}
