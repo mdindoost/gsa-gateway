@@ -97,13 +97,40 @@ def about_rows(f: dict, mode: str) -> list:
     return out
 
 
-def _appointment(f: dict) -> str:
-    lead = f"{f['title']}, {f['home_dept']}" if f.get("title") else (f.get("home_dept") or "")
+def _org_suffix(title: str, org: str) -> str:
+    """' · <org>' unless the verbatim title already names the org (casefold substring)."""
+    if not org:
+        return ""
+    return "" if org.lower() in (title or "").lower() else f" · {org}"
+
+
+def _visible_leadership(f: dict) -> list:
+    """Leadership entries to SHOW: drop any whose title is already contained in the home title
+    (casefold substring) — else Payton ('Dean, Ying Wu College of Computing' home) and Wu
+    ('…Associate Dean for Academic Affairs' home) would repeat their role. SELECTION, not
+    rewording. Shared by the header line AND appointment_lines so they never disagree."""
+    home = (f.get("title") or "").lower()
+    return [L for L in (f.get("leadership") or []) if L["title"].lower() not in home]
+
+
+def appointment_lines(f: dict) -> list:
+    """Structured appointment list, tiers ordered home → leadership → joint → affiliated.
+    Each item: {"text": str, "label": str}. No title repeats: home carries rank+dept; leadership
+    carries the role title (+org unless embedded); joint/affiliated carry ORG ONLY (no title).
+    A single-line list drops the (noise) tier label."""
+    out = []
+    if f.get("home_dept"):
+        rank = f"{f['title']} · {f['home_dept']}" if f.get("title") else f["home_dept"]
+        out.append({"text": rank, "label": "home"})
+    for L in _visible_leadership(f):
+        out.append({"text": f"{L['title']}{_org_suffix(L['title'], L['org'])}", "label": "leadership"})
     if f.get("joint_dept"):
-        lead = f"{lead} — joint appointment in {f['joint_dept']}"
+        out.append({"text": f"Joint appointment · {f['joint_dept']}", "label": "joint"})
     for aff in (f.get("affiliated_depts") or []):
-        lead = f"{lead} — affiliated with {aff}"
-    return f"{lead}, {f['college']}." if f.get("college") else f"{lead}."
+        out.append({"text": f"Affiliated · {aff}", "label": "affiliated"})
+    if len(out) == 1:
+        out[0] = {"text": out[0]["text"], "label": ""}
+    return out
 
 
 def _contact(f: dict):
@@ -172,7 +199,8 @@ def render_profile(f: dict, photo_ref: str = None,
         "social_icons": social_icons(f, config.flag("SOCIAL_ICONS")),
         "photo_ref": photo_ref,
         "areas": f.get("areas") or [],
-        "appointment": _appointment(f),
+        "leadership": _visible_leadership(f),
+        "appointment_lines": appointment_lines(f),
         "about_rows": about_rows(f, config.flag("ABOUT_ROWS")),
         "awards": F.format_awards(f.get("awards_raw")),
         "service": F.format_service(f.get("service_raw") or ""),

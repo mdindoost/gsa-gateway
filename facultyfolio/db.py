@@ -26,11 +26,17 @@ def _surname(name: str) -> str:
     return parts[-1].casefold() if parts else ""
 
 
+_ROLE_WORDS = ("dean", "chair", "director", "head", "provost", "president")
+
+
 def _role_title(titles: list) -> str:
-    """The role title from a (rank + role) titles list: the entry containing 'dean';
-    else the last entry. We SELECT which listed title to show, never reword it."""
+    """The role/leadership title from a (rank + role) titles list: the entry containing a role
+    word; else the last entry. SELECTION only — we choose which stored title to show, never
+    reword it. A compound single string ('Professor and Chair, Biomedical Engineering') contains
+    a role word and is returned whole (verbatim)."""
     for t in titles or []:
-        if "dean" in t.lower():
+        low = t.lower()
+        if any(w in low for w in _ROLE_WORDS):
             return t
     return (titles or [""])[-1]
 
@@ -131,6 +137,7 @@ def get_faculty(id_or_slug) -> dict:
         # roles
         home_dept = joint_dept = title = home_dept_segment = None
         affiliated_depts = []
+        leadership = []
         for e in conn.execute(
             "SELECT * FROM edges WHERE src_id=? AND type='has_role' AND is_active=1 ORDER BY id",
             (node["id"],),
@@ -148,6 +155,12 @@ def get_faculty(id_or_slug) -> dict:
                 nm = _org_name(conn, e["dst_id"])
                 if nm and nm not in affiliated_depts:
                     affiliated_depts.append(nm)
+            elif e["category"] == "admin":
+                role = _role_title(titles)
+                if role:
+                    short = _org_name(conn, e["dst_id"])
+                    org = config.COLLEGE_NAMES.get(short, short)   # expand acronym (as _college_of)
+                    leadership.append({"title": role, "org": org})
         college = college if home_dept else None
 
         # research areas — active edges, edge-id order, mechanical near-dup collapse
@@ -191,6 +204,7 @@ def get_faculty(id_or_slug) -> dict:
             "home_dept_segment": home_dept_segment,
             "joint_dept": joint_dept,
             "affiliated_depts": affiliated_depts,
+            "leadership": leadership,
             "college": college,
             "email": attrs.get("email"),
             "phone": attrs.get("phone"),

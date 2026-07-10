@@ -39,6 +39,7 @@
       {% if title %}<p class="title">{{ title }}</p>{% endif %}
       <p class="dept">
         {% if dept_url %}<a href="{{ dept_url }}">{{ home_dept }}</a>{% else %}{{ home_dept }}{% endif %}
+        {% for L in leadership %}<span class="uni">{{ L.title }}{% if L.org and L.org|lower not in L.title|lower %} · {{ L.org }}{% endif %}</span>{% endfor %}
         {% if joint_dept %}<span class="uni">Joint appointment · {{ joint_dept }}</span>{% endif %}
         {% if college %}<span class="uni">{{ college }} · NJIT</span>{% endif %}
       </p>
@@ -67,7 +68,7 @@
         <h2>Background</h2>
         <div class="rule"></div>
         <div class="about">
-          <div class="about-row"><span class="about-k">Appointment</span><span class="about-v">{{ appointment }}</span></div>
+          <div class="about-row"><span class="about-k">Appointment</span><span class="about-v">{% for a in appointment_lines %}<span class="appt-line">{{ a.text }}{% if a.label %} <span class="appt-tier">{{ a.label }}</span>{% endif %}</span>{% endfor %}</span></div>
           {% for r in about_rows %}<div class="about-row{% if not r.present %} off{% endif %}"><span class="about-k">{{ r.label }}</span><span class="about-v">{{ r.value }}</span></div>{% endfor %}
         </div>
         <p class="about-src">{{ about_source }}</p>
