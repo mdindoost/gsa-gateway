@@ -80,19 +80,21 @@ def test_profile_no_office_shows_not_listed_fixed():
 
 
 def test_appointment_includes_affiliated():
+    # new structured stacked list (2026-07-10): org-only joint/affiliated lines, tier-labeled
     f = {"name": "Guiling Wang", "title": "Distinguished Professor",
-         "home_dept": "Computer Science", "joint_dept": "Data Science",
+         "home_dept": "Computer Science", "joint_dept": "Data Science", "leadership": [],
          "affiliated_depts": ["Martin Tuchman School of Management (MTSM)"],
          "college": "Ying Wu College of Computing"}
     html = render.render_profile(f)
-    assert "joint appointment in Data Science" in html
-    assert "affiliated with Martin Tuchman School of Management (MTSM)" in html
+    assert "Joint appointment · Data Science" in html
+    assert "Affiliated · Martin Tuchman School of Management (MTSM)" in html
 
 
 def test_appointment_no_affiliated_unchanged():
-    # a single-home person (Koutis) renders with no dangling "affiliated"
+    # a single-home person (Koutis) renders exactly one appointment line, no "Affiliated"
     html = render.render_profile(db.get_faculty(33))
-    assert "affiliated with" not in html
+    assert "Affiliated ·" not in html
+    assert "Joint appointment ·" not in html
 
 
 def test_profile_teaching_interests_row():
@@ -392,3 +394,49 @@ def test_profile_recent_trend_steady_for_real_decliner_never_declining():
     assert 'Recent trend' in html and 'steady' in html
     assert 'declin' not in html.lower() and 'falling' not in html.lower()
     assert '%/yr' not in html.split('Recent trend', 1)[1].split('</p>', 1)[0]  # no number for a non-riser
+
+
+# --- Roles/Appointment restructure (2026-07-10) ---
+def _f(title="Associate Professor", home="Computer Science", leadership=None,
+       joint=None, affiliated=None, college="Ying Wu College of Computing"):
+    return {"title": title, "home_dept": home, "leadership": leadership or [],
+            "joint_dept": joint, "affiliated_depts": affiliated or [], "college": college}
+
+
+def test_appointment_lines_single_role_one_line_no_label():
+    lines = render.appointment_lines(_f())
+    assert lines == [{"text": "Associate Professor · Computer Science", "label": ""}]
+
+
+def test_appointment_lines_all_tiers_ordered_no_repeated_title():
+    f = _f(title="Distinguished Professor", home="Data Science",
+           leadership=[{"title": "Associate Dean", "org": "Ying Wu College of Computing"}],
+           joint="Computer Science")
+    lines = render.appointment_lines(f)
+    assert [l["label"] for l in lines] == ["home", "leadership", "joint"]
+    assert lines[0]["text"] == "Distinguished Professor · Data Science"
+    assert lines[1]["text"] == "Associate Dean · Ying Wu College of Computing"
+    assert lines[2]["text"] == "Joint appointment · Computer Science"   # joint carries NO title
+
+
+def test_visible_leadership_suppresses_role_already_in_home_title():
+    # Payton: home title already states the deanship -> leadership line suppressed
+    payton = _f(title="Dean, Ying Wu College of Computing", home="Computer Science",
+                leadership=[{"title": "Dean, Ying Wu College of Computing", "org": "Ying Wu College of Computing"}])
+    assert render._visible_leadership(payton) == []
+    # Wu: "Associate Dean" is contained in her home title -> suppressed
+    wu = _f(title="Associate Professor, Associate Dean for Academic Affairs", home="Informatics",
+            leadership=[{"title": "Associate Dean", "org": "Ying Wu College of Computing"}])
+    assert render._visible_leadership(wu) == []
+    # Bader: role not in home title -> kept
+    bader = _f(title="Distinguished Professor", home="Data Science",
+               leadership=[{"title": "Associate Dean", "org": "Ying Wu College of Computing"}])
+    assert render._visible_leadership(bader) == bader["leadership"]
+
+
+def test_org_suffix_suppressed_when_title_contains_org():
+    lines = render.appointment_lines(_f(
+        title="Distinguished Professor", home="Data Science",
+        leadership=[{"title": "Dean, Ying Wu College of Computing", "org": "Ying Wu College of Computing"}]))
+    # no "· Ying Wu College…" appended because the title already names it
+    assert lines[1]["text"] == "Dean, Ying Wu College of Computing"
