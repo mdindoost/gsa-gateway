@@ -122,11 +122,18 @@ which passes none — is unaffected):
 - `leadership` — `{"dean": [rows], "assoc_deans": [rows], "chairs": [rows]}` (template rows).
 
 `hub.html` renders, between the title and the existing `hub-cards` block, in order:
-1. a **stats** block: `"{total} faculty · {with_scholar} on Google Scholar"` then the rank
-   rollup as chips (`[{count} {label}]` each);
+1. a **stats** block rendered with the **exact same markup the department page uses** — the
+   `glance` block (`leaderboard.html:79-83`): two `.glance-hd` spans (`{total}` faculty,
+   `{with_scholar}` on Google Scholar) then one `.glance-g` span per rank group rendered
+   `{count} · {label}`. This consumes the identical `stats` dict shape
+   (`{total, with_scholar, groups}`) that `rank.college_rollup` produces, so the college
+   rollup looks 1:1 identical to a department's rank stats. The `glance` block is extracted
+   to a shared partial (`templates/_glance.html`, `{% import %}`ed by both templates) so there
+   is one source of truth and no drift; the department output stays byte-identical (golden test).
 2. a **Dean** section (label + card[s]) — omitted if empty;
 3. an **Associate Deans** section — omitted if empty;
-4. a **Department Chairs** section — omitted if empty;
+4. a **Department Chairs** section — each card labeled with its **department**
+   ("Computer Science — Vincent Oria"); omitted if empty;
 then the existing department cards. All new blocks are guarded by `{% if %}` so a hub without
 leadership/stats (e.g. the NJIT hub) renders exactly as today.
 
@@ -162,9 +169,10 @@ New unit tests (pytest, alongside the existing FacultyFolio suite):
 - `db.college_leadership`: classifies dean vs associate dean by title; empty when no admin
   edges; deterministic order.
 - Chair derivation: one chair per dept from the `rank_index == 0` group; deptless-college safe.
-- `render_hub`: with `stats`+`leadership`, the page contains the coverage line, one chip per
-  rank group in ladder order, a Dean/Associate Deans/Chairs section each with a linked person
-  card; **without** them (NJIT hub call) output is byte-identical to today (golden test).
+- `render_hub`: with `stats`+`leadership`, the page contains the `glance` block (coverage line
+  + one `.glance-g` `{count} · {label}` span per rank group in ladder order), a Dean/Associate
+  Deans/Chairs section each with a linked person card (chairs labeled by department); **without**
+  them (NJIT hub call) output is byte-identical to today (golden test).
 - Macro-extraction refactor: department leaderboard output byte-identical (existing goldens).
 
 Manual: full build, eyeball `/ywcc/`, confirm links resolve and photos render.
@@ -179,11 +187,10 @@ Manual: full build, eyeball `/ywcc/`, confirm links resolve and photos render.
 - [ ] Person-card macro shared between leaderboard + hub (no output drift)
 - [ ] NJIT hub unaffected (byte-identical)
 
-## 8. Open questions
+## 8. Resolved decisions (owner, 2026-07-09)
 
-1. **Chair label** — under the "Department Chairs" section, label each card with its
-   department ("Computer Science — Vincent Oria") or leave the person card's own title
-   ("Professor, Department Chair")? Recommend showing the department, since the section groups
-   across departments. (Design assumes the person card carries `dept_name` for this.)
-2. **Chip vs list for the rollup** — chips (owner's stated preference) vs the dept page's
-   `"N · Label"` stacked list. Design assumes **chips**; trivial to switch.
+1. **Chair label** — each chair card in the "Department Chairs" section is labeled with its
+   **department** ("Computer Science — Vincent Oria"). The chair row carries `dept_name`.
+2. **Rollup presentation** — render the college rollup with the **exact same `glance` markup
+   the department pages use** (`{count} · {label}` per rank group). No separate design; "look
+   at the department, do the same." Extracted to a shared partial so there is one source.
