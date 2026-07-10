@@ -132,14 +132,42 @@ def build_dept(org: dict, out_root: str, college_seg: str, photo_map: dict = Non
     return path
 
 
-def build_college_hub(college_node: int, college_seg: str, out_root: str) -> str:
-    """College hub at <college>/index.html: a card per dept/school with faculty>0."""
+def _leadership_row(person: dict, photo_map: dict, assets_dir: str, *, title: str) -> dict:
+    """Turn a leadership/chair person into a render row, reusing the dept person-card path.
+    `person` needs a `slug`; `title` is the display title (the role for deans, or
+    'Department Chair, <dept>' for chairs). Areas + photo come from the same source the dept
+    pages use, so the card is identical to that person's leaderboard row."""
+    slug = person["slug"]
+    f = db.get_faculty(slug)
+    if slug not in photo_map:
+        photo_map[slug] = _resolve_photo(slug, f, assets_dir)
+    return render._lb_row({
+        "slug": slug, "name": f["name"], "title": title, "areas": f["areas"],
+        "citations": None, "h_index": None, "rank_num": None,
+    }, photo_map)
+
+
+def build_college_hub(college_node: int, college_seg: str, out_root: str,
+                      photo_map: dict = None) -> str:
+    """College hub at <college>/index.html: college-wide stats + a card per dept/school +
+    Dean / Associate Deans / Department Chairs sections (all from the KG)."""
     depts = db.dept_orgs_of_college(college_node)
     cards = []
     for d in depts:
         n, m = rank.coverage(d["node_id"])
         cards.append({"name": d["name"], "faculty": m, "scholar": n,
                       "url": f"{d['slug']}/index.html", "badge": _org_badge(d["slug"], d["name"])})
+    photo_map = dict(photo_map or {})
+    assets_dir = paths.assets_dir(out_root)
+    stats = rank.college_rollup(college_node)
+    lead = db.college_leadership(college_node)
+    leadership = {
+        "dean": [_leadership_row(p, photo_map, assets_dir, title=p["title"]) for p in lead["dean"]],
+        "assoc_deans": [_leadership_row(p, photo_map, assets_dir, title=p["title"])
+                        for p in lead["assoc_deans"]],
+        "chairs": [_leadership_row(c, photo_map, assets_dir, title=f"Department Chair, {c['dept_name']}")
+                   for c in rank.college_chairs(college_node)],
+    }
     canonical = paths.canonical_url(f"{college_seg}/")
     cname = db.college_name(college_node)
     _, cm = db.college_coverage(college_node)
@@ -147,7 +175,8 @@ def build_college_hub(college_node: int, college_seg: str, out_root: str) -> str
     og = f"{cm} faculty across {len(depts)} departments at {cname}, NJIT — with Google Scholar metrics."
     html = render.render_hub(cname, cards, eyebrow="College",
                              asset_root="../", canonical=canonical,
-                             nav=nav, og_title=cname, og_description=og)
+                             nav=nav, og_title=cname, og_description=og,
+                             stats=stats, leadership=leadership)
     path = paths.college_hub_path(out_root, college_seg)
     _write(path, html)
     return path
@@ -300,7 +329,7 @@ def build_site(scope: dict = None, out_root: str = None) -> dict:
             if dept_filter and org["slug"] != dept_filter:
                 continue
             _build_dept_scope(cslug, org, out_root, built, photo_map, college_name=cname)
-        build_college_hub(cnode, cslug, out_root)
+        build_college_hub(cnode, cslug, out_root, photo_map=photo_map)
 
     build_njit_hub(out_root)                 # ancestor: always refreshed
     occupied = _occupied_root_segments(out_root)
