@@ -3,6 +3,7 @@
 One source of truth for the leaderboard. Rank is NOT shown on personal pages
 (spec §4) — it lives only on the leaderboard, where ranking is the explicit purpose.
 """
+import datetime
 import json
 
 from . import config
@@ -221,10 +222,19 @@ def college_chairs(college_node) -> list:
     return out
 
 
-def funding_rollup(org_ids):
-    """Aggregate NSF+NIH funding across the given org node ids' home faculty.
-    Dedup by person node id (a dup-home person counted once). Returns
-    {nsf, nih, n_funded, as_of} or None when nothing is funded."""
+def _award_active(mdy, today):
+    try:
+        return datetime.datetime.strptime(mdy, "%m/%d/%Y").date() >= today
+    except (ValueError, TypeError):
+        return False
+
+
+def funding_rollup(org_ids, today=None):
+    """Per-agency PI-led award COUNTS across the given org node ids' home faculty.
+    Dedup by person node id. Returns {nsf_awards, nsf_active, nih_projects,
+    nih_active, funded, as_of} or None when the subtree has no PI-led awards."""
+    today = today or datetime.date.today()
+    fy_now = today.year + 1 if today.month >= 10 else today.year
     conn = connect()
     seen = {}
     try:
@@ -238,18 +248,21 @@ def funding_rollup(org_ids):
                 if r["id"] in seen or r["key"].split("/")[-1] in config.SUPPRESSED:
                     continue
                 fund = (json.loads(r["attrs"]) if r["attrs"] else {}).get("funding") or {}
-                nsf = int((fund.get("nsf") or {}).get("njit_total") or 0)
-                nih = int((fund.get("nih") or {}).get("njit_total") or 0)
+                awards = [a for a in ((fund.get("nsf") or {}).get("awards") or []) if a.get("at_njit")]
+                projs = [p for p in ((fund.get("nih") or {}).get("projects") or []) if p.get("role") == "contact"]
+                na_act = sum(1 for a in awards if _award_active(a["exp"], today))
+                np_act = sum(1 for p in projs if isinstance(p.get("fy_last"), int) and p["fy_last"] >= fy_now)
                 dates = [b["updated_at"] for b in (fund.get("nsf"), fund.get("nih"))
                          if b and b.get("updated_at")]
-                seen[r["id"]] = (nsf, nih, dates)
+                seen[r["id"]] = (len(awards), na_act, len(projs), np_act, dates, bool(awards or projs))
     finally:
         conn.close()
-    nsf_t = sum(v[0] for v in seen.values())
-    nih_t = sum(v[1] for v in seen.values())
-    if nsf_t == 0 and nih_t == 0:
+    nsf_awards = sum(v[0] for v in seen.values())
+    nih_projects = sum(v[2] for v in seen.values())
+    if nsf_awards == 0 and nih_projects == 0:
         return None
-    n_funded = sum(1 for v in seen.values() if v[0] > 0 or v[1] > 0)
-    all_dates = [d for v in seen.values() if v[0] > 0 or v[1] > 0 for d in v[2]]  # counted bags only
-    return {"nsf": nsf_t, "nih": nih_t, "n_funded": n_funded,
+    all_dates = [d for v in seen.values() if v[5] for d in v[4]]
+    return {"nsf_awards": nsf_awards, "nsf_active": sum(v[1] for v in seen.values()),
+            "nih_projects": nih_projects, "nih_active": sum(v[3] for v in seen.values()),
+            "funded": sum(1 for v in seen.values() if v[5]),
             "as_of": min(all_dates) if all_dates else None}

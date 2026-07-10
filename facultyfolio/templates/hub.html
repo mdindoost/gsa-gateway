@@ -20,7 +20,7 @@
       {% if stats %}{{ glance(stats) }}{% endif %}
 
       {% if funding_rollup %}
-      <div class="rollup"><span class="rk">Sponsored research</span>{% for amt, ag in funding_rollup.parts %}<span><b>{{ amt }}</b> {{ ag }}</span><span class="sep">·</span>{% endfor %}<span><b>{{ funding_rollup.n }}</b> funded faculty</span><span class="sep">·</span><span class="asof">as of {{ funding_rollup.as_of }}</span></div>
+      <div class="rollup"><span class="rk">Sponsored research</span>{% for label, ag in funding_rollup.parts %}<span><b>{{ ag }}</b> {{ label }}</span><span class="sep">·</span>{% endfor %}<span><b>{{ funding_rollup.funded }}</b> funded faculty</span>{% if funding_rollup.as_of %}<span class="sep">·</span><span class="asof">as of {{ funding_rollup.as_of }}</span>{% endif %}</div>
       {% endif %}
 
       {% set has_leadership = leadership.dean or leadership.assoc_deans or leadership.chairs %}

@@ -150,11 +150,10 @@
         <div class="fund-group">
           <div class="fund-sum"><span class="ag">{{ g.agency }}</span><span class="amt">{{ g.summary }}</span></div>
           {% for r in g.rows %}
-          <div class="fund-row{% if r.copi %} copi{% endif %}">
-            <div class="fund-cite"><span class="n">{{ r.amount }}</span><span class="l">{{ r.unit }}</span></div>
+          <div class="fund-row">
             <div class="fund-main">
               {% if r.url %}<a class="fund-t" href="{{ r.url }}">{{ r.title }}</a>{% else %}<span class="fund-t">{{ r.title }}</span>{% endif %}
-              <div class="fund-meta"><span>{{ r.meta }}</span><span class="sep">·</span><span>{{ r.years }}</span>{% if r.copi %}<span class="chip copi">co-PI</span>{% endif %}{% if r.active %}<span class="chip active">Active</span>{% endif %}</div>
+              <div class="fund-meta"><span>{{ r.meta }}</span><span class="sep">·</span><span>{{ r.years }}</span>{% if r.active %}<span class="chip active">Active</span>{% endif %}</div>
             </div>
           </div>
           {% endfor %}
