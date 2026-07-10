@@ -268,16 +268,20 @@ cards' research-area chips** (Payton, Wu, Bader, Oria, Geller, Halper) for the k
 `<br>`-parser garbling. A future re-crawl can regress THIS page specifically — note that in the
 deploy runbook. (Halper's empty chips are correct/honest, not a defect.)
 
-## 7. Goals checklist (to be filled at PR time — shipped / deferred)
+## 7. Goals checklist — SHIPPED (build 2026-07-09, branch feat/facultyfolio-college-hub-leadership)
 
-- [ ] Stats block (coverage line + college-wide rank rollup chips)
-- [ ] Department entry cards moved **above** leadership (directly under stats)
-- [ ] Dean section (person card, with research-area chips)
-- [ ] Associate Deans section (person cards, with research-area chips)
-- [ ] Department Chairs section (person cards, labeled by dept, with research-area chips)
-- [ ] Person cards carry research-area chips, capped/honest-empty like the dept pages
-- [ ] Person-card macro shared between leaderboard + hub (no output drift)
-- [ ] NJIT hub unaffected (byte-identical)
+- [x] Stats block (coverage line + college-wide rank rollup chips) — `rank.college_rollup`, `_glance.html`
+- [x] Department entry cards moved **above** leadership (directly under stats) — `hub.html`
+- [x] Dean section (person card, with research-area chips) — `db.college_leadership` + `_leadership_row`
+- [x] Associate Deans section (person cards, with research-area chips)
+- [x] Department Chairs section (person cards, labeled by dept, with research-area chips) — `rank.college_chairs`
+- [x] Person cards carry research-area chips, capped/honest-empty like the dept pages (Halper verified empty)
+- [x] Person-card macro shared between leaderboard + hub (no output drift) — `_person_card.html`; leaderboard tests green
+- [x] NJIT hub unaffected — bare cards, no `lb-group` wrapper (test_hub_without_stats_or_leadership_is_unchanged)
+- [x] De-dup guard in `college_rollup`; pre-deploy chip eyeball done (all six clean)
+
+**Deferred / not built (loudly flagged):** none — every goal in §2 shipped. Deploy to live
+`facultyfolio.github.io` Pages is a separate owner-gated step (not done).
 
 ## 8. Resolved decisions (owner, 2026-07-09)
 
