@@ -196,11 +196,14 @@ Against live data unless noted:
 - **Tripwire:** for every funded person, stored `njit_total` == Σ contributing rows (NSF `at_njit`,
   NIH `contact`) — catches future enrichment drift.
 - **Honest-labeling invariant (assert on `$` + class names, NOT the token "NSF" — crawled award/honor
-  titles legitimately contain "NSF"):** the rendered `glance()` (`_glance.html`), `row_dir()`
-  (`_person_card.html`), the profile hero aside, and the **full `leaderboard.html` page** contain no
-  `$`, `.fund-`, or `.rollup` markup; the **`hub.html` page** contains `$` **only** inside the
-  `.rollup` element. (Asserting the full leaderboard page — not just the macros — closes the hole of a
-  funding column added directly in the template.)
+  titles legitimately contain "NSF"):**
+  - **Per-person surfaces** — the rendered `glance()` (`_glance.html`), `row_dir()`
+    (`_person_card.html`), and the profile hero aside — contain **no `$` and no `.fund-`/`.rollup`**.
+  - **Full leaderboard + hub pages** — `.fund-` (the profile funding classes) **never appears**, and
+    `$` appears **only inside the `.rollup` element** (the aggregate rollup is allowed; a per-person
+    funding column is not). Asserting the whole page — not just the macros — closes the hole of a
+    funding column added directly in the template. (The aggregate rollup carrying `$` is the intended
+    exception; per-person funding on a comparison surface is the thing forbidden.)
 
 ## Verification
 
