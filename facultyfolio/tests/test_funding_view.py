@@ -83,3 +83,48 @@ def test_dollar_formatting_compact_and_exact():
     row = render.funding_view(f, today=TODAY)["groups"][0]["rows"][0]
     assert row["amount"] == "$4.08M"
     assert row["active"] is True                        # exp 2027 >= today
+
+
+def test_nih_appl_id_missing_yields_null_url():
+    f = {"funding": {"nih": {"updated_at": "2026-07-10", "njit_total": 900883, "projects": [
+        {"core": "R15HG012087", "title": "Deep Learning", "total": 900883,
+         "role": "contact", "fy_first": 2021, "fy_last": 2024}]}}}     # no appl_id key
+    row = render.funding_view(f, today=TODAY)["groups"][0]["rows"][0]
+    assert row["url"] is None
+
+    f2 = {"funding": {"nih": {"updated_at": "2026-07-10", "njit_total": 900883, "projects": [
+        {"core": "R15HG012087", "title": "Deep Learning", "total": 900883,
+         "role": "contact", "fy_first": 2021, "fy_last": 2024, "appl_id": None}]}}}   # explicit None
+    row2 = render.funding_view(f2, today=TODAY)["groups"][0]["rows"][0]
+    assert row2["url"] is None
+
+
+def test_nih_mixed_contact_and_copi_ordering_and_units():
+    f = {"funding": {"nih": {"updated_at": "2026-07-10", "njit_total": 900883, "projects": [
+        {"core": "U54X", "title": "Center", "total": 2400000, "role": "co_pi",
+         "fy_first": 2023, "fy_last": 2028, "appl_id": 999},
+        {"core": "R15HG012087", "title": "Deep Learning", "total": 900883,
+         "role": "contact", "fy_first": 2021, "fy_last": 2024, "appl_id": 10974530},
+    ]}}}
+    g = render.funding_view(f, today=TODAY)["groups"][0]
+    # contact row(s) before co-PI row(s)
+    assert g["rows"][0]["copi"] is False
+    assert g["rows"][0]["unit"] == "costs"
+    assert g["rows"][1]["copi"] is True
+    assert g["rows"][1]["unit"] == "project"
+    # contact-variant summary; co-PI excluded from njit_total
+    assert g["summary"] == "$900,883 project costs · 1 project (as contact PI)"
+
+
+def test_nsf_multi_award_sorted_by_exp_then_obligated():
+    f = {"funding": {"nsf": {"updated_at": "2026-07-10", "njit_total": 600000, "awards": [
+        {"id": "A", "title": "Oldest", "start": "01/01/2010", "exp": "01/01/2025",
+         "obligated": 100000, "at_njit": True},
+        {"id": "B", "title": "Newest-lower", "start": "01/01/2020", "exp": "01/01/2027",
+         "obligated": 200000, "at_njit": True},
+        {"id": "C", "title": "Newest-higher", "start": "01/01/2021", "exp": "01/01/2027",
+         "obligated": 300000, "at_njit": True},
+    ]}}}
+    rows = render.funding_view(f, today=TODAY)["groups"][0]["rows"]
+    # newest exp first; among ties on exp, higher obligated first
+    assert [r["meta"] for r in rows] == ["NSF C", "NSF B", "NSF A"]
