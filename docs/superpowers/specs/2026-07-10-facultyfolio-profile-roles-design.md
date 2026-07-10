@@ -55,8 +55,10 @@ One rank, one role, no repeated "Distinguished Professor"; every string verbatim
 
 - No standalone "Roles & Appointments" section (owner chose to upgrade the existing Appointment
   row instead — leaner, single-role pages unchanged).
-- No change to who gets a profile page (still `category='faculty'` home faculty only; pure-admin
-  people like Dean Payton have no profile page).
+- No change to who gets a profile page (still `category='faculty'` home faculty only; a truly
+  pure-admin person — e.g. the Provost/President or the staff "Administrative Coordinator" titles,
+  none of whom hold a faculty edge — has no page. NOTE: Dean Payton DOES have a page — she holds a
+  faculty edge — so she is not an example of pure-admin).
 - No new crawl, no schema change. Read-only KG additions.
 - No rewording of any title — only SELECTION of which stored title to display.
 
@@ -116,41 +118,60 @@ def _org_suffix(title: str, org: str) -> str:
         return ""
     return "" if org.lower() in (title or "").lower() else f" · {org}"
 
+def _visible_leadership(f: dict) -> list:
+    """Leadership entries to SHOW: drop any whose title is already contained in the home title
+    (casefold substring) — else Payton (home title 'Dean, Ying Wu College of Computing') and Wu
+    (home 'Associate Dean for Academic Affairs') would repeat their role. SELECTION, not rewording.
+    Shared by the header line AND appointment_lines so they never disagree."""
+    home = (f.get("title") or "").lower()
+    return [L for L in (f.get("leadership") or []) if L["title"].lower() not in home]
+
 def appointment_lines(f: dict) -> list:
     """Structured appointment list, tiers in order home → leadership → joint → affiliated.
     Each: {"text": str, "label": str}. No title repeats: home carries rank+dept; leadership
-    carries the role title (+org unless embedded); joint/affiliated carry ORG ONLY (no title)."""
+    carries the role title (+org unless embedded); joint/affiliated carry ORG ONLY (no title).
+    Tier LABELS are omitted when the list is a single line (a lone 'home' label is noise)."""
     out = []
     if f.get("home_dept"):
         rank = f"{f['title']} · {f['home_dept']}" if f.get("title") else f["home_dept"]
         out.append({"text": rank, "label": "home"})
-    for L in f.get("leadership") or []:
+    for L in _visible_leadership(f):
         out.append({"text": f"{L['title']}{_org_suffix(L['title'], L['org'])}", "label": "leadership"})
     if f.get("joint_dept"):
         out.append({"text": f"Joint appointment · {f['joint_dept']}", "label": "joint"})
     for aff in f.get("affiliated_depts") or []:
         out.append({"text": f"Affiliated · {aff}", "label": "affiliated"})
+    if len(out) == 1:
+        out[0] = {"text": out[0]["text"], "label": ""}     # single-line: no tier label
     return out
 ```
+**Home-title containment suppression (Fable BLOCKER):** the `_visible_leadership` filter drops a
+leadership entry whose title is already in the home title. Consequences, verified against live
+data: **Payton** (home faculty title = "Dean, Ying Wu College of Computing") → leadership line
+suppressed (already her home line); **Wu** (home = "Associate Dean for Academic Affairs") →
+"Associate Dean" suppressed; **Bader** (home = "Distinguished Professor") → "Associate Dean"
+line SHOWN. So today the leadership line renders on exactly **one** page (Bader) — the honest
+number and precisely the bug we set out to fix. The SAME `_visible_leadership` feeds the header
+line, so header and appointment list never disagree.
 - **Joint/affiliated carry NO title** (org + label only) — prevents "Distinguished Professor ·
   Computer Science" reading as a second primary chair (Fable risk #3).
-- The **header leadership line** uses the same `leadership` list: render each as
-  `"{title}{_org_suffix}"`; label styling matches the existing header joint line
-  (`profile.html` line ~42, the `.uni`-style line).
+- The **header leadership line** uses `_visible_leadership(f)` (the SAME filter — never the raw
+  `leadership` list): render each as `"{title}{_org_suffix(title, org)}"`; label styling matches
+  the existing header joint line (`profile.html` line ~42, the `.uni`-style line).
 
-The old `college` trailing clause of `_appointment` is dropped from the per-line list (college
-is already implied by the org names + shown elsewhere); confirm no other caller depends on the
-old string return. Keep a thin `_appointment` shim ONLY if another template/caller still needs
-the sentence form — otherwise remove it.
+`render._appointment` has **exactly one production caller** (`render_profile`, verified) — so it
+is REMOVED (no shim needed); `render_profile` calls `appointment_lines(f)` instead and adds both
+`leadership=_visible_leadership(f)` and the appointment list to the template context.
 
 ### 4.3 Template — `facultyfolio/templates/profile.html`
 
 - **Header card:** after the existing joint-appointment line (~line 42), add a leadership line
-  per `f.leadership` entry (rendered via render helper), same visual treatment. Omitted when
-  `leadership` is empty (honest-empty — the ~85% single-role case is visually unchanged).
+  per `_visible_leadership(f)` entry, same `.uni`-style visual treatment. Omitted when the
+  filtered list is empty (honest-empty — every single-role person AND leaders like Payton/Wu
+  whose home title already states the role).
 - **Background "Appointment" row:** replace the single run-on string with the stacked list from
-  `appointment_lines(f)` — one line per appointment, each with its label. A single-home person
-  yields exactly one line (the home line), so their page looks as before.
+  `appointment_lines(f)` — one line per appointment, label shown only when >1 line. A single-home
+  person yields exactly one line (the home line, no label).
 
 ### 4.4 Ordering & labels
 - Tier order: **home → leadership → joint → affiliated** (leadership above cross-listings — a
@@ -159,6 +180,15 @@ the sentence form — otherwise remove it.
 - Labels use human words — "home", "leadership", "joint", "affiliated" — never the raw
   category "admin" (reads as staff/IT to an academic). Matches the bot's shipped
   entity_card markers ("(joint appointment)"/"(affiliated)") for one mental model across surfaces.
+  A single-line list shows NO label.
+
+**⚠️ Visible change to EVERY profile's Appointment row (owner: note before deploy).** The old
+`_appointment` sentence — e.g. "Associate Professor, Computer Science, Ying Wu College of
+Computing." — becomes a stacked list; a single-role person's row becomes "Associate Professor ·
+Computer Science". So on all ~119 pages the separator changes (`, ` → ` · `) and the trailing
+**college clause is dropped from this row** (it is still shown in the header's dept line,
+`profile.html:43`, so no info is lost). This is intended (Fable/senior-eng reviewed) but it IS a
+visible cosmetic change to every profile, not just leaders' — flagged for explicit owner sign-off.
 
 ## 5. Data-honesty / correctness
 
@@ -183,18 +213,36 @@ Ran the generalized `_role_title` over all 72 live `admin` edges, then intersect
   all belong to **non-faculty** with **no profile page**, so they never render. The
   role-word false-match on "Assistant to Chair" is therefore **benign** (no faculty holds it);
   no extra guard needed, but noted for the future.
-- **Today only YWCC is published**, so the leadership line currently renders on exactly **3**
-  pages: **Bader** & **Wu** ("Associate Dean · Ying Wu College of Computing") and **Payton**
-  ("Dean, Ying Wu College of Computing", org suffix suppressed). The dept **chairs**
-  Oria/Geller/Halper carry "Department Chair" on their **faculty** edge title (not an admin
-  edge), so they already show it — unaffected by this change.
+- **Today only YWCC is published**, and after the home-title-containment suppression (§4.2) the
+  new leadership line renders on exactly **1** page: **Bader** ("Associate Dean · Ying Wu College
+  of Computing"). **Payton** (home faculty title already "Dean, Ying Wu College of Computing")
+  and **Wu** (home "Associate Dean for Academic Affairs") have their role suppressed as a
+  separate line — it already leads their page, no info lost. The dept **chairs** Oria/Geller/
+  Halper carry "Department Chair" on their **faculty** edge title (not an admin edge), so they
+  already show it — unaffected.
 - The remaining 18 leaders are NCE/HCAD/MTSM/CSLA faculty — no FacultyFolio page yet; they'll
-  render correctly (all clean) when those colleges publish. Minor deferred nuance: an
-  "MTSM Administration" org node isn't in `COLLEGE_NAMES`, so a bare "Associate Dean" there would
-  read "· MTSM Administration"; harmless and not published — revisit when MTSM goes live.
+  render (all clean) when those colleges publish. Two deferred nuances, no action now: (a) an
+  "MTSM Administration" org node isn't in `COLLEGE_NAMES`, so a bare "Associate Dean" there reads
+  "· MTSM Administration"; (b) NCE dept chairs' admin edges hang off the **college** node, so
+  Lieber's "Department Chair" would read "· Newark College of Engineering" (college, not his
+  department) — same class as (a), revisit when NCE publishes.
 
 Conclusion: the `_role_title` generalization and org-expansion are safe to ship; no role-word
 exclusions needed for the current + full-scale faculty population.
+
+**Caller-premise correction (senior-eng):** `get_faculty` is NOT only called for faculty —
+`build._leadership_row` calls it on `college_leadership()`'s `category='admin'` people to build
+college-hub cards. That path is INERT for this change: it renders via `render._lb_row`, which
+ignores the new `leadership`/`appointment_lines` fields and never writes a `/p/` page. So the
+"non-leadership admin titles never reach a rendered profile" conclusion holds — the precise
+reason is "only `category='faculty'` slugs reach `build_one`/page-write," not "get_faculty is
+only called for faculty."
+
+**Edge notes (build against these):** (a) the `admin` branch must use the loop's already
+`if t`-filtered `titles` list (db.py:139), not raw `eattrs["titles"]` — an empty titles list then
+yields `_role_title([]) == ""` → `if role:` skips it (honest-empty). (b) No current FACULTY holds
+2+ admin edges (only non-faculty Teik Lim has two), so the list-append handles multi-admin but is
+untested against real multi-admin faculty — acceptable. (c) Loop is `ORDER BY id` → deterministic.
 
 ## 7. Testing
 
@@ -207,11 +255,20 @@ exclusions needed for the current + full-scale faculty population.
 - `render.appointment_lines`: tier order home→leadership→joint→affiliated; joint/affiliated
   lines carry NO title; org suffix suppressed when the title already contains the org
   ("Dean, Ying Wu College of Computing" → no "· Ying Wu College…" appended); a single-home
-  person yields exactly one line.
-- `render` header: a leader's profile shows the leadership line; a plain faculty profile does
-  NOT (honest-empty); primary line stays the home title.
-- Real-build spot check: `/p/bader.html` shows the header "Associate Dean" line and the stacked
-  Appointment list; `/p/ikoutis.html` (single-role) visually unchanged.
+  person yields exactly one line with an EMPTY label.
+- **`_visible_leadership` containment (the BLOCKER guard):** a leadership entry whose title is
+  casefold-contained in the home title is dropped — Payton ("Dean, Ying Wu College of Computing"
+  home) → no leadership line; Wu ("…Associate Dean for Academic Affairs" home) → "Associate Dean"
+  dropped; Bader ("Distinguished Professor" home) → "Associate Dean" KEPT. Test all three.
+- `render` header: Bader's profile shows the leadership line; Payton/Wu/plain-faculty do NOT
+  (honest-empty via the containment filter); primary line stays the home title.
+- **REWRITE two existing tests** that assert the old sentence form (they WILL fail otherwise):
+  `tests/test_render.py::test_appointment_includes_affiliated` (expects "joint appointment in …"
+  / "affiliated with …" → now "Joint appointment · …" / "Affiliated · …") and
+  `::test_appointment_no_affiliated_unchanged` (old single-string form → one home line).
+- Real-build spot check: `/p/bader.html` shows the header "Associate Dean" line + the stacked
+  Appointment list; `/p/ikoutis.html` (single-role) shows ONE appointment line
+  "Associate Professor · Computer Science" (see §4.4 — the college clause moves to the header).
 
 ## 8. Goals checklist (fill at PR time)
 
@@ -221,7 +278,9 @@ exclusions needed for the current + full-scale faculty population.
 - [ ] Appointment row upgraded to structured stacked list, all four tiers, no repeated titles
 - [ ] Org-in-title suppression; joint/affiliated org-only; labels human not "admin"
 - [ ] Primary line stays home title
-- [ ] Single-role profiles visually unchanged (regression check)
+- [ ] `_visible_leadership` containment guard (Payton/Wu suppressed, Bader kept) — tested
+- [ ] Single-role pages yield exactly ONE appointment line, no label (college moved to header) — NOT byte-unchanged; the row's format intentionally changes on every page (§4.4)
+- [ ] Two old `_appointment` sentence-form tests rewritten (§7)
 
 ## 9. Deploy note
 
@@ -235,3 +294,20 @@ The `affiliated` tier's producer is known-fragile: ~12 of 14 affiliated edges ma
 `faculty` on the next `explore` re-crawl. Surfacing all roles makes such a revert *visible* on
 the site (arguably a feature — it flags the data bug). Crawler is currently paused. Not this
 design's problem to fix; flagged so it's a conscious dependency.
+
+## 11. Review log (2026-07-10)
+
+**Both reviewers independently caught the same BLOCKER** — a leadership line duplicating the
+home title on Payton/Wu (live pages). Resolved before build: the `_visible_leadership`
+containment filter (§4.2) drops a leadership entry whose title is casefold-contained in the home
+title; shared by the header line and the appointment list. Net effect: leadership line renders
+on 1 page today (Bader).
+
+- **Senior-eng review** → "needs rework"; all points folded in: the BLOCKER (above); §3 Payton
+  factual fix; §6 caller-premise correction (hub `_leadership_row` calls `get_faculty` but is
+  inert); "visually unchanged" corrected to "one line, college moved to header" + explicit owner
+  flag (§4.4); two breaking `_appointment` tests named for rewrite (§7); empty-titles / multi-admin
+  edge notes (§6). Audit numbers independently re-verified (21 faculty, all clean).
+- **Fable** (owner-delegated sign-off) → GO-WITH-CHANGES; same BLOCKER + the count correction,
+  §3 fix, §7 org-value fix, single-line label omission — all applied. Fable: "once edits land,
+  approved to build; a diff of the spec changes is sufficient, no full re-pass."
