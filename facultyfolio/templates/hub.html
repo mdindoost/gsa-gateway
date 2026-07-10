@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_glance.html" import glance %}
+{% from "_person_card.html" import row_dir %}
 {% block title %}{{ college_name }} — FacultyFolio{% endblock %}
 
 {% block rail %}
@@ -14,16 +16,37 @@
       <p class="eyebrow">{{ eyebrow }}</p>
       <h2>{{ college_name }}</h2>
       <div class="rule"></div>
-      <div class="hub-cards">
-        {% for c in cards %}
-        <a class="hub-card" href="{{ c.url }}">
-          {% if c.badge %}<span class="hub-badge" aria-hidden="true">{{ c.badge }}</span>{% endif %}
-          <span class="hub-name">{{ c.name }}</span>
-          <span class="hub-stats"><strong>{{ c.faculty }}</strong> faculty · <strong>{{ c.scholar }}</strong> on Google Scholar</span>
-          <span class="hub-go">View directory →</span>
-        </a>
-        {% endfor %}
-      </div>
+
+      {% if stats %}{{ glance(stats) }}{% endif %}
+
+      {% set has_leadership = leadership.dean or leadership.assoc_deans or leadership.chairs %}
+      {% if has_leadership %}<div class="lb-group"><h3 class="lb-group-h">Departments</h3>{% endif %}
+        <div class="hub-cards">
+          {% for c in cards %}
+          <a class="hub-card" href="{{ c.url }}">
+            {% if c.badge %}<span class="hub-badge" aria-hidden="true">{{ c.badge }}</span>{% endif %}
+            <span class="hub-name">{{ c.name }}</span>
+            <span class="hub-stats"><strong>{{ c.faculty }}</strong> faculty · <strong>{{ c.scholar }}</strong> on Google Scholar</span>
+            <span class="hub-go">View directory →</span>
+          </a>
+          {% endfor %}
+        </div>
+      {% if has_leadership %}</div>{% endif %}
+
+      {% if leadership.dean %}
+      <div class="lb-group"><h3 class="lb-group-h">Dean</h3>
+        {% for row in leadership.dean %}{{ row_dir(row, asset_root) }}{% endfor %}
+      </div>{% endif %}
+
+      {% if leadership.assoc_deans %}
+      <div class="lb-group"><h3 class="lb-group-h">Associate Deans</h3>
+        {% for row in leadership.assoc_deans %}{{ row_dir(row, asset_root) }}{% endfor %}
+      </div>{% endif %}
+
+      {% if leadership.chairs %}
+      <div class="lb-group"><h3 class="lb-group-h">Department Chairs</h3>
+        {% for row in leadership.chairs %}{{ row_dir(row, asset_root) }}{% endfor %}
+      </div>{% endif %}
     </section>
   </div>
 {% endblock %}

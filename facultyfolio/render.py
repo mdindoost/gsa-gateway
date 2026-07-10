@@ -198,14 +198,19 @@ def render_profile(f: dict, photo_ref: str = None,
 
 def render_hub(title: str, cards: list, *, eyebrow: str, asset_root: str,
                canonical: str = None, nav: list = None,
-               og_title: str = None, og_description: str = None) -> str:
+               og_title: str = None, og_description: str = None,
+               stats: dict = None, leadership: dict = None) -> str:
     """Hub landing page (NJIT hub: cards=colleges; college hub: cards=depts). One template.
-    `asset_root` = rel path to assets/ for this page's depth; `eyebrow` = 'University'/'College'."""
+    `asset_root` = rel path to assets/ for this page's depth; `eyebrow` = 'University'/'College'.
+    `stats` = college_rollup dict (college hub only); `leadership` =
+    {"dean":[rows],"assoc_deans":[rows],"chairs":[rows]} of `_lb_row` rows. The NJIT hub passes
+    neither, so it renders exactly as before."""
     return _env.get_template("hub.html").render(
         college_name=title, eyebrow=eyebrow, cards=cards,
         asset_root=asset_root, canonical=canonical,
         nav=nav or [], og_title=og_title or title, og_description=og_description,
-        claim_url=config.CLAIM_MAILTO)
+        claim_url=config.CLAIM_MAILTO,
+        stats=stats, leadership=leadership or {})
 
 
 _LB_AREA_CHIPS = 4          # chips shown per directory row; full list is on the profile + in data-areas
