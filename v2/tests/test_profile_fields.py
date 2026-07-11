@@ -7,8 +7,60 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from v2.core.people.profile_fields import (
     PROFILE_FIELDS, Field, Metric, render_links, render_metrics,
-    metric_fields, match_metric, match_link_field,
+    metric_fields, match_metric, match_link_field, facultyfolio_url,
 )
+
+
+FOLIO = "https://facultyfolio.github.io/p/gwang.html"
+
+
+def test_folio_with_scholar_replaces_all_links_and_claims_publications():
+    attrs = {"profiles": {
+        "facultyfolio": {"url": FOLIO},
+        "scholar": {"url": "https://scholar.google.com/x"},
+        "linkedin": {"url": "https://linkedin.com/in/gwang"},
+    }}
+    out = render_links(attrs, name="Guiling Wang")
+    assert out == (f"📄 [Guiling Wang's FacultyFolio page]({FOLIO}) — "
+                   "all their links, publications & citation stats in one place")
+    # the scattered links are replaced, not appended
+    assert "Google Scholar" not in out
+    assert "LinkedIn" not in out
+
+
+def test_folio_without_scholar_drops_publications_claim():
+    attrs = {"profiles": {
+        "facultyfolio": {"url": FOLIO},
+        "linkedin": {"url": "https://linkedin.com/in/x"},
+    }}
+    out = render_links(attrs, name="James Calvin")
+    assert out == (f"📄 [James Calvin's FacultyFolio page]({FOLIO}) — "
+                   "all their profile links in one place")
+    assert "publications" not in out
+    assert "citation" not in out
+
+
+def test_folio_without_name_uses_generic_label():
+    attrs = {"profiles": {"facultyfolio": {"url": FOLIO}}}
+    out = render_links(attrs)
+    assert out == (f"📄 [FacultyFolio page]({FOLIO}) — all their profile links in one place")
+
+
+def test_no_folio_keeps_multi_link_line():
+    attrs = {"profiles": {
+        "scholar": {"url": "https://scholar.google.com/x"},
+        "linkedin": {"url": "https://linkedin.com/in/x"},
+    }}
+    out = render_links(attrs, name="Someone")
+    assert "Google Scholar" in out and "LinkedIn" in out
+    assert "FacultyFolio" not in out
+
+
+def test_facultyfolio_url_helper():
+    assert facultyfolio_url({"profiles": {"facultyfolio": {"url": FOLIO}}}) == FOLIO
+    assert facultyfolio_url({"profiles": {"scholar": {"url": "x"}}}) is None
+    assert facultyfolio_url({}) is None
+    assert facultyfolio_url(None) is None
 
 
 def test_render_links_none_when_empty():

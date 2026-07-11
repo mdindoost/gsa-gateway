@@ -49,10 +49,16 @@ def run(conn: sqlite3.Connection, route: Route) -> dict:
         return {"skill": skill,
                 **skills.does_person_research_area(conn, a["entity_id"], a["area"], a.get("name"))}
     if skill == "entity_card":
+        attrs = _person_attrs(conn, a["entity_id"])
+        # A published FacultyFolio page already aggregates a person's Scholar/LinkedIn/etc. AND
+        # their papers — render_links returns a single folio link, so suppress the paper teasers
+        # too (they'd contradict the "everything is on that page" note).
+        has_folio = profile_fields.facultyfolio_url(attrs) is not None
         return {"skill": skill, "name": a.get("name"),
                 "card": entity.entity_card(conn, a["entity_id"]),
-                "links": profile_fields.render_links(_person_attrs(conn, a["entity_id"])),
-                "scholar_push": _push_paper_lines(conn, a["entity_id"])}
+                "links": profile_fields.render_links(
+                    attrs, name=entity._person_display_name(conn, a["entity_id"])),
+                "scholar_push": [] if has_folio else _push_paper_lines(conn, a["entity_id"])}
     if skill == "awards_of_person":
         return {"skill": skill, **entity.awards_of_person(conn, a["entity_id"])}
     if skill == "news_of_person":

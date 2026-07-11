@@ -175,6 +175,12 @@ Koutis's email
 koutis info
 what does Koutis work on
 
+# facultyfolio single-link (published faculty → ONE FacultyFolio link replaces scattered profile
+#  links; non-published keep the multi-link line — gradual. Payton has a page + Scholar; Yi Chen
+#  (MTSM) has no page → keeps Scholar/LinkedIn/Website.)
+Who is Jamie Payton?
+who is Yi Chen
+
 # metric queries (Scholar citations / h-index / i10 — single-person + org ranking, honest-partial)
 Koutis citations
 What is Koutis's h-index

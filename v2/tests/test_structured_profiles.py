@@ -74,6 +74,46 @@ def conn():
     c.close()
 
 
+PAPERS = [{"title": "A Big Paper", "year": "2020", "cited_by": 900}]
+
+# Folio person WITH Scholar + captured papers → folio line replaces links; teasers suppressed.
+FOLIO_SCHOLAR = {
+    "profiles": {
+        "facultyfolio": {"url": "https://facultyfolio.github.io/p/gwang.html"},
+        "scholar": {"url": "https://scholar.google.com/g", "top_cited": PAPERS, "newest": PAPERS},
+        "linkedin": {"url": "https://linkedin.com/in/gwang"},
+    },
+}
+# Folio person WITHOUT Scholar → note must drop the publications/citations claim.
+FOLIO_NO_SCHOLAR = {
+    "profiles": {"facultyfolio": {"url": "https://facultyfolio.github.io/p/calvin.html"}},
+}
+# Non-folio person WITH captured papers → teasers still fire (regression guard for suppression).
+PAPERS_NO_FOLIO = {
+    "profiles": {"scholar": {"url": "https://scholar.google.com/n", "top_cited": PAPERS}},
+}
+
+
+@pytest.fixture
+def folio_conn():
+    """Isolated fixture for FacultyFolio surfacing — separate from the Koutis fixture so its
+    added people can't perturb the surname-resolution tests above."""
+    c = create_all(":memory:")
+    cs = _org(c, 1, "Computer Science", "computer-science", "department")
+    gw = _person(c, "p/gwang", "Guiling Wang", FOLIO_SCHOLAR)
+    _role(c, gw, cs, "faculty", ["Professor"])
+    _item(c, 1, "education", "p/gwang", content="PhD, UMass")
+    jc = _person(c, "p/calvin", "James Calvin", FOLIO_NO_SCHOLAR)
+    _role(c, jc, cs, "faculty", ["Professor"])
+    _item(c, 1, "education", "p/calvin", content="PhD, Cornell")
+    np = _person(c, "p/nora", "Nora Paperperson", PAPERS_NO_FOLIO)
+    _role(c, np, cs, "faculty", ["Professor"])
+    _item(c, 1, "education", "p/nora", content="PhD, Rutgers")
+    c.commit()
+    yield c
+    c.close()
+
+
 def _suffix(conn, q):
     rt = router.route(conn, q)
     assert rt is not None, f"expected a structured route for {q!r}"
@@ -134,3 +174,39 @@ def test_surname_only_research_resolves_unambiguous_person(conn):
     skill, facts, suffix = _suffix(conn, "what does Koutis work on")
     assert skill == "research_of_person"
     assert suffix == "Google Scholar: 5,021 citations, h-index 30, i10-index 62 — as of 2026-06"
+
+
+# ── FacultyFolio single-link surfacing ──────────────────────────────────────────────
+
+def test_folio_person_suffix_is_single_folio_link(folio_conn):
+    skill, facts, suffix = _suffix(folio_conn, "who is Guiling Wang")
+    assert skill == "entity_card"
+    assert suffix == ("📄 [Guiling Wang's FacultyFolio page]"
+                      "(https://facultyfolio.github.io/p/gwang.html) — "
+                      "all their links, publications & citation stats in one place")
+    # scattered links replaced, and the paper teasers are suppressed
+    assert "Google Scholar" not in suffix and "LinkedIn" not in suffix
+    assert "Most-cited paper" not in suffix and "Newest paper" not in suffix
+
+
+def test_folio_label_uses_canonical_name_from_surname_query(folio_conn):
+    # a bare-surname query still yields the full normalized name, not the query token "wang"
+    skill, facts, suffix = _suffix(folio_conn, "who is Wang")
+    assert skill == "entity_card"
+    assert "Guiling Wang's FacultyFolio page" in suffix
+
+
+def test_folio_without_scholar_drops_publications_claim(folio_conn):
+    skill, facts, suffix = _suffix(folio_conn, "who is James Calvin")
+    assert skill == "entity_card"
+    assert suffix == ("📄 [James Calvin's FacultyFolio page]"
+                      "(https://facultyfolio.github.io/p/calvin.html) — "
+                      "all their profile links in one place")
+
+
+def test_scholar_push_empty_for_folio_person_but_present_otherwise(folio_conn):
+    # suppression is meaningful: the same paper data yields teasers for a NON-folio person.
+    rt = router.route(folio_conn, "who is Guiling Wang")
+    assert SA.run(folio_conn, rt)["scholar_push"] == []
+    rt2 = router.route(folio_conn, "who is Nora Paperperson")
+    assert SA.run(folio_conn, rt2)["scholar_push"]  # non-empty → teasers still fire without folio

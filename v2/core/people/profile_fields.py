@@ -97,10 +97,33 @@ def _field_url(attrs: dict, f: Field):
     return url or None
 
 
-def render_links(attrs: dict | None) -> str | None:
+# A pseudo-field for the FacultyFolio page. Deliberately NOT in PROFILE_FIELDS (it must never
+# appear in the normal multi-link line or be matched by match_link_field) — it exists only to
+# reuse _field_url's attrs.profiles.facultyfolio.url read.
+_FACULTYFOLIO = Field("facultyfolio", "FacultyFolio", "📄")
+
+
+def facultyfolio_url(attrs: dict | None) -> str | None:
+    """The person's FacultyFolio page URL (``attrs.profiles.facultyfolio.url``) or None."""
+    return _field_url(attrs or {}, _FACULTYFOLIO)
+
+
+def render_links(attrs: dict | None, name: str | None = None) -> str | None:
     """A one-line Markdown list of the person's profile links, or None if they have none.
-    Driven by the registry — registering a field auto-includes it here."""
+    Driven by the registry — registering a field auto-includes it here.
+
+    Special case: when the person has a published FacultyFolio page, return ONLY a single link
+    to that page (it already aggregates their Scholar/LinkedIn/etc.), with a note. The note drops
+    the publications/citations claim when the person has no Scholar link (their page renders no
+    such section) — honest-partial."""
     attrs = attrs or {}
+    folio_url = facultyfolio_url(attrs)
+    if folio_url:
+        label = f"{name}'s FacultyFolio page" if name else "FacultyFolio page"
+        has_scholar = bool(_dig(attrs, "profiles.scholar.url"))
+        tail = ("all their links, publications & citation stats in one place"
+                if has_scholar else "all their profile links in one place")
+        return f"📄 [{label}]({folio_url}) — {tail}"
     parts = []
     for f in PROFILE_FIELDS:
         url = _field_url(attrs, f)
