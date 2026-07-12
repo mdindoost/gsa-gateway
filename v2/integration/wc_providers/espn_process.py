@@ -81,7 +81,15 @@ def process_match(norm: NormMatch, ledger: dict, near_kickoff: bool = False) -> 
         if not ledger["finished"]:
             ledger["finished"] = True
             score = norm.score if norm.score != (0, 0) else ledger.get("score", (0, 0))
-            events.append({"type": "fulltime", "match": _adapter(norm, score)})
+            ev = {"type": "fulltime", "match": _adapter(norm, score)}
+            # Knockout finish markers ride as their OWN event keys (never `uid`, which would
+            # change the durable `{match}:fulltime:` dedup key and risk a restart double-post).
+            if norm.finish_kind == "aet":
+                ev["aet"] = True
+            if norm.shootout_score is not None:
+                ev["shootout_score"] = norm.shootout_score
+                ev["winner_side"] = norm.winner_side
+            events.append(ev)
         return events
 
     if state not in ("in_play", "paused", "shootout"):

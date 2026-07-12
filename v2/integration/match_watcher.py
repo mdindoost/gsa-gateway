@@ -74,7 +74,13 @@ DEFAULT_STATE_FILE = Path(__file__).resolve().parent.parent / "data" / "match_wa
 HOT_INTERVAL = 2
 COOL_INTERVAL = 25
 HOT_WINDOW = datetime.timedelta(seconds=60)           # stay hot this long after an event
-MATCH_MAX = datetime.timedelta(hours=2, minutes=30)   # safety stop after kickoff
+MATCH_MAX = datetime.timedelta(hours=4)               # safety stop after kickoff. Bounds how
+# long we keep polling a match we NEVER see finish (a missed/absent "done" read → otherwise
+# unbounded polling → ESPN block). A completed match retires immediately on the `finished`
+# flag, so this only ever fires on stuck/abandoned matches. Must exceed the longest real
+# knockout (120' + shootout + breaks + stoppage + kickoff delay ≈ 3h20m); 4h clears it with
+# headroom. (2026-07-12: was 2h30m, which fired on LIVE extra-time/penalty matches — the
+# knockout-coverage fix; group-stage matches never exceeded 2h30m so it went unnoticed.)
 KICKOFF_GRACE = datetime.timedelta(minutes=30)        # if the first live read is caught this
                                                       # soon after the scheduled kickoff it's
                                                       # still "the start" (the free API can
@@ -488,7 +494,13 @@ class MatchWatcher:
         event within HOT_WINDOW; COOL otherwise (incl. no active matches)."""
         for match_id, info in self._active.items():
             if not self._states.get(match_id, {}).get("started"):
-                return HOT_INTERVAL                     # still catching the real kickoff
+                # Poll HOT to catch the real kickoff — but only until KICKOFF_GRACE past the
+                # scheduled time. A postponed/never-started match must not HOT-spin (2s) for the
+                # whole (now 4h) window on the block-prone ESPN endpoint; past the grace it falls
+                # through to COOL like any other quiet match.
+                if now < info["kickoff_utc"] + KICKOFF_GRACE:
+                    return HOT_INTERVAL
+                continue
             hot_until = self._hot_until.get(match_id)
             if hot_until is not None and now < hot_until:
                 return HOT_INTERVAL                     # recent event → follow-ups likely

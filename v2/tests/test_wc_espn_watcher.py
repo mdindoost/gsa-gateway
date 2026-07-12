@@ -13,7 +13,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from v2.integration.match_watcher import MatchWatcher
+from v2.integration.match_watcher import (
+    MatchWatcher, MATCH_MAX, KICKOFF_GRACE, HOT_INTERVAL, COOL_INTERVAL)
 from v2.integration.wc_providers.watcher import EspnMatchWatcher, make_watcher
 from v2.integration.wc_providers.normalize import NormMatch, TeamRef
 
@@ -94,3 +95,41 @@ def test_factory_selects_provider_by_flag(monkeypatch):
 def test_factory_defaults_to_espn(monkeypatch):
     monkeypatch.delenv("WC_PROVIDER", raising=False)
     assert isinstance(make_watcher("k", "db", "gsa", "chan"), EspnMatchWatcher)
+
+
+# ── knockout timing: MATCH_MAX widened to cover extra time / penalties ────────
+def _watcher_with_active(tmp_path, mid, ko, started, finished=False):
+    w = EspnMatchWatcher([], ":memory:", state_file=tmp_path / "st.json")
+    w._active = {mid: {"et_day": "2026-07-11", "kickoff_utc": ko}}
+    w._states = {mid: {"started": started, "finished": finished, "score": (1, 1),
+                       "announced_goals": set(), "half": 1, "preview_posted": True}}
+    return w
+
+
+def test_match_max_covers_overtime_and_shootout():
+    # a knockout (120' + shootout ≈ 3h20m) must outlive the old 2h30m cap.
+    assert MATCH_MAX >= datetime.timedelta(hours=3, minutes=30)
+
+
+def test_live_match_not_retired_past_old_cap_but_dropped_at_new_cap(tmp_path):
+    ko = datetime.datetime(2026, 7, 11, 21, 1, 0)
+    w = _watcher_with_active(tmp_path, 760513, ko, started=True)
+    w._retire_active(ko + datetime.timedelta(hours=2, minutes=35))   # past OLD 2h30m
+    assert 760513 in w._active                                        # still watched (in ET)
+    w._retire_active(ko + MATCH_MAX + datetime.timedelta(minutes=1))  # past new cap
+    assert 760513 not in w._active
+
+
+def test_finished_match_retired_immediately_regardless_of_cap(tmp_path):
+    ko = datetime.datetime(2026, 7, 11, 21, 1, 0)
+    w = _watcher_with_active(tmp_path, 760513, ko, started=True, finished=True)
+    w._retire_active(ko + datetime.timedelta(minutes=10))             # only 10' in
+    assert 760513 not in w._active                                    # dropped on `finished`
+
+
+def test_never_started_match_hot_only_within_grace_then_cools(tmp_path):
+    # a postponed/never-started match must not HOT-spin (2s) for the whole 4h window.
+    ko = datetime.datetime(2026, 7, 11, 21, 1, 0)
+    w = _watcher_with_active(tmp_path, 760513, ko, started=False)
+    assert w._poll_interval(ko + datetime.timedelta(minutes=10)) == HOT_INTERVAL
+    assert w._poll_interval(ko + KICKOFF_GRACE + datetime.timedelta(minutes=1)) == COOL_INTERVAL

@@ -52,6 +52,12 @@ class NormMatch:
     minute: str | None = None
     goals: list[GoalEvent] = field(default_factory=list)
     group: str | None = None
+    # Knockout finish metadata — only meaningful on a `done` read (canonicalization
+    # collapses AET/PEN/regular finals all to `state == "done"`, so the distinction has to
+    # be preserved here before it's lost). See _finish_meta.
+    finish_kind: str | None = None       # "regulation" | "aet" | "penalties" | None
+    shootout_score: tuple[int, int] | None = None   # (home, away); ONLY on a penalty final
+    winner_side: str | None = None       # "home" | "away" | None (derived from shootout_score)
 
 
 # in-play sub-states (status.type.name) that mean "a break" rather than active play
@@ -73,6 +79,29 @@ def _canon_status(status_type: dict) -> str | None:
             return "paused"
         return "in_play"
     return None   # pre / postponed / abandoned / suspended / unknown → ignored
+
+
+# Completed-status names that carry knockout finish info; anything else DONE is regulation.
+_FINAL_NAMES = {"STATUS_FINAL_PEN": "penalties", "STATUS_FINAL_AET": "aet"}
+
+
+def _finish_meta(status_type: dict, home: dict, away: dict):
+    """For a DONE read, derive ``(finish_kind, shootout_score, winner_side)``.
+
+    ``finish_kind`` distinguishes penalties / AET / regulation — a distinction _canon_status
+    collapses to "done", so it must be recovered from the raw status name here. ``shootout_score``
+    is captured ONLY for a penalty final and ONLY when BOTH sides parse (a missing pen score is
+    never coerced to 0). ``winner_side`` is derived from the shootout score (the literal result);
+    a tie or absent score yields None rather than a guessed winner."""
+    kind = _FINAL_NAMES.get(status_type.get("name") or "", "regulation")
+    shootout = winner = None
+    if kind == "penalties":
+        so_h, so_a = _to_int(home.get("shootoutScore")), _to_int(away.get("shootoutScore"))
+        if so_h is not None and so_a is not None:
+            shootout = (so_h, so_a)
+            if so_h != so_a:
+                winner = "home" if so_h > so_a else "away"
+    return kind, shootout, winner
 
 
 def _to_int(v):
@@ -118,11 +147,15 @@ def event_to_match(event: dict) -> NormMatch:
     """One ESPN scoreboard ``events[]`` entry → NormMatch."""
     comp = (event.get("competitions") or [{}])[0]
     status = comp.get("status") or event.get("status") or {}
-    state = _canon_status(status.get("type") or {})
+    status_type = status.get("type") or {}
+    state = _canon_status(status_type)
     comps = comp.get("competitors") or []
     home = next((c for c in comps if c.get("homeAway") == "home"), {})
     away = next((c for c in comps if c.get("homeAway") == "away"), {})
     match_id = _to_int(event.get("id"))
+    finish_kind = shootout_score = winner_side = None
+    if state == "done":
+        finish_kind, shootout_score, winner_side = _finish_meta(status_type, home, away)
     return NormMatch(
         id=match_id,
         utc_date=event.get("date") or "",
@@ -131,7 +164,8 @@ def event_to_match(event: dict) -> NormMatch:
         away=_team_ref(away),
         score=(_to_int(home.get("score")) or 0, _to_int(away.get("score")) or 0),
         minute=(status.get("displayClock")),
-        goals=_goals(match_id, comp.get("details")))
+        goals=_goals(match_id, comp.get("details")),
+        finish_kind=finish_kind, shootout_score=shootout_score, winner_side=winner_side)
 
 
 def scoreboard_to_matches(payload: dict) -> list[NormMatch]:

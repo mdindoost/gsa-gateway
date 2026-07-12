@@ -387,5 +387,19 @@ def format_event(ev: dict) -> str:
     if etype == "second_half":
         return f"▶️ **Second half underway**\n\n{_score_line(match)}"
     if etype == "fulltime":
-        return f"🏁 **FULL-TIME**\n\n{_score_line(match)}"
+        line = f"🏁 **FULL-TIME**\n\n{_score_line(match)}"
+        # Penalty final: append the shootout result (winner + higher–lower pens). Absent on
+        # regulation/football-data events → plain FULL-TIME, unchanged.
+        so = ev.get("shootout_score")
+        if so:
+            sh, sa = so
+            side = ev.get("winner_side")
+            pens = f"{max(sh, sa)}–{min(sh, sa)}"
+            if side in ("home", "away"):
+                winner = team_label(match["homeTeam"] if side == "home" else match["awayTeam"])
+                return f"{line}\n_{winner} win {pens} on penalties_"
+            return f"{line}\n_Decided on penalties ({sh}–{sa})_"
+        if ev.get("aet"):
+            return f"{line}\n_After extra time_"
+        return line
     return f"{team_label(match['homeTeam'])} vs {team_label(match['awayTeam'])}"
