@@ -447,3 +447,6 @@ who are the heads of departments at njit
 who is Taro Narahara
 what does Taro Narahara research
 which college is Taro Narahara in
+
+who is the interim president of NJIT
+who leads Newark College of Engineering

@@ -453,21 +453,26 @@ def _has_true_officers(conn: sqlite3.Connection, org_id: int) -> bool:
 
 def _org_answers_title(conn: sqlite3.Connection, org_id: int, title: str) -> bool:
     """True iff the org can actually answer the collision officer ``title`` (D gate 3): a true
-    officer/deprep edge, OR an admin edge whose title carries ``title`` as a SEGMENT HEAD (reuse
-    people_by_role's matcher; ``^title\\b(?!')`` so 'Vice President'/'President's Advisory' do NOT
-    head-match). Confines D's alternate-swap to orgs that genuinely hold the title."""
+    officer/deprep edge, OR an admin edge whose title carries ``title`` as a SEGMENT HEAD.
+
+    Uses entity.title_head_matches — the ONE shared matcher. This previously hand-rolled its own
+    bare ``^title\\b(?!')`` while claiming to reuse people_by_role's, and the two drifted: the
+    local copy stripped no qualifier, so an 'Interim President' could not answer 'president' and
+    the swap never fired. 'Vice President' / "President's Advisory" still do NOT head-match."""
     if _has_true_officers(conn, org_id):
         return True
-    rx = re.compile(r"^" + re.escape(title.lower()) + r"\b(?!')")
+    # p.is_active is REQUIRED: officers_in_org (the skill this gate hands off to) filters on it,
+    # so without it a departed person's still-live admin edge passes the gate and then vanishes
+    # from the answer — producing the exact "I don't have officer information" dead-end this
+    # gate exists to avoid. An interim transition is precisely a departure event.
     for (eattrs,) in conn.execute(
             "SELECT e.attrs FROM edges e JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
+            "JOIN nodes p ON p.id=e.src_id AND p.is_active=1 "
             "WHERE e.type='has_role' AND e.is_active=1 AND e.category='admin' "
             "AND json_extract(o.attrs,'$.org_id')=?", (org_id,)):
         titles = (json.loads(eattrs) if eattrs else {}).get("titles") or []
-        for t in titles:
-            segs = [s.strip() for s in re.split(r",|\s+and\s+", t) if s.strip()]
-            if any(rx.match(s.lower()) for s in segs):
-                return True
+        if any(entity.title_head_matches(t, title) for t in titles):
+            return True
     return False
 
 

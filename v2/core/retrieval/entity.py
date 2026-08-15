@@ -274,6 +274,46 @@ _SUPPORT_LEAD = re.compile(
     r"(?:assistant|aide|secretary|coordinator|specialist)\b", re.I)
 
 
+# A leading SCOPE word ("Department Chair") or ACTING-CAPACITY word ("Interim President",
+# "Acting Dean") is not a rank modifier — an Interim President IS the president, so strip it
+# before head-matching. A RANK modifier (Vice / Associate / Assistant / Deputy / Senior) is a
+# DIFFERENT role and is deliberately absent from this alternation, so it still won't match.
+#
+# The `+` makes the strip REPEATING: "Acting Interim Dean" needs two strips and is missed by a
+# single-token version. It is safe precisely BECAUSE rank words are excluded — a rank word
+# terminates the strip, so "Acting Associate Dean" still correctly fails to match "dean".
+ROLE_QUALIFIER_RE = re.compile(
+    r"^(?:(?:departmental|department|university|interim|acting)\s+)+", re.I)
+
+
+def title_head_matches(title: str, role_head: str) -> bool:
+    """True iff ``title`` carries ``role_head`` as the head of one of its SEGMENTS.
+
+    THE single role-title matcher — shared by entity.people_by_role and
+    router._org_answers_title, which had silently diverged (the router's docstring claimed to
+    reuse this one while implementing a bare head-match with no qualifier strip, which is what
+    made "Interim President" fail to answer "who is the president").
+
+    Rules, in order:
+      * split compound titles on ',' and ' and ' ("Senior VP of Student Affairs and Dean of
+        Students" matches 'dean of students');
+      * strip leading scope/acting qualifiers, then require an exact segment-head match;
+      * ``(?!')`` so "President's Advisory Council" does NOT match 'president';
+      * if the matching segment is not the lead and the lead is a SUPPORT role, reject — an
+        "Executive Assistant, Dean of Students" is not the dean. The lead is qualifier-stripped
+        before that test, so "Acting Executive Assistant, Dean of Students" is caught too.
+    """
+    rx = re.compile(r"^" + re.escape(role_head.strip().lower()) + r"\b(?!')")
+    segs = [s.strip() for s in re.split(r",|\s+and\s+", title or "") if s.strip()]
+    idx = next((i for i, s in enumerate(segs)
+                if rx.match(s.lower()) or rx.match(ROLE_QUALIFIER_RE.sub("", s.lower()))), None)
+    if idx is None:
+        return False
+    if idx > 0 and segs and _SUPPORT_LEAD.match(ROLE_QUALIFIER_RE.sub("", segs[0])):
+        return False   # support-staff lead → the role is just a scope descriptor
+    return True
+
+
 def people_by_role(conn: sqlite3.Connection, role_head: str,
                    org_id: int | None = None) -> list[tuple[str, str, str, str | None]]:
     """(name, title, org_name, contact) for everyone whose has_role title carries ``role_head``
@@ -289,11 +329,6 @@ def people_by_role(conn: sqlite3.Connection, role_head: str,
       • If the matching segment is NOT the lead and the lead is a SUPPORT role, skip — an
         'Executive Assistant, Dean of Students' is not the dean.
     Empty list → caller falls through to RAG (never invents)."""
-    rx = re.compile(r"^" + re.escape(role_head.strip().lower()) + r"\b")
-    # A leading SCOPE word ("Department Chair", "Departmental Chair") is not a rank modifier — strip
-    # it so "chair" matches "Department Chair", while a RANK modifier (Vice/Associate Chair) still
-    # won't match (it isn't a scope word).
-    _scope = re.compile(r"^(?:departmental|department|university|interim)\s+", re.I)
     sql = ("SELECT p.name, e.attrs, p.attrs, o.name FROM edges e JOIN nodes p ON p.id=e.src_id "
            "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
            "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1")
@@ -307,15 +342,9 @@ def people_by_role(conn: sqlite3.Connection, role_head: str,
         pa = json.loads(pattrs) if pattrs else {}
         contact = pa.get("email") or pa.get("phone")
         for title in titles:
-            segs = [s.strip() for s in re.split(r",|\s+and\s+", title) if s.strip()]
-            idx = next((i for i, s in enumerate(segs)
-                        if rx.match(s.lower()) or rx.match(_scope.sub("", s.lower()))), None)
-            if idx is None:
-                continue
-            if idx > 0 and segs and _SUPPORT_LEAD.match(segs[0]):
-                continue   # support-staff lead → the role is just a scope descriptor
-            out.append((normalize_person_name(raw), title, oname, contact))
-            break
+            if title_head_matches(title, role_head):
+                out.append((normalize_person_name(raw), title, oname, contact))
+                break
     return sorted(set(out), key=lambda r: (r[0], r[2]))
 
 
