@@ -137,12 +137,25 @@ def test_scope_preserves_vice_associate():
     assert _scope.sub("", "Associate Dean") == "Associate Dean"
 
 def test_entity_scope_regex_is_extended():
-    """Import the actual _scope used in entity.people_by_role and confirm it covers the new words."""
-    import v2.core.retrieval.entity as entity_mod
-    import inspect
-    src = inspect.getsource(entity_mod.people_by_role)
-    assert "university" in src, "entity.py _scope must include 'university'"
-    assert "interim" in src, "entity.py _scope must include 'interim'"
+    """The qualifier strip must cover the scope words — asserted BEHAVIOURALLY.
+
+    Was: `inspect.getsource(people_by_role)` grepped for the literal strings 'university' and
+    'interim'. That broke when the regex moved to the module-level ROLE_QUALIFIER_RE and the
+    matching moved into title_head_matches (2026-08-15) — a refactor that changed no behaviour.
+    Testing the source text of a function pins its FORMATTING, not its contract; this version
+    pins what the words actually have to do, and additionally covers 'acting'.
+    """
+    from v2.core.retrieval.entity import ROLE_QUALIFIER_RE, title_head_matches
+
+    for word in ("university", "interim", "department", "departmental", "acting"):
+        assert ROLE_QUALIFIER_RE.sub("", f"{word.title()} Chair") == "Chair", (
+            f"qualifier strip must cover {word!r}")
+        assert title_head_matches(f"{word.title()} Chair", "chair"), (
+            f"{word.title()} Chair must answer 'chair'")
+
+    # …and the property that makes the strip safe: rank modifiers are NOT qualifiers.
+    assert not title_head_matches("Associate Chair", "chair")
+    assert not title_head_matches("Vice Chair", "chair")
 
 
 # ── Part C: org-phrase stripped before area extraction ─────────────────────────
