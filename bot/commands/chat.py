@@ -8,11 +8,14 @@ from discord.ext import commands
 
 from bot.core.message_handler import MessageRequest
 from bot.core.answer_render import discord_source_link, discord_footer_text
+from bot.core.msg_split import split_plain
 from bot.ui.feedback import FeedbackView
 
 logger = logging.getLogger(__name__)
 
 NJIT_RED = discord.Color.from_rgb(204, 0, 0)
+# Discord's embed-description cap. Headroom covers the appended source link on the last chunk.
+EMBED_DESC_LIMIT = 4096
 _OLLAMA_ALERT_COOLDOWN = 3600
 
 
@@ -121,16 +124,17 @@ class ChatCog(commands.Cog, name="Chat"):
                 # Clickable "Source" (masked link) goes in the description — embed footers
                 # can't hold links — so the raw URL is never shown. Brand + provenance + any
                 # friendly-name source go in the footer. Shared with the Telegram connector.
-                body = resp.text
+                #
+                # Long answers are SPLIT, not truncated: this used to do
+                # `body[:4093] + "..."`, silently dropping ~3,000 chars of a faculty answer
+                # (the entity card for a full NJIT profile runs ~7,100). One embed per
+                # message — NOT N embeds in one message, which would hit Discord's 6,000-char
+                # total-embed cap and can't bind the View to a specific embed.
                 source_link = discord_source_link(resp.source_note)
-                if source_link:
-                    body = f"{body}\n\n{source_link}"
-
-                embed = discord.Embed(color=NJIT_RED)
-                embed.description = body if len(body) <= 4096 else body[:4093] + "..."
-                embed.set_footer(text=discord_footer_text(
-                    source_note=resp.source_note, used_ai=resp.used_ai, is_live=resp.is_live
-                ))
+                chunks = split_plain(resp.text, EMBED_DESC_LIMIT - 256) or [resp.text]
+                # The source link belongs on the LAST chunk (it was previously appended before
+                # the length check, so truncation ate the link itself).
+                chunks[-1] = f"{chunks[-1]}\n\n{source_link}" if source_link else chunks[-1]
 
                 feedback_view = None
                 if resp.question_id:
@@ -143,7 +147,26 @@ class ChatCog(commands.Cog, name="Chat"):
                         guild_id=getattr(message.guild, "id", None),
                     )
 
-                await message.reply(embed=embed, view=feedback_view, mention_author=False)
+                for i, chunk in enumerate(chunks):
+                    is_last = i == len(chunks) - 1
+                    embed = discord.Embed(color=NJIT_RED)
+                    embed.description = chunk
+                    if is_last:
+                        embed.set_footer(text=discord_footer_text(
+                            source_note=resp.source_note,
+                            used_ai=resp.used_ai,
+                            is_live=resp.is_live,
+                        ))
+                    if i == 0:
+                        await message.reply(
+                            embed=embed,
+                            view=feedback_view if is_last else None,
+                            mention_author=False,
+                        )
+                    else:
+                        await message.channel.send(
+                            embed=embed, view=feedback_view if is_last else None
+                        )
 
                 if resp.ollama_failed:
                     await self._notify_ollama_down(message.channel)
