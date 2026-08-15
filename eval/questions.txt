@@ -440,3 +440,10 @@ what programs run in the computer science department
 what courses run in the fall at ywcc
 what services run out of the graduate student association
 who are the heads of departments at njit
+
+# long-answer delivery (2026-08-14): entity cards for faculty with full NJIT profiles run
+# ~7,100 chars, past Telegram's 4,096 cap. These must be DELIVERED (split), never dropped or
+# truncated. Regression for the "who is Taro Narahara" total-silence bug.
+who is Taro Narahara
+what does Taro Narahara research
+which college is Taro Narahara in

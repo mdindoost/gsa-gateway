@@ -182,3 +182,150 @@ async def test_toggle_phrase_midjudging_owned_by_judging_not_store(judging_setup
 # NOTE: tests for /events /contact /resources /help were removed — those v1 command
 # handlers no longer exist on TelegramConnector (all-conversational migration; only
 # /start + /qrcode remain). They were already failing on the base branch.
+
+
+# ── Long-answer splitting (2026-08-14) ───────────────────────────────────────
+# Regression suite for the bug where "who is Taro Narahara" returned NOTHING on Telegram:
+# the ~7,100-char answer exceeded the 4,096 cap, the send 400'd, and the except-fallback
+# re-sent the SAME oversized text so it 400'd too. Spec:
+# docs/superpowers/specs/2026-08-14-telegram-message-split-design.md
+
+from telegram.error import BadRequest, RetryAfter  # noqa: E402
+
+from bot.connectors.telegram_connector import TG_LIMIT  # noqa: E402
+from bot.core.msg_split import utf16_len  # noqa: E402
+
+# A realistic stand-in for Narahara's entity card (about + research statement + courses +
+# service + Scholar links). Measured live at ~7,100 characters.
+LONG_ANSWER = (
+    "Taro Narahara\nAssociate Professor — New Jersey School of Architecture\n\n"
+    + "\n\n".join(
+        f"Research paragraph {i}: computational design, machine learning & VR. " * 12
+        for i in range(9)
+    )
+    + "\n\n🎓 [Google Scholar](https://scholar.google.com/citations?hl=en&user=RRVZtWgAAAAJ)"
+)
+
+
+def _strict_reply_text():
+    """A reply_text that behaves like the real Telegram API: 400s on anything over 4096."""
+    async def _send(text, **kwargs):
+        if utf16_len(text) > TG_LIMIT:
+            raise BadRequest("Message is too long")
+        return MagicMock()
+    return AsyncMock(side_effect=_send)
+
+
+@pytest.mark.asyncio
+async def test_long_answer_is_split_and_every_chunk_is_accepted(connector):
+    """THE regression. Previously: 2 x 400 -> total silence."""
+    assert utf16_len(LONG_ANSWER) > TG_LIMIT, "fixture must exceed the cap"
+    connector.handler.handle = AsyncMock(return_value=MessageResponse(text=LONG_ANSWER))
+    update, context = _make_update_context("who is taro narahara")
+    update.message.reply_text = _strict_reply_text()
+
+    await connector._on_message(update, context)  # must not raise
+
+    calls = update.message.reply_text.call_args_list
+    assert len(calls) >= 2, "a 7k answer must be split"
+    for call in calls:
+        assert utf16_len(call[0][0]) <= TG_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_long_answer_content_is_not_lost(connector):
+    connector.handler.handle = AsyncMock(return_value=MessageResponse(text=LONG_ANSWER))
+    update, context = _make_update_context("who is taro narahara")
+    update.message.reply_text = _strict_reply_text()
+
+    await connector._on_message(update, context)
+
+    joined = "".join(c[0][0] for c in update.message.reply_text.call_args_list)
+    assert "Taro Narahara" in joined
+    assert "Research paragraph 8" in joined, "the tail must survive — no silent truncation"
+    assert "scholar.google.com" in joined
+
+
+@pytest.mark.asyncio
+async def test_footer_and_keyboard_ride_on_the_last_chunk_only(connector):
+    connector.handler.handle = AsyncMock(
+        return_value=MessageResponse(
+            text=LONG_ANSWER, question_id=42, source_note="https://people.njit.edu/profile/narahara"
+        )
+    )
+    update, context = _make_update_context("who is taro narahara")
+    update.message.reply_text = _strict_reply_text()
+
+    await connector._on_message(update, context)
+
+    calls = update.message.reply_text.call_args_list
+    assert len(calls) >= 2
+    for call in calls[:-1]:
+        assert call.kwargs.get("reply_markup") is None
+        assert "GSA Gateway" not in call[0][0], "footer must not repeat on every chunk"
+    assert calls[-1].kwargs.get("reply_markup") is not None, "buttons belong on the last message"
+    assert "GSA Gateway" in calls[-1][0][0]
+
+
+@pytest.mark.asyncio
+async def test_short_answer_is_still_exactly_one_message_with_buttons(connector):
+    """Pins the 99% case: no behavior change, and the existing tests that read the LAST
+    call_args stay valid."""
+    connector.handler.handle = AsyncMock(
+        return_value=MessageResponse(text="Taro Narahara is an Associate Professor.", question_id=7)
+    )
+    update, context = _make_update_context("who is taro narahara")
+    update.message.reply_text = _strict_reply_text()
+
+    await connector._on_message(update, context)
+
+    update.message.reply_text.assert_called_once()
+    assert update.message.reply_text.call_args.kwargs.get("reply_markup") is not None
+
+
+@pytest.mark.asyncio
+async def test_html_parse_failure_falls_back_to_plain_text_that_also_fits(connector):
+    """D2: the old fallback re-sent the FULL oversized text and 400'd a second time."""
+    seen = []
+
+    async def _send(text, **kwargs):
+        seen.append((text, kwargs.get("parse_mode")))
+        if utf16_len(text) > TG_LIMIT:
+            raise BadRequest("Message is too long")
+        if kwargs.get("parse_mode") == "HTML":
+            raise BadRequest("Can't parse entities")
+        return MagicMock()
+
+    connector.handler.handle = AsyncMock(return_value=MessageResponse(text=LONG_ANSWER))
+    update, context = _make_update_context("who is taro narahara")
+    update.message.reply_text = AsyncMock(side_effect=_send)
+
+    await connector._on_message(update, context)  # must not raise
+
+    plain = [t for t, mode in seen if mode is None]
+    assert plain, "must fall back to plain text"
+    for text, _mode in seen:
+        assert utf16_len(text) <= TG_LIMIT, "the fallback must itself be length-safe"
+
+
+@pytest.mark.asyncio
+async def test_retry_after_is_retried_so_the_tail_is_not_dropped(connector):
+    """Without this, chunk 1 lands and chunk 2 vanishes — a silent partial answer."""
+    state = {"raised": False}
+
+    async def _send(text, **kwargs):
+        if utf16_len(text) > TG_LIMIT:
+            raise BadRequest("Message is too long")
+        if not state["raised"] and text.startswith("Research paragraph"):
+            state["raised"] = True
+            raise RetryAfter(0.01)
+        return MagicMock()
+
+    connector.handler.handle = AsyncMock(return_value=MessageResponse(text=LONG_ANSWER))
+    update, context = _make_update_context("who is taro narahara")
+    update.message.reply_text = AsyncMock(side_effect=_send)
+
+    await connector._on_message(update, context)
+
+    joined = "".join(c[0][0] for c in update.message.reply_text.call_args_list)
+    assert "Research paragraph 8" in joined, "tail dropped after RetryAfter"

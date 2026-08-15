@@ -12,7 +12,15 @@ import re
 import time
 from typing import Optional
 
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    LinkPreviewOptions,
+    Update,
+)
+from telegram.constants import MessageLimit
+from telegram.error import RetryAfter, TelegramError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 from telegram.ext import MessageHandler as PTBHandler
 from telegram.ext import filters
@@ -25,6 +33,7 @@ from bot.core.live_fallback import LiveLinks
 from bot.core.live_query import LIVE_NOT_FOUND_MSG
 from bot.core.answer_render import telegram_footer_html
 from bot.core.modes import ConversationModeStore, ModeDispatcher, ModeRegistry
+from bot.core.msg_split import split_for_telegram, split_plain, utf16_len
 from bot.services.knowledge_base import KnowledgeBase
 from v2.core.judging.session import JudgingSessionManager
 
@@ -40,7 +49,16 @@ def _tg_html(text: str) -> str:
     t = html.escape(text or "", quote=False)
     # Markdown masked links [label](url) -> <a href> (Discord renders these natively; Telegram
     # would otherwise show the raw "[label](url)" with the URL exposed). Done before bold/italic.
-    t = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', t)
+    # Escape ONLY the quote character in the URL. `&`/`<`/`>` were already escaped by the
+    # html.escape above (which runs quote=False so body text keeps readable quotes), so
+    # re-escaping here would double them — `&` -> `&amp;amp;` — breaking every Scholar URL.
+    # An unescaped `"` would otherwise break out of the href attribute, e.g.
+    # [x](https://a.com/?q=") yielding a malformed tag Telegram rejects.
+    t = re.sub(
+        r"\[([^\]]+)\]\(([^)\s]+)\)",
+        lambda m: f'<a href="{m.group(2).replace(chr(34), "&quot;")}">{m.group(1)}</a>',
+        t,
+    )
     t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t, flags=re.S)      # bold (before single-*)
     t = re.sub(r"\*(.+?)\*", r"<i>\1</i>", t, flags=re.S)          # *italic*
     t = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"<i>\1</i>", t, flags=re.S)  # _italic_ (word-boundary)
@@ -48,6 +66,17 @@ def _tg_html(text: str) -> str:
 
 _SIMILARITY_THRESHOLD = 0.90
 _FEEDBACK_TTL = 259200  # 72 hours in seconds
+
+# Telegram's own constant — never hardcode 4096 (verified = 4096 on the installed PTB 22.7).
+TG_LIMIT = MessageLimit.MAX_TEXT_LENGTH
+# Headroom, DERIVED not guessed: the rendered footer (🔗 <a href=…>Source</a> + brand line)
+# measures 145 UTF-16 units; 51 units of slack cover the "\n\n" join and a trailing partial
+# word. The footer is additionally subtracted per-send in _reply_chunked.
+TG_BUDGET = TG_LIMIT - 196
+
+# The footer carries a <a href> to the source; without this Telegram renders a preview card as
+# the very last thing the user sees on a long answer.
+_NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 
 class TelegramConnector(BasePlatform):
@@ -158,6 +187,26 @@ class TelegramConnector(BasePlatform):
         self.app.add_handler(
             CallbackQueryHandler(self._on_web_search,      pattern=r"^web:\d+$")
         )
+        # Without this, a handler exception is logged as "No error handlers are registered"
+        # and the user sees NOTHING — which is how a send failure became total silence.
+        self.app.add_error_handler(self._on_error)
+
+    async def _on_error(self, update: object, context) -> None:
+        """Last-resort: never let a handler failure be invisible to the user."""
+        logger.error("Telegram handler error", exc_info=context.error)
+        # Gated on TelegramError: a POST-delivery failure (e.g. db.log_feedback_rating
+        # raising) must not apologize for an answer the user already received.
+        if not isinstance(context.error, TelegramError):
+            return
+        message = getattr(update, "effective_message", None)
+        if message is None:
+            return
+        try:
+            await message.reply_text(
+                "Something went wrong sending that answer. Please try asking again."
+            )
+        except Exception:  # noqa: BLE001 - PTB only logs errors raised by an error handler
+            logger.warning("Telegram error-handler could not notify the user")
 
     async def start(self) -> None:
         assert self.app is not None, "Call setup_services() before start()"
@@ -203,6 +252,81 @@ class TelegramConnector(BasePlatform):
             if expired:
                 logger.debug("Cleaned up %d expired Telegram feedback entries", len(expired))
 
+    # ── Sending ───────────────────────────────────────────────────────────────
+
+    async def _send_with_retry(self, message, payload, *, parse_mode, keyboard) -> None:
+        """One send, with a single RetryAfter retry.
+
+        PTB does NOT auto-retry RetryAfter, and the binding limit here is ~20 messages/minute
+        per group. Without this, chunk 1 lands and chunk 2 is dropped — a truncated answer with
+        no buttons and no error, i.e. exactly the silent drop this whole change exists to stop.
+        """
+        try:
+            await message.reply_text(
+                payload, parse_mode=parse_mode, reply_markup=keyboard,
+                link_preview_options=_NO_PREVIEW,
+            )
+        except RetryAfter as exc:
+            # PTB is migrating retry_after from seconds to timedelta (deprecated since 22.2)
+            delay = exc.retry_after
+            delay = delay.total_seconds() if hasattr(delay, "total_seconds") else float(delay)
+            await asyncio.sleep(delay + 0.5)
+            await message.reply_text(
+                payload, parse_mode=parse_mode, reply_markup=keyboard,
+                link_preview_options=_NO_PREVIEW,
+            )
+
+    async def _send_one(self, message, chunk, *, footer_html, keyboard, html_mode) -> None:
+        """Send ONE already-length-safe chunk, HTML first, plain text as the fallback.
+
+        The fallback sends `chunk` — which is itself within budget — so unlike the old
+        `except: reply_text(resp.text)` it can never fail on length a second time.
+        """
+        if html_mode:
+            try:
+                await self._send_with_retry(
+                    message, _tg_html(chunk) + footer_html,
+                    parse_mode="HTML", keyboard=keyboard,
+                )
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Telegram HTML send failed (%s); retrying as plain text", exc)
+        try:
+            await self._send_with_retry(message, chunk, parse_mode=None, keyboard=keyboard)
+        except Exception:  # noqa: BLE001
+            logger.exception("Telegram plain-text send failed; chunk dropped")
+
+    async def _reply_chunked(
+        self, message, text: str, *, footer_html: str = "",
+        keyboard: Optional[InlineKeyboardMarkup] = None, html_mode: bool = True,
+    ) -> None:
+        """Send `text` as one or more messages, each within Telegram's length limit.
+
+        Footer and keyboard ride on the LAST chunk only, so the answer reads as one piece and
+        the 👍/👎/🔄 buttons sit under the end of it.
+        """
+        text = (text or "").strip()
+        if not text:
+            return
+        budget = max(TG_BUDGET - utf16_len(footer_html), 512)
+        chunks = (
+            split_for_telegram(text, budget, _tg_html) if html_mode
+            else split_plain(text, budget)
+        )
+        if not chunks:
+            return
+        if len(chunks) > 1:
+            logger.info("Telegram answer split into %d messages (%d units)",
+                        len(chunks), utf16_len(text))
+        for i, chunk in enumerate(chunks):
+            is_last = i == len(chunks) - 1
+            await self._send_one(
+                message, chunk,
+                footer_html=footer_html if is_last else "",
+                keyboard=keyboard if is_last else None,
+                html_mode=html_mode,
+            )
+
     # ── Message handler ───────────────────────────────────────────────────────
 
     async def _on_message(self, update: Update, context) -> None:
@@ -225,10 +349,7 @@ class TelegramConnector(BasePlatform):
         if reply.is_judging:
             response_text = reply.payload
             if response_text:
-                try:
-                    await update.message.reply_text(_tg_html(response_text), parse_mode="HTML")
-                except Exception:  # noqa: BLE001
-                    await update.message.reply_text(response_text)
+                await self._reply_chunked(update.message, response_text)
             return
 
         # Conversation replies: a MessageResponse, rendered with source note + feedback UI.
@@ -236,7 +357,7 @@ class TelegramConnector(BasePlatform):
         if not resp.text:
             return
 
-        html_text = _tg_html(resp.text) + telegram_footer_html(
+        footer_html = telegram_footer_html(
             source_note=resp.source_note, used_ai=resp.used_ai, is_live=resp.is_live
         )
 
@@ -254,12 +375,9 @@ class TelegramConnector(BasePlatform):
                 answer_text=resp.text,
             )
 
-        try:
-            await update.message.reply_text(
-                html_text, parse_mode="HTML", reply_markup=keyboard
-            )
-        except Exception:
-            await update.message.reply_text(resp.text, reply_markup=keyboard)
+        await self._reply_chunked(
+            update.message, resp.text, footer_html=footer_html, keyboard=keyboard
+        )
 
     # ── Feedback callbacks ────────────────────────────────────────────────────
 
@@ -392,7 +510,7 @@ class TelegramConnector(BasePlatform):
                 )
                 return
 
-            new_html = _tg_html(new_resp.text) + telegram_footer_html(
+            new_footer = telegram_footer_html(
                 source_note=new_resp.source_note, used_ai=new_resp.used_ai, is_live=new_resp.is_live
             )
 
@@ -409,12 +527,10 @@ class TelegramConnector(BasePlatform):
                         answer_text=new_resp.text,
                     )
 
-            try:
-                await query.message.reply_text(
-                    new_html, parse_mode="HTML", reply_markup=new_keyboard
-                )
-            except Exception:
-                await query.message.reply_text(new_resp.text, reply_markup=new_keyboard)
+            await self._reply_chunked(
+                query.message, new_resp.text,
+                footer_html=new_footer, keyboard=new_keyboard,
+            )
 
         else:
             await query.answer()
@@ -518,15 +634,18 @@ class TelegramConnector(BasePlatform):
         if isinstance(live, LiveLinks):
             # A1 off-target degrade: no page ANSWERED, so hand back the closest links honestly
             # (extractive integrity — no confident wrong extract). Plain text; URLs are verbatim.
-            await query.message.reply_text(_live_links_text(live.urls))
+            # _live_links_text is unbounded in len(urls) — nothing in the Brave path caps the
+            # list — so it is chunked too. Plain mode: the URLs are verbatim, not markdown.
+            await self._reply_chunked(
+                query.message, _live_links_text(live.urls), html_mode=False
+            )
             return
-        html_text = _tg_html(live.text) + telegram_footer_html(
-            source_note=getattr(live, "source_url", None), used_ai=True, is_live=True
+        await self._reply_chunked(
+            query.message, live.text,
+            footer_html=telegram_footer_html(
+                source_note=getattr(live, "source_url", None), used_ai=True, is_live=True
+            ),
         )
-        try:
-            await query.message.reply_text(html_text, parse_mode="HTML")
-        except Exception:  # noqa: BLE001
-            await query.message.reply_text(live.text)
 
     # ── Command handlers ──────────────────────────────────────────────────────
 
