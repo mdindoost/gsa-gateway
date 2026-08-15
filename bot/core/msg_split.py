@@ -133,6 +133,7 @@ def split_for_telegram(
     limit: int,
     render: Callable[[str], str],
     *,
+    hard_limit: Optional[int] = None,
     atomic_spans: Optional[re.Pattern] = MASKED_LINK_RE,
 ) -> list[str]:
     """`split_plain` plus a POST-CONDITION safety net on the RENDERED size.
@@ -142,13 +143,20 @@ def split_for_telegram(
     to the raw markup we send): any chunk whose rendered form still exceeds `limit` is
     re-split at a halved budget until it fits or hits the floor.
 
-    On real answers the net never fires; it exists so the guarantee does not rest on one
-    reading of the API docs.
+    `limit` is the PLAIN-space budget (deliberately below the cap, to leave room for a footer
+    and a trailing partial word). `hard_limit` is the actual cap the RENDERED payload must
+    respect, and defaults to `limit`.
+
+    Keeping them separate matters: budgeting plain at 3,755 while a chunk renders to 3,854 is
+    perfectly fine when the real cap is 4,096. Checking the rendered size against the smaller
+    plain budget made the net fire on a chunk that already fit, splitting the live Narahara
+    answer into 4 messages instead of 2.
     """
+    hard = limit if hard_limit is None else hard_limit
     chunks = split_plain(text, limit, atomic_spans=atomic_spans)
     out: list[str] = []
     for chunk in chunks:
-        out.extend(_enforce_rendered(chunk, limit, render, limit, atomic_spans))
+        out.extend(_enforce_rendered(chunk, hard, render, limit, atomic_spans))
     return out
 
 

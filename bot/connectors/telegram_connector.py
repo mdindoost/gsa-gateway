@@ -308,9 +308,14 @@ class TelegramConnector(BasePlatform):
         text = (text or "").strip()
         if not text:
             return
-        budget = max(TG_BUDGET - utf16_len(footer_html), 512)
+        # Two distinct numbers: the plain-space budget we AIM for (leaves footer room and a
+        # trailing partial word), and the hard cap the rendered payload must not exceed.
+        # Conflating them makes the safety net re-split chunks that already fit.
+        footer_units = utf16_len(footer_html)
+        budget = max(TG_BUDGET - footer_units, 512)
+        hard_limit = max(TG_LIMIT - footer_units, 512)
         chunks = (
-            split_for_telegram(text, budget, _tg_html) if html_mode
+            split_for_telegram(text, budget, _tg_html, hard_limit=hard_limit) if html_mode
             else split_plain(text, budget)
         )
         if not chunks:

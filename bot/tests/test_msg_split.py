@@ -275,3 +275,27 @@ def test_invariants_hold_across_budgets(limit):
         assert c.strip()
         assert utf16_len(c) <= limit or len(c) <= 8  # floor case
     assert strip_ws("".join(chunks)) == strip_ws(text)
+
+
+# ── hard_limit vs plain budget (regression: over-splitting) ──────────────────
+def test_net_does_not_fire_when_render_fits_the_hard_limit():
+    """The rendered form may legitimately exceed the PLAIN budget while still fitting the cap.
+
+    Checking rendered size against the smaller plain budget split the live Narahara answer
+    into 4 messages instead of 2.
+    """
+    text = "\n\n".join("Prose with <b>source tags</b> and & entities. " * 40 for _ in range(2))
+    budget, hard = 3755, 4096
+    with_hard = split_for_telegram(text, budget, _render, hard_limit=hard)
+    without = split_for_telegram(text, budget, _render)
+    assert len(with_hard) <= len(without), "hard_limit must not over-split"
+    for c in with_hard:
+        assert utf16_len(_render(c)) <= hard
+
+
+def test_net_still_fires_when_render_exceeds_the_hard_limit():
+    """The net must remain live — this is the &-heavy case it exists for."""
+    chunks = split_for_telegram("&" * 4000, 3900, _render, hard_limit=TG_LIMIT)
+    assert len(chunks) > 1
+    for c in chunks:
+        assert utf16_len(_render(c)) <= TG_LIMIT
