@@ -450,3 +450,9 @@ which college is Taro Narahara in
 
 who is the interim president of NJIT
 who leads Newark College of Engineering
+
+# NJIT leadership transition (2026-08): interim/acting titles must resolve, and the decanal
+# titles the profile-page crawl cannot see must survive (ingest_college_leadership.py).
+who is the dean of Newark College of Engineering
+who are the associate deans of YWCC
+who is the associate dean for research at YWCC

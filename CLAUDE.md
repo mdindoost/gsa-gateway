@@ -312,9 +312,29 @@ Dashboard KB tab (or drop a `.md` in `bot/data/sources/gsa/` → `scripts/gsa_in
 `python scripts/run_explore.py` walks ALL colleges in `ALL_ENTRY_POINTS` and refreshes the KG
 (people/roles/research-areas) + crawler KB. **This is the recurring update path** — re-run it
 whenever NJIT pages change (new hires, departures, role/research changes); M3 reconciles
-turnover automatically. Gated workflow: dev copy first (`cp gsa_gateway.db /tmp/dev.db;
-run_explore.py --db /tmp/dev.db`), inspect + `scripts/verify_kg.py`, then live, then
-`v2/scripts/embed_all.py`. `--reset` re-derives crawler data from scratch (manual/dashboard
+turnover automatically. Gated workflow: dev copy first, inspect + `scripts/verify_kg.py`, then
+live, then `v2/scripts/embed_all.py`.
+**⚠️ NEVER `cp gsa_gateway.db` to make the dev copy** (this doc said to until 2026-08-15). The DB
+runs in **WAL mode**, so recent writes live in `gsa_gateway.db-wal` (2.6 MB at the time of
+writing) and a plain `cp` of the main file **silently loses them** — the copy is a stale
+snapshot and every check against it is quietly wrong. Caught when a dev copy taken minutes
+after a committed roster change still showed the OLD president. Use the online-backup API,
+which checkpoints correctly:
+```
+sqlite3 gsa_gateway.db ".backup /tmp/dev.db"     # or python: src.backup(dst)
+python scripts/run_explore.py --db /tmp/dev.db
+```
+`hardened_backup()` already uses `src.backup(d)` and is WAL-safe — **backups were never
+affected, only hand-rolled `cp` dev copies.**
+**⚠️ ALWAYS run `python scripts/ingest_college_leadership.py --commit` AFTER a crawl.** NJIT
+restructured profile pages (2026-08) so a heading carries only the FACULTY RANK, while the
+decanal role lives in a college-site section heading ("Associate Deans:") or in About-Me prose.
+explore.py reads per-person titles, so a crawl drops those titles — the 2026-08-15 run dropped
+33. Most were genuine turnover (Nadim→Golowasch as Bio Sci chair; Guiling Wang is no longer an
+associate dean — owner-confirmed) and correctly dropped; the still-in-post ones are merged back
+by that script, verified against `njit_orgchart.pdf` + the college administration pages.
+`project_appointment` overwrites titles on the first touch of a run by design, so this is a
+re-runnable merge-back, NOT a permanent overlay. `--reset` re-derives crawler data from scratch (manual/dashboard
 content untouched). MTSM program/PhD/FAQ **prose** is separate + manual: `scripts/mtsm_ingest.py
 --commit` (`source='dashboard'`, idempotent on `natural_key`) — re-run when those pages change.
 
