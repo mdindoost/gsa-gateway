@@ -1,0 +1,352 @@
+<html>
+<head>
+<meta charset="utf-8">
+<title>GSA Gateway — Technical Report</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="masthead">
+  <div class="eyebrow">Technical Report · New Jersey Institute of Technology</div>
+  <h1>GSA Gateway</h1>
+  <p class="subtitle">A precision-first retrieval architecture for institutional question answering</p>
+  <div class="byline">
+    <span><strong>Mohammad Dindoost</strong> — VP Academic Affairs, NJIT Graduate Student Association</span>
+    <span>22 August 2026</span>
+    <span>Self-hosted · Python 3.14 · SQLite · Ollama</span>
+  </div>
+</div>
+
+<div class="abstract">
+  <span class="label">Abstract</span>
+  <p>GSA Gateway is a self-hosted conversational assistant that answers questions about NJIT — its people,
+  departments, research, programs, policies, and Graduate Student Association services — through Discord,
+  Telegram, and GroupMe. It is built on one asymmetry: in an institutional setting a confident wrong answer
+  is worse than no answer, because a student who is told the wrong deadline acts on it. The architecture
+  follows from that premise. Questions that can be answered exactly are answered by deterministic SQL over a
+  knowledge graph rather than from model recall, so the facts are read from the database, never invented.
+  For sixteen of those skills the answer text bypasses the language model entirely — citation counts, URLs,
+  and disambiguation rosters are rendered verbatim — and the rest are only rephrased by a local model under a
+  check that no retrieved fact may be dropped. Generated prose is separately verified against the evidence
+  that produced it, and the system abstains when support is absent. All model inference runs on local
+  hardware and no question text reaches a commercial model provider; on a knowledge-base miss the question is
+  sent to a commercial web-search API, scoped to njit.edu, to locate a source page.</p>
+</div>
+
+<div class="stats">
+  <div class="stat"><span class="v">27,685</span><span class="k">Indexed passages<br>(~11,060 served)</span></div>
+  <div class="stat"><span class="v">1,130</span><span class="k">People in<br>the graph</span></div>
+  <div class="stat"><span class="v">3,200</span><span class="k">Graph<br>edges</span></div>
+  <div class="stat"><span class="v">32</span><span class="k">Routed<br>skills</span></div>
+  <div class="stat"><span class="v">92%</span><span class="k">Answered<br>(324-Q run)</span></div>
+  <div class="stat"><span class="v">2%</span><span class="k">Judged wrong<br>(of answered)</span></div>
+</div>
+
+<h2><span class="num">1</span>Design premise</h2>
+
+<p>A general-purpose RAG assistant optimizes for answering. That objective is wrong for a university help
+desk, where the cost of errors is asymmetric: an unanswered question sends a student to a web page, while a
+fabricated office number, deadline, or advisor name sends them somewhere that does not exist. GSA Gateway
+therefore optimizes for <em>precision under an abstention option</em>, and three rules follow.</p>
+
+<p><strong>First, prefer a deterministic path.</strong> A large share of real traffic — who chairs a
+department, which faculty work on a topic, a professor's citation count, how to reach an office — is a
+database query wearing a natural-language costume. Those questions are resolved by parameterized SQL
+against a knowledge graph, then either rendered verbatim or rephrased by a local model under a check that no
+retrieved fact is dropped — so the model never originates the fact.
+<strong>Second, never let the model supply a fact retrieval did not.</strong> Where a skill can tell that an
+asked-for attribute is missing, it states the gap rather than letting the model fill it; this is implemented
+skill by skill rather than as a blanket property. <strong>Third, abstain over guess.</strong> Generated answers are verified against their own source
+passages before delivery; unsupported ones are replaced by a live lookup or an honest non-answer.</p>
+
+<h2><span class="num">2</span>Knowledge representation: two layers, one database</h2>
+
+<p>The system stores knowledge in two complementary layers inside a single SQLite database (WAL mode, STRICT
+tables), because institutional questions come in two shapes and neither representation serves both well.</p>
+
+<p>The <strong>text layer</strong> holds 27,685 active passages — profile prose, policy pages, catalog
+entries, PDFs, curated GSA content, and 15,745 one-title publication records that are indexed but held out
+of the default answer corpus, leaving roughly 11,060 passages reachable by a general question. Each is
+indexed twice: an FTS5 full-text index over a generated
+<code>search_text</code> column, and dense vectors in a <code>sqlite-vec</code> virtual table. Embeddings
+come from Qwen3-Embedding-0.6B served locally by Ollama, 1024-dimensional and L2-normalized, using an
+asymmetric prefix scheme in which passages are embedded raw and only the query carries an instruction
+wrapper. Vector coverage of active passages is complete.</p>
+
+<p>The <strong>graph layer</strong> holds 1,130 active people, 61 organizations, and 1,666 research areas as
+typed nodes, joined by 3,200 active edges: <code>has_role</code> (carrying a role category and the literal titles),
+<code>researches</code>, and <code>part_of</code>. Organization nodes bridge to a separate organizational
+tree; skills that rank or aggregate walk that whole subtree, so "most cited in the engineering college"
+spans its departments, while roster skills deliberately scope to the exact organization named. This layer is what makes exact
+answers possible: "who are the Computer Science faculty" is a traversal with a correct, complete, checkable
+answer, and treating it as a passage-similarity problem would be a category error.</p>
+
+<h2><span class="num">3</span>The answer path</h2>
+
+<figure>
+<svg viewBox="0 0 780 206" xmlns="http://www.w3.org/2000/svg" font-family="Liberation Sans, Arial, sans-serif">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9b1b30"/>
+    </marker>
+  </defs>
+
+  <!-- lane label, left of the top lane -->
+  <text x="4" y="22" font-size="9" fill="#9b1b30" font-weight="bold" letter-spacing="0.9">DETERMINISTIC LANE</text>
+  <text x="4" y="36" font-size="8.4" fill="#6b7280">exact answers, no model involved</text>
+
+  <!-- STRUCTURED (top lane) -->
+  <rect x="246" y="6" width="232" height="40" rx="3" fill="#fdf2f4" stroke="#9b1b30" stroke-width="1.1"/>
+  <text x="362" y="22" font-size="10" font-weight="bold" text-anchor="middle" fill="#14171f">Structured layer — 32 routed SQL skills</text>
+  <text x="362" y="36" font-size="8.6" text-anchor="middle" fill="#3c4453">rosters · roles · research areas · metrics · cards</text>
+
+  <rect x="500" y="6" width="150" height="40" rx="3" fill="#ffffff" stroke="#9b1b30" stroke-width="1.1"/>
+  <text x="575" y="22" font-size="10" font-weight="bold" text-anchor="middle" fill="#14171f">Complete answer</text>
+  <text x="575" y="36" font-size="8.6" text-anchor="middle" fill="#3c4453">16 skills render verbatim</text>
+
+  <!-- SPINE -->
+  <rect x="4" y="76" width="62" height="54" rx="3" fill="#f6f7f9" stroke="#d4d8e0" stroke-width="1"/>
+  <text x="35" y="92" font-size="8.6" text-anchor="middle" fill="#3c4453">Discord</text>
+  <text x="35" y="106" font-size="8.6" text-anchor="middle" fill="#3c4453">Telegram</text>
+  <text x="35" y="120" font-size="8.6" text-anchor="middle" fill="#3c4453">GroupMe</text>
+
+  <rect x="82" y="76" width="76" height="54" rx="3" fill="#ffffff" stroke="#d4d8e0" stroke-width="1"/>
+  <text x="120" y="94" font-size="9" font-weight="bold" text-anchor="middle" fill="#14171f">Normalize</text>
+  <text x="120" y="108" font-size="7.9" text-anchor="middle" fill="#6b7280">follow-up resolve</text>
+  <text x="120" y="120" font-size="7.9" text-anchor="middle" fill="#6b7280">cue-based deflect</text>
+
+  <rect x="174" y="76" width="60" height="54" rx="3" fill="#fdf2f4" stroke="#9b1b30" stroke-width="1.1"/>
+  <text x="204" y="98" font-size="9" font-weight="bold" text-anchor="middle" fill="#14171f">Router</text>
+  <text x="204" y="112" font-size="7.9" text-anchor="middle" fill="#6b7280">rule-first</text>
+
+  <!-- retrieval container -->
+  <rect x="246" y="68" width="266" height="70" rx="3" fill="#ffffff" stroke="#d4d8e0" stroke-width="1"/>
+  <text x="252" y="80" font-size="7.6" fill="#6b7280" font-weight="bold" letter-spacing="0.6">HYBRID RETRIEVAL</text>
+
+  <rect x="252" y="86" width="88" height="20" rx="2" fill="#f6f7f9" stroke="#d4d8e0" stroke-width="0.8"/>
+  <text x="296" y="100" font-size="8.3" text-anchor="middle" fill="#3c4453">vector KNN</text>
+  <rect x="252" y="110" width="88" height="20" rx="2" fill="#f6f7f9" stroke="#d4d8e0" stroke-width="0.8"/>
+  <text x="296" y="124" font-size="8.3" text-anchor="middle" fill="#3c4453">FTS5 bm25</text>
+
+  <rect x="352" y="98" width="46" height="20" rx="2" fill="#ffffff" stroke="#d4d8e0" stroke-width="0.8"/>
+  <text x="375" y="112" font-size="8.3" text-anchor="middle" fill="#3c4453">RRF</text>
+
+  <rect x="410" y="98" width="58" height="20" rx="2" fill="#ffffff" stroke="#d4d8e0" stroke-width="0.8"/>
+  <text x="439" y="112" font-size="8.3" text-anchor="middle" fill="#3c4453">rerank</text>
+
+  <rect x="476" y="98" width="30" height="20" rx="2" fill="#ffffff" stroke="#d4d8e0" stroke-width="0.8"/>
+  <text x="491" y="112" font-size="8.3" text-anchor="middle" fill="#3c4453">top 5</text>
+
+  <path d="M 340 96 L 350 102" stroke="#6b7280" stroke-width="0.9" fill="none"/>
+  <path d="M 340 120 L 350 114" stroke="#6b7280" stroke-width="0.9" fill="none"/>
+  <path d="M 398 108 L 406 108" stroke="#6b7280" stroke-width="0.9" marker-end="url(#ar)" fill="none"/>
+  <path d="M 468 108 L 473 108" stroke="#6b7280" stroke-width="0.9" marker-end="url(#ar)" fill="none"/>
+
+  <rect x="526" y="76" width="76" height="54" rx="3" fill="#ffffff" stroke="#d4d8e0" stroke-width="1"/>
+  <text x="564" y="94" font-size="9" font-weight="bold" text-anchor="middle" fill="#14171f">Compose</text>
+  <text x="564" y="108" font-size="7.9" text-anchor="middle" fill="#6b7280">grounded,</text>
+  <text x="564" y="119" font-size="7.9" text-anchor="middle" fill="#6b7280">local LLM</text>
+
+  <rect x="618" y="76" width="66" height="54" rx="3" fill="#fdf2f4" stroke="#9b1b30" stroke-width="1.1"/>
+  <text x="651" y="94" font-size="9" font-weight="bold" text-anchor="middle" fill="#14171f">Gate</text>
+  <text x="651" y="108" font-size="7.9" text-anchor="middle" fill="#6b7280">supported</text>
+  <text x="651" y="119" font-size="7.9" text-anchor="middle" fill="#6b7280">by evidence?</text>
+
+  <rect x="700" y="76" width="76" height="54" rx="3" fill="#ffffff" stroke="#9b1b30" stroke-width="1.1"/>
+  <text x="738" y="97" font-size="9" font-weight="bold" text-anchor="middle" fill="#14171f">Answer</text>
+  <text x="738" y="111" font-size="7.9" text-anchor="middle" fill="#6b7280">+ source</text>
+
+  <!-- spine arrows -->
+  <path d="M 66 103 L 78 103" stroke="#6b7280" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+  <path d="M 158 103 L 170 103" stroke="#6b7280" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+  <path d="M 234 103 L 242 103" stroke="#6b7280" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+  <path d="M 512 103 L 522 103" stroke="#6b7280" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+  <path d="M 602 103 L 614 103" stroke="#6b7280" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+  <path d="M 684 103 L 696 103" stroke="#6b7280" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+
+  <!-- router -> structured (up) -->
+  <path d="M 204 76 L 204 26 L 242 26" stroke="#9b1b30" stroke-width="1.2" marker-end="url(#arr)" fill="none"/>
+  <text x="209" y="66" font-size="7.6" fill="#9b1b30" font-weight="bold">exact match</text>
+  <path d="M 478 26 L 496 26" stroke="#9b1b30" stroke-width="1.2" marker-end="url(#arr)" fill="none"/>
+  <path d="M 650 26 L 738 26 L 738 72" stroke="#9b1b30" stroke-width="1.2" marker-end="url(#arr)" fill="none"/>
+
+  <!-- gate fail -> fallback -->
+  <text x="4" y="172" font-size="9" fill="#6b7280" font-weight="bold" letter-spacing="0.9">FALLBACK</text>
+  <text x="4" y="186" font-size="8.4" fill="#6b7280">when evidence is missing</text>
+  <rect x="470" y="160" width="214" height="36" rx="3" fill="#f6f7f9" stroke="#d4d8e0" stroke-width="1"/>
+  <text x="577" y="175" font-size="9" font-weight="bold" text-anchor="middle" fill="#14171f">Live njit.edu lookup — verbatim spans</text>
+  <text x="577" y="189" font-size="8.3" text-anchor="middle" fill="#6b7280">or an explicit “I don’t have that”</text>
+  <path d="M 651 130 L 651 156" stroke="#6b7280" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+  <text x="656" y="147" font-size="7.6" fill="#6b7280" font-weight="bold">unsupported</text>
+  <path d="M 684 178 L 738 178 L 738 134" stroke="#6b7280" stroke-width="1" marker-end="url(#ar)" fill="none"/>
+</svg>
+<figcaption><strong>Figure 1 — Request flow.</strong> Anything the router can resolve exactly takes the
+deterministic lane, where 32 SQL skills produce a complete answer and 16 render it verbatim without a
+language model. Everything else takes the retrieval spine, where composed prose must be certified by a gate
+against its own sources; a failed gate does not guess.</figcaption>
+</figure>
+
+<h2><span class="num">4</span>Retrieval mechanics</h2>
+
+<p>Both search legs run over the same corpus — the default answer corpus, which holds out per-paper
+publication and syllabus rows — and are combined rather than chosen between. The semantic leg is a KNN scan
+of the <code>sqlite-vec</code> index; because all vectors are L2-normalized, Euclidean
+distance is converted to a cosine-equivalent similarity in closed form. The lexical leg is FTS5 with bm25
+ranking, which is what actually retrieves exact identifiers — a course code, a surname, an acronym — that
+embeddings blur. The two ranked lists are merged by <strong>Reciprocal Rank Fusion</strong> (k = 60),
+which combines by rank position and so needs no score calibration between two incomparable scales.</p>
+
+<p>The fused pool of 60 candidates is then reranked by a local ONNX cross-encoder
+(<code>ms-marco-MiniLM-L-6-v2</code>) that scores each query–passage pair jointly rather than comparing two
+independently-computed vectors. Its ranking is fused back with the lexical-semantic ranking using a
+deliberately asymmetric constant — 60 for the fused leg against 10 for the cross-encoder leg — so the
+cross-encoder dominates ordering while an exact keyword match retains a floor it cannot be reranked out of.
+Reranking is additive-safe: any failure to load or score returns to the pure fusion order rather than
+degrading the result.</p>
+
+<p>A multiplicative prior then encodes freshness and document class before the final passages are
+selected: five entity-diversified primaries, plus the profile card of each person appearing among them,
+injected as identity context. News decays by age on a 180-day half-life but is floored, so an old announcement is demoted and
+never erased; undated news does not decay at all rather than being penalized for missing metadata; upcoming
+events are boosted while past ones are not; generic web pages are served at a reduced prior. Results are
+finally diversified by entity, so one heavily-documented professor cannot occupy every slot.</p>
+
+<h2><span class="num">5</span>Correctness machinery</h2>
+
+<p>Retrieval quality alone does not prevent fabrication, so three independent mechanisms constrain what can
+reach the user.</p>
+
+<p><strong>Deterministic rendering.</strong> Of the 32 skills the router can reach, 16 skip language-model
+composition altogether. These are the outputs where rewording is itself a defect: citation counts and h-indices,
+external profile URLs, "which of these three people did you mean" rosters, and role titles whose
+qualifiers — <em>interim</em>, <em>joint appointment</em>, <em>affiliated</em> — carry meaning that a
+paraphrase would erase. Profile links and Scholar metrics are appended to the finished answer <em>after</em>
+composition and are never placed in the model's context, which makes a hallucinated URL or invented citation
+count structurally impossible rather than merely unlikely.</p>
+
+<p><strong>Honest-partial routing.</strong> When a question asks for an attribute the data does not cover
+for the entities involved, the system reports the gap instead of filling it. Asked for the research areas of
+a department's faculty, it names only those who actually list areas, says how many faculty that is, and
+degrades to a plain roster prefaced by an explicit "I don't have research areas listed" statement when none
+do. The earlier behavior — inventing one plausible topic per name — is precisely the failure this rule
+exists to prevent.</p>
+
+<p><strong>The abstention gate.</strong> Generated RAG answers pass through a two-stage check. A
+high-precision deterministic matcher first deflects questions the system cannot legitimately answer at all —
+requests about a user's own account, records, or another institution — before retrieval spends effort on
+them. After generation, a deterministic stage re-reads the answer against the passages that produced it: a
+self-decline check, a subjective-superlative guard, and a requirement that any count, rate, amount, or date
+stated in the answer also appear in the evidence. Only the residual costs a zero-temperature model call,
+which judges whether the retrieved passages answer the question at all and must return a supporting quote,
+itself then grounding-checked against those passages. A rejected answer is not shipped: the system tries the
+live tier, and failing that returns a useful non-answer. The gate is deliberately fail-open — a fault in the
+checker keeps the composed answer rather than silently suppressing it — and it does not run on small-talk
+turns. On a frozen 45-question evaluation, replacing the previous production gate with this one moved the
+false-answer rate from 40% to 15% while holding false abstentions roughly flat (24% to 20%); the same
+evaluation scored an ungated pipeline at 65%. The gate covers the generative path; among the structured
+skills, 16 bypass the model entirely and the other 16 are rephrased from complete deterministic facts under
+a fact-preservation check that reverts to the verbatim facts whenever a counted roster or an appointment
+qualifier would be dropped.</p>
+
+<h2><span class="num">6</span>Data acquisition and operation</h2>
+
+<p>Knowledge enters through six producers, each tagged with its own provenance so that a routine re-crawl
+does not disturb another producer's rows. A <strong>people crawler</strong> walks 17 anchored entry points across NJIT's
+colleges and builds the graph — people, roles, organizations, research areas — from server-rendered profile
+pages. A <strong>sitemap-driven site crawler</strong> covers 47 university subsites and supplies the bulk of
+the prose corpus. A <strong>department prose crawler</strong> walks college subdomains directly, a
+<strong>catalog crawler</strong> ingests course and program records, and <strong>Scholar enrichment</strong>
+attaches citation metrics to 363 of the 1,130 active people, each matched to a verified Scholar profile. Graduate Student
+Association and student-club content is authored by hand through a local dashboard, because its source is a
+site that cannot be crawled.</p>
+
+<p>Ingestion is deliberately mechanical. Crawlers may strip markup, navigation, and encoding noise, but they
+may not summarize, paraphrase, or reword: the human-readable text passes through unchanged, the one
+exception being a 6,000-character cap on captures of faculty personal sites, and every decision about how content is <em>used</em> belongs to the retrieval layer.
+This separation is what allows NJIT source text to be served verbatim with a link, rather than as a model's
+recollection of it.</p>
+
+<p>The prose crawlers, the Scholar refresh, and every one-off migration are gated: they default to a dry
+run, and promoting one to a commit takes a hardened snapshot first — the SQLite online-backup API,
+integrity-checked and rotated. The people crawler and the embedding pass are the exceptions, writing the
+live database directly with the snapshot available as an explicit flag. Per-entity reconciliation after a
+re-crawl is scoped by producer, so refreshing crawled data does not retire hand-authored records or
+enrichment sharing an entity; the deliberate exception is departure, where a person who has lost every
+appointment has all of their passages retired regardless of producer. For the sitemap-driven crawlers,
+retirement is further guarded by a floor — a frontier below 300 URLs, or below 80% of the prior active set,
+skips the retirement pass entirely — so a partial fetch cannot mass-delete a corpus. Embedding is a separate
+resumable pass that only processes rows lacking a vector.</p>
+
+<h2><span class="num">7</span>Evaluation</h2>
+
+<p>The system is measured by replaying a maintained question suite — currently 336 questions across 79
+categories, extended whenever a change ships — through the real pipeline rather than a test harness, then
+classifying each response and judging it with a model grader. The most recent full judged run, from 9 July
+2026 against a 324-question snapshot of the suite, scored:</p>
+
+<table>
+  <tr><th>Outcome</th><th>Count</th><th>Share</th><th>Reading</th></tr>
+  <tr><td>Answered from the knowledge base</td><td>244</td><td>75%</td><td>Served locally, no external call</td></tr>
+  <tr><td>Answered from a live njit.edu lookup</td><td>55</td><td>17%</td><td>Coverage gap, correctly recovered</td></tr>
+  <tr><td>Declined</td><td>25</td><td>8%</td><td>Deliberate abstention</td></tr>
+  <tr><td><strong>Fully correct</strong> (of the 299 answered)</td><td>215</td><td><strong>72%</strong></td><td>Complete and accurate</td></tr>
+  <tr><td>Partially correct</td><td>78</td><td>26%</td><td>Grounded but incomplete</td></tr>
+  <tr><td><strong>Wrong</strong></td><td>6</td><td><strong>2%</strong></td><td>The number the design targets</td></tr>
+</table>
+
+<p>The shape of that distribution is the point. Outright wrong answers sit at 2%, while the dominant residual
+failure is partial coverage — answers that are true but incomplete. That is the trade the architecture is
+explicitly making, and incompleteness is a retrieval problem that more data fixes, whereas fabrication is a
+trust problem that no amount of data fixes. The suite has since grown to 336 questions and has not been
+re-judged, so these figures describe the system as of that run.</p>
+
+<h2><span class="num">8</span>Limitations</h2>
+
+<ul class="dense">
+  <li><strong>Partial answers are the standing weakness.</strong> Roughly a quarter of answered questions are
+  judged incomplete rather than wrong — usually a question with several clauses where retrieval covers some.</li>
+  <li><strong>News coverage is thin.</strong> The corpus holds 88 news rows, mostly index pages rather than
+  articles, and only one carries a publication date; the university newsroom is not crawled. News questions
+  are effectively carried by the live-lookup tier at query time rather than answered from local knowledge.</li>
+  <li><strong>Ingestion is operator-triggered, not scheduled.</strong> Every crawl, refresh, and embedding
+  pass is run by hand under the gated workflow. Freshness is therefore a function of operator attention;
+  full automation is a design goal, not a shipped property.</li>
+  <li><strong>The gate is calibrated to the current models.</strong> Its thresholds were tuned against the
+  deployed generation and embedding models on a 45-question set. Swapping either model requires re-embedding
+  the corpus and re-validating the gate; the measured figures should not be read as a general guarantee.</li>
+  <li><strong>Enrichment coverage is uneven.</strong> 363 of 1,130 people carry verified Scholar metrics,
+  because the source disallows automated collection and matching is held to a strict verification standard
+  rather than a best guess.</li>
+</ul>
+
+<h2><span class="num">9</span>Implementation</h2>
+
+<table>
+  <tr><th>Layer</th><th>Choice</th><th>Rationale</th></tr>
+  <tr><td>Generation</td><td>IBM Granite 4 (<code>granite4:tiny-h</code>) via Ollama</td><td>Runs locally on modest hardware; composition is constrained to supplied facts, so raw model capability is not the binding constraint</td></tr>
+  <tr><td>Embeddings</td><td>Qwen3-Embedding-0.6B, 1024-d</td><td>Local, asymmetric query/passage scheme; the model is a swappable descriptor, not a hard-coded assumption</td></tr>
+  <tr><td>Reranking</td><td>ONNX cross-encoder, CPU</td><td>Joint query–passage scoring; fails safe to fusion order</td></tr>
+  <tr><td>Storage</td><td>SQLite (WAL, STRICT) + <code>sqlite-vec</code> + FTS5</td><td>One file holds passages, vectors, keyword index, and graph — no separate vector service to operate or keep consistent</td></tr>
+  <tr><td>Surfaces</td><td>Discord, Telegram, GroupMe</td><td>All conversational; the only commands are <code>/qrcode</code> and Telegram's mandatory <code>/start</code></td></tr>
+  <tr><td>Operations</td><td>Local dashboard on <code>127.0.0.1:5555</code></td><td>Content editing and job control, reachable only over an SSH tunnel</td></tr>
+</table>
+
+<p>Beyond the messaging platforms themselves, the only outbound dependencies in the answering path are the
+search API and the njit.edu page fetch used by the live-lookup tier when local knowledge misses. Generation,
+embedding, and reranking are entirely local, user identifiers are hashed before any write, and question text
+never reaches a commercial model provider. The codebase is approximately 97,000 lines of Python with 431
+test files, developed over 1,182 commits since May 2026.</p>
+
+<div class="footer">
+  <strong>GSA Gateway</strong> · Graduate Student Association, New Jersey Institute of Technology ·
+  Maintainer: Mohammad Dindoost (md724@njit.edu). Figures reflect the deployed system as of 22 August 2026
+  and were verified against the running database and source at the time of writing. Evaluation figures come
+  from the project's own replay harness; the frozen 45-question gate evaluation and the 324-question judged
+  run are separate measurements and are labeled as such.
+</div>
+
+</body>
+</html>

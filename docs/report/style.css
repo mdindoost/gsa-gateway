@@ -1,0 +1,141 @@
+/* GSA Gateway — technical report print stylesheet (Letter, 3pp) */
+@page { size: letter; margin: 0.62in 0.68in 0.55in 0.68in; }
+
+:root {
+  --ink:        #14171f;
+  --ink-soft:   #3c4453;
+  --ink-faint:  #6b7280;
+  --rule:       #d4d8e0;
+  --rule-soft:  #e7eaf0;
+  --accent:     #9b1b30;   /* NJIT-ish deep red */
+  --accent-dim: #b9536a;
+  --panel:      #f6f7f9;
+  --mono: "DejaVu Sans Mono", "Liberation Mono", Menlo, Consolas, monospace;
+  --serif: "Linux Libertine O", "Liberation Serif", Georgia, serif;
+  --sans: "Liberation Sans", "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: var(--serif);
+  font-size: 9.3pt;
+  line-height: 1.345;
+  color: var(--ink);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  hyphens: auto;
+}
+
+/* ── masthead ─────────────────────────────────────────────── */
+.masthead { border-bottom: 2.2pt solid var(--accent); padding-bottom: 6pt; margin-bottom: 8pt; }
+.eyebrow {
+  font-family: var(--sans); font-size: 6.9pt; letter-spacing: 0.13em;
+  text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 3pt;
+}
+h1 {
+  font-family: var(--sans); font-size: 18.5pt; line-height: 1.1; font-weight: 700;
+  letter-spacing: -0.015em; margin: 0 0 4pt; color: var(--ink);
+}
+.subtitle { font-size: 9.6pt; color: var(--ink-soft); font-style: italic; margin: 0 0 6pt; }
+.byline {
+  font-family: var(--sans); font-size: 7.4pt; color: var(--ink-faint);
+  display: flex; gap: 12pt; flex-wrap: wrap;
+}
+.byline strong { color: var(--ink-soft); font-weight: 600; }
+
+/* ── section headings ─────────────────────────────────────── */
+h2 {
+  font-family: var(--sans); font-size: 9.3pt; font-weight: 700; letter-spacing: 0.005em;
+  margin: 8.5pt 0 3.6pt; padding-bottom: 2.1pt; border-bottom: 0.6pt solid var(--rule);
+  color: var(--ink); break-after: avoid;
+}
+h2 .num {
+  color: var(--accent); font-variant-numeric: tabular-nums;
+  margin-right: 5pt; font-weight: 700;
+}
+h3 {
+  font-family: var(--sans); font-size: 8.3pt; font-weight: 700; color: var(--ink-soft);
+  margin: 7pt 0 2.5pt; break-after: avoid;
+}
+p { margin: 0 0 4.1pt; text-align: justify; }
+p.lead { font-size: 9.6pt; color: var(--ink-soft); }
+a { color: var(--accent); text-decoration: none; }
+
+/* ── layout helpers ───────────────────────────────────────── */
+.cols2 { column-count: 2; column-gap: 15pt; }
+.cols2 > * { break-inside: avoid; }
+.row { display: flex; gap: 12pt; align-items: flex-start; }
+.row > .col { flex: 1; min-width: 0; }
+.tight { margin-bottom: 3pt; }
+.avoid-break { break-inside: avoid; }
+
+/* ── abstract ─────────────────────────────────────────────── */
+.abstract {
+  background: var(--panel); border-left: 2.4pt solid var(--accent);
+  padding: 6pt 8pt; margin: 0 0 8pt; break-inside: avoid;
+}
+.abstract p { margin: 0; font-size: 8.7pt; }
+.abstract .label {
+  font-family: var(--sans); font-size: 6.8pt; letter-spacing: 0.11em; text-transform: uppercase;
+  font-weight: 700; color: var(--accent); display: block; margin-bottom: 2.5pt;
+}
+
+/* ── stat strip ───────────────────────────────────────────── */
+.stats { display: flex; gap: 0; margin: 6.5pt 0; break-inside: avoid; border-top: 0.6pt solid var(--rule); border-bottom: 0.6pt solid var(--rule); }
+.stat { flex: 1; padding: 4.6pt 4pt; text-align: center; border-right: 0.5pt solid var(--rule-soft); }
+.stat:last-child { border-right: 0; }
+.stat .v {
+  font-family: var(--sans); font-size: 12.4pt; font-weight: 700; color: var(--accent);
+  display: block; line-height: 1.05; font-variant-numeric: tabular-nums;
+}
+.stat .k {
+  font-family: var(--sans); font-size: 6.4pt; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--ink-faint); display: block; margin-top: 2pt; line-height: 1.25;
+}
+
+/* ── figure / diagram ─────────────────────────────────────── */
+figure { margin: 5pt 0 6pt; break-inside: avoid; }
+figure svg { width: 100%; height: auto; display: block; }
+figcaption {
+  font-family: var(--sans); font-size: 7pt; color: var(--ink-faint);
+  margin-top: 4pt; line-height: 1.35; text-align: left;
+}
+figcaption strong { color: var(--ink-soft); font-weight: 700; }
+
+/* ── tables ───────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 7.8pt; margin: 3pt 0 5pt; break-inside: avoid; }
+th {
+  font-family: var(--sans); font-size: 6.7pt; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--ink-faint); text-align: left; font-weight: 700;
+  border-bottom: 0.8pt solid var(--rule); padding: 0 5pt 2.6pt 0;
+}
+td { padding: 2.2pt 5pt 2.2pt 0; border-bottom: 0.4pt solid var(--rule-soft); vertical-align: top; }
+td:first-child { white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+code, .mono { font-family: var(--mono); font-size: 7.5pt; color: var(--ink-soft); }
+td code { font-size: 7.3pt; }
+
+/* ── lists ────────────────────────────────────────────────── */
+ul, ol { margin: 3pt 0 5.5pt; padding-left: 12pt; }
+li { margin-bottom: 2.1pt; }
+ul.dense li { margin-bottom: 1.6pt; }
+
+/* ── callout panel ────────────────────────────────────────── */
+.panel {
+  border: 0.6pt solid var(--rule); background: var(--panel);
+  padding: 6.5pt 8pt; margin: 7pt 0; break-inside: avoid;
+}
+.panel .ttl {
+  font-family: var(--sans); font-size: 7.1pt; letter-spacing: 0.09em; text-transform: uppercase;
+  font-weight: 700; color: var(--accent); margin-bottom: 3.2pt;
+}
+.panel p:last-child, .panel ul:last-child { margin-bottom: 0; }
+
+/* ── footer ───────────────────────────────────────────────── */
+.footer {
+  margin-top: 9pt; padding-top: 5pt; border-top: 0.6pt solid var(--rule);
+  font-family: var(--sans); font-size: 6.9pt; color: var(--ink-faint); line-height: 1.4;
+}
+.pagebreak { break-before: page; }

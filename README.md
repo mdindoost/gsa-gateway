@@ -57,7 +57,7 @@ It's built on three principles:
 
 ✅ &nbsp;**Gives officers a no-code dashboard** to update knowledge, manage clubs and people, post announcements, and watch what students are asking.
 
-✅ &nbsp;**Handy extras** — generates branded GSA QR codes for flyers, broadcasts announcements to every platform at once, and posts live World Cup scores.
+✅ &nbsp;**Handy extras** — generates branded GSA QR codes for flyers and broadcasts announcements to every platform at once.
 
 ---
 
@@ -81,11 +81,11 @@ Just type it like you'd text a friend. No commands to memorize.
 | Area | Coverage |
 |---|---|
 | **GSA** | Officers, executive board, registered clubs & RGOs, funding, events, and policies |
-| **YWCC** | Ying Wu College of Computing — faculty, staff, and research areas, kept current automatically |
-| **Martin Tuchman School of Management** | Faculty, administration, and graduate programs (MSM, TECH MBA, Ph.D. in Business Data Science) |
+| **Every NJIT college** | All six — Ying Wu College of Computing, Newark College of Engineering, Martin Tuchman School of Management, College of Science and Liberal Arts, Hillier College of Architecture & Design, and the Albert Dorman Honors College — faculty, staff, roles, and research areas, kept current by a re-runnable crawl |
+| **Programs & policies** | Course catalog, graduate program pages, and department/office prose from across the NJIT web |
 | **The wider NJIT web** | A live fallback (via the **Brave Search API**) pulls a verified answer straight from njit.edu **with a clickable source link** *(active in the live deployment; optional/off for a fresh clone)* |
 
-When something falls outside what it knows for certain, it doesn't bluff — it tells the student and routes them to the office that owns the answer. Sensitive topics like immigration, billing, and funding always come with a "confirm with the official office" note.
+When something falls outside what it knows for certain, it doesn't bluff — it tells the student and routes them to the office that owns the answer. NJIT source text is served **verbatim with its link**, so a student can always verify the answer at the source.
 
 ---
 
@@ -113,24 +113,23 @@ GSA Gateway is **not** "another RAG chatbot." Its core idea is **gated structure
 
 ### Two knowledge stores: a Knowledge Base + a Knowledge Graph
 
-The same knowledge is stored two complementary ways, in one self-hosted SQLite file (`gsa_gateway.db`). This dual representation is what lets the bot be both *fluent* (prose) and *exact* (facts).
+The same knowledge is stored two complementary ways, in a self-hosted SQLite file (`gsa_gateway.db`; a second file, `gsa_gateway_ops.db`, holds the publishing and judging tables). This dual representation is what lets the bot be both *fluent* (prose) and *exact* (facts).
 
 **📚 Knowledge Base (KB) — the text/semantic store.**
-Unstructured prose, **decomposed** into small focused items — each person becomes separate `profile`, `research_areas`, `education`, `teaching`, `about` chunks rather than one blob; policies/FAQs/event info are chunked too. Every chunk is indexed two ways: **FTS5** (keyword/bm25) and a **sqlite-vec** `vec0` embedding (`nomic-embed-text`, 768-d, L2-normalized). The KB answers *"what is written about X"* — fuzzy, semantic, open-ended questions.
+Unstructured prose, **decomposed** into small focused items — each person becomes separate `profile`, `research_areas`, `education`, `teaching`, `about` chunks rather than one blob; policies/FAQs/event info are chunked too. Every chunk is indexed two ways: **FTS5** (keyword/bm25) and a **sqlite-vec** `vec0` embedding (`qwen3-embedding:0.6b`, 1024-d, L2-normalized). The KB answers *"what is written about X"* — fuzzy, semantic, open-ended questions.
 > Tables: `knowledge_items` (chunks + FTS5) · `knowledge_vectors` (vectors).
 
 **🕸️ Knowledge Graph (KG) — the structured/relational store.**
 The same people and orgs as **typed entities and relationships**: `Person`, `Org`, `ResearchArea` nodes joined by `has_role` (with title + category), `researches`, and `part_of` edges. The KG answers *"what are the exact facts and relationships of X"* — who is the dean, every faculty member in a department, what someone researches, the org hierarchy — **completely and deterministically**, things a text search structurally can't (enumerate all, traverse, see a role that lives only as an edge).
 > Tables: `nodes` (entities) · `edges` (typed relationships, with `category`/`attrs.titles`).
 
-The graph is small and explicit — three node types and four edge types:
+The graph is small and explicit — three node types and three edge types:
 
 | Edge (relation) | From → To | Captures | Powers queries like |
 |---|---|---|---|
 | **`has_role`** | Person → Org | a role: `category` (officer · faculty · admin · staff · advisor · emeritus) + free-text `attrs.titles` | "who is the dean of YWCC", "GSA officers", "everyone in Informatics" |
 | **`researches`** | Person → ResearchArea | a research interest | "who works on graph neural networks", "what does X research" |
 | **`part_of`** | Org → Org | the org hierarchy | "departments in YWCC", subtree scoping ("…in the whole college") |
-| **`has_source`** | node → doc | provenance — which crawled page/doc a fact came from | re-crawl reconciliation, traceability |
 
 Roles being *edges* (not text) is what lets the bot answer "who is the dean" exactly — and distinguish "Dean" from "Associate Dean" — which a text search can't.
 
@@ -165,7 +164,7 @@ Roles being *edges* (not text) is what lets the bot answer "who is the dean" exa
                        │                                cross-encoder   │
                        │                                  rerank        │
                        │                                    │           │
-                       │            Ollama llama3.1:8b  ◀────┘           │
+                       │          Ollama granite4:tiny-h ◀────┘           │
                        │        grounded ONLY in retrieved context      │
                        └───────────────┬───────────────────────────────┘
                                        │ KB miss
@@ -181,22 +180,23 @@ Roles being *edges* (not text) is what lets the bot answer "who is the dean" exa
 
 **2 — SQL skills + entity layer** (`skills.py`, `entity.py`): parameterized SQL over the graph/relational data returning **complete sets**, not a top-K sample — "who is the dean of YWCC", "list *all* the Michaels", "what does Guiling Wang research", "who works on graph neural networks". Named people resolve to a full **entity card** (roles, research, education, contact); ambiguous names (5 "Wang"s) **disambiguate instead of guessing**. Empty results fall through to RAG rather than dead-ending — so a missing structured fact never blocks the prose path.
 
-**3 — Hybrid semantic RAG** (`retriever.py`): the fallback for open prose. The query is embedded and run through **sqlite-vec KNN** (semantic) *and* **FTS5 bm25** (keyword); the two rankings are fused with **Reciprocal Rank Fusion**, reranked by a **cross-encoder**, and the top context is handed to **Ollama `llama3.1:8b`**, which generates an answer **grounded strictly in the retrieved rows** — with an *entity-grounding* rule that forbids attributing one person's facts to another and requires honest "I couldn't find that" over invention.
+**3 — Hybrid semantic RAG** (`retriever.py`): the fallback for open prose. The query is embedded and run through **sqlite-vec KNN** (semantic) *and* **FTS5 bm25** (keyword); the two rankings are fused with **Reciprocal Rank Fusion**, reranked by a **cross-encoder**, and the top context is handed to **Ollama `granite4:tiny-h`**, which generates an answer **grounded strictly in the retrieved rows** — with an *entity-grounding* rule that forbids attributing one person's facts to another and requires honest "I couldn't find that" over invention.
 
 **4 — Live njit.edu fallback** (extractive, optional): on a KB miss the bot searches njit.edu via the **Brave Search API**, fetches the top page, and answers from **verbatim, page-grounded spans plus the real source link** — so the student gets a clickable njit.edu URL to verify, and the bot never paraphrases into a hallucination (a span that isn't literally on the page is dropped). The search provider is isolated/swappable (Brave today, any provider tomorrow). **Live in the deployment** (`LIVE_ENABLED=1` with a Brave key, free spend-cap); a fresh clone runs with it off, degrading silently to a "contact the office" deflection.
 
-**Safety rails throughout:** high-stakes topics (immigration, billing, funding) append a "confirm with the official office" heads-up; user IDs are hashed before any write; answers cite their source document.
+**Safety rails throughout:** a post-generation **faithfulness gate** re-checks every generated answer against the passages that produced it and abstains rather than ship an unsupported one; facts that must not vary (citation counts, profile URLs, disambiguation rosters) are rendered verbatim and never pass through the model; user IDs are hashed before any write; answers cite their source document.
 
 ### Knowledge ingestion
 
-- **Crawler** (`v2/core/ingestion/explore.py`) — a bounded BFS over server-rendered NJIT pages builds the people/roles/orgs/research-areas graph + KB. **Multi-college** (YWCC + Martin Tuchman, same NJIT profile template, one parser) and **re-runnable**: a re-crawl reconciles departures/moves/new hires automatically (the "M3" reconcile). Adding a college = one entry point.
-- **Manual** — GSA officers, clubs/RGOs, and policy prose are authored through the dashboard (gsanjit.com is Wix and not crawlable). Every row is tagged by `source` (`crawler` vs `dashboard`) so an automated re-crawl never clobbers hand-curated data.
+- **People crawler** (`v2/core/ingestion/explore.py`) — a bounded BFS over server-rendered NJIT pages builds the people/roles/orgs/research-areas graph + KB. **Multi-college**: 17 anchored entry points across all six colleges, all sharing one NJIT profile template and one parser. **Re-runnable** — a re-crawl reconciles departures, moves, and new hires automatically. Adding a college = one entry point.
+- **Prose crawlers** — a sitemap-driven crawler over the NJIT web (47 subsites) plus a per-college DFS crawler and a course-catalog crawler bring program, policy, and department prose into the KB.
+- **Manual** — GSA officers, clubs/RGOs, and policy prose are authored through the dashboard (gsanjit.com is Wix and not crawlable). Every row is tagged with its producer (`created_by`) so an automated re-crawl never clobbers hand-curated data.
 
 ### Beyond retrieval
 
 **Conversation memory + follow-up resolution.** Each user has an in-memory session (last 5 turns, 60-minute TTL). As of v2.1, a follow-up like *"what is his position"* or *"what about for BME?"* is **rewritten into a standalone query using that history *before* routing and retrieval** — so the context reaches the *search*, not just the wording. A deterministic guard (any entity the rewrite adds must appear literally in the history, else it passes the original through) keeps it from resolving to the wrong person.
 
-**Multi-platform publishing.** A *content-generator → scheduler → connector-registry* pattern: any source enqueues a post and the scheduler fans it out to every enabled platform (Discord · Telegram · GroupMe) **in parallel**. The live **World Cup tracker** (a burst-and-rest poller with a fully-tested state machine) and a daily fixtures digest are the reference generators.
+**Multi-platform publishing.** A *content-generator → scheduler → connector-registry* pattern: any source enqueues a post and the scheduler fans it out to every enabled platform (Discord · Telegram · GroupMe) **in parallel**, with delivery recorded per platform. A live-match tracker (a burst-and-rest poller with a fully-tested state machine) was the reference generator, built for the 2026 World Cup and dormant since the tournament ended.
 
 **Feedback, analytics & a self-measuring accuracy loop.** Answers carry 👍 / 👎 / 🔄 ("try again") controls; ratings and questions are logged and surfaced in the dashboard. On top of that, the system **watches its own quality**: a daily **failure digest** pushes the recent 👎 (with reason tags) and low-confidence questions to a private admin channel, and a reusable **eval harness** (`scripts/eval.sh`) runs a curated golden set through the *real* pipeline, auto-judges accuracy with the local model, and can run as a **pass/fail gate** (`--min-correct`) to catch regressions before they ship.
 
@@ -206,18 +206,21 @@ The platform also includes the **AVA Judging system**.
 
 | Concern | Technology |
 |---|---|
-| Language / runtime | **Python 3.11+**, asyncio |
-| Datastore | **SQLite** (single file, STRICT tables, WAL) |
-| Vector search | **sqlite-vec** (`vec0`), 768-d, L2-normalized |
+| Language / runtime | **Python 3.11+** (running 3.14), asyncio |
+| Datastore | **SQLite**, WAL, mostly STRICT — a knowledge DB + an ops DB |
+| Vector search | **sqlite-vec** (`vec0`), 1024-d, L2-normalized |
 | Keyword search | **SQLite FTS5** + bm25 |
 | Fusion / rerank | **Reciprocal Rank Fusion** + **cross-encoder** reranker |
-| Generation | **Ollama** · `llama3.1:8b` (local) |
-| Embeddings | **`nomic-embed-text`** (local) |
+| Generation | **Ollama** · `granite4:tiny-h` (local) |
+| Embeddings | **`qwen3-embedding:0.6b`** (local, 1024-d) |
 | Live web fallback | **Brave Search API** → njit.edu, extractive (verbatim spans + source link); provider-isolated/swappable |
 | Chat platforms | **discord.py** · **python-telegram-bot** · **GroupMe** (one shared brain, connector pattern) |
 | Dashboard | dependency-free HTML/JS + **sql.js**, served by a stdlib HTTP backend |
 | Hosting | **100% self-hosted**, local models — no cloud inference, $0 per-query |
 
+> 📄 **[Technical report (PDF)](docs/GSA_Gateway_Technical_Report.pdf)** — a 4-page architecture write-up
+> with the retrieval mechanics, the correctness machinery, measured evaluation results, and known limitations.
+>
 > Deeper design docs live in [`docs/superpowers/specs/`](docs/superpowers/); current state + handover in [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md); conventions in [`CLAUDE.md`](CLAUDE.md).
 
 ---
