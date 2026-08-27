@@ -467,9 +467,12 @@ who is the chair of civil and environmental engineering
 # the query_correct LEADER rule rewrites these into the same skill
 who runs informatics
 who is the boss of computer science
-# org-agnostic shape (count-hint branch) + a role answered from a NULL-category edge
+# org-agnostic shape (count-hint branch) + a role answered from a NULL-category edge.
+# NOTE: the org must EXIST as an organizations row — an earlier version of this question named
+# "Center for Community Systems", which is only an edge source_section, so it could never scope
+# and scored wrong for a reason unrelated to what it was testing (eval run 2026-08-27).
 who are the chairs at njit
-who is the director of the center for community systems
+who are the directors at hillier college of architecture and design
 # must NOT fabricate a provost for a department that has none
 who is the provost of biomedical engineering
 # joint appointments stay VISIBLE in the roster, marked — never silently dropped
