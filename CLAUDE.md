@@ -83,6 +83,12 @@ org resolution by name / slug / parenthetical acronym / `metadata.aliases`), `sk
 - The other 16 hand complete SQL Facts to `compose_from_rows` (temp 0.0) for rephrasing, guarded by
   `_compose_preserves_facts` (reverts to verbatim Facts if a counted roster or an appointment
   qualifier would be dropped).
+- **A joint/affiliated title never answers a role query for THAT org** (`entity.NON_HOME_CATEGORIES`,
+  2026-08-26): NJIT listing cards print a person's own title regardless of section, so a
+  cross-listing lends its HOME-org title to the wrong org (this made "chair of informatics" return
+  Halper AND Oria, who chairs CS). Org-scoped role lookup HARD-EXCLUDES joint/affiliated; org-agnostic
+  lookup drops such a row only when the same person already has a home row for that role, else keeps
+  it marked "(joint appointment)". Spec: `docs/superpowers/specs/2026-08-26-non-home-role-attribution-design.md`.
 - **Org SUBTREE vs EXACT org matters:** `top_people_by_metric` and the research-area skills walk
   `org_descendants` (so "most cited in NCE" spans its departments). **Roster skills
   (`faculty_in_department` / `officers_in_org` / `people_in_org`) scope to the EXACT org node** —
@@ -467,7 +473,11 @@ v2/tests/test_judging_session.py v2/tests/test_judging_mode_projection.py -q` (1
 ## Known gaps worth remembering
 - **News coverage is thin**: 88 `news` rows, mostly listing pages, only 1 with a publication date.
   `news.njit.edu` (3,400+ sitemap URLs) is NOT crawled — news questions are carried by the live tier.
-- **Nothing is scheduled.** No crontab, no systemd timer: every crawl/refresh/embed is operator-run.
+- **Almost nothing is scheduled.** ONE cron entry exists as of 2026-08-27:
+  `0 5 * * * scripts/daily_restart.sh` (flock-guarded) — bounces the three bots + dashboard and
+  unloads the resident Ollama model via the API, logging bots-vs-llama RSS separately to
+  `logs/daily_restart.log` so real memory growth is measurable. Everything else — every crawl,
+  refresh and embed — is still operator-run.
 - **The WorldCup watcher is polling a dead 403 endpoint** — set `V2_WORLDCUP_ENABLED=false`.
 - **Dashboard "Organization" tab is a permanently-empty stub.**
 - `scripts/crawl_catalog.py`'s usage block still advises `cp gsa_gateway.db /tmp/dev.db` — wrong per
