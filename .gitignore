@@ -116,3 +116,4 @@ logs/autoeval.pid
 # style.css under facultyfolio/assets/ ARE committed; photos are not.)
 /Faculty-Folio/
 facultyfolio/assets/photos/
+.daily_restart.lock
