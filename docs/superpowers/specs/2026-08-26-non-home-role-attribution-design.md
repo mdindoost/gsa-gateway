@@ -293,6 +293,31 @@ radius is therefore already measured:
 So the residual is **1 wrong org**, not a broad inconsistency, and it is not reachable by any
 department-chair question.
 
+**UPDATE 2026-08-26 (post-ship) — NJSOA verified against NJIT and PARTLY closed.** Owner asked to
+confirm the facts before fixing. Checked `design.njit.edu/our-people` + the three profiles:
+- **Riether IS the NJSOA chair** ("Chair", Department of Architecture) — our answer was RIGHT.
+  Schwartz likewise chairs Art + Design.
+- **Cohen was the only error**: his profile reads "Chair … Chair of the Department of Humanities and
+  Social Sciences" plus **"Joint appointment … the Hillier College of Architecture and Design"**, yet
+  the crawler filed his NJSOA edge as `category='faculty'` (a HOME appointment) off the "Architecture
+  Faculty" section.
+- **Key parsing insight for any follow-up:** NJIT profile headings render `<role>, <division the
+  person sits in>` — NOT the unit chaired. Esperdy's *"Dean Architecture, Provost & Academic
+  Affairs"* is the tell, and it is why Riether and Schwartz BOTH show *"Chair, Hillier College of
+  Architect & Design"*. A card alone can never say which unit a bare "Chair" scopes to.
+- **Fixed** by `scripts/_hcad_chair_scope_fix.py` (gated, backed up, idempotent): Cohen's NJSOA edge
+  `faculty` → `joint`. The shipped Part A then excludes it automatically. Live: NJSOA chair → Riether
+  only; HSS chair → Cohen (preserved); Cohen still in the NJSOA roster marked "(joint appointment)"
+  and correctly OUT of `faculty_in_department`.
+- **Still open, deliberately:** "who is the chair of Hillier College" returns Riether + Schwartz. HCAD
+  is a COLLEGE (its Dean is Esperdy); both chair SCHOOLS inside it. Re-filing those two `admin@hcad`
+  Leadership edges onto njsoa/art-design was designed and CUT — both already hold a `faculty` edge on
+  the destination, so the merge would flip it to `admin` and silently drop them from
+  `faculty_in_department`. Needs the college-level design, not a lossy edge move.
+- ⚠️ **The data fix is NOT durable**: `run_explore.py` re-creates Cohen's `faculty@njsoa` edge from
+  the Architecture Faculty section. Re-run the script after each crawl until the producer-side
+  home-appointment cap (deferred in the 2026-07-05 affiliated spec) lands.
+
 ### Decisions recorded (asked and answered during review — do NOT relitigate)
 
 - **`people_by_role` does NOT join `_DETERMINISTIC_SKILLS`** (RAG #7). Single-row compose was

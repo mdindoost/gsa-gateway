@@ -474,3 +474,7 @@ who is the director of the center for community systems
 who is the provost of biomedical engineering
 # joint appointments stay VISIBLE in the roster, marked — never silently dropped
 who works in informatics
+# NJSOA: a cross-listed chair (Cohen chairs Humanities, joint-appointed in Architecture) must not
+# answer for the school; the real chair is Riether. Data fix: scripts/_hcad_chair_scope_fix.py
+who is the chair of new jersey school of architecture
+who is the chair of humanities and social sciences
