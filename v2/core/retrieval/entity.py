@@ -43,6 +43,29 @@ _ROLE_RANK = {"faculty": 0, "admin": 1, "officer": 2, "joint": 3,
 # of the affiliated/joint tiers). SHARED by entity_card + title_of_person so the two never drift.
 _CATEGORY_MARKER = {"joint": "joint appointment", "affiliated": "affiliated"}
 
+# Which appointment categories are NOT the person's home org. A title carried on such an edge is the
+# person's HOME-org title, copied onto their card by the listing page that cross-listed them — it
+# describes a role held ELSEWHERE and must never answer "who is the <role> of <this org>".
+# DEFINED INDEPENDENTLY of _CATEGORY_MARKER on purpose: that dict answers "how do we DISPLAY a
+# non-home appointment", this set answers "which edges may ANSWER a role query". They coincide today
+# (an invariant test asserts it) but deriving one from the other would mean a future display-only
+# marker — say emeritus — silently deleting 57 emeritus edges from every role answer.
+# Spec: docs/superpowers/specs/2026-08-26-non-home-role-attribution-design.md
+NON_HOME_CATEGORIES = frozenset({"joint", "affiliated"})
+
+
+def title_with_marker(title: str, category: str | None, title_is_category: bool) -> str:
+    """'Chair (joint appointment)' for a title read off a non-home edge; the bare title otherwise.
+
+    The TITLE-level twin of _org_label, for rosters that render (name, title) with no org column
+    (people_in_org) — a borrowed title there would otherwise read as a role held in THIS org.
+    The emitted literal is load-bearing: _compose_preserves_facts greps for the exact strings
+    '(joint appointment)' / '(affiliated)' and reverts to verbatim Facts if compose drops one."""
+    marker = _CATEGORY_MARKER.get(category or "")
+    if marker and not title_is_category:
+        return f"{title} ({marker})"
+    return title
+
 
 def _org_label(oname: str, category: str | None, title_is_category: bool) -> str:
     """'MTSM (affiliated)' / 'Data Science (joint appointment)' for a non-home appointment; the bare
@@ -97,7 +120,11 @@ def _primary_role(conn: sqlite3.Connection, node_id: int) -> tuple[str | None, s
             best = rank
             titles = (json.loads(eattrs) if eattrs else {}).get("titles") or []
             title = titles[0] if titles else cat
-            org = oname
+            # MARK a non-home org, exactly as title_of_person/entity_card do — _ROLE_RANK ranks
+            # joint ABOVE staff/advisor/emeritus/affiliated and above an unknown category, so a
+            # cross-listing can win "primary role" and its borrowed org would otherwise reach the
+            # user unmarked inside the DETERMINISTIC person_disambig roster.
+            org = _org_label(oname, cat, title_is_category=not titles)
     return title, org
 
 
@@ -328,23 +355,45 @@ def people_by_role(conn: sqlite3.Connection, role_head: str,
         of Students' matches 'dean of students'.
       • If the matching segment is NOT the lead and the lead is a SUPPORT role, skip — an
         'Executive Assistant, Dean of Students' is not the dean.
+      • NON-HOME appointments (joint/affiliated) carry the person's HOME-org title, copied onto
+        their card by the page that cross-listed them (see NON_HOME_CATEGORIES). The two modes treat
+        them DIFFERENTLY, on purpose:
+          - org-scoped  → HARD EXCLUSION. "Who is the chair OF Informatics" can never be answered by
+            a title whose scope is another org; keeping it (even marked) would still assert it.
+            Empty → the caller falls through to RAG.
+          - org-agnostic → drop the non-home row only when the SAME PERSON already has a home row
+            for this role_head (that is pure de-duplication); otherwise KEEP it with the org marked
+            '(joint appointment)'. A blanket filter here would silently DELETE a real office-holder
+            whose home listing failed to crawl — a recall hole with nothing to detect it.
     Empty list → caller falls through to RAG (never invents)."""
-    sql = ("SELECT p.name, e.attrs, p.attrs, o.name FROM edges e JOIN nodes p ON p.id=e.src_id "
+    sql = ("SELECT p.id, p.name, e.attrs, p.attrs, o.name, e.category "
+           "FROM edges e JOIN nodes p ON p.id=e.src_id "
            "JOIN nodes o ON o.id=e.dst_id AND o.is_active=1 "
            "WHERE e.type='has_role' AND e.is_active=1 AND p.is_active=1")
     params: list = []
     if org_id is not None:
         sql += " AND json_extract(o.attrs,'$.org_id')=?"
         params.append(org_id)
-    out: list[tuple[str, str, str, str | None]] = []
-    for raw, eattrs, pattrs, oname in conn.execute(sql, params):
+        # `IS NULL OR NOT IN` is REQUIRED, not belt-and-braces: SQL three-valued logic makes a bare
+        # NOT IN drop every NULL-category edge (75 live — Makerspace staff, postdocs, and any
+        # section category_for_section doesn't recognise), which are ordinary HOME appointments.
+        sql += (" AND (e.category IS NULL OR e.category NOT IN ("
+                + ",".join("?" * len(NON_HOME_CATEGORIES)) + "))")
+        params.extend(sorted(NON_HOME_CATEGORIES))   # sorted: stable placeholder order (stmt cache)
+    hits: list[tuple[int, str, str, str, str | None, str | None]] = []
+    for pid, raw, eattrs, pattrs, oname, cat in conn.execute(sql, params):
         titles = (json.loads(eattrs) if eattrs else {}).get("titles") or []
         pa = json.loads(pattrs) if pattrs else {}
         contact = pa.get("email") or pa.get("phone")
         for title in titles:
             if title_head_matches(title, role_head):
-                out.append((normalize_person_name(raw), title, oname, contact))
+                hits.append((pid, normalize_person_name(raw), title, oname, contact, cat))
                 break
+    # Keyed on the PERSON NODE ID, not the name — homonyms are real in this graph.
+    home_ids = {pid for pid, _n, _t, _o, _c, cat in hits if cat not in NON_HOME_CATEGORIES}
+    out = [(name, title, _org_label(oname, cat, title_is_category=False), contact)
+           for pid, name, title, oname, contact, cat in hits
+           if cat not in NON_HOME_CATEGORIES or pid not in home_ids]
     return sorted(set(out), key=lambda r: (r[0], r[2]))
 
 

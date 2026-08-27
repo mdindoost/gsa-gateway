@@ -22,7 +22,8 @@ import re
 import sqlite3
 from collections import Counter
 
-from v2.core.retrieval.entity import normalize_person_name, research_of_person
+from v2.core.retrieval.entity import (normalize_person_name, research_of_person,
+                                      title_with_marker)
 
 # Hand aliases beyond what organizations.name/slug already cover.
 _ORG_ALIASES = {
@@ -250,7 +251,11 @@ def people_in_org(conn: sqlite3.Connection, org_id: int) -> list[tuple[str, str,
     for name, eattrs, category, pattrs in rows:
         titles = (json.loads(eattrs) if eattrs else {}).get("titles") or []
         email = (json.loads(pattrs) if pattrs else {}).get("email")
-        out.append((name, titles[0] if titles else category, email))
+        # A joint/affiliated person genuinely belongs in this roster, but their title is their
+        # HOME-org title — mark it so the row never reads as a role held HERE.
+        title = title_with_marker(titles[0] if titles else category, category,
+                                  title_is_category=not titles)
+        out.append((name, title, email))
     return sorted(set(out), key=lambda r: r[0])
 
 

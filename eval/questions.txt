@@ -456,3 +456,21 @@ who leads Newark College of Engineering
 who is the dean of Newark College of Engineering
 who are the associate deans of YWCC
 who is the associate dean for research at YWCC
+
+# non-home (joint/affiliated) role attribution — a cross-listing lends its HOME-org title to the
+# wrong org, so these each returned TWO chairs before the 2026-08-26 fix. Spec:
+# docs/superpowers/specs/2026-08-26-non-home-role-attribution-design.md
+who is the chair of informatics
+who is the chair of mathematical sciences
+who is the chair of mechanical and industrial engineering
+who is the chair of civil and environmental engineering
+# the query_correct LEADER rule rewrites these into the same skill
+who runs informatics
+who is the boss of computer science
+# org-agnostic shape (count-hint branch) + a role answered from a NULL-category edge
+who are the chairs at njit
+who is the director of the center for community systems
+# must NOT fabricate a provost for a department that has none
+who is the provost of biomedical engineering
+# joint appointments stay VISIBLE in the roster, marked — never silently dropped
+who works in informatics

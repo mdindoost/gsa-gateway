@@ -461,6 +461,10 @@ def _org_answers_title(conn: sqlite3.Connection, org_id: int, title: str) -> boo
     the swap never fired. 'Vice President' / "President's Advisory" still do NOT head-match."""
     if _has_true_officers(conn, org_id):
         return True
+    # No non-home (joint/affiliated) rule is needed here and none should be added: this scan is
+    # already pinned to category='admin', _has_true_officers to officer/deprep, and the handoff
+    # target officers_in_org to officer/deprep/admin — all three exclude entity.NON_HOME_CATEGORIES
+    # by construction. (2026-08-26 non-home role attribution spec.)
     # p.is_active is REQUIRED: officers_in_org (the skill this gate hands off to) filters on it,
     # so without it a departed person's still-live admin edge passes the gate and then vanishes
     # from the answer — producing the exact "I don't have officer information" dead-end this
