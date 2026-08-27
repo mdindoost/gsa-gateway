@@ -174,7 +174,11 @@ _A4A_DIGIT_RUN_RX = re.compile(r"\d{3,}")
 # counted-roster lead-in: a number immediately governing faculty/people/officer(s)/person — matches
 # "has 30 faculty", "30 faculty work on", "has 5 officer(s)", "has N people". Real roster skills use
 # MIXED separators (", " via _join for faculty/area rosters; "; " for officers/people_in_org).
-_A4A_ROSTER_LEADIN_RX = re.compile(r"\b\d+\s+(?:faculty|people|officers?|persons?|departments?)\b", re.I)
+# `hold` covers people_by_role's 2-25-row lead-in ('2 hold a "chair" title in Informatics: ...'),
+# which the noun list misses — leaving multi-row ROLE answers unguarded against compose truncation
+# (only its >25 branch, '31 people hold ...', matched, via "people"). No other skill emits it.
+_A4A_ROSTER_LEADIN_RX = re.compile(
+    r"\b\d+\s+(?:faculty|people|officers?|persons?|departments?|hold)\b", re.I)
 
 
 def _a4a_norm(s: str) -> str:
@@ -209,17 +213,24 @@ def _compose_preserves_facts(facts: str, composed: str) -> bool:
     for d in _A4A_DIGIT_RUN_RX.findall(facts):              # (b) 3+-digit runs (phones etc.)
         if d not in composed:
             return False
-    comp_norm = _a4a_norm(composed)                         # (c) each list item's tail token
+    comp_norm = _a4a_norm(composed)                         # (c) each list item's edge tokens
     body = facts.split(":", 1)[1] if ":" in facts else facts
     items = body.split(";") if ";" in body else body.split(",")
     for item in items:
         item = re.sub(r"\([^)]*\)", " ", item)             # drop parenthetical (email/org)
         toks = re.findall(r"[A-Za-zÀ-ɏ]{3,}", item)
+        # BOTH edge tokens, because the two roster shapes put the distinctive token at opposite
+        # ends: title-first rows ("Chair — Michael Halper") end in the name, name-first rows
+        # ("Michael Halper — Chair (Informatics)", people_by_role) START with it and end in a
+        # TITLE word that every sibling row shares — so a tail-only check false-passes a dropped
+        # row whenever the roster is one role. Checking both ends costs nothing: an over-trigger
+        # only keeps the complete Facts verbatim (the documented safe direction).
         # word-boundary match (not bare substring) so a dropped "Chen" can't false-pass on a surviving
         # "Cheng" (Fable note #2 — hardens the one dangerous direction). Truncation drops a contiguous
         # tail, so a full false-pass would need every dropped surname to collide — now even less likely.
-        if toks and not re.search(rf"\b{re.escape(_a4a_norm(toks[-1]))}\b", comp_norm):
-            return False
+        for tok in (dict.fromkeys([toks[0], toks[-1]]) if toks else ()):
+            if not re.search(rf"\b{re.escape(_a4a_norm(tok))}\b", comp_norm):
+                return False
     return True
 
 
